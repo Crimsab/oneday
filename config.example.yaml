@@ -1,0 +1,61 @@
+# OneDay Configuration
+
+# Data directory for stories, saves, and database
+data_dir: "./oneday_data"
+
+# AI Provider configuration
+ai:
+  # Provider priority (first available is used, others are fallbacks)
+  # Options: claude-code, litellm, openrouter
+  provider_priority:
+    - claude-code
+    - litellm
+    - openrouter
+
+  # Claude Code CLI (uses your Claude subscription)
+  claude_code:
+    enabled: true
+    # Path to claude CLI binary (leave empty for PATH lookup)
+    binary: ""
+
+  # LiteLLM / OpenAI-compatible endpoint
+  litellm:
+    enabled: true
+    base_url: "http://ai-proxy:4000/v1"
+    api_key: ""
+    default_model: "claude-sonnet-4-6"
+
+  # OpenRouter
+  openrouter:
+    enabled: false
+    base_url: "https://openrouter.ai/api/v1"
+    api_key: ""
+    default_model: "anthropic/claude-sonnet-4-6"
+
+  # Embedding model (for RAG)
+  embedding:
+    model: "text-embedding-3-small"
+    # Uses the first available provider that supports embeddings
+
+  # Generation settings
+  temperature: 0.8
+  max_tokens: 2048
+  timeout_seconds: 60
+
+# RAG settings
+rag:
+  # Summarize every N turns
+  summarize_every: 10
+  # Number of relevant chunks to retrieve
+  top_k: 5
+  # Embedding dimensions
+  dimensions: 1536
+
+# Game settings
+game:
+  # Autosave every N turns
+  autosave_every: 5
+  # Enable typewriter effect for AI responses
+  typewriter_effect: true
+  # Typewriter speed (characters per second)
+  typewriter_speed: 80

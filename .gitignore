@@ -1,0 +1,25 @@
+# Binary
+/oneday
+/oneday.exe
+
+# Data
+oneday_data/
+
+# Config (contains API keys)
+config.yaml
+
+# Go
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test
+coverage.out
