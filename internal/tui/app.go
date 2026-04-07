@@ -20,6 +20,7 @@ const (
 	ViewNewStory
 	ViewNarrative
 	ViewLoadStory
+	ViewSaveLoad
 )
 
 // App is the top-level Bubbletea model.
@@ -36,6 +37,7 @@ type App struct {
 	newStory  *views.NewStoryModel
 	narrative *views.NarrativeModel
 	loadStory *views.LoadStoryModel
+	saveLoad  *views.SaveLoadModel
 }
 
 // New creates the app with all dependencies.
@@ -67,6 +69,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.loadStory != nil {
 			a.loadStory.SetSize(msg.Width, msg.Height)
+		}
+		if a.saveLoad != nil {
+			a.saveLoad.SetSize(msg.Width, msg.Height)
 		}
 		return a, nil
 
@@ -102,6 +107,58 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case engine.AutosaveCompleteMsg:
 		// Route autosave notification to the narrative view
+		if a.narrative != nil {
+			updated, cmd := a.narrative.Update(msg)
+			a.narrative = &updated
+			return a, cmd
+		}
+		return a, nil
+
+	case views.QuitToMenuMsg:
+		// /quit command: session already closed by the command handler
+		a.narrative = nil
+		a.view = ViewMenu
+		return a, nil
+
+	case views.ShowSaveListMsg:
+		// /load command: show save picker if saves exist
+		if len(msg.Saves) == 0 {
+			// No saves — show a status message in the narrative view
+			if a.narrative != nil {
+				a.narrative.SetStatusMsg("No saves found.")
+			}
+			return a, nil
+		}
+		m := views.NewSaveLoadModel(msg.Saves)
+		m.SetSize(a.width, a.height)
+		a.saveLoad = &m
+		a.view = ViewSaveLoad
+		return a, nil
+
+	case views.SaveLoadSelectedMsg:
+		// User picked a save — load it and resume narrative
+		if a.narrative != nil {
+			storyID := a.narrative.StoryID()
+			cmd, err := a.loadSaveAndResume(storyID, msg.SaveID)
+			if err != nil {
+				// Failed to load — return to narrative
+				a.view = ViewNarrative
+				return a, nil
+			}
+			a.saveLoad = nil
+			return a, cmd
+		}
+		a.view = ViewNarrative
+		return a, nil
+
+	case views.SaveLoadCancelMsg:
+		// User pressed Esc in save picker — back to game
+		a.saveLoad = nil
+		a.view = ViewNarrative
+		return a, nil
+
+	case views.SaveCompleteMsg:
+		// Route save-complete message to narrative view
 		if a.narrative != nil {
 			updated, cmd := a.narrative.Update(msg)
 			a.narrative = &updated
@@ -177,6 +234,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadStory = &updated
 			return a, cmd
 		}
+
+	case ViewSaveLoad:
+		if a.saveLoad != nil {
+			var cmd tea.Cmd
+			updated, cmd := a.saveLoad.Update(msg)
+			a.saveLoad = &updated
+			return a, cmd
+		}
 	}
 
 	return a, nil
@@ -201,6 +266,11 @@ func (a App) View() string {
 			return a.loadStory.View()
 		}
 		return a.menu.View()
+	case ViewSaveLoad:
+		if a.saveLoad != nil {
+			return a.saveLoad.View()
+		}
+		return a.menu.View()
 	default:
 		return a.menu.View()
 	}
@@ -216,6 +286,44 @@ func (a *App) cleanup() {
 	if a.narrative != nil {
 		a.narrative.CloseSession()
 	}
+}
+
+// loadSaveAndResume restores state from a save and resumes the narrative view.
+func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
+	char, world, err := engine.LoadGame(a.db, saveID)
+	if err != nil {
+		return nil, fmt.Errorf("loading save: %w", err)
+	}
+
+	story, err := a.db.GetStory(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading story: %w", err)
+	}
+
+	// Close existing session before opening new one.
+	if a.narrative != nil {
+		a.narrative.CloseSession()
+	}
+
+	session, err := engine.NewGameSession(a.db, storyID, a.cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("creating game session: %w", err)
+	}
+
+	_ = a.db.UpdateStoryTimestamp(storyID)
+
+	narrator := engine.NewNarrator(
+		a.router, a.db, story, char, world, session,
+		engine.DefaultContextConfig(),
+		a.cfg.DataDir,
+		a.cfg.Game.AutosaveEvery,
+	)
+	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
+	m.SetSize(a.width, a.height)
+	a.narrative = &m
+	a.view = ViewNarrative
+
+	return a.narrative.StartNarration(), nil
 }
 
 // enterNarrativeView loads story data, creates a narrator, and starts narration.
