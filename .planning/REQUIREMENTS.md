@@ -7,8 +7,8 @@
 
 ### Core Engine
 
-- [ ] **CORE-01**: Player can create a new story through AI-guided conversation that builds setting, rules, and stats schema
-- [ ] **CORE-02**: Player can choose protagonist name and optional background at story start
+- [x] **CORE-01**: Player can create a new story through AI-guided conversation that builds setting, rules, and stats schema
+- [x] **CORE-02**: Player can choose protagonist name and optional background at story start
 - [ ] **CORE-03**: Narrative loop works: player input → AI context building → AI response → state update → TUI render
 - [ ] **CORE-04**: Player always has a free action input alongside AI-suggested choices
 - [ ] **CORE-05**: Story state (protagonist, NPCs, world) persists to disk and can be loaded
@@ -17,10 +17,10 @@
 ### AI Integration
 
 - [x] **AI-01**: AI provider router supports Claude Code CLI, LiteLLM, and OpenRouter with configurable fallback chain
-- [ ] **AI-02**: AI responses are structured JSON (narrative, choices, state_changes, mood, challenges, achievements)
-- [ ] **AI-03**: AI responses stream to TUI with typewriter effect
+- [x] **AI-02**: AI responses are structured JSON (narrative, choices, state_changes, mood, challenges, achievements)
+- [x] **AI-03**: AI responses stream to TUI with typewriter effect
 - [ ] **AI-04**: Context builder assembles system prompt + recent chat + player state + NPC state + RAG chunks
-- [ ] **AI-05**: AI model and response latency shown in status bar
+- [x] **AI-05**: AI model and response latency shown in status bar
 
 ### Character System
 
@@ -87,9 +87,9 @@
 
 ### TUI
 
-- [ ] **TUI-01**: Main menu with new story, load story, settings, quit
-- [ ] **TUI-02**: Narrative view with chapter/location header, narrative text, choices + free input, status bar
-- [ ] **TUI-03**: Status bar shows vitals, AI model, and response latency
+- [x] **TUI-01**: Main menu with new story, load story, settings, quit
+- [x] **TUI-02**: Narrative view with chapter/location header, narrative text, choices + free input, status bar
+- [x] **TUI-03**: Status bar shows vitals, AI model, and response latency
 - [ ] **TUI-04**: Combat view with HP bars, turn info, choices + free input
 - [ ] **TUI-05**: Crafting view with inventory display and conversation
 - [ ] **TUI-06**: Character sheet view (stats, attributes, skills, titles, traits, relationships)
