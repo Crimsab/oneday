@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
@@ -15,17 +18,24 @@ import (
 // narratorJSONRe matches fenced ```json ... ``` blocks in AI output.
 var narratorJSONRe = regexp.MustCompile("(?s)```json\\s*\\n(.*?)\\n```")
 
+// AutosaveCompleteMsg is sent via Bubbletea when an autosave finishes.
+type AutosaveCompleteMsg struct {
+	Err error
+}
+
 // Narrator manages the gameplay AI conversation.
 type Narrator struct {
-	router      *ai.Router
-	db          *storage.DB
-	story       *storage.Story
-	character   *storage.Character
-	world       *storage.WorldState
-	session     *GameSession
-	contextCfg  ContextConfig
-	lastModel   string
-	lastLatency int64
+	router        *ai.Router
+	db            *storage.DB
+	story         *storage.Story
+	character     *storage.Character
+	world         *storage.WorldState
+	session       *GameSession
+	contextCfg    ContextConfig
+	lastModel     string
+	lastLatency   int64
+	dataDir       string
+	autosaveEvery int
 }
 
 // NewNarrator creates a narrator for an existing story.
@@ -38,15 +48,22 @@ func NewNarrator(
 	world *storage.WorldState,
 	session *GameSession,
 	contextCfg ContextConfig,
+	dataDir string,
+	autosaveEvery int,
 ) *Narrator {
+	if autosaveEvery <= 0 {
+		autosaveEvery = 5
+	}
 	return &Narrator{
-		router:     router,
-		db:         db,
-		story:      story,
-		character:  char,
-		world:      world,
-		session:    session,
-		contextCfg: contextCfg,
+		router:        router,
+		db:            db,
+		story:         story,
+		character:     char,
+		world:         world,
+		session:       session,
+		contextCfg:    contextCfg,
+		dataDir:       dataDir,
+		autosaveEvery: autosaveEvery,
 	}
 }
 
@@ -88,6 +105,12 @@ func (n *Narrator) SendAction(ctx context.Context, action string) (*NarrativeRes
 }
 
 func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeResponse, error) {
+	// Determine input type.
+	inputType := "free_action"
+	if strings.HasPrefix(input, "[Choice ") {
+		inputType = "choice"
+	}
+
 	// Load recent messages from DB to build context.
 	recentMsgs, err := n.db.GetRecentMessages(n.session.SessionID(), n.contextCfg.RecentMessageCount)
 	if err != nil {
@@ -133,11 +156,29 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		}
 	}
 
-	// Update world location if changed.
+	// Apply state_changes from AI response.
+	if len(narrative.StateChanges) > 0 {
+		_, applyErr := ApplyStateChanges(narrative.StateChanges, n.character, n.world)
+		if applyErr != nil {
+			// Non-fatal: log but continue.
+			_ = applyErr
+		}
+	}
+
+	// If AI specified a location (and state_changes didn't already update it), sync it.
 	if narrative.Location != "" && narrative.Location != n.world.CurrentLocation {
 		n.world.CurrentLocation = narrative.Location
 	}
+
+	// Persist character stats and world state to DB.
+	if err := n.db.UpdateCharacterStats(n.character); err != nil {
+		_ = err // non-fatal
+	}
+
 	n.world.CurrentTurn = n.session.Turn() + 1
+	if err := n.db.UpdateWorldState(n.world); err != nil {
+		_ = err // non-fatal
+	}
 
 	// Extract choice texts for the JSONL entry.
 	choiceTexts := make([]string, len(narrative.Choices))
@@ -151,13 +192,14 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		Chapter:   n.world.CurrentChapter,
 		Location:  n.world.CurrentLocation,
 		Input: &ChatInput{
-			Type: "free_action",
+			Type: inputType,
 			Text: input,
 		},
 		Output: &ChatOutput{
-			Narrative: narrative.Narrative,
-			Choices:   choiceTexts,
-			Mood:      narrative.Mood,
+			Narrative:    narrative.Narrative,
+			Choices:      choiceTexts,
+			Mood:         narrative.Mood,
+			StateChanges: narrative.StateChanges,
 		},
 		AIModel:   resp.Model,
 		AILatency: n.lastLatency,
@@ -168,6 +210,33 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	}
 
 	return narrative, nil
+}
+
+// ShouldAutosave returns true if the current turn count triggers an autosave.
+// Called after SendAction to let the TUI fire the autosave as a tea.Cmd.
+func (n *Narrator) ShouldAutosave() bool {
+	if n.autosaveEvery <= 0 {
+		return false
+	}
+	currentTurn := n.session.Turn()
+	return currentTurn > 0 && currentTurn%n.autosaveEvery == 0
+}
+
+// AutosaveCmd returns a tea.Cmd that runs an autosave in the background
+// and emits AutosaveCompleteMsg when done.
+func (n *Narrator) AutosaveCmd() tea.Cmd {
+	db := n.db
+	dataDir := n.dataDir
+	story := n.story
+	// Take snapshots of current state to avoid races.
+	char := *n.character
+	world := *n.world
+	sessionID := n.session.SessionID()
+
+	return func() tea.Msg {
+		err := Autosave(db, dataDir, story, &char, &world, sessionID)
+		return AutosaveCompleteMsg{Err: err}
+	}
 }
 
 // parseNarrativeFromAI extracts the JSON block from an AI response and

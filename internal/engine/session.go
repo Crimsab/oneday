@@ -33,9 +33,10 @@ type ChatInput struct {
 
 // ChatOutput represents the AI's output for a turn.
 type ChatOutput struct {
-	Narrative string   `json:"narrative"`
-	Choices   []string `json:"choices,omitempty"`
-	Mood      string   `json:"mood,omitempty"`
+	Narrative    string                 `json:"narrative"`
+	Choices      []string               `json:"choices,omitempty"`
+	Mood         string                 `json:"mood,omitempty"`
+	StateChanges map[string]interface{} `json:"state_changes,omitempty"`
 }
 
 // GameSession manages a play session's lifecycle and JSONL persistence.

@@ -19,6 +19,7 @@ func (db *DB) migrate() error {
 		sql     string
 	}{
 		{1, migrationV1},
+		{2, migrationV2},
 	}
 
 	for _, m := range migrations {
@@ -152,4 +153,21 @@ CREATE INDEX idx_chat_messages_session ON chat_messages(session_id);
 CREATE INDEX idx_chat_messages_story ON chat_messages(story_id);
 CREATE INDEX idx_chapters_story ON chapters(story_id);
 CREATE INDEX idx_achievements_story ON achievements(story_id);
+`
+
+const migrationV2 = `
+-- Saves table: full game state snapshots
+CREATE TABLE IF NOT EXISTS saves (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	name TEXT NOT NULL DEFAULT 'autosave',
+	turn INTEGER NOT NULL,
+	chapter INTEGER NOT NULL,
+	location TEXT NOT NULL DEFAULT '',
+	character_json TEXT NOT NULL,
+	world_state_json TEXT NOT NULL,
+	session_id TEXT,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_saves_story ON saves(story_id);
 `
