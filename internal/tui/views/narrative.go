@@ -25,6 +25,12 @@ type narrativeResponseMsg struct {
 	err      error
 }
 
+// narratorMetaResponseMsg carries a /narrator command response.
+type narratorMetaResponseMsg struct {
+	message string
+	err     error
+}
+
 // clearStatusMsg is sent to clear the temporary status message.
 type clearStatusMsg struct{}
 
@@ -141,6 +147,22 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 
 		return m, tea.Batch(cmds...)
+
+	case narratorMetaResponseMsg:
+		m.waiting = false
+		if msg.err != nil {
+			m.errMsg = fmt.Sprintf("Narrator Error: %v", msg.err)
+			return m, nil
+		}
+		m.errMsg = ""
+		// Display narrator response styled distinctly (prefixed with [Game Master]).
+		rendered := components.RenderMarkdown("\n**[Game Master]** " + msg.message + "\n")
+		m.history.WriteString(rendered + "\n")
+		cmd := m.typewriter.SetText(m.history.String())
+		// Restore input focus (narrator command does not change choices).
+		m.inputFocus = true
+		m.input.Focus()
+		return m, cmd
 
 	case engine.AutosaveCompleteMsg:
 		if msg.Err == nil {
@@ -281,6 +303,15 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.showHelp()
 	case "quit":
 		return m.doQuit()
+	case "narrator":
+		if len(cmd.Args) == 0 {
+			m.errMsg = "Usage: /n <message to the game master>"
+			return m, nil
+		}
+		input := strings.Join(cmd.Args, " ")
+		return m.sendNarratorCommand(input)
+	case "journal":
+		return m.showJournal()
 	default:
 		if len(cmd.Args) > 0 {
 			m.errMsg = fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", cmd.Args[0])
@@ -299,16 +330,50 @@ func (m *NarrativeModel) showOverlay(title, content string) {
 	m.input.Blur()
 }
 
+// sendNarratorCommand sends a /narrator meta-command to the AI game master.
+// Does not increment the turn counter.
+func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.Cmd) {
+	m.waiting = true
+	m.statusMsg = "Speaking to the narrator..."
+	m.statusExpiry = time.Now().Add(30 * time.Second)
+	narrator := m.narrator
+	return m, func() tea.Msg {
+		resp, err := narrator.ExecuteNarratorCommand(context.Background(), input)
+		if err != nil {
+			return narratorMetaResponseMsg{err: err}
+		}
+		return narratorMetaResponseMsg{message: resp.Message}
+	}
+}
+
+// showJournal displays the chapter journal overlay.
+func (m NarrativeModel) showJournal() (NarrativeModel, tea.Cmd) {
+	summaries, err := m.narrator.GetChapterSummaries()
+	if err != nil {
+		m.errMsg = fmt.Sprintf("Journal error: %v", err)
+		return m, nil
+	}
+	m.showOverlay("Journal", summaries)
+	return m, nil
+}
+
 // showHelp displays the help overlay.
 func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 	helpText := `Available Commands:
 
   /inventory  (/i)   Show your inventory
   /stats      (/s)   Show character sheet
+  /journal    (/j)   Show chapter journal
+  /narrator   (/n)   Speak to the game master
   /save [name]       Save your game
   /load              Load a saved game
   /help       (/h)   Show this help
-  /quit       (/q)   Save and quit to menu`
+  /quit       (/q)   Save and quit to menu
+
+Narrator examples:
+  /n Add a secret underground city
+  /n Make Lyanna secretly jealous
+  /n What factions exist in this world?`
 
 	m.showOverlay("Help", helpText)
 	return m, nil

@@ -171,3 +171,15 @@ func (db *DB) UpdateStoryTimestamp(storyID string) error {
 	}
 	return nil
 }
+
+// UpdateStorySetting updates the setting_json for a story and bumps updated_at.
+func (db *DB) UpdateStorySetting(storyID, settingJSON string) error {
+	_, err := db.conn.Exec(
+		`UPDATE stories SET setting_json = ?, updated_at = ? WHERE id = ?`,
+		settingJSON, time.Now(), storyID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating story setting for %s: %w", storyID, err)
+	}
+	return nil
+}

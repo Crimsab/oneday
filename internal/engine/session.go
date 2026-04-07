@@ -15,14 +15,15 @@ import (
 
 // ChatEntry is the JSONL format for a single turn on disk.
 type ChatEntry struct {
-	Turn      int         `json:"turn"`
-	Timestamp time.Time   `json:"timestamp"`
-	Chapter   int         `json:"chapter"`
-	Location  string      `json:"location"`
-	Input     *ChatInput  `json:"input,omitempty"`
-	Output    *ChatOutput `json:"output,omitempty"`
-	AIModel   string      `json:"ai_model,omitempty"`
-	AILatency int64       `json:"ai_latency_ms,omitempty"`
+	Turn        int         `json:"turn"`
+	Timestamp   time.Time   `json:"timestamp"`
+	Chapter     int         `json:"chapter"`
+	Location    string      `json:"location"`
+	Input       *ChatInput  `json:"input,omitempty"`
+	Output      *ChatOutput `json:"output,omitempty"`
+	AIModel     string      `json:"ai_model,omitempty"`
+	AILatency   int64       `json:"ai_latency_ms,omitempty"`
+	MessageType string      `json:"message_type,omitempty"` // "narrative", "combat", "crafting", "dialogue", "narrator"
 }
 
 // ChatInput represents the player's input for a turn.
@@ -41,11 +42,13 @@ type ChatOutput struct {
 
 // GameSession manages a play session's lifecycle and JSONL persistence.
 type GameSession struct {
-	session   *storage.Session
-	storyID   string
-	dataDir   string
-	jsonlFile *os.File
-	turn      int
+	session     *storage.Session
+	storyID     string
+	dataDir     string
+	jsonlFile   *os.File
+	subFiles    map[string]*os.File // "combat_1" -> file handle
+	subCounters map[string]int      // "combat" -> counter for naming
+	turn        int
 }
 
 // NewGameSession creates or resumes a session.
@@ -94,13 +97,63 @@ func NewGameSession(db *storage.DB, storyID, dataDir string) (*GameSession, erro
 	}
 
 	gs := &GameSession{
-		session:   sess,
-		storyID:   storyID,
-		dataDir:   dataDir,
-		jsonlFile: f,
-		turn:      initialTurn,
+		session:     sess,
+		storyID:     storyID,
+		dataDir:     dataDir,
+		jsonlFile:   f,
+		subFiles:    make(map[string]*os.File),
+		subCounters: make(map[string]int),
+		turn:        initialTurn,
 	}
 	return gs, nil
+}
+
+// OpenSubSession creates a new sub-session JSONL file for combat, crafting, or dialogue.
+// sessionType is "combat", "crafting", or "dialogue".
+// Returns the sub-session ID (e.g., "combat_1").
+func (gs *GameSession) OpenSubSession(sessionType string) (string, error) {
+	gs.subCounters[sessionType]++
+	subID := fmt.Sprintf("%s_%d", sessionType, gs.subCounters[sessionType])
+
+	sessionDir := filepath.Join(gs.dataDir, "stories", gs.storyID, "sessions", gs.session.ID)
+	subPath := filepath.Join(sessionDir, subID+".jsonl")
+
+	f, err := os.OpenFile(subPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return "", fmt.Errorf("opening sub-session file %s: %w", subPath, err)
+	}
+	gs.subFiles[subID] = f
+	return subID, nil
+}
+
+// AppendSubTurn writes a ChatEntry to a specific sub-session JSONL file.
+func (gs *GameSession) AppendSubTurn(subSessionID string, entry ChatEntry) error {
+	f, ok := gs.subFiles[subSessionID]
+	if !ok {
+		return fmt.Errorf("sub-session %s not open", subSessionID)
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshaling sub-session entry: %w", err)
+	}
+	if _, err := f.Write(append(data, '\n')); err != nil {
+		return fmt.Errorf("writing to sub-session %s: %w", subSessionID, err)
+	}
+	return nil
+}
+
+// CloseSubSession closes a specific sub-session file.
+func (gs *GameSession) CloseSubSession(subSessionID string) error {
+	f, ok := gs.subFiles[subSessionID]
+	if !ok {
+		return nil // already closed or never opened
+	}
+	delete(gs.subFiles, subSessionID)
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("closing sub-session %s: %w", subSessionID, err)
+	}
+	return nil
 }
 
 // AppendTurn writes a ChatEntry to the JSONL file AND inserts into DB.
@@ -120,6 +173,12 @@ func (gs *GameSession) AppendTurn(db *storage.DB, entry ChatEntry) error {
 		return fmt.Errorf("writing to jsonl: %w", err)
 	}
 
+	// Determine message type (default to "narrative").
+	msgType := entry.MessageType
+	if msgType == "" {
+		msgType = "narrative"
+	}
+
 	// 2. Persist to DB — split into user and assistant messages.
 	now := entry.Timestamp
 	if entry.Input != nil {
@@ -129,7 +188,7 @@ func (gs *GameSession) AppendTurn(db *storage.DB, entry ChatEntry) error {
 			Turn:         gs.turn,
 			Role:         "user",
 			Content:      entry.Input.Text,
-			MessageType:  "narrative",
+			MessageType:  msgType,
 			MetadataJSON: "{}",
 			CreatedAt:    now,
 		}
@@ -157,7 +216,7 @@ func (gs *GameSession) AppendTurn(db *storage.DB, entry ChatEntry) error {
 			Turn:         gs.turn,
 			Role:         "assistant",
 			Content:      entry.Output.Narrative,
-			MessageType:  "narrative",
+			MessageType:  msgType,
 			MetadataJSON: string(metaJSON),
 			CreatedAt:    now,
 		}
@@ -170,9 +229,17 @@ func (gs *GameSession) AppendTurn(db *storage.DB, entry ChatEntry) error {
 	return nil
 }
 
-// Close flushes and closes the JSONL file and marks the session as ended in DB.
+// Close flushes and closes the JSONL file, all sub-session files, and marks the session as ended in DB.
 func (gs *GameSession) Close(db *storage.DB) error {
 	var closeErr error
+
+	// Close all open sub-session files.
+	for subID, f := range gs.subFiles {
+		if err := f.Close(); err != nil && closeErr == nil {
+			closeErr = fmt.Errorf("closing sub-session %s: %w", subID, err)
+		}
+	}
+	gs.subFiles = make(map[string]*os.File)
 
 	if gs.jsonlFile != nil {
 		if err := gs.jsonlFile.Close(); err != nil {

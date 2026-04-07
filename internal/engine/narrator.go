@@ -37,7 +37,9 @@ type Narrator struct {
 	lastLatency   int64
 	dataDir       string
 	autosaveEvery int
-	rag           *rag.RAG // optional — nil means RAG is disabled
+	rag           *rag.RAG         // optional — nil means RAG is disabled
+	chapters      *ChapterManager  // optional — nil means chapter tracking is disabled
+	narratorCmd   *NarratorCommand // optional — nil means /narrator command is disabled
 }
 
 // NewNarrator creates a narrator for an existing story.
@@ -73,6 +75,16 @@ func NewNarrator(
 // long-term memory retrieval. Passing nil disables RAG gracefully.
 func (n *Narrator) SetRAG(r *rag.RAG) {
 	n.rag = r
+	// Re-wire chapter manager and narrator command with the new RAG.
+	if r != nil {
+		if n.chapters == nil {
+			n.chapters = NewChapterManager(n.db, n.story.ID, r, n.router)
+			_ = n.chapters.EnsureCurrentChapter(0)
+		}
+		if n.narratorCmd == nil {
+			n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, r, n.session.SessionID())
+		}
+	}
 }
 
 // LastModel returns the AI model used for the last response.
@@ -224,6 +236,19 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		n.world.CurrentLocation = narrative.Location
 	}
 
+	// Handle chapter end if AI signalled one.
+	if narrative.ChapterEnd && n.chapters != nil {
+		title := narrative.ChapterTitle
+		if title == "" {
+			title = fmt.Sprintf("Chapter %d", n.world.CurrentChapter)
+		}
+		if err := n.chapters.HandleChapterEnd(ctx, currentTurn, title); err != nil {
+			_ = err // non-fatal: chapter management failure does not break gameplay
+		} else {
+			n.world.CurrentChapter++
+		}
+	}
+
 	// Persist full character state (stats, traits, skills, inventory) to DB.
 	if err := n.db.UpdateCharacterFull(n.character); err != nil {
 		_ = err // non-fatal
@@ -308,6 +333,24 @@ func (n *Narrator) AutosaveCmd() tea.Cmd {
 		err := Autosave(db, dataDir, story, &char, &world, sessionID)
 		return AutosaveCompleteMsg{Err: err}
 	}
+}
+
+// ExecuteNarratorCommand processes a /narrator (/n) meta-command.
+// The player speaks to the AI as a game master. Does NOT increment turn counter.
+func (n *Narrator) ExecuteNarratorCommand(ctx context.Context, input string) (*NarratorMetaResponse, error) {
+	if n.narratorCmd == nil {
+		// Lazily initialize narrator command handler even without RAG.
+		n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, n.rag, n.session.SessionID())
+	}
+	return n.narratorCmd.Execute(ctx, input)
+}
+
+// GetChapterSummaries returns formatted chapter summaries for the /journal command.
+func (n *Narrator) GetChapterSummaries() (string, error) {
+	if n.chapters == nil {
+		n.chapters = NewChapterManager(n.db, n.story.ID, n.rag, n.router)
+	}
+	return n.chapters.GetChapterSummaries()
 }
 
 // parseNarrativeFromAI extracts the JSON block from an AI response and

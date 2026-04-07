@@ -85,13 +85,15 @@ func (s StatsSchema) InitialStats() map[string]interface{} {
 
 // NarrativeResponse is the standard AI response format during gameplay (AI-02).
 type NarrativeResponse struct {
-	Narrative    string                 `json:"narrative"`
-	Choices      []Choice               `json:"choices"`
-	StateChanges map[string]interface{} `json:"state_changes,omitempty"`
-	Mood         string                 `json:"mood,omitempty"`
-	Location     string                 `json:"location,omitempty"`
-	Challenges   []interface{}          `json:"challenges,omitempty"`
-	Achievements []interface{}          `json:"achievements,omitempty"`
+	Narrative     string                 `json:"narrative"`
+	Choices       []Choice               `json:"choices"`
+	StateChanges  map[string]interface{} `json:"state_changes,omitempty"`
+	Mood          string                 `json:"mood,omitempty"`
+	Location      string                 `json:"location,omitempty"`
+	Challenges    []interface{}          `json:"challenges,omitempty"`
+	Achievements  []interface{}          `json:"achievements,omitempty"`
+	ChapterEnd    bool                   `json:"chapter_end,omitempty"`
+	ChapterTitle  string                 `json:"chapter_title,omitempty"` // title for the ending chapter
 }
 
 // Choice represents an AI-suggested action.

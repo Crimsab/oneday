@@ -22,6 +22,10 @@ var CommandRegistry = map[string]string{
 	"h":         "help",
 	"quit":      "quit",
 	"q":         "quit",
+	"narrator":  "narrator",
+	"n":         "narrator",
+	"journal":   "journal",
+	"j":         "journal",
 }
 
 // IsCommand returns true if the input starts with "/".
