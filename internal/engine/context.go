@@ -28,6 +28,7 @@ func DefaultContextConfig() ContextConfig {
 // BuildContext assembles the full message list for an AI call.
 // Order: [system prompt, state summary, optional RAG, ...recent messages, current user input]
 // npcs is the list of recently-seen NPCs; their data is injected into the system prompt and state summary.
+// lastChapterSummary is the AI-generated summary of the previous chapter (empty if chapter 1).
 func BuildContext(
 	story *storage.Story,
 	char *storage.Character,
@@ -35,6 +36,7 @@ func BuildContext(
 	npcs []storage.NPC,
 	recentMessages []storage.ChatMessage,
 	ragChunks []string,
+	lastChapterSummary string,
 	currentInput string,
 ) []ai.Message {
 	msgs := make([]ai.Message, 0, len(recentMessages)+4)
@@ -65,13 +67,13 @@ func BuildContext(
 	})
 
 	// 2. Add a live state summary — reflects current state, not creation-time state.
-	stateSummary := buildStateSummary(char, world, npcs)
+	stateSummary := buildStateSummary(char, world, npcs, lastChapterSummary)
 	msgs = append(msgs, ai.Message{
 		Role:    ai.RoleSystem,
 		Content: stateSummary,
 	})
 
-	// 3. Inject RAG chunks if provided (placeholder for Phase 5).
+	// 3. Inject RAG chunks if provided (long-term memory from past turns).
 	if len(ragChunks) > 0 {
 		ragContent := "## Relevant Memory\n" + strings.Join(ragChunks, "\n---\n")
 		msgs = append(msgs, ai.Message{
@@ -103,7 +105,8 @@ func BuildContext(
 
 // buildStateSummary composes a concise state message with current character and world info.
 // npcs is the list of NPCs included in the current context (used for the summary line).
-func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs []storage.NPC) string {
+// lastChapterSummary is the AI-generated summary of the previous chapter (empty if chapter 1).
+func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs []storage.NPC, lastChapterSummary string) string {
 	var sb strings.Builder
 	sb.WriteString("## Current Game State\n")
 	sb.WriteString(fmt.Sprintf("- Chapter: %d\n", world.CurrentChapter))
@@ -120,6 +123,22 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs 
 			names[i] = npc.Name
 		}
 		sb.WriteString(fmt.Sprintf("- Known NPCs: %d (%s)\n", len(npcs), strings.Join(names, ", ")))
+	}
+	// World state: known locations.
+	if world.KnownLocationsJSON != "" && world.KnownLocationsJSON != "null" && world.KnownLocationsJSON != "[]" {
+		sb.WriteString(fmt.Sprintf("- Known Locations: %s\n", world.KnownLocationsJSON))
+	}
+	// World state: faction standings.
+	if world.FactionStandingsJSON != "" && world.FactionStandingsJSON != "null" && world.FactionStandingsJSON != "{}" {
+		sb.WriteString(fmt.Sprintf("- Faction Standings: %s\n", world.FactionStandingsJSON))
+	}
+	// World state: global events.
+	if world.GlobalEventsJSON != "" && world.GlobalEventsJSON != "null" && world.GlobalEventsJSON != "[]" {
+		sb.WriteString(fmt.Sprintf("- Global Events: %s\n", world.GlobalEventsJSON))
+	}
+	// Previous chapter summary for narrative continuity.
+	if lastChapterSummary != "" {
+		sb.WriteString(fmt.Sprintf("- Previous Chapter Summary: %s\n", lastChapterSummary))
 	}
 	return sb.String()
 }

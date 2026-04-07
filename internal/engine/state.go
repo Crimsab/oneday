@@ -492,6 +492,34 @@ func ApplyStateChanges(
 				New:         note,
 				Description: fmt.Sprintf("%s noted something about protagonist (private)", npcName),
 			})
+
+		// npc_desire_update and npc_desires both update an NPC's desires text.
+		case "npc_desire_update", "npc_desires":
+			desireMap, ok := toStringMap(val)
+			if !ok || db == nil {
+				continue
+			}
+			npcName, _ := desireMap["name"].(string)
+			desire, _ := desireMap["desire"].(string)
+			if npcName == "" || desire == "" {
+				continue
+			}
+			npc, err := db.GetNPCByName(storyID, npcName)
+			if err != nil || npc == nil {
+				continue
+			}
+			if npc.Desires != "" {
+				npc.Desires = npc.Desires + "; " + desire
+			} else {
+				npc.Desires = desire
+			}
+			_ = db.UpdateNPC(npc)
+			applied = append(applied, StateChange{
+				Target:      "world",
+				Field:       fmt.Sprintf("npc.%s.desires", npcName),
+				New:         desire,
+				Description: fmt.Sprintf("%s's desires updated", npcName),
+			})
 		}
 	}
 

@@ -170,6 +170,14 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		ragChunks, _ = n.rag.Retrieve(ctx, input)
 	}
 
+	// Fetch the previous chapter summary for narrative continuity (non-fatal if unavailable).
+	var lastChapterSummary string
+	if n.world.CurrentChapter > 1 && n.chapters != nil {
+		if prevChapter, err := n.db.GetChapter(n.story.ID, n.world.CurrentChapter-1); err == nil && prevChapter != nil {
+			lastChapterSummary = prevChapter.Summary
+		}
+	}
+
 	// Build the full context using the context builder.
 	messages := BuildContext(
 		n.story,
@@ -178,6 +186,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		npcs,
 		recentMsgs,
 		ragChunks,
+		lastChapterSummary,
 		input,
 	)
 
@@ -224,6 +233,10 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 			// Non-fatal: log but continue.
 			_ = applyErr
 		}
+
+		// Also apply world/setting-modifying keys that come through regular gameplay.
+		// This allows the AI to organically update factions, events, and locations mid-story.
+		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, n.db, n.story, n.world, n.rag)
 	}
 
 	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
@@ -234,6 +247,11 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	// If AI specified a location (and state_changes didn't already update it), sync it.
 	if narrative.Location != "" && narrative.Location != n.world.CurrentLocation {
 		n.world.CurrentLocation = narrative.Location
+	}
+
+	// Auto-add the current location to known locations if not already tracked.
+	if n.world.CurrentLocation != "" {
+		AddLocationToWorldState(n.world, n.world.CurrentLocation, currentTurn)
 	}
 
 	// Handle chapter end if AI signalled one.

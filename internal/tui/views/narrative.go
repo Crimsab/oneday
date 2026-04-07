@@ -312,6 +312,10 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.sendNarratorCommand(input)
 	case "journal":
 		return m.showJournal()
+	case "map":
+		return m.showMap()
+	case "achievements":
+		return m.showAchievements()
 	default:
 		if len(cmd.Args) > 0 {
 			m.errMsg = fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", cmd.Args[0])
@@ -348,12 +352,31 @@ func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.C
 
 // showJournal displays the chapter journal overlay.
 func (m NarrativeModel) showJournal() (NarrativeModel, tea.Cmd) {
-	summaries, err := m.narrator.GetChapterSummaries()
-	if err != nil {
-		m.errMsg = fmt.Sprintf("Journal error: %v", err)
-		return m, nil
+	world := m.narrator.World()
+	storyID := m.narrator.Story().ID
+	currentChapter := 1
+	currentTurn := m.narrator.Turn()
+	if world != nil {
+		currentChapter = world.CurrentChapter
+		currentTurn = world.CurrentTurn
 	}
-	m.showOverlay("Journal", summaries)
+	journalText := engine.FormatJournalView(m.narrator.DB(), storyID, currentChapter, currentTurn)
+	m.showOverlay("Journal", journalText)
+	return m, nil
+}
+
+// showMap displays the discovered world locations overlay.
+func (m NarrativeModel) showMap() (NarrativeModel, tea.Cmd) {
+	mapText := engine.FormatMapView(m.narrator.World())
+	m.showOverlay("World Map", mapText)
+	return m, nil
+}
+
+// showAchievements displays earned achievements overlay.
+func (m NarrativeModel) showAchievements() (NarrativeModel, tea.Cmd) {
+	storyID := m.narrator.Story().ID
+	achText := engine.FormatAchievementsView(m.narrator.DB(), storyID)
+	m.showOverlay("Achievements", achText)
 	return m, nil
 }
 
@@ -361,19 +384,22 @@ func (m NarrativeModel) showJournal() (NarrativeModel, tea.Cmd) {
 func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 	helpText := `Available Commands:
 
-  /inventory  (/i)   Show your inventory
-  /stats      (/s)   Show character sheet
-  /journal    (/j)   Show chapter journal
-  /narrator   (/n)   Speak to the game master
-  /save [name]       Save your game
-  /load              Load a saved game
-  /help       (/h)   Show this help
-  /quit       (/q)   Save and quit to menu
+  /inventory    (/i)   Show your inventory
+  /stats        (/s)   Show character sheet
+  /map          (/m)   Show discovered world map
+  /journal      (/j)   Show chapter journal
+  /achievements (/a)   Show earned achievements
+  /narrator     (/n)   Speak to the game master
+  /save [name]         Save your game
+  /load                Load a saved game
+  /help         (/h)   Show this help
+  /quit         (/q)   Save and quit to menu
 
 Narrator examples:
   /n Add a secret underground city
   /n Make Lyanna secretly jealous
-  /n What factions exist in this world?`
+  /n What factions exist in this world?
+  /n I want the next area to be a haunted forest`
 
 	m.showOverlay("Help", helpText)
 	return m, nil
