@@ -9,17 +9,17 @@
 
 - [x] **CORE-01**: Player can create a new story through AI-guided conversation that builds setting, rules, and stats schema
 - [x] **CORE-02**: Player can choose protagonist name and optional background at story start
-- [ ] **CORE-03**: Narrative loop works: player input → AI context building → AI response → state update → TUI render
-- [ ] **CORE-04**: Player always has a free action input alongside AI-suggested choices
-- [ ] **CORE-05**: Story state (protagonist, NPCs, world) persists to disk and can be loaded
-- [ ] **CORE-06**: Autosave triggers every N turns; manual save/load available
+- [x] **CORE-03**: Narrative loop works: player input → AI context building → AI response → state update → TUI render
+- [x] **CORE-04**: Player always has a free action input alongside AI-suggested choices
+- [x] **CORE-05**: Story state (protagonist, NPCs, world) persists to disk and can be loaded
+- [x] **CORE-06**: Autosave triggers every N turns; manual save/load available
 
 ### AI Integration
 
 - [x] **AI-01**: AI provider router supports Claude Code CLI, LiteLLM, and OpenRouter with configurable fallback chain
 - [x] **AI-02**: AI responses are structured JSON (narrative, choices, state_changes, mood, challenges, achievements)
 - [x] **AI-03**: AI responses stream to TUI with typewriter effect
-- [ ] **AI-04**: Context builder assembles system prompt + recent chat + player state + NPC state + RAG chunks
+- [x] **AI-04**: Context builder assembles system prompt + recent chat + player state + NPC state + RAG chunks
 - [x] **AI-05**: AI model and response latency shown in status bar
 
 ### Character System
@@ -43,8 +43,8 @@
 ### Storage and Persistence
 
 - [x] **STOR-01**: SQLite database stores all game data (stories, characters, NPCs, world state)
-- [ ] **STOR-02**: Chat history saved as JSONL per session, organized by session > chapter
-- [ ] **STOR-03**: Sessions auto-created when player opens a story, closed on exit
+- [x] **STOR-02**: Chat history saved as JSONL per session, organized by session > chapter
+- [x] **STOR-03**: Sessions auto-created when player opens a story, closed on exit
 - [ ] **STOR-04**: Separate chat logs for combat, crafting, and deep NPC dialogues
 - [ ] **STOR-05**: Chapter system with AI-generated summaries at chapter boundaries
 
@@ -99,7 +99,7 @@
 
 ### Chat Commands
 
-- [ ] **CMD-01**: /inventory, /stats, /save, /load, /help, /quit
+- [x] **CMD-01**: /inventory, /stats, /save, /load, /help, /quit
 - [ ] **CMD-02**: /map, /journal, /achievements
 - [ ] **CMD-03**: /narrator (/n) — meta-level world-building, lore injection, NPC depth, narrative steering
 - [ ] **CMD-04**: /narrator changes auto-update story.json, NPC files, world_state
