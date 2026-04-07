@@ -19,6 +19,7 @@ The minimum to play a basic story.
 - [ ] Save/load system (autosave + manual saves)
 - [ ] Status bar (vitals + AI model + latency)
 - [ ] Streaming AI responses (typewriter effect)
+- [ ] Chat commands: `/inventory`, `/stats`, `/save`, `/load`, `/help`, `/quit`
 
 ## v0.2 — Depth
 
@@ -39,6 +40,9 @@ Making the game actually interesting.
 - [ ] Attribute growth (slow, use-based, AI-suggested)
 - [ ] Trait emergence (AI observes patterns, assigns traits)
 - [ ] Title system (AI awards based on deeds)
+- [ ] `/n` (narrator) command — meta-level world-building, lore injection, NPC depth
+- [ ] Dynamic world updates — story.json, npcs, world_state auto-updated as things are discovered
+- [ ] Chat commands: `/map`, `/journal`, `/achievements`
 
 ## v0.3 — Systems
 

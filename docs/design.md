@@ -475,7 +475,97 @@ ASCII art is generated inline by the AI as part of its narrative response. No pr
 
 ---
 
-## 12. Plugin System (v2+)
+## 12. Chat Commands
+
+The player can type special commands during gameplay. Commands start with `/`.
+
+### Core Commands
+
+| Command | Short | Description |
+|---------|-------|-------------|
+| `/inventory` | `/i` | Show inventory |
+| `/stats` | `/s` | Show character sheet (stats, attributes, skills, titles, traits) |
+| `/map` | `/m` | Show discovered world map |
+| `/journal` | `/j` | Show journal (auto + manual entries) |
+| `/achievements` | `/a` | Show unlocked achievements |
+| `/save` | | Manual save |
+| `/load` | | Load a save |
+| `/settings` | | Open settings |
+| `/help` | `/h` | List all commands |
+| `/quit` | `/q` | Save and quit |
+
+### The Narrator Command — `/n`
+
+`/n` (or `/narrator`) lets the player **speak directly to the AI as a narrator/game master**, outside of the story. This is a meta-level command that adds depth without breaking immersion.
+
+#### What `/n` can do
+
+**Inject lore and world-building:**
+```
+/n Aggiungi una fazione segreta: l'Ordine della Cenere,
+   cultisti che credono che il mondo debba essere purificato
+   dal fuoco. Operano nell'ombra da secoli.
+```
+→ The AI acknowledges, updates `story.json` (adds to factions/cultures/dangers), and weaves it into the world. The next time factions are relevant, l'Ordine della Cenere might appear organically.
+
+**Reveal hidden NPC layers:**
+```
+/n Lyanna ha un figlio segreto che nessuno conosce.
+   Questo è il vero motivo per cui vuole il potere.
+```
+→ AI updates Lyanna's `desires` and `private_thoughts`. Her behavior subtly shifts. The player might discover this in-story later, or it might simply color her actions.
+
+**Steer the narrative:**
+```
+/n Vorrei che la prossima area che esploro sia una
+   civiltà sotterranea dimenticata con la propria cultura.
+```
+→ AI takes note and introduces it at the next natural opportunity. Not forced, but guided.
+
+**Ask the narrator questions:**
+```
+/n Quanto è pericoloso il territorio a nord?
+/n Ci sono altre fazioni che non ho ancora incontrato?
+```
+→ AI answers from the narrator's perspective (may be vague or cryptic depending on the story's tone).
+
+**Correct or adjust:**
+```
+/n L'ultimo NPC era troppo amichevole. Rendi il mondo
+   più ostile e diffidente verso gli stranieri.
+```
+→ AI adjusts the tone and NPC generation going forward.
+
+#### How it works technically
+
+1. `/n` input is tagged as `type: "narrator"` in the chat log
+2. The AI receives it as a system-level instruction, not as player action
+3. State changes from `/n` are applied to `story.json`, `npcs/*.json`, `world_state.json` etc.
+4. The narrative response acknowledges the change subtly (or explicitly, depending on what was asked)
+5. Narrator interactions are logged but don't count as story turns
+
+#### What `/n` is NOT
+
+- Not a cheat command (can't give yourself items or stats)
+- Not a rewrite (can't undo past events, use `/undo` for that)
+- It's a **collaboration tool** between you and the AI narrator
+
+### Dynamic World Updates
+
+Whether through `/n` or through organic gameplay, the world evolves. When the player discovers something new:
+
+- **New faction found** → added to `story.json` setting.factions
+- **New culture encountered** → added to setting.cultures
+- **New location discovered** → added to `world_state.json`
+- **NPC secret revealed** → updated in `npcs/{id}.json` (desires, thoughts)
+- **New world rule learned** → added to setting.rules
+- **New danger identified** → added to setting.dangers
+
+The AI updates these files automatically as part of its `state_changes` output. The story.json is a **living document** that grows richer as you play.
+
+---
+
+## 13. Plugin System (v2+)
 
 ### Phase 1: JSON/YAML mods
 
