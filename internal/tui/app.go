@@ -2,12 +2,15 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crimsab/oneday/internal/ai"
+	"github.com/crimsab/oneday/internal/ai/providers"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/engine"
+	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/views"
 )
@@ -288,6 +291,38 @@ func (a *App) cleanup() {
 	}
 }
 
+// buildRAG constructs the RAG pipeline for a story, or returns nil if RAG is disabled
+// or no embedding provider is configured. Failure is non-fatal — gameplay continues without RAG.
+func (a *App) buildRAG(storyID string) *rag.RAG {
+	if !a.cfg.RAG.Enabled {
+		return nil
+	}
+
+	// Use LiteLLM as the embedding provider (same base URL, /v1/embeddings endpoint).
+	liteCfg := a.cfg.AI.LiteLLM
+	if !liteCfg.Enabled || liteCfg.BaseURL == "" {
+		return nil
+	}
+
+	timeout := time.Duration(a.cfg.AI.Generation.TimeoutSeconds) * time.Second
+	if timeout == 0 {
+		timeout = 60 * time.Second
+	}
+
+	embProvider := providers.NewOpenAICompat(providers.OpenAICompatConfig{
+		Name:         "litellm-embed",
+		BaseURL:      liteCfg.BaseURL,
+		APIKey:       liteCfg.APIKey,
+		DefaultModel: a.cfg.AI.Embedding.Model,
+		Timeout:      timeout,
+	})
+
+	embedder := rag.NewEmbedder(embProvider, a.cfg.AI.Embedding.Model, a.cfg.RAG.Dimensions)
+	store := rag.NewVectorStore(a.db.Conn())
+	summarizer := rag.NewSummarizer(embedder, store, a.router, storyID, a.cfg.RAG.SummarizeEvery)
+	return rag.NewRAG(embedder, store, summarizer, storyID, a.cfg.RAG.TopK)
+}
+
 // loadSaveAndResume restores state from a save and resumes the narrative view.
 func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 	char, world, err := engine.LoadGame(a.db, saveID)
@@ -318,6 +353,7 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)
+	narrator.SetRAG(a.buildRAG(storyID))
 	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
 	m.SetSize(a.width, a.height)
 	a.narrative = &m
@@ -357,6 +393,7 @@ func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)
+	narrator.SetRAG(a.buildRAG(storyID))
 	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
 	m.SetSize(a.width, a.height)
 	a.narrative = &m

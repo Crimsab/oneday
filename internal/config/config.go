@@ -61,9 +61,10 @@ type GenerationConfig struct {
 
 // RAGConfig for retrieval-augmented generation.
 type RAGConfig struct {
-	SummarizeEvery int `yaml:"summarize_every"`
-	TopK           int `yaml:"top_k"`
-	Dimensions     int `yaml:"dimensions"`
+	Enabled        bool `yaml:"enabled"`
+	SummarizeEvery int  `yaml:"summarize_every"`
+	TopK           int  `yaml:"top_k"`
+	Dimensions     int  `yaml:"dimensions"`
 }
 
 // GameConfig for gameplay settings.
@@ -110,6 +111,7 @@ func Default() Config {
 			},
 		},
 		RAG: RAGConfig{
+			Enabled:        true,
 			SummarizeEvery: 10,
 			TopK:           5,
 			Dimensions:     1536,
