@@ -85,6 +85,20 @@ func (n *Narrator) Character() *storage.Character { return n.character }
 // World returns the current world state.
 func (n *Narrator) World() *storage.WorldState { return n.world }
 
+// DB returns the database connection.
+func (n *Narrator) DB() *storage.DB { return n.db }
+
+// DataDir returns the data directory path.
+func (n *Narrator) DataDir() string { return n.dataDir }
+
+// SessionID returns the current session ID (empty string if no session).
+func (n *Narrator) SessionID() string {
+	if n.session == nil {
+		return ""
+	}
+	return n.session.SessionID()
+}
+
 // CloseSession closes the active game session.
 func (n *Narrator) CloseSession() {
 	if n.session != nil {
