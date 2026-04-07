@@ -1,6 +1,9 @@
 package storage
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // CreateStory inserts a new story.
 func (db *DB) CreateStory(s *Story) error {
@@ -109,4 +112,46 @@ func (db *DB) GetWorldState(storyID string) (*WorldState, error) {
 		return nil, fmt.Errorf("getting world state for story %s: %w", storyID, err)
 	}
 	return ws, nil
+}
+
+// UpdateCharacterStats updates only the stats_json and updated_at for a character.
+func (db *DB) UpdateCharacterStats(c *Character) error {
+	_, err := db.conn.Exec(
+		`UPDATE characters SET stats_json = ?, updated_at = ? WHERE id = ?`,
+		c.StatsJSON, time.Now(), c.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating character stats: %w", err)
+	}
+	return nil
+}
+
+// UpdateWorldState updates the world state fields.
+func (db *DB) UpdateWorldState(ws *WorldState) error {
+	_, err := db.conn.Exec(
+		`UPDATE world_state SET current_location = ?, known_locations_json = ?,
+         global_events_json = ?, faction_standings_json = ?,
+         current_chapter = ?, current_turn = ?, updated_at = ?
+         WHERE id = ?`,
+		ws.CurrentLocation, ws.KnownLocationsJSON,
+		ws.GlobalEventsJSON, ws.FactionStandingsJSON,
+		ws.CurrentChapter, ws.CurrentTurn, time.Now(),
+		ws.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating world state: %w", err)
+	}
+	return nil
+}
+
+// UpdateStoryTimestamp updates the story's updated_at to now.
+func (db *DB) UpdateStoryTimestamp(storyID string) error {
+	_, err := db.conn.Exec(
+		`UPDATE stories SET updated_at = ? WHERE id = ?`,
+		time.Now(), storyID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating story timestamp: %w", err)
+	}
+	return nil
 }

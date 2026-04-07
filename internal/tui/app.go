@@ -19,6 +19,7 @@ const (
 	ViewMenu View = iota
 	ViewNewStory
 	ViewNarrative
+	ViewLoadStory
 )
 
 // App is the top-level Bubbletea model.
@@ -34,6 +35,7 @@ type App struct {
 	menu      views.MenuModel
 	newStory  *views.NewStoryModel
 	narrative *views.NarrativeModel
+	loadStory *views.LoadStoryModel
 }
 
 // New creates the app with all dependencies.
@@ -63,6 +65,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.narrative != nil {
 			a.narrative.SetSize(msg.Width, msg.Height)
 		}
+		if a.loadStory != nil {
+			a.loadStory.SetSize(msg.Width, msg.Height)
+		}
 		return a, nil
 
 	case tea.KeyMsg:
@@ -76,11 +81,33 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Story and character persisted — load them and transition to narrative view
 		cmd, err := a.enterNarrativeView(msg.StoryID)
 		if err != nil {
-			// Fall back to menu on error — story is still saved
 			a.view = ViewMenu
 			return a, nil
 		}
 		return a, cmd
+
+	case views.StorySelectedMsg:
+		// User selected a story from the load list
+		cmd, err := a.enterNarrativeView(msg.StoryID)
+		if err != nil {
+			a.view = ViewMenu
+			return a, nil
+		}
+		return a, cmd
+
+	case views.LoadStoryBackMsg:
+		// User pressed Esc in load story view — back to menu
+		a.view = ViewMenu
+		return a, nil
+
+	case engine.AutosaveCompleteMsg:
+		// Route autosave notification to the narrative view
+		if a.narrative != nil {
+			updated, cmd := a.narrative.Update(msg)
+			a.narrative = &updated
+			return a, cmd
+		}
+		return a, nil
 
 	case views.MenuSelectedMsg:
 		switch msg.Action {
@@ -95,7 +122,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.view = ViewNewStory
 			return a, a.newStory.StartCreation()
 		case views.ActionLoadStory:
-			// Will be implemented in Phase 3
+			stories, err := a.db.ListStories()
+			if err != nil {
+				// Fall back to menu on error
+				return a, nil
+			}
+			m := views.NewLoadStoryModel(stories)
+			m.SetSize(a.width, a.height)
+			a.loadStory = &m
+			a.view = ViewLoadStory
 			return a, nil
 		case views.ActionSettings:
 			// Will be implemented later
@@ -112,7 +147,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ViewNewStory:
 		if a.newStory != nil {
-			// Handle esc to return to menu
 			if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEsc {
 				a.view = ViewMenu
 				return a, nil
@@ -125,7 +159,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ViewNarrative:
 		if a.narrative != nil {
-			// Handle esc to return to menu
 			if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEsc {
 				a.narrative.CloseSession()
 				a.view = ViewMenu
@@ -134,6 +167,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			updated, cmd := a.narrative.Update(msg)
 			a.narrative = &updated
+			return a, cmd
+		}
+
+	case ViewLoadStory:
+		if a.loadStory != nil {
+			var cmd tea.Cmd
+			updated, cmd := a.loadStory.Update(msg)
+			a.loadStory = &updated
 			return a, cmd
 		}
 	}
@@ -155,12 +196,17 @@ func (a App) View() string {
 			return a.narrative.View()
 		}
 		return a.menu.View()
+	case ViewLoadStory:
+		if a.loadStory != nil {
+			return a.loadStory.View()
+		}
+		return a.menu.View()
 	default:
 		return a.menu.View()
 	}
 }
 
-// SetView changes the active view (used by child views to trigger transitions).
+// SetView changes the active view.
 func (a *App) SetView(v View) {
 	a.view = v
 }
@@ -194,7 +240,15 @@ func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 		return nil, fmt.Errorf("creating game session: %w", err)
 	}
 
-	narrator := engine.NewNarrator(a.router, a.db, story, char, world, session, engine.DefaultContextConfig())
+	// Update story timestamp to mark it as recently played.
+	_ = a.db.UpdateStoryTimestamp(storyID)
+
+	narrator := engine.NewNarrator(
+		a.router, a.db, story, char, world, session,
+		engine.DefaultContextConfig(),
+		a.cfg.DataDir,
+		a.cfg.Game.AutosaveEvery,
+	)
 	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
 	m.SetSize(a.width, a.height)
 	a.narrative = &m

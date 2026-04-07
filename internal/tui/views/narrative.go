@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -22,20 +23,25 @@ type narrativeResponseMsg struct {
 	err      error
 }
 
+// clearStatusMsg is sent to clear the temporary status message.
+type clearStatusMsg struct{}
+
 // NarrativeModel is the core gameplay view.
 type NarrativeModel struct {
-	narrator   *engine.Narrator
-	viewport   viewport.Model
-	typewriter components.TypewriterModel
-	statusBar  components.StatusBarModel
-	choices    components.ChoiceListModel
-	input      textarea.Model
-	history    strings.Builder // full narrative text accumulated so far
-	waiting    bool            // waiting for AI response
-	errMsg     string
-	width      int
-	height     int
-	inputFocus bool // true = free input active, false = choice list active
+	narrator     *engine.Narrator
+	viewport     viewport.Model
+	typewriter   components.TypewriterModel
+	statusBar    components.StatusBarModel
+	choices      components.ChoiceListModel
+	input        textarea.Model
+	history      strings.Builder // full narrative text accumulated so far
+	waiting      bool            // waiting for AI response
+	errMsg       string
+	statusMsg    string    // temporary status message (e.g. "Autosaved")
+	statusExpiry time.Time // when to clear the status message
+	width        int
+	height       int
+	inputFocus   bool // true = free input active, false = choice list active
 }
 
 // NewNarrativeModel creates the narrative view.
@@ -114,7 +120,29 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.input.Focus()
 		}
 
+		// Fire autosave cmd if it's time
+		if autosaveCmd := m.maybeAutosaveCmd(); autosaveCmd != nil {
+			cmds = append(cmds, autosaveCmd)
+		}
+
 		return m, tea.Batch(cmds...)
+
+	case engine.AutosaveCompleteMsg:
+		if msg.Err == nil {
+			m.statusMsg = "Autosaved"
+		} else {
+			m.statusMsg = "Autosave failed"
+		}
+		m.statusExpiry = time.Now().Add(2 * time.Second)
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+			return clearStatusMsg{}
+		})
+
+	case clearStatusMsg:
+		if time.Now().After(m.statusExpiry) {
+			m.statusMsg = ""
+		}
+		return m, nil
 
 	case components.TypewriterDoneMsg:
 		// Typewriter finished — update viewport content and scroll to bottom
@@ -193,10 +221,20 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 func (m *NarrativeModel) sendAction(action string) tea.Cmd {
 	m.waiting = true
 	m.choices.SetChoices(nil) // clear choices while waiting for AI
+	narrator := m.narrator
 	return func() tea.Msg {
-		resp, err := m.narrator.SendAction(context.Background(), action)
+		resp, err := narrator.SendAction(context.Background(), action)
 		return narrativeResponseMsg{response: resp, err: err}
 	}
+}
+
+// maybeAutosaveCmd returns an autosave tea.Cmd if the narrator says it's time,
+// or nil if not. Called after a successful narrativeResponseMsg.
+func (m *NarrativeModel) maybeAutosaveCmd() tea.Cmd {
+	if m.narrator.ShouldAutosave() {
+		return m.narrator.AutosaveCmd()
+	}
+	return nil
 }
 
 // updateStatusBar reads the character's stats JSON and populates the status bar.
@@ -272,6 +310,12 @@ func (m NarrativeModel) View() string {
 		inputView = theme.MutedText.Render("  [TAB] Free input")
 	}
 
+	// Temporary status message (e.g. "Autosaved")
+	var statusLine string
+	if m.statusMsg != "" {
+		statusLine = theme.MutedText.Render("  ✓ " + m.statusMsg)
+	}
+
 	// Help line
 	help := theme.MutedText.Render("tab toggle · 1-4 choose · enter send · esc menu")
 
@@ -287,6 +331,7 @@ func (m NarrativeModel) View() string {
 		"",
 		choicesView,
 		inputView,
+		statusLine,
 		help,
 		statusView,
 	)

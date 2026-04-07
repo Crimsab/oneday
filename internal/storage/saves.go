@@ -1,0 +1,95 @@
+package storage
+
+import (
+	"fmt"
+	"time"
+)
+
+// SaveSnapshot represents a complete game state snapshot stored in the DB.
+type SaveSnapshot struct {
+	ID             string    `json:"id"`
+	StoryID        string    `json:"story_id"`
+	Name           string    `json:"name"`
+	Turn           int       `json:"turn"`
+	Chapter        int       `json:"chapter"`
+	Location       string    `json:"location"`
+	CharacterJSON  string    `json:"character_json"`
+	WorldStateJSON string    `json:"world_state_json"`
+	SessionID      string    `json:"session_id"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+// CreateSave inserts a new save snapshot into the DB.
+func (db *DB) CreateSave(s *SaveSnapshot) error {
+	_, err := db.conn.Exec(
+		`INSERT INTO saves (id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.StoryID, s.Name, s.Turn, s.Chapter, s.Location,
+		s.CharacterJSON, s.WorldStateJSON, s.SessionID, s.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting save: %w", err)
+	}
+	return nil
+}
+
+// GetSave retrieves a save snapshot by ID.
+func (db *DB) GetSave(id string) (*SaveSnapshot, error) {
+	s := &SaveSnapshot{}
+	err := db.conn.QueryRow(
+		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at
+         FROM saves WHERE id = ?`, id,
+	).Scan(&s.ID, &s.StoryID, &s.Name, &s.Turn, &s.Chapter, &s.Location,
+		&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("getting save %s: %w", id, err)
+	}
+	return s, nil
+}
+
+// ListSaves returns all saves for a story, most recent first.
+func (db *DB) ListSaves(storyID string) ([]SaveSnapshot, error) {
+	rows, err := db.conn.Query(
+		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at
+         FROM saves WHERE story_id = ? ORDER BY created_at DESC`, storyID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("listing saves for story %s: %w", storyID, err)
+	}
+	defer rows.Close()
+
+	var saves []SaveSnapshot
+	for rows.Next() {
+		var s SaveSnapshot
+		if err := rows.Scan(&s.ID, &s.StoryID, &s.Name, &s.Turn, &s.Chapter, &s.Location,
+			&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning save: %w", err)
+		}
+		saves = append(saves, s)
+	}
+	return saves, rows.Err()
+}
+
+// DeleteSave removes a save by ID.
+func (db *DB) DeleteSave(id string) error {
+	_, err := db.conn.Exec(`DELETE FROM saves WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("deleting save %s: %w", id, err)
+	}
+	return nil
+}
+
+// GetAutosave retrieves the autosave for a story (if any).
+func (db *DB) GetAutosave(storyID string) (*SaveSnapshot, error) {
+	s := &SaveSnapshot{}
+	err := db.conn.QueryRow(
+		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at
+         FROM saves WHERE story_id = ? AND name = 'autosave'
+         ORDER BY created_at DESC LIMIT 1`, storyID,
+	).Scan(&s.ID, &s.StoryID, &s.Name, &s.Turn, &s.Chapter, &s.Location,
+		&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.CreatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("getting autosave for story %s: %w", storyID, err)
+	}
+	return s, nil
+}
