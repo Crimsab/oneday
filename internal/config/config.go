@@ -1,0 +1,188 @@
+package config
+
+import (
+	"fmt"
+	"os"
+
+	"gopkg.in/yaml.v3"
+)
+
+// Config is the top-level configuration for OneDay.
+type Config struct {
+	DataDir string     `yaml:"data_dir"`
+	AI      AIConfig   `yaml:"ai"`
+	RAG     RAGConfig  `yaml:"rag"`
+	Game    GameConfig `yaml:"game"`
+}
+
+// AIConfig holds all AI provider settings.
+type AIConfig struct {
+	ProviderPriority []string         `yaml:"provider_priority"`
+	ClaudeCode       ClaudeCodeConfig `yaml:"claude_code"`
+	LiteLLM          LiteLLMConfig    `yaml:"litellm"`
+	OpenRouter       OpenRouterConfig `yaml:"openrouter"`
+	Embedding        EmbeddingConfig  `yaml:"embedding"`
+	Generation       GenerationConfig `yaml:"generation"`
+}
+
+// ClaudeCodeConfig for the Claude Code CLI provider.
+type ClaudeCodeConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Binary  string `yaml:"binary"`
+}
+
+// LiteLLMConfig for the LiteLLM proxy provider.
+type LiteLLMConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	BaseURL      string `yaml:"base_url"`
+	APIKey       string `yaml:"api_key"`
+	DefaultModel string `yaml:"default_model"`
+}
+
+// OpenRouterConfig for the OpenRouter provider.
+type OpenRouterConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	BaseURL      string `yaml:"base_url"`
+	APIKey       string `yaml:"api_key"`
+	DefaultModel string `yaml:"default_model"`
+}
+
+// EmbeddingConfig for RAG embedding model.
+type EmbeddingConfig struct {
+	Model string `yaml:"model"`
+}
+
+// GenerationConfig for AI text generation.
+type GenerationConfig struct {
+	Temperature    float64 `yaml:"temperature"`
+	MaxTokens      int     `yaml:"max_tokens"`
+	TimeoutSeconds int     `yaml:"timeout_seconds"`
+}
+
+// RAGConfig for retrieval-augmented generation.
+type RAGConfig struct {
+	SummarizeEvery int `yaml:"summarize_every"`
+	TopK           int `yaml:"top_k"`
+	Dimensions     int `yaml:"dimensions"`
+}
+
+// GameConfig for gameplay settings.
+type GameConfig struct {
+	AutosaveEvery    int  `yaml:"autosave_every"`
+	TypewriterEffect bool `yaml:"typewriter_effect"`
+	TypewriterSpeed  int  `yaml:"typewriter_speed"`
+}
+
+// validProviders is the set of recognized provider names.
+var validProviders = map[string]bool{
+	"claude-code": true,
+	"litellm":     true,
+	"openrouter":  true,
+}
+
+// Default returns a Config with sensible defaults matching config.example.yaml.
+func Default() Config {
+	return Config{
+		DataDir: "./oneday_data",
+		AI: AIConfig{
+			ProviderPriority: []string{"claude-code", "litellm", "openrouter"},
+			ClaudeCode: ClaudeCodeConfig{
+				Enabled: true,
+				Binary:  "claude",
+			},
+			LiteLLM: LiteLLMConfig{
+				Enabled:      true,
+				BaseURL:      "http://ai-proxy:4000/v1",
+				DefaultModel: "claude-sonnet-4-6",
+			},
+			OpenRouter: OpenRouterConfig{
+				Enabled:      false,
+				BaseURL:      "https://openrouter.ai/api/v1",
+				DefaultModel: "anthropic/claude-sonnet-4-6",
+			},
+			Embedding: EmbeddingConfig{
+				Model: "text-embedding-3-small",
+			},
+			Generation: GenerationConfig{
+				Temperature:    0.8,
+				MaxTokens:      2048,
+				TimeoutSeconds: 60,
+			},
+		},
+		RAG: RAGConfig{
+			SummarizeEvery: 10,
+			TopK:           5,
+			Dimensions:     1536,
+		},
+		Game: GameConfig{
+			AutosaveEvery:    5,
+			TypewriterEffect: true,
+			TypewriterSpeed:  80,
+		},
+	}
+}
+
+// Load reads a YAML config file and returns a Config.
+// If the file does not exist, returns Default().
+func Load(path string) (Config, error) {
+	cfg := Default()
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return cfg, nil
+		}
+		return cfg, fmt.Errorf("reading config %s: %w", path, err)
+	}
+
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return cfg, fmt.Errorf("parsing config %s: %w", path, err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return cfg, fmt.Errorf("validating config: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// Validate checks that the config is internally consistent.
+func (c *Config) Validate() error {
+	if len(c.AI.ProviderPriority) == 0 {
+		return fmt.Errorf("ai.provider_priority must have at least one provider")
+	}
+	for _, p := range c.AI.ProviderPriority {
+		if !validProviders[p] {
+			return fmt.Errorf("unknown provider in priority chain: %q (valid: claude-code, litellm, openrouter)", p)
+		}
+	}
+	if c.AI.Generation.MaxTokens <= 0 {
+		return fmt.Errorf("ai.generation.max_tokens must be positive")
+	}
+	if c.AI.Generation.TimeoutSeconds <= 0 {
+		return fmt.Errorf("ai.generation.timeout_seconds must be positive")
+	}
+	return nil
+}
+
+// EnabledProviders returns the provider priority chain filtered to only enabled providers.
+func (c *Config) EnabledProviders() []string {
+	enabled := make([]string, 0, len(c.AI.ProviderPriority))
+	for _, name := range c.AI.ProviderPriority {
+		switch name {
+		case "claude-code":
+			if c.AI.ClaudeCode.Enabled {
+				enabled = append(enabled, name)
+			}
+		case "litellm":
+			if c.AI.LiteLLM.Enabled {
+				enabled = append(enabled, name)
+			}
+		case "openrouter":
+			if c.AI.OpenRouter.Enabled {
+				enabled = append(enabled, name)
+			}
+		}
+	}
+	return enabled
+}

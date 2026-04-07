@@ -1,0 +1,128 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestDefault(t *testing.T) {
+	cfg := Default()
+
+	if cfg.DataDir != "./oneday_data" {
+		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "./oneday_data")
+	}
+	if len(cfg.AI.ProviderPriority) != 3 {
+		t.Errorf("ProviderPriority length = %d, want 3", len(cfg.AI.ProviderPriority))
+	}
+	if cfg.AI.ProviderPriority[0] != "claude-code" {
+		t.Errorf("ProviderPriority[0] = %q, want %q", cfg.AI.ProviderPriority[0], "claude-code")
+	}
+	if cfg.AI.Generation.Temperature != 0.8 {
+		t.Errorf("Temperature = %f, want 0.8", cfg.AI.Generation.Temperature)
+	}
+}
+
+func TestLoadMissingFile(t *testing.T) {
+	cfg, err := Load("/nonexistent/path/config.yaml")
+	if err != nil {
+		t.Fatalf("Load missing file: %v", err)
+	}
+	// Should return defaults
+	if cfg.DataDir != "./oneday_data" {
+		t.Errorf("DataDir = %q, want default", cfg.DataDir)
+	}
+}
+
+func TestLoadValidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	yaml := `
+data_dir: "/tmp/test_data"
+ai:
+  provider_priority:
+    - litellm
+    - openrouter
+  litellm:
+    enabled: true
+    base_url: "http://localhost:4000/v1"
+    default_model: "gpt-4"
+  generation:
+    temperature: 0.5
+    max_tokens: 1024
+    timeout_seconds: 30
+game:
+  autosave_every: 10
+`
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.DataDir != "/tmp/test_data" {
+		t.Errorf("DataDir = %q, want /tmp/test_data", cfg.DataDir)
+	}
+	if len(cfg.AI.ProviderPriority) != 2 {
+		t.Errorf("ProviderPriority length = %d, want 2", len(cfg.AI.ProviderPriority))
+	}
+	if cfg.AI.Generation.Temperature != 0.5 {
+		t.Errorf("Temperature = %f, want 0.5", cfg.AI.Generation.Temperature)
+	}
+	if cfg.Game.AutosaveEvery != 10 {
+		t.Errorf("AutosaveEvery = %d, want 10", cfg.Game.AutosaveEvery)
+	}
+}
+
+func TestValidateInvalidProvider(t *testing.T) {
+	cfg := Default()
+	cfg.AI.ProviderPriority = []string{"claude-code", "invalid-provider"}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid provider")
+	}
+}
+
+func TestValidateEmptyPriority(t *testing.T) {
+	cfg := Default()
+	cfg.AI.ProviderPriority = []string{}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for empty priority chain")
+	}
+}
+
+func TestEnabledProviders(t *testing.T) {
+	cfg := Default()
+	// Default: claude-code enabled, litellm enabled, openrouter disabled
+	enabled := cfg.EnabledProviders()
+
+	if len(enabled) != 2 {
+		t.Fatalf("EnabledProviders length = %d, want 2", len(enabled))
+	}
+	if enabled[0] != "claude-code" {
+		t.Errorf("EnabledProviders[0] = %q, want claude-code", enabled[0])
+	}
+	if enabled[1] != "litellm" {
+		t.Errorf("EnabledProviders[1] = %q, want litellm", enabled[1])
+	}
+}
+
+func TestLoadInvalidYAML(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	if err := os.WriteFile(path, []byte("{{invalid yaml"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Load(path)
+	if err == nil {
+		t.Error("expected error for invalid YAML")
+	}
+}
