@@ -16,7 +16,7 @@
 
 ### AI Integration
 
-- [ ] **AI-01**: AI provider router supports Claude Code CLI, LiteLLM, and OpenRouter with configurable fallback chain
+- [x] **AI-01**: AI provider router supports Claude Code CLI, LiteLLM, and OpenRouter with configurable fallback chain
 - [ ] **AI-02**: AI responses are structured JSON (narrative, choices, state_changes, mood, challenges, achievements)
 - [ ] **AI-03**: AI responses stream to TUI with typewriter effect
 - [ ] **AI-04**: Context builder assembles system prompt + recent chat + player state + NPC state + RAG chunks
@@ -42,7 +42,7 @@
 
 ### Storage and Persistence
 
-- [ ] **STOR-01**: SQLite database stores all game data (stories, characters, NPCs, world state)
+- [x] **STOR-01**: SQLite database stores all game data (stories, characters, NPCs, world state)
 - [ ] **STOR-02**: Chat history saved as JSONL per session, organized by session > chapter
 - [ ] **STOR-03**: Sessions auto-created when player opens a story, closed on exit
 - [ ] **STOR-04**: Separate chat logs for combat, crafting, and deep NPC dialogues
@@ -112,8 +112,8 @@
 
 ### Configuration
 
-- [ ] **CONF-01**: Global config.yaml for AI providers, endpoints, keys, game settings
-- [ ] **CONF-02**: AI provider priority chain configurable (Claude Code → LiteLLM → OpenRouter)
+- [x] **CONF-01**: Global config.yaml for AI providers, endpoints, keys, game settings
+- [x] **CONF-02**: AI provider priority chain configurable (Claude Code → LiteLLM → OpenRouter)
 
 ## v2 Requirements
 
