@@ -13,6 +13,7 @@ import (
 type ContextConfig struct {
 	RecentMessageCount int      // how many recent messages to include (default 20)
 	RAGChunks          []string // placeholder for Phase 5 RAG — empty for now
+	NPCLookbackTurns   int      // how many turns back to load NPCs for context (default 20)
 }
 
 // DefaultContextConfig returns sensible defaults.
@@ -20,22 +21,33 @@ func DefaultContextConfig() ContextConfig {
 	return ContextConfig{
 		RecentMessageCount: 20,
 		RAGChunks:          nil,
+		NPCLookbackTurns:   20,
 	}
 }
 
 // BuildContext assembles the full message list for an AI call.
 // Order: [system prompt, state summary, optional RAG, ...recent messages, current user input]
-// npcsContext is an optional pre-formatted string of known NPC data to inject into the system prompt.
+// npcs is the list of recently-seen NPCs; their data is injected into the system prompt and state summary.
 func BuildContext(
 	story *storage.Story,
 	char *storage.Character,
 	world *storage.WorldState,
+	npcs []storage.NPC,
 	recentMessages []storage.ChatMessage,
 	ragChunks []string,
 	currentInput string,
-	npcsContext string,
 ) []ai.Message {
 	msgs := make([]ai.Message, 0, len(recentMessages)+4)
+
+	// Build NPC context string from the provided NPC list.
+	var npcsContext string
+	if len(npcs) > 0 {
+		var npcParts []string
+		for i := range npcs {
+			npcParts = append(npcParts, FormatNPCForContext(&npcs[i]))
+		}
+		npcsContext = strings.Join(npcParts, "\n---\n")
+	}
 
 	// 1. Build system prompt using the NarratorSystem prompt builder.
 	systemPrompt := prompts.NarratorSystem(
@@ -53,7 +65,7 @@ func BuildContext(
 	})
 
 	// 2. Add a live state summary — reflects current state, not creation-time state.
-	stateSummary := buildStateSummary(char, world)
+	stateSummary := buildStateSummary(char, world, npcs)
 	msgs = append(msgs, ai.Message{
 		Role:    ai.RoleSystem,
 		Content: stateSummary,
@@ -90,7 +102,8 @@ func BuildContext(
 }
 
 // buildStateSummary composes a concise state message with current character and world info.
-func buildStateSummary(char *storage.Character, world *storage.WorldState) string {
+// npcs is the list of NPCs included in the current context (used for the summary line).
+func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs []storage.NPC) string {
 	var sb strings.Builder
 	sb.WriteString("## Current Game State\n")
 	sb.WriteString(fmt.Sprintf("- Chapter: %d\n", world.CurrentChapter))
@@ -100,6 +113,13 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState) strin
 	sb.WriteString(fmt.Sprintf("- Stats (live): %s\n", char.StatsJSON))
 	if char.TraitsJSON != "" && char.TraitsJSON != "null" && char.TraitsJSON != "[]" {
 		sb.WriteString(fmt.Sprintf("- Traits: %s\n", char.TraitsJSON))
+	}
+	if len(npcs) > 0 {
+		names := make([]string, len(npcs))
+		for i, npc := range npcs {
+			names[i] = npc.Name
+		}
+		sb.WriteString(fmt.Sprintf("- Known NPCs: %d (%s)\n", len(npcs), strings.Join(names, ", ")))
 	}
 	return sb.String()
 }

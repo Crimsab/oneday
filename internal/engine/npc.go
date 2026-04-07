@@ -221,6 +221,41 @@ func FormatNPCForContext(npc *storage.NPC) string {
 	return sb.String()
 }
 
+// UpdateNPCLastSeen checks narrativeText for mentions of known NPCs and updates
+// their last_seen_turn to currentTurn. Matching is case-insensitive on the full
+// name and on the first word of the name (first name). This is best-effort —
+// errors are swallowed so game flow is never interrupted.
+func UpdateNPCLastSeen(db *storage.DB, storyID string, narrativeText string, currentTurn int) error {
+	if db == nil || narrativeText == "" {
+		return nil
+	}
+	npcs, err := db.ListNPCs(storyID)
+	if err != nil {
+		return nil // non-fatal
+	}
+	lower := strings.ToLower(narrativeText)
+	for i := range npcs {
+		npc := &npcs[i]
+		// Match full name.
+		fullLower := strings.ToLower(npc.Name)
+		if strings.Contains(lower, fullLower) {
+			npc.LastSeenTurn = currentTurn
+			_ = db.UpdateNPC(npc)
+			continue
+		}
+		// Match first name only (first whitespace-delimited word).
+		parts := strings.Fields(npc.Name)
+		if len(parts) > 1 {
+			firstLower := strings.ToLower(parts[0])
+			if strings.Contains(lower, firstLower) {
+				npc.LastSeenTurn = currentTurn
+				_ = db.UpdateNPC(npc)
+			}
+		}
+	}
+	return nil
+}
+
 // FormatNPCForPlayer returns a player-visible summary of an NPC.
 // Excludes private thoughts and hidden desires.
 func FormatNPCForPlayer(npc *storage.NPC) string {
