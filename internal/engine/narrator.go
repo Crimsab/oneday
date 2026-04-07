@@ -134,18 +134,25 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		return nil, fmt.Errorf("loading messages: %w", err)
 	}
 
-	// Build NPC context: load recently-seen NPCs and format them for the AI.
-	npcsContext := n.buildNPCContext(currentTurn)
+	// Load NPCs relevant to this turn (seen within the configured lookback window).
+	lookback := n.contextCfg.NPCLookbackTurns
+	if lookback <= 0 {
+		lookback = 20
+	}
+	npcs, err := n.db.ListRecentNPCs(n.story.ID, currentTurn, lookback)
+	if err != nil {
+		npcs = nil // non-fatal: proceed without NPC context
+	}
 
 	// Build the full context using the context builder.
 	messages := BuildContext(
 		n.story,
 		n.character,
 		n.world,
+		npcs,
 		recentMsgs,
 		n.contextCfg.RAGChunks,
 		input,
-		npcsContext,
 	)
 
 	start := time.Now()
@@ -193,6 +200,11 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		}
 	}
 
+	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
+	if narrative.Narrative != "" {
+		_ = UpdateNPCLastSeen(n.db, n.story.ID, narrative.Narrative, currentTurn)
+	}
+
 	// If AI specified a location (and state_changes didn't already update it), sync it.
 	if narrative.Location != "" && narrative.Location != n.world.CurrentLocation {
 		n.world.CurrentLocation = narrative.Location
@@ -238,30 +250,6 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	}
 
 	return narrative, nil
-}
-
-// buildNPCContext loads recently-seen NPCs for this story and formats them
-// as a string for injection into the AI system prompt.
-// Uses a window of 20 turns to keep context focused on relevant characters.
-func (n *Narrator) buildNPCContext(currentTurn int) string {
-	if n.db == nil {
-		return ""
-	}
-	// Load NPCs seen in the last 20 turns, plus all NPCs for the first few turns.
-	withinTurns := 20
-	if currentTurn < 5 {
-		withinTurns = currentTurn + 1
-	}
-	npcs, err := n.db.ListRecentNPCs(n.story.ID, currentTurn, withinTurns)
-	if err != nil || len(npcs) == 0 {
-		return ""
-	}
-	var sb strings.Builder
-	for _, npc := range npcs {
-		sb.WriteString(FormatNPCForContext(&npc))
-		sb.WriteString("\n")
-	}
-	return sb.String()
 }
 
 // ShouldAutosave returns true if the current turn count triggers an autosave.

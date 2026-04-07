@@ -314,6 +314,80 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 	return m, nil
 }
 
+// itemTypeIcon returns a unicode icon for an item type.
+func itemTypeIcon(itemType string) string {
+	switch strings.ToLower(itemType) {
+	case "weapon":
+		return "⚔"
+	case "armor":
+		return "◇"
+	case "tool":
+		return "⚒"
+	case "consumable":
+		return "◈"
+	case "quest", "key_item":
+		return "◆"
+	default:
+		return "•"
+	}
+}
+
+// inventoryItemInfo extracts name, type icon, slot, and description from an item (string or map).
+type inventoryItemInfo struct {
+	name        string
+	icon        string
+	slot        string
+	description string
+	rarity      string
+	weight      float64
+	hasWeight   bool
+}
+
+func parseInventoryItem(item interface{}) inventoryItemInfo {
+	switch v := item.(type) {
+	case string:
+		return inventoryItemInfo{name: v, icon: "•"}
+	case map[string]interface{}:
+		info := inventoryItemInfo{}
+		if n, ok := v["name"].(string); ok {
+			info.name = n
+		}
+		itemType := ""
+		if t, ok := v["type"].(string); ok {
+			itemType = t
+		}
+		info.icon = itemTypeIcon(itemType)
+		if s, ok := v["slot"].(string); ok {
+			info.slot = s
+		}
+		if d, ok := v["description"].(string); ok {
+			info.description = d
+		}
+		if r, ok := v["rarity"].(string); ok {
+			info.rarity = r
+		}
+		if w, ok := v["weight"]; ok {
+			info.weight = toFloat64(w)
+			info.hasWeight = true
+		}
+		return info
+	}
+	return inventoryItemInfo{name: fmt.Sprintf("%v", item), icon: "•"}
+}
+
+// toFloat64 converts interface{} to float64.
+func toFloat64(v interface{}) float64 {
+	switch n := v.(type) {
+	case float64:
+		return n
+	case int:
+		return float64(n)
+	case int64:
+		return float64(n)
+	}
+	return 0
+}
+
 // showInventory displays the character's inventory as an overlay.
 func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 	char := m.narrator.Character()
@@ -327,88 +401,63 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 		_ = json.Unmarshal([]byte(char.InventoryJSON), &inventoryRaw)
 	}
 
-	// Parse stats for currency and equipped items.
+	// Parse stats for currency, equipped items, and inventory within stats.
 	var stats map[string]interface{}
 	if char.StatsJSON != "" {
 		_ = json.Unmarshal([]byte(char.StatsJSON), &stats)
 	}
 
-	// Try to extract inventory sections from stats (if AI stored there).
-	var backpack []string
-	var equipped []string
-	var questItems []string
+	// Check if inventory is in stats (AI may store there).
+	if inventoryRaw == nil && stats != nil {
+		if inv, ok := stats["inventory"]; ok {
+			inventoryRaw = inv
+		}
+	}
+
+	// Try to extract inventory sections.
+	var backpackItems []inventoryItemInfo
+	var equippedItems []inventoryItemInfo
+	var questItems []inventoryItemInfo
 
 	switch inv := inventoryRaw.(type) {
 	case []interface{}:
 		for _, item := range inv {
-			if s, ok := item.(string); ok {
-				backpack = append(backpack, s)
-			} else if m, ok := item.(map[string]interface{}); ok {
-				name := fmt.Sprintf("%v", m["name"])
-				if eq, _ := m["equipped"].(bool); eq {
-					equipped = append(equipped, name)
-				} else if qt, _ := m["quest"].(bool); qt {
-					questItems = append(questItems, name)
-				} else {
-					backpack = append(backpack, name)
+			info := parseInventoryItem(item)
+			if m2, ok := item.(map[string]interface{}); ok {
+				if eq, _ := m2["equipped"].(bool); eq {
+					equippedItems = append(equippedItems, info)
+					continue
+				}
+				if qt, _ := m2["quest"].(bool); qt {
+					questItems = append(questItems, info)
+					continue
+				}
+				if info.icon == "◆" {
+					questItems = append(questItems, info)
+					continue
 				}
 			}
+			backpackItems = append(backpackItems, info)
 		}
 	case map[string]interface{}:
 		if bp, ok := inv["backpack"].([]interface{}); ok {
 			for _, item := range bp {
-				backpack = append(backpack, fmt.Sprintf("%v", item))
+				backpackItems = append(backpackItems, parseInventoryItem(item))
 			}
 		}
 		if eq, ok := inv["equipped"].([]interface{}); ok {
 			for _, item := range eq {
-				equipped = append(equipped, fmt.Sprintf("%v", item))
+				equippedItems = append(equippedItems, parseInventoryItem(item))
 			}
 		}
 		if qt, ok := inv["quest"].([]interface{}); ok {
 			for _, item := range qt {
-				questItems = append(questItems, fmt.Sprintf("%v", item))
+				questItems = append(questItems, parseInventoryItem(item))
 			}
 		}
 	}
 
-	// Backpack section.
-	sb.WriteString("Backpack:\n")
-	if len(backpack) == 0 {
-		sb.WriteString("  (empty)\n")
-	} else {
-		for _, item := range backpack {
-			sb.WriteString(fmt.Sprintf("  • %s\n", item))
-		}
-	}
-
-	sb.WriteString("\n")
-
-	// Equipped section.
-	sb.WriteString("Equipped:\n")
-	if len(equipped) == 0 {
-		sb.WriteString("  (nothing equipped)\n")
-	} else {
-		for _, item := range equipped {
-			sb.WriteString(fmt.Sprintf("  ⚔ %s\n", item))
-		}
-	}
-
-	sb.WriteString("\n")
-
-	// Quest items section.
-	sb.WriteString("Quest Items:\n")
-	if len(questItems) == 0 {
-		sb.WriteString("  (none)\n")
-	} else {
-		for _, item := range questItems {
-			sb.WriteString(fmt.Sprintf("  ◆ %s\n", item))
-		}
-	}
-
-	sb.WriteString("\n")
-
-	// Currency.
+	// Currency setup.
 	currency := 0
 	currencyName := "Gold"
 	if stats != nil {
@@ -428,15 +477,117 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 			}
 		}
 	}
-	sb.WriteString(fmt.Sprintf("Currency: %d %s", currency, currencyName))
+
+	// Completely empty inventory: show friendly message.
+	totalItems := len(backpackItems) + len(equippedItems) + len(questItems)
+	if totalItems == 0 && currency == 0 {
+		sb.WriteString(theme.MutedText.Render("  You carry nothing. The journey begins light."))
+		sb.WriteString("\n")
+		m.showOverlay("Inventory", sb.String())
+		return m, nil
+	}
+
+	// Equipped section.
+	if len(equippedItems) > 0 {
+		sb.WriteString(theme.Title.Render("Equipped") + "\n")
+		for _, info := range equippedItems {
+			if info.slot != "" {
+				slotLabel := strings.ReplaceAll(strings.Title(strings.ReplaceAll(info.slot, "_", " ")), " ", " ")
+				sb.WriteString(fmt.Sprintf("  %-12s %s %s\n", slotLabel+":", info.icon, info.name))
+			} else {
+				sb.WriteString(fmt.Sprintf("  %s %s\n", info.icon, info.name))
+			}
+			if info.description != "" {
+				sb.WriteString(theme.MutedText.Render(fmt.Sprintf("      %s", info.description)) + "\n")
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Backpack section.
+	if len(backpackItems) > 0 {
+		sb.WriteString(theme.Title.Render(fmt.Sprintf("Backpack (%d items)", len(backpackItems))) + "\n")
+		// Calculate total weight if any items have it.
+		totalWeight := 0.0
+		hasWeight := false
+		for _, info := range backpackItems {
+			if info.hasWeight {
+				totalWeight += info.weight
+				hasWeight = true
+			}
+		}
+		for _, info := range backpackItems {
+			sb.WriteString(fmt.Sprintf("  %s %s", info.icon, info.name))
+			if info.rarity != "" {
+				sb.WriteString(" " + theme.MutedText.Render(fmt.Sprintf("(%s)", info.rarity)))
+			}
+			sb.WriteString("\n")
+			if info.description != "" {
+				sb.WriteString(theme.MutedText.Render(fmt.Sprintf("      %s", info.description)) + "\n")
+			}
+		}
+		if hasWeight {
+			sb.WriteString(theme.MutedText.Render(fmt.Sprintf("  Weight: %.0f", totalWeight)) + "\n")
+		}
+		sb.WriteString("\n")
+	}
+
+	// Quest items section.
+	if len(questItems) > 0 {
+		sb.WriteString(theme.Title.Render("Quest Items") + "\n")
+		for _, info := range questItems {
+			sb.WriteString(fmt.Sprintf("  ◆ %s\n", info.name))
+			if info.description != "" {
+				sb.WriteString(theme.MutedText.Render(fmt.Sprintf("      %s", info.description)) + "\n")
+			}
+		}
+		sb.WriteString("\n")
+	}
+
+	// Currency.
+	sb.WriteString(theme.Title.Render("Currency") + "\n")
+	sb.WriteString(fmt.Sprintf("  %d %s\n", currency, currencyName))
 
 	m.showOverlay("Inventory", sb.String())
 	return m, nil
 }
 
+// renderBar renders a progress bar of the given width using block characters.
+// filled = █, empty = ░. current and max define the fill ratio.
+func renderBar(current, max, width int) string {
+	if max <= 0 || width <= 0 {
+		return strings.Repeat("░", width)
+	}
+	filled := current * width / max
+	if filled > width {
+		filled = width
+	}
+	if filled < 0 {
+		filled = 0
+	}
+	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
+}
+
+// dispositionLabel returns a word label for an NPC disposition value.
+func dispositionLabel(d int) string {
+	switch {
+	case d >= 50:
+		return "Allied"
+	case d >= 15:
+		return "Friendly"
+	case d >= -14:
+		return "Neutral"
+	case d >= -49:
+		return "Unfriendly"
+	default:
+		return "Hostile"
+	}
+}
+
 // showStats displays the full character sheet as an overlay.
 func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
 	char := m.narrator.Character()
+	story := m.narrator.Story()
 	var sb strings.Builder
 
 	sb.WriteString("\n")
@@ -447,122 +598,238 @@ func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
 		_ = json.Unmarshal([]byte(char.StatsJSON), &stats)
 	}
 
+	// Parse stats schema for proper labels.
+	type statDefSimple struct {
+		Key   string
+		Label string
+	}
+	var vitalDefs []statDefSimple
+	var attrDefs []statDefSimple
+	var secDefs []statDefSimple
+
+	if story != nil && story.StatsSchemaJSON != "" {
+		var schema map[string]interface{}
+		if err := json.Unmarshal([]byte(story.StatsSchemaJSON), &schema); err == nil {
+			parseDefs := func(key string) []statDefSimple {
+				raw, ok := schema[key].([]interface{})
+				if !ok {
+					return nil
+				}
+				var defs []statDefSimple
+				for _, item := range raw {
+					if m2, ok := item.(map[string]interface{}); ok {
+						k, _ := m2["key"].(string)
+						l, _ := m2["label"].(string)
+						if k == "" {
+							continue
+						}
+						if l == "" {
+							l = strings.ToUpper(k)
+						}
+						defs = append(defs, statDefSimple{Key: k, Label: l})
+					}
+				}
+				return defs
+			}
+			vitalDefs = parseDefs("vitals")
+			attrDefs = parseDefs("attributes")
+			secDefs = parseDefs("secondary")
+		}
+	}
+
 	// Character name and background.
-	sb.WriteString(fmt.Sprintf("Name: %s\n", char.Name))
+	sb.WriteString(theme.Title.Render(char.Name) + "\n")
 	if char.Background != "" {
-		sb.WriteString(fmt.Sprintf("Background: %s\n", char.Background))
+		sb.WriteString(theme.MutedText.Render(char.Background) + "\n")
 	}
 
 	if stats != nil {
 		sb.WriteString("\n")
 
-		// Vitals.
+		// Vitals with progress bars.
 		if vitalsMap, ok := stats["vitals"].(map[string]interface{}); ok && len(vitalsMap) > 0 {
-			sb.WriteString("Vitals:\n")
-			// Sort keys for consistent display.
-			keys := make([]string, 0, len(vitalsMap))
-			for k := range vitalsMap {
-				keys = append(keys, k)
-			}
-			sort.Strings(keys)
-			for _, key := range keys {
-				if vMap, ok := vitalsMap[key].(map[string]interface{}); ok {
-					current := toInt(vMap["current"])
-					max := toInt(vMap["max"])
-					sb.WriteString(fmt.Sprintf("  %-10s %d/%d\n", strings.ToUpper(key)+":", current, max))
+			sb.WriteString(theme.Title.Render("Vitals") + "\n")
+			// Use schema order if available, else sort keys.
+			vitalKeys := make([]string, 0, len(vitalDefs))
+			if len(vitalDefs) > 0 {
+				for _, def := range vitalDefs {
+					if _, exists := vitalsMap[def.Key]; exists {
+						vitalKeys = append(vitalKeys, def.Key)
+					}
 				}
+			}
+			if len(vitalKeys) == 0 {
+				for k := range vitalsMap {
+					vitalKeys = append(vitalKeys, k)
+				}
+				sort.Strings(vitalKeys)
+			}
+			// Build label map for lookup.
+			vitalLabelMap := map[string]string{}
+			for _, def := range vitalDefs {
+				vitalLabelMap[def.Key] = def.Label
+			}
+			for _, key := range vitalKeys {
+				vMap, ok := vitalsMap[key].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				current := toInt(vMap["current"])
+				max := toInt(vMap["max"])
+				label := vitalLabelMap[key]
+				if label == "" {
+					label = strings.ToUpper(key)
+				}
+				bar := renderBar(current, max, 10)
+				sb.WriteString(fmt.Sprintf("  %-10s %s  %d/%d\n", label+":", bar, current, max))
 			}
 			sb.WriteString("\n")
 		}
 
-		// Attributes.
+		// Attributes with schema labels, 3 per row.
 		if attrsMap, ok := stats["attributes"].(map[string]interface{}); ok && len(attrsMap) > 0 {
-			sb.WriteString("Attributes:\n")
-			keys := make([]string, 0, len(attrsMap))
-			for k := range attrsMap {
-				keys = append(keys, k)
+			sb.WriteString(theme.Title.Render("Attributes") + "\n")
+			// Use schema order if available.
+			type attrEntry struct{ label string; val int }
+			var attrEntries []attrEntry
+			if len(attrDefs) > 0 {
+				for _, def := range attrDefs {
+					if v, ok := attrsMap[def.Key]; ok {
+						attrEntries = append(attrEntries, attrEntry{def.Label, toInt(v)})
+					}
+				}
+			} else {
+				keys := make([]string, 0, len(attrsMap))
+				for k := range attrsMap {
+					keys = append(keys, k)
+				}
+				sort.Strings(keys)
+				for _, k := range keys {
+					attrEntries = append(attrEntries, attrEntry{strings.ToUpper(k), toInt(attrsMap[k])})
+				}
 			}
-			sort.Strings(keys)
 			// Display in rows of 3.
-			for i, key := range keys {
-				val := toInt(attrsMap[key])
-				sb.WriteString(fmt.Sprintf("  %-4s %-3d", strings.ToUpper(key)+":", val))
-				if (i+1)%3 == 0 || i == len(keys)-1 {
+			for i, entry := range attrEntries {
+				sb.WriteString(fmt.Sprintf("  %-14s %-3d", entry.label+":", entry.val))
+				if (i+1)%3 == 0 || i == len(attrEntries)-1 {
 					sb.WriteString("\n")
 				}
 			}
 			sb.WriteString("\n")
 		}
 
-		// Secondary stats.
+		// Secondary stats with schema labels.
 		if secMap, ok := stats["secondary"].(map[string]interface{}); ok && len(secMap) > 0 {
-			sb.WriteString("Secondary:\n")
-			keys := make([]string, 0, len(secMap))
-			for k := range secMap {
-				keys = append(keys, k)
+			sb.WriteString(theme.Title.Render("Secondary") + "\n")
+			secLabelMap := map[string]string{}
+			for _, def := range secDefs {
+				secLabelMap[def.Key] = def.Label
 			}
-			sort.Strings(keys)
-			for _, key := range keys {
+			// Use schema order if available.
+			secKeys := make([]string, 0)
+			if len(secDefs) > 0 {
+				for _, def := range secDefs {
+					if _, ok := secMap[def.Key]; ok {
+						secKeys = append(secKeys, def.Key)
+					}
+				}
+			}
+			if len(secKeys) == 0 {
+				for k := range secMap {
+					secKeys = append(secKeys, k)
+				}
+				sort.Strings(secKeys)
+			}
+			for _, key := range secKeys {
 				val := toInt(secMap[key])
-				label := strings.Title(strings.ReplaceAll(key, "_", " "))
-				sb.WriteString(fmt.Sprintf("  %-14s %d\n", label+":", val))
+				label := secLabelMap[key]
+				if label == "" {
+					label = strings.Title(strings.ReplaceAll(key, "_", " "))
+				}
+				sb.WriteString(fmt.Sprintf("  %-16s %d\n", label+":", val))
 			}
 			sb.WriteString("\n")
 		}
 	}
 
-	// Traits.
-	sb.WriteString("Traits: ")
+	// Skills with level and XP bar.
+	sb.WriteString(theme.Title.Render("Skills") + "\n")
+	skillsRendered := false
+	// Merge skills from char.SkillsJSON and stats["skills"].
+	skillsMap := map[string]interface{}{}
+	if char.SkillsJSON != "" && char.SkillsJSON != "null" && char.SkillsJSON != "{}" {
+		_ = json.Unmarshal([]byte(char.SkillsJSON), &skillsMap)
+	}
+	if stats != nil {
+		if sm, ok := stats["skills"].(map[string]interface{}); ok {
+			for k, v := range sm {
+				skillsMap[k] = v
+			}
+		}
+	}
+	if len(skillsMap) > 0 {
+		skillKeys := make([]string, 0, len(skillsMap))
+		for k := range skillsMap {
+			skillKeys = append(skillKeys, k)
+		}
+		sort.Strings(skillKeys)
+		for _, name := range skillKeys {
+			val := skillsMap[name]
+			level := 1
+			xp := 0
+			if sm, ok := val.(map[string]interface{}); ok {
+				level = toInt(sm["level"])
+				if level < 1 {
+					level = 1
+				}
+				xp = toInt(sm["xp"])
+			}
+			threshold := level * 100
+			bar := renderBar(xp, threshold, 10)
+			sb.WriteString(fmt.Sprintf("  %-16s Lv.%-2d  %s  %d/%d XP\n",
+				name, level, bar, xp, threshold))
+		}
+		skillsRendered = true
+	}
+	if !skillsRendered {
+		sb.WriteString(theme.MutedText.Render("  (none yet — try new things to learn!)") + "\n")
+	}
+	sb.WriteString("\n")
+
+	// Traits — merged from char.TraitsJSON and stats["traits"], deduplicated.
+	sb.WriteString(theme.Title.Render("Traits") + "\n")
+	traitSet := map[string]bool{}
 	var traits []string
 	if char.TraitsJSON != "" && char.TraitsJSON != "null" {
-		_ = json.Unmarshal([]byte(char.TraitsJSON), &traits)
+		var t []string
+		if err := json.Unmarshal([]byte(char.TraitsJSON), &t); err == nil {
+			for _, tr := range t {
+				if !traitSet[strings.ToLower(tr)] {
+					traitSet[strings.ToLower(tr)] = true
+					traits = append(traits, tr)
+				}
+			}
+		}
 	}
 	if stats != nil {
 		if t, ok := stats["traits"].([]interface{}); ok {
 			for _, tr := range t {
-				if s, ok := tr.(string); ok {
+				if s, ok := tr.(string); ok && !traitSet[strings.ToLower(s)] {
+					traitSet[strings.ToLower(s)] = true
 					traits = append(traits, s)
 				}
 			}
 		}
 	}
 	if len(traits) == 0 {
-		sb.WriteString("(none)\n")
+		sb.WriteString(theme.MutedText.Render("  (none yet — your character is still forming)") + "\n")
 	} else {
-		sb.WriteString(strings.Join(traits, ", ") + "\n")
+		sb.WriteString("  " + strings.Join(traits, ", ") + "\n")
 	}
-
-	// Skills.
-	sb.WriteString("Skills:  ")
-	var skillNames []string
-	if char.SkillsJSON != "" && char.SkillsJSON != "null" {
-		var skillsMap map[string]interface{}
-		if err := json.Unmarshal([]byte(char.SkillsJSON), &skillsMap); err == nil {
-			for k := range skillsMap {
-				skillNames = append(skillNames, k)
-			}
-		}
-		var skillsList []string
-		if err := json.Unmarshal([]byte(char.SkillsJSON), &skillsList); err == nil {
-			skillNames = skillsList
-		}
-	}
-	if stats != nil {
-		if skillsMap, ok := stats["skills"].(map[string]interface{}); ok {
-			for k := range skillsMap {
-				skillNames = append(skillNames, k)
-			}
-		}
-	}
-	if len(skillNames) == 0 {
-		sb.WriteString("(none)\n")
-	} else {
-		sort.Strings(skillNames)
-		sb.WriteString(strings.Join(skillNames, ", ") + "\n")
-	}
+	sb.WriteString("\n")
 
 	// Titles.
-	sb.WriteString("Titles:  ")
+	sb.WriteString(theme.Title.Render("Titles") + "\n")
 	var titles []string
 	if stats != nil {
 		if t, ok := stats["titles"].([]interface{}); ok {
@@ -574,9 +841,53 @@ func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
 		}
 	}
 	if len(titles) == 0 {
-		sb.WriteString("(none)\n")
+		sb.WriteString(theme.MutedText.Render("  (none yet — great deeds earn great titles)") + "\n")
 	} else {
-		sb.WriteString(strings.Join(titles, ", ") + "\n")
+		sb.WriteString("  " + strings.Join(titles, ", ") + "\n")
+	}
+	sb.WriteString("\n")
+
+	// Deaths counter (if > 0).
+	if stats != nil {
+		if deaths := toInt(stats["deaths"]); deaths > 0 {
+			sb.WriteString(theme.DangerText.Render(fmt.Sprintf("  Deaths: %d", deaths)) + "\n")
+			sb.WriteString("\n")
+		}
+	}
+
+	// NPC Relationships — load from DB.
+	sb.WriteString(theme.Title.Render("Relationships") + "\n")
+	if m.narrator.DB() != nil && story != nil {
+		npcs, err := m.narrator.DB().ListNPCs(story.ID)
+		if err == nil && len(npcs) > 0 {
+			for _, npc := range npcs {
+				d := npc.Disposition
+				// Map disposition [-100, 100] to bar [0, 10].
+				barVal := (d + 100) * 10 / 200
+				if barVal < 0 {
+					barVal = 0
+				}
+				if barVal > 10 {
+					barVal = 10
+				}
+				bar := renderBar(barVal, 10, 10)
+				label := dispositionLabel(d)
+				sign := ""
+				if d > 0 {
+					sign = "+"
+				}
+				roleStr := ""
+				if npc.Role != "" {
+					roleStr = fmt.Sprintf(" (%s)", npc.Role)
+				}
+				sb.WriteString(fmt.Sprintf("  %-24s %s  %s (%s%d)\n",
+					npc.Name+roleStr, bar, label, sign, d))
+			}
+		} else {
+			sb.WriteString(theme.MutedText.Render("  (no one met yet)") + "\n")
+		}
+	} else {
+		sb.WriteString(theme.MutedText.Render("  (no one met yet)") + "\n")
 	}
 
 	m.showOverlay(fmt.Sprintf("Character: %s", char.Name), sb.String())
