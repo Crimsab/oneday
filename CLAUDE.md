@@ -182,3 +182,65 @@ For quick tasks: `/gsd-quick` or `/gsd-fast`
 - **Worktrees**: enabled (isolated execution agents)
 - **Nyquist validation**: disabled (no automated tests yet)
 - **UI phase**: disabled (TUI project, not web frontend)
+
+<!-- GSD:project-start source:PROJECT.md -->
+## Project
+
+**OneDay**
+
+A personal AI-driven text RPG played entirely in the terminal (TUI). Stories are infinite, AI-generated, and deeply personalized. Every NPC has personality, desires, and opinions about you. Every choice matters. Nothing is hardcoded — stats, skills, items, locations, objectives, achievements are all generated at runtime by AI.
+
+**Core Value:** The player can start a story and have an engaging, coherent, infinite narrative experience driven by AI — where every action matters and the world responds dynamically.
+
+### Constraints
+
+- **Stack**: Go + Bubbletea/Bubbles/Lipgloss + SQLite + sqlite-vec
+- **AI**: Must work with multiple providers (Claude Code, LiteLLM, OpenRouter) via fallback chain
+- **No hardcoding**: Stats, skills, NPCs, items, locations, objectives, achievements all AI-generated
+- **Modularity**: Every system is a separate package with clean interfaces
+- **Cross-platform**: Must compile for Windows (primary target) and Linux
+<!-- GSD:project-end -->
+
+<!-- GSD:stack-start source:STACK.md -->
+## Technology Stack
+
+Technology stack not yet documented. Will populate after codebase mapping or first phase.
+<!-- GSD:stack-end -->
+
+<!-- GSD:conventions-start source:CONVENTIONS.md -->
+## Conventions
+
+Conventions not yet established. Will populate as patterns emerge during development.
+<!-- GSD:conventions-end -->
+
+<!-- GSD:architecture-start source:ARCHITECTURE.md -->
+## Architecture
+
+Architecture not yet mapped. Follow existing patterns found in the codebase.
+<!-- GSD:architecture-end -->
+
+<!-- GSD:skills-start source:skills/ -->
+## Project Skills
+
+No project skills found. Add skills to any of: `.claude/skills/`, `.agents/skills/`, `.cursor/skills/`, or `.github/skills/` with a `SKILL.md` index file.
+<!-- GSD:skills-end -->
+
+<!-- GSD:workflow-start source:GSD defaults -->
+## GSD Workflow Enforcement
+
+Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+
+Use these entry points:
+- `/gsd-quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd-debug` for investigation and bug fixing
+- `/gsd-execute-phase` for planned phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+<!-- GSD:workflow-end -->
+
+<!-- GSD:profile-start -->
+## Developer Profile
+
+> Profile not yet configured. Run `/gsd-profile-user` to generate your developer profile.
+> This section is managed by `generate-claude-profile` -- do not edit manually.
+<!-- GSD:profile-end -->

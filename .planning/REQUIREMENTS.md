@@ -148,7 +148,74 @@
 
 | Requirement | Phase |
 |-------------|-------|
-| (filled by roadmap) | |
+| CONF-01 | Phase 1: Foundation |
+| CONF-02 | Phase 1: Foundation |
+| AI-01 | Phase 1: Foundation |
+| STOR-01 | Phase 1: Foundation |
+| TUI-01 | Phase 2: TUI Shell and Story Bootstrap |
+| TUI-02 | Phase 2: TUI Shell and Story Bootstrap |
+| TUI-03 | Phase 2: TUI Shell and Story Bootstrap |
+| CORE-01 | Phase 2: TUI Shell and Story Bootstrap |
+| CORE-02 | Phase 2: TUI Shell and Story Bootstrap |
+| AI-02 | Phase 2: TUI Shell and Story Bootstrap |
+| AI-03 | Phase 2: TUI Shell and Story Bootstrap |
+| AI-05 | Phase 2: TUI Shell and Story Bootstrap |
+| CORE-03 | Phase 3: Core Narrative Loop |
+| CORE-04 | Phase 3: Core Narrative Loop |
+| CORE-05 | Phase 3: Core Narrative Loop |
+| CORE-06 | Phase 3: Core Narrative Loop |
+| AI-04 | Phase 3: Core Narrative Loop |
+| STOR-02 | Phase 3: Core Narrative Loop |
+| STOR-03 | Phase 3: Core Narrative Loop |
+| CMD-01 | Phase 3: Core Narrative Loop |
+| CHAR-01 | Phase 4: Character and NPC Systems |
+| CHAR-02 | Phase 4: Character and NPC Systems |
+| CHAR-03 | Phase 4: Character and NPC Systems |
+| CHAR-04 | Phase 4: Character and NPC Systems |
+| CHAR-05 | Phase 4: Character and NPC Systems |
+| CHAR-06 | Phase 4: Character and NPC Systems |
+| NPC-01 | Phase 4: Character and NPC Systems |
+| NPC-02 | Phase 4: Character and NPC Systems |
+| NPC-03 | Phase 4: Character and NPC Systems |
+| NPC-04 | Phase 4: Character and NPC Systems |
+| NPC-05 | Phase 4: Character and NPC Systems |
+| NPC-06 | Phase 4: Character and NPC Systems |
+| TUI-06 | Phase 4: Character and NPC Systems |
+| TUI-07 | Phase 4: Character and NPC Systems |
+| RAG-01 | Phase 5: RAG, Chapters, and Dynamic World |
+| RAG-02 | Phase 5: RAG, Chapters, and Dynamic World |
+| RAG-03 | Phase 5: RAG, Chapters, and Dynamic World |
+| RAG-04 | Phase 5: RAG, Chapters, and Dynamic World |
+| STOR-04 | Phase 5: RAG, Chapters, and Dynamic World |
+| STOR-05 | Phase 5: RAG, Chapters, and Dynamic World |
+| WORLD-01 | Phase 5: RAG, Chapters, and Dynamic World |
+| WORLD-02 | Phase 5: RAG, Chapters, and Dynamic World |
+| WORLD-03 | Phase 5: RAG, Chapters, and Dynamic World |
+| CMD-02 | Phase 5: RAG, Chapters, and Dynamic World |
+| CMD-03 | Phase 5: RAG, Chapters, and Dynamic World |
+| CMD-04 | Phase 5: RAG, Chapters, and Dynamic World |
+| COMBAT-01 | Phase 6: Combat, Crafting, and Challenges |
+| COMBAT-02 | Phase 6: Combat, Crafting, and Challenges |
+| COMBAT-03 | Phase 6: Combat, Crafting, and Challenges |
+| COMBAT-04 | Phase 6: Combat, Crafting, and Challenges |
+| COMBAT-05 | Phase 6: Combat, Crafting, and Challenges |
+| COMBAT-06 | Phase 6: Combat, Crafting, and Challenges |
+| CRAFT-01 | Phase 6: Combat, Crafting, and Challenges |
+| CRAFT-02 | Phase 6: Combat, Crafting, and Challenges |
+| CRAFT-03 | Phase 6: Combat, Crafting, and Challenges |
+| CRAFT-04 | Phase 6: Combat, Crafting, and Challenges |
+| CHAL-01 | Phase 6: Combat, Crafting, and Challenges |
+| CHAL-02 | Phase 6: Combat, Crafting, and Challenges |
+| CHAL-03 | Phase 6: Combat, Crafting, and Challenges |
+| CHAL-04 | Phase 6: Combat, Crafting, and Challenges |
+| TUI-04 | Phase 6: Combat, Crafting, and Challenges |
+| TUI-05 | Phase 6: Combat, Crafting, and Challenges |
+| ACH-01 | Phase 7: Polish, Achievements, and Mood Theming |
+| ACH-02 | Phase 7: Polish, Achievements, and Mood Theming |
+| ACH-03 | Phase 7: Polish, Achievements, and Mood Theming |
+| ACH-04 | Phase 7: Polish, Achievements, and Mood Theming |
+| TUI-08 | Phase 7: Polish, Achievements, and Mood Theming |
+| TUI-09 | Phase 7: Polish, Achievements, and Mood Theming |
 
 ---
 *Last updated: 2026-04-07 after initialization*
