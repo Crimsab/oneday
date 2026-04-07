@@ -142,3 +142,43 @@ go build -o oneday ./cmd/oneday
 # Cross-compile for Windows
 GOOS=windows GOARCH=amd64 go build -o oneday.exe ./cmd/oneday
 ```
+
+---
+
+## GSD (Get Shit Done) Workflow
+
+This project uses GSD for structured AI-assisted development. Config: `.planning/config.json`
+
+### Common Commands
+
+| Command | When to use |
+|---------|-------------|
+| `/gsd-quick` | Small, well-scoped tasks (single file, quick fix) |
+| `/gsd-discuss-phase` | Before planning — gather context and requirements for a phase |
+| `/gsd-plan-phase` | Create detailed task plan for a roadmap phase |
+| `/gsd-execute-phase` | Execute planned tasks with wave parallelization |
+| `/gsd-verify-work` | Validate completed work through UAT |
+| `/gsd-ship` | Create PR, review, prepare for merge |
+| `/gsd-fast` | Trivial inline task — no subagents |
+| `/gsd-progress` | Check where we are and what's next |
+| `/gsd-debug` | Systematic debugging with persistent state |
+| `/gsd-code-review` | Review changed files for bugs and quality |
+
+### Workflow
+
+For major roadmap phases (v0.1, v0.2, etc.):
+1. `/gsd-discuss-phase` — clarify requirements
+2. `/gsd-plan-phase` — create atomic task plan
+3. `/gsd-execute-phase` — execute in parallel waves (fresh context per agent)
+4. `/gsd-verify-work` — UAT validation
+5. `/gsd-ship` — commit and close
+
+For quick tasks: `/gsd-quick` or `/gsd-fast`
+
+### Config
+
+- **Model profile**: `balanced` (Opus for planning, Sonnet for execution)
+- **Branching**: `phase-based` (branch per phase)
+- **Worktrees**: enabled (isolated execution agents)
+- **Nyquist validation**: disabled (no automated tests yet)
+- **UI phase**: disabled (TUI project, not web frontend)
