@@ -125,11 +125,17 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		inputType = "choice"
 	}
 
+	// Current turn number (used for NPC context and state changes).
+	currentTurn := n.session.Turn()
+
 	// Load recent messages from DB to build context.
 	recentMsgs, err := n.db.GetRecentMessages(n.session.SessionID(), n.contextCfg.RecentMessageCount)
 	if err != nil {
-		return nil, fmt.Errorf("loading recent messages: %w", err)
+		return nil, fmt.Errorf("loading messages: %w", err)
 	}
+
+	// Build NPC context: load recently-seen NPCs and format them for the AI.
+	npcsContext := n.buildNPCContext(currentTurn)
 
 	// Build the full context using the context builder.
 	messages := BuildContext(
@@ -139,6 +145,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		recentMsgs,
 		n.contextCfg.RAGChunks,
 		input,
+		npcsContext,
 	)
 
 	start := time.Now()
@@ -170,9 +177,16 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		}
 	}
 
-	// Apply state_changes from AI response.
+	// Apply state_changes from AI response, including NPC creation/updates.
 	if len(narrative.StateChanges) > 0 {
-		_, applyErr := ApplyStateChanges(narrative.StateChanges, n.character, n.world)
+		_, applyErr := ApplyStateChanges(
+			narrative.StateChanges,
+			n.character,
+			n.world,
+			n.db,
+			n.story.ID,
+			currentTurn,
+		)
 		if applyErr != nil {
 			// Non-fatal: log but continue.
 			_ = applyErr
@@ -184,12 +198,12 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		n.world.CurrentLocation = narrative.Location
 	}
 
-	// Persist character stats and world state to DB.
-	if err := n.db.UpdateCharacterStats(n.character); err != nil {
+	// Persist full character state (stats, traits, skills, inventory) to DB.
+	if err := n.db.UpdateCharacterFull(n.character); err != nil {
 		_ = err // non-fatal
 	}
 
-	n.world.CurrentTurn = n.session.Turn() + 1
+	n.world.CurrentTurn = currentTurn + 1
 	if err := n.db.UpdateWorldState(n.world); err != nil {
 		_ = err // non-fatal
 	}
@@ -224,6 +238,30 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	}
 
 	return narrative, nil
+}
+
+// buildNPCContext loads recently-seen NPCs for this story and formats them
+// as a string for injection into the AI system prompt.
+// Uses a window of 20 turns to keep context focused on relevant characters.
+func (n *Narrator) buildNPCContext(currentTurn int) string {
+	if n.db == nil {
+		return ""
+	}
+	// Load NPCs seen in the last 20 turns, plus all NPCs for the first few turns.
+	withinTurns := 20
+	if currentTurn < 5 {
+		withinTurns = currentTurn + 1
+	}
+	npcs, err := n.db.ListRecentNPCs(n.story.ID, currentTurn, withinTurns)
+	if err != nil || len(npcs) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	for _, npc := range npcs {
+		sb.WriteString(FormatNPCForContext(&npc))
+		sb.WriteString("\n")
+	}
+	return sb.String()
 }
 
 // ShouldAutosave returns true if the current turn count triggers an autosave.

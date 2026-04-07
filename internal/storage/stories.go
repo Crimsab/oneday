@@ -126,6 +126,22 @@ func (db *DB) UpdateCharacterStats(c *Character) error {
 	return nil
 }
 
+// UpdateCharacterFull updates all mutable character fields: stats, traits, skills,
+// inventory, and known recipes. Use this after any state change that may affect
+// traits, skills, or inventory (not just stats).
+func (db *DB) UpdateCharacterFull(c *Character) error {
+	_, err := db.conn.Exec(
+		`UPDATE characters SET stats_json = ?, traits_json = ?, skills_json = ?,
+         inventory_json = ?, known_recipes_json = ?, updated_at = ? WHERE id = ?`,
+		c.StatsJSON, c.TraitsJSON, c.SkillsJSON,
+		c.InventoryJSON, c.KnownRecipesJSON, time.Now(), c.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating character full: %w", err)
+	}
+	return nil
+}
+
 // UpdateWorldState updates the world state fields.
 func (db *DB) UpdateWorldState(ws *WorldState) error {
 	_, err := db.conn.Exec(

@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/crimsab/oneday/internal/storage"
@@ -14,15 +15,21 @@ type StateChange struct {
 	Field  string      // e.g. "vitals.hp.current", "location", "attributes.str"
 	Old    interface{}
 	New    interface{}
+	// Description is a human-readable summary (used for character growth events).
+	Description string
 }
 
 // ApplyStateChanges takes the state_changes map from an AI response
 // and applies validated changes to the character and world state.
 // Returns a list of changes that were applied (for logging/display).
+// db and storyID are required for NPC operations; currentTurn tracks the current turn number.
 func ApplyStateChanges(
 	changes map[string]interface{},
 	char *storage.Character,
 	world *storage.WorldState,
+	db *storage.DB,
+	storyID string,
+	currentTurn int,
 ) ([]StateChange, error) {
 	if len(changes) == 0 {
 		return nil, nil
@@ -203,6 +210,286 @@ func ApplyStateChanges(
 				}
 			}
 			inv["backpack"] = newBackpack
+
+		// --- Character growth cases ---
+
+		case "trait_add":
+			traitName, ok := val.(string)
+			if !ok || traitName == "" {
+				continue
+			}
+			traits := toStringSlice(stats["traits"])
+			// Check for duplicate (case-insensitive)
+			dup := false
+			for _, t := range traits {
+				if strings.EqualFold(t, traitName) {
+					dup = true
+					break
+				}
+			}
+			if dup {
+				continue
+			}
+			traits = append(traits, traitName)
+			stats["traits"] = toInterfaceSlice(traits)
+			// Sync dedicated traits_json column
+			if tb, err := json.Marshal(traits); err == nil {
+				char.TraitsJSON = string(tb)
+			}
+			applied = append(applied, StateChange{
+				Target:      "character",
+				Field:       "traits",
+				Old:         nil,
+				New:         traitName,
+				Description: fmt.Sprintf("Gained trait: %s", traitName),
+			})
+
+		case "title_add":
+			titleName, ok := val.(string)
+			if !ok || titleName == "" {
+				continue
+			}
+			titles := toStringSlice(stats["titles"])
+			// Check for duplicate (case-insensitive)
+			dup := false
+			for _, t := range titles {
+				if strings.EqualFold(t, titleName) {
+					dup = true
+					break
+				}
+			}
+			if dup {
+				continue
+			}
+			titles = append(titles, titleName)
+			stats["titles"] = toInterfaceSlice(titles)
+			applied = append(applied, StateChange{
+				Target:      "character",
+				Field:       "titles",
+				Old:         nil,
+				New:         titleName,
+				Description: fmt.Sprintf("Earned title: %s", titleName),
+			})
+
+		case "skill_learn":
+			skillName, ok := val.(string)
+			if !ok || skillName == "" {
+				continue
+			}
+			skills := toSkillsMap(stats["skills"])
+			if _, exists := skills[skillName]; exists {
+				continue // already known
+			}
+			skills[skillName] = map[string]interface{}{"level": 1, "xp": 0}
+			stats["skills"] = skills
+			// Sync dedicated skills_json column
+			if sb, err := json.Marshal(skills); err == nil {
+				char.SkillsJSON = string(sb)
+			}
+			applied = append(applied, StateChange{
+				Target:      "character",
+				Field:       fmt.Sprintf("skills.%s", skillName),
+				Old:         nil,
+				New:         skills[skillName],
+				Description: fmt.Sprintf("Learned new skill: %s", skillName),
+			})
+
+		case "skill_xp":
+			xpMap, ok := toStringMap(val)
+			if !ok {
+				continue
+			}
+			skillName, _ := xpMap["skill"].(string)
+			if skillName == "" {
+				continue
+			}
+			xpGain := int(toFloat(xpMap["xp"]))
+			if xpGain <= 0 {
+				continue
+			}
+			skills := toSkillsMap(stats["skills"])
+			skill, exists := skills[skillName]
+			if !exists {
+				skill = map[string]interface{}{"level": 1, "xp": 0}
+			}
+			skillMap, _ := skill.(map[string]interface{})
+			if skillMap == nil {
+				skillMap = map[string]interface{}{"level": 1, "xp": 0}
+			}
+			level := int(toFloat(skillMap["level"]))
+			if level < 1 {
+				level = 1
+			}
+			xp := int(toFloat(skillMap["xp"])) + xpGain
+			desc := fmt.Sprintf("Gained %d XP in %s", xpGain, skillName)
+			// Level up: threshold = level * 100
+			for xp >= level*100 {
+				xp -= level * 100
+				level++
+				desc += fmt.Sprintf(" | %s leveled up to %d!", skillName, level)
+			}
+			skillMap["level"] = level
+			skillMap["xp"] = xp
+			skills[skillName] = skillMap
+			stats["skills"] = skills
+			// Sync dedicated skills_json column
+			if sb, err := json.Marshal(skills); err == nil {
+				char.SkillsJSON = string(sb)
+			}
+			applied = append(applied, StateChange{
+				Target:      "character",
+				Field:       fmt.Sprintf("skills.%s", skillName),
+				Old:         nil,
+				New:         skillMap,
+				Description: desc,
+			})
+
+		// --- NPC operation cases ---
+
+		case "new_npc":
+			npcRaw, ok := toStringMap(val)
+			if !ok || db == nil {
+				continue
+			}
+			npcData, err := ParseNPCData(npcRaw)
+			if err != nil {
+				// Non-fatal: log but continue
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       "npc",
+					Description: fmt.Sprintf("NPC parse error: %v", err),
+				})
+				continue
+			}
+			// Check if NPC already exists
+			existing, err := db.GetNPCByName(storyID, npcData.Name)
+			if err != nil {
+				continue
+			}
+			if existing != nil {
+				// Update last_seen_turn and persist
+				existing.LastSeenTurn = currentTurn
+				_ = db.UpdateNPC(existing)
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       "npc",
+					New:         npcData.Name,
+					Description: fmt.Sprintf("NPC seen again: %s", npcData.Name),
+				})
+			} else {
+				// Create new NPC
+				npc, err := NPCToStorage(npcData, storyID, currentTurn)
+				if err != nil {
+					continue
+				}
+				if err := db.CreateNPC(npc); err != nil {
+					continue
+				}
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       "npc",
+					New:         npcData.Name,
+					Description: fmt.Sprintf("New NPC encountered: %s (%s)", npcData.Name, npcData.Role),
+				})
+			}
+
+		case "npc_disposition":
+			dispMap, ok := toStringMap(val)
+			if !ok || db == nil {
+				continue
+			}
+			npcName, _ := dispMap["name"].(string)
+			if npcName == "" {
+				continue
+			}
+			npc, err := db.GetNPCByName(storyID, npcName)
+			if err != nil || npc == nil {
+				continue
+			}
+			oldDisp := npc.Disposition
+			var newDisp int
+			if changeVal, hasChange := dispMap["change"]; hasChange {
+				newDisp = oldDisp + int(toFloat(changeVal))
+			} else if setValue, hasValue := dispMap["value"]; hasValue {
+				newDisp = int(toFloat(setValue))
+			} else {
+				continue
+			}
+			// Clamp to [-100, 100]
+			if newDisp > 100 {
+				newDisp = 100
+			} else if newDisp < -100 {
+				newDisp = -100
+			}
+			_ = db.UpdateNPCDisposition(npc.ID, newDisp)
+			diff := newDisp - oldDisp
+			sign := "+"
+			if diff < 0 {
+				sign = ""
+			}
+			applied = append(applied, StateChange{
+				Target:      "world",
+				Field:       fmt.Sprintf("npc.%s.disposition", npcName),
+				Old:         oldDisp,
+				New:         newDisp,
+				Description: fmt.Sprintf("%s's disposition: %s%d (now %d)", npcName, sign, diff, newDisp),
+			})
+
+		case "npc_thoughts":
+			thoughtMap, ok := toStringMap(val)
+			if !ok || db == nil {
+				continue
+			}
+			npcName, _ := thoughtMap["name"].(string)
+			thought, _ := thoughtMap["thought"].(string)
+			if npcName == "" || thought == "" {
+				continue
+			}
+			npc, err := db.GetNPCByName(storyID, npcName)
+			if err != nil || npc == nil {
+				continue
+			}
+			var thoughts []string
+			_ = json.Unmarshal([]byte(npc.PrivateThoughts), &thoughts)
+			thoughts = append(thoughts, thought)
+			if tb, err := json.Marshal(thoughts); err == nil {
+				npc.PrivateThoughts = string(tb)
+			}
+			_ = db.UpdateNPC(npc)
+			applied = append(applied, StateChange{
+				Target:      "world",
+				Field:       fmt.Sprintf("npc.%s.private_thoughts", npcName),
+				New:         thought,
+				Description: fmt.Sprintf("%s had a new thought (private)", npcName),
+			})
+
+		case "npc_notes":
+			noteMap, ok := toStringMap(val)
+			if !ok || db == nil {
+				continue
+			}
+			npcName, _ := noteMap["name"].(string)
+			note, _ := noteMap["note"].(string)
+			if npcName == "" || note == "" {
+				continue
+			}
+			npc, err := db.GetNPCByName(storyID, npcName)
+			if err != nil || npc == nil {
+				continue
+			}
+			var notes []string
+			_ = json.Unmarshal([]byte(npc.NotesOnProtagonist), &notes)
+			notes = append(notes, note)
+			if nb, err := json.Marshal(notes); err == nil {
+				npc.NotesOnProtagonist = string(nb)
+			}
+			_ = db.UpdateNPC(npc)
+			applied = append(applied, StateChange{
+				Target:      "world",
+				Field:       fmt.Sprintf("npc.%s.notes_on_protagonist", npcName),
+				New:         note,
+				Description: fmt.Sprintf("%s noted something about protagonist (private)", npcName),
+			})
 		}
 	}
 
@@ -253,4 +540,22 @@ func toStringSlice(val interface{}) []string {
 		}
 	}
 	return result
+}
+
+// toInterfaceSlice converts []string to []interface{} for JSON marshal into stats.
+func toInterfaceSlice(ss []string) []interface{} {
+	result := make([]interface{}, len(ss))
+	for i, s := range ss {
+		result[i] = s
+	}
+	return result
+}
+
+// toSkillsMap extracts the skills map from stats (key "skills").
+// Returns an empty map if not present or wrong type.
+func toSkillsMap(val interface{}) map[string]interface{} {
+	if m, ok := val.(map[string]interface{}); ok {
+		return m
+	}
+	return map[string]interface{}{}
 }
