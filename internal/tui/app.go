@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crimsab/oneday/internal/ai"
@@ -29,8 +31,9 @@ type App struct {
 	height int
 
 	// Child view models
-	menu     views.MenuModel
-	newStory *views.NewStoryModel
+	menu      views.MenuModel
+	newStory  *views.NewStoryModel
+	narrative *views.NarrativeModel
 }
 
 // New creates the app with all dependencies.
@@ -57,6 +60,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.newStory != nil {
 			a.newStory.SetSize(msg.Width, msg.Height)
 		}
+		if a.narrative != nil {
+			a.narrative.SetSize(msg.Width, msg.Height)
+		}
 		return a, nil
 
 	case tea.KeyMsg:
@@ -66,9 +72,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case views.StoryCreatedMsg:
-		// Story and character persisted — transition to narrative view (Plan 2.4)
-		a.view = ViewMenu // placeholder until narrative view is implemented
-		return a, nil
+		// Story and character persisted — load them and transition to narrative view
+		cmd, err := a.enterNarrativeView(msg.StoryID)
+		if err != nil {
+			// Fall back to menu on error — story is still saved
+			a.view = ViewMenu
+			return a, nil
+		}
+		return a, cmd
 
 	case views.MenuSelectedMsg:
 		switch msg.Action {
@@ -109,6 +120,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.newStory = &updated
 			return a, cmd
 		}
+
+	case ViewNarrative:
+		if a.narrative != nil {
+			// Handle esc to return to menu
+			if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEsc {
+				a.view = ViewMenu
+				return a, nil
+			}
+			var cmd tea.Cmd
+			updated, cmd := a.narrative.Update(msg)
+			a.narrative = &updated
+			return a, cmd
+		}
 	}
 
 	return a, nil
@@ -123,6 +147,11 @@ func (a App) View() string {
 			return a.newStory.View()
 		}
 		return a.menu.View()
+	case ViewNarrative:
+		if a.narrative != nil {
+			return a.narrative.View()
+		}
+		return a.menu.View()
 	default:
 		return a.menu.View()
 	}
@@ -131,4 +160,30 @@ func (a App) View() string {
 // SetView changes the active view (used by child views to trigger transitions).
 func (a *App) SetView(v View) {
 	a.view = v
+}
+
+// enterNarrativeView loads story data, creates a narrator, and starts narration.
+func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
+	story, err := a.db.GetStory(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading story: %w", err)
+	}
+
+	char, err := a.db.GetCharacterByStory(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading character: %w", err)
+	}
+
+	world, err := a.db.GetWorldState(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading world state: %w", err)
+	}
+
+	narrator := engine.NewNarrator(a.router, a.db, story, char, world)
+	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
+	m.SetSize(a.width, a.height)
+	a.narrative = &m
+	a.view = ViewNarrative
+
+	return a.narrative.StartNarration(), nil
 }
