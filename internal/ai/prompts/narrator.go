@@ -48,7 +48,9 @@ You MUST respond with ONLY a JSON block in this exact format:
   "location": "Current location name",
   "state_changes": {},
   "challenges": [],
-  "achievements": []
+  "achievements": [],
+  "chapter_end": false,
+  "chapter_title": ""
 }
 `+"```"+`
 
@@ -126,6 +128,15 @@ Background/unnamed characters (generic guards, unnamed shopkeepers) do NOT need 
 4. NPCs with high disposition (>50) may volunteer help unprompted.
    NPCs with low disposition (<-50) may become obstacles or antagonists.
 5. Use the Known NPCs section above to stay consistent with established NPC personalities.
+
+## Chapter Management
+When a significant narrative arc concludes — a quest completed, a major location change, an important revelation, a dramatic time skip, or a major turning point — signal a chapter end by adding to the JSON:
+- "chapter_end": true
+- "chapter_title": "A short evocative title for the chapter that just ended (3-6 words)"
+
+Chapter endings happen organically, roughly every 15-30 turns. Do not force them. Only signal chapter_end when it genuinely feels like a narrative chapter has concluded.
+
+Examples of chapter endings: completing a major quest, escaping a dangerous situation, arriving at a new city, a major betrayal or revelation, the end of a significant journey.
 
 ## General Rules
 1. ALWAYS respond with valid JSON in the format above

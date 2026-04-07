@@ -1,11 +1,13 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
+	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -558,4 +560,264 @@ func toSkillsMap(val interface{}) map[string]interface{} {
 		return m
 	}
 	return map[string]interface{}{}
+}
+
+// ApplyNarratorStateChanges handles narrator-specific (meta/world-building) state changes.
+// These are changes that come from /narrator commands and affect the story setting or world state.
+// db, story, and world are required. ragPipeline is optional (for embedding lore).
+func ApplyNarratorStateChanges(
+	ctx context.Context,
+	changes map[string]interface{},
+	db *storage.DB,
+	story *storage.Story,
+	world *storage.WorldState,
+	ragPipeline *rag.RAG,
+) error {
+	if len(changes) == 0 {
+		return nil
+	}
+
+	// Parse the story's setting JSON.
+	var setting map[string]interface{}
+	if err := json.Unmarshal([]byte(story.SettingJSON), &setting); err != nil {
+		setting = map[string]interface{}{}
+	}
+
+	settingModified := false
+	worldModified := false
+
+	for key, val := range changes {
+		switch key {
+
+		// --- Story setting mutations ---
+
+		case "setting_factions_add":
+			items := toStringOrSlice(val)
+			if len(items) == 0 {
+				continue
+			}
+			factions := toStringSlice(setting["factions"])
+			factions = appendUnique(factions, items...)
+			setting["factions"] = toInterfaceSlice(factions)
+			settingModified = true
+
+		case "setting_cultures_add":
+			items := toStringOrSlice(val)
+			if len(items) == 0 {
+				continue
+			}
+			cultures := toStringSlice(setting["cultures"])
+			cultures = appendUnique(cultures, items...)
+			setting["cultures"] = toInterfaceSlice(cultures)
+			settingModified = true
+
+		case "setting_dangers_add":
+			items := toStringOrSlice(val)
+			if len(items) == 0 {
+				continue
+			}
+			dangers := toStringSlice(setting["dangers"])
+			dangers = appendUnique(dangers, items...)
+			setting["dangers"] = toInterfaceSlice(dangers)
+			settingModified = true
+
+		case "setting_rules_add":
+			items := toStringOrSlice(val)
+			if len(items) == 0 {
+				continue
+			}
+			rules := toStringSlice(setting["rules"])
+			rules = appendUnique(rules, items...)
+			setting["rules"] = toInterfaceSlice(rules)
+			settingModified = true
+
+		case "setting_tone_add":
+			toneStr, ok := val.(string)
+			if !ok || toneStr == "" {
+				continue
+			}
+			existing, _ := setting["tone_guidelines"].(string)
+			if existing != "" {
+				setting["tone_guidelines"] = existing + "; " + toneStr
+			} else {
+				setting["tone_guidelines"] = toneStr
+			}
+			settingModified = true
+
+		// --- World state mutations ---
+
+		case "world_location_add":
+			locStr, ok := val.(string)
+			if !ok || locStr == "" {
+				continue
+			}
+			var locs []interface{}
+			_ = json.Unmarshal([]byte(world.KnownLocationsJSON), &locs)
+			// Avoid duplicates.
+			for _, l := range locs {
+				if ls, ok := l.(string); ok && strings.EqualFold(ls, locStr) {
+					locStr = "" // already exists
+					break
+				}
+			}
+			if locStr != "" {
+				locs = append(locs, locStr)
+				if lb, err := json.Marshal(locs); err == nil {
+					world.KnownLocationsJSON = string(lb)
+					worldModified = true
+				}
+			}
+
+		case "world_event_add":
+			evStr, ok := val.(string)
+			if !ok || evStr == "" {
+				continue
+			}
+			var events []interface{}
+			_ = json.Unmarshal([]byte(world.GlobalEventsJSON), &events)
+			events = append(events, evStr)
+			if eb, err := json.Marshal(events); err == nil {
+				world.GlobalEventsJSON = string(eb)
+				worldModified = true
+			}
+
+		case "world_faction_standing":
+			fsMap, ok := toStringMap(val)
+			if !ok {
+				continue
+			}
+			factionName, _ := fsMap["faction"].(string)
+			if factionName == "" {
+				continue
+			}
+			standing := int(toFloat(fsMap["standing"]))
+			var standings map[string]interface{}
+			if err := json.Unmarshal([]byte(world.FactionStandingsJSON), &standings); err != nil {
+				standings = map[string]interface{}{}
+			}
+			standings[factionName] = standing
+			if fsb, err := json.Marshal(standings); err == nil {
+				world.FactionStandingsJSON = string(fsb)
+				worldModified = true
+			}
+
+		// --- NPC desire updates ---
+
+		case "npc_desires":
+			if db == nil {
+				continue
+			}
+			desireMap, ok := toStringMap(val)
+			if !ok {
+				continue
+			}
+			npcName, _ := desireMap["name"].(string)
+			desire, _ := desireMap["desire"].(string)
+			if npcName == "" || desire == "" {
+				continue
+			}
+			npc, err := db.GetNPCByName(story.ID, npcName)
+			if err != nil || npc == nil {
+				continue
+			}
+			if npc.Desires != "" {
+				npc.Desires = npc.Desires + "; " + desire
+			} else {
+				npc.Desires = desire
+			}
+			_ = db.UpdateNPC(npc)
+		}
+	}
+
+	// Persist story setting changes.
+	if settingModified {
+		newSettingJSON, err := json.Marshal(setting)
+		if err == nil {
+			story.SettingJSON = string(newSettingJSON)
+			if db != nil {
+				_ = db.UpdateStorySetting(story.ID, story.SettingJSON)
+			}
+		}
+	}
+
+	// Persist world state changes.
+	if worldModified {
+		world.UpdatedAt = time.Now()
+		if db != nil {
+			_ = db.UpdateWorldState(world)
+		}
+	}
+
+	// Embed lore additions into RAG for long-term memory.
+	if ragPipeline != nil && (settingModified || worldModified) {
+		loreText := buildLoreChunk(changes)
+		if loreText != "" {
+			go func() {
+				bgCtx := context.Background()
+				_ = ragPipeline.StoreChunk(bgCtx, story.ID, loreText, "narrator", world.CurrentTurn, world.CurrentTurn)
+			}()
+		}
+	}
+
+	return nil
+}
+
+// toStringOrSlice converts a value to a []string.
+// Handles both a single string and a []interface{} of strings.
+func toStringOrSlice(val interface{}) []string {
+	if s, ok := val.(string); ok && s != "" {
+		return []string{s}
+	}
+	return toStringSlice(val)
+}
+
+// appendUnique appends items to a slice, skipping case-insensitive duplicates.
+func appendUnique(existing []string, items ...string) []string {
+	set := make(map[string]bool, len(existing))
+	for _, e := range existing {
+		set[strings.ToLower(e)] = true
+	}
+	for _, item := range items {
+		if item != "" && !set[strings.ToLower(item)] {
+			existing = append(existing, item)
+			set[strings.ToLower(item)] = true
+		}
+	}
+	return existing
+}
+
+// buildLoreChunk creates a text representation of narrator changes for RAG embedding.
+func buildLoreChunk(changes map[string]interface{}) string {
+	var parts []string
+	for k, v := range changes {
+		switch k {
+		case "setting_factions_add", "setting_cultures_add", "setting_dangers_add", "setting_rules_add":
+			items := toStringOrSlice(v)
+			label := strings.TrimSuffix(strings.TrimPrefix(k, "setting_"), "_add")
+			for _, item := range items {
+				parts = append(parts, fmt.Sprintf("[%s] %s", label, item))
+			}
+		case "setting_tone_add":
+			if s, ok := v.(string); ok && s != "" {
+				parts = append(parts, fmt.Sprintf("[tone] %s", s))
+			}
+		case "world_location_add":
+			if s, ok := v.(string); ok && s != "" {
+				parts = append(parts, fmt.Sprintf("[location] %s", s))
+			}
+		case "world_event_add":
+			if s, ok := v.(string); ok && s != "" {
+				parts = append(parts, fmt.Sprintf("[event] %s", s))
+			}
+		case "npc_desires":
+			if m, ok := toStringMap(v); ok {
+				name, _ := m["name"].(string)
+				desire, _ := m["desire"].(string)
+				if name != "" && desire != "" {
+					parts = append(parts, fmt.Sprintf("[npc desire] %s: %s", name, desire))
+				}
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
 }

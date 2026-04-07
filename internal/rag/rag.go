@@ -81,3 +81,30 @@ func (r *RAG) MaybeSummarize(ctx context.Context, messages []storage.ChatMessage
 func (r *RAG) SummarizerInterval() int {
 	return r.summarizer.Interval()
 }
+
+// StoreChunk embeds and stores a text chunk directly into the vector store.
+// chunkType is typically "chapter", "narrator", or "summary".
+// This is used for chapter summaries and narrator-injected lore.
+func (r *RAG) StoreChunk(ctx context.Context, storyID, text, chunkType string, turnStart, turnEnd int) error {
+	if text == "" {
+		return nil
+	}
+
+	embedding, err := r.embedder.Generate(ctx, text)
+	if err != nil {
+		return fmt.Errorf("rag: generating embedding for chunk: %w", err)
+	}
+
+	chunk := &Chunk{
+		StoryID:   storyID,
+		Text:      text,
+		ChunkType: chunkType,
+		TurnStart: turnStart,
+		TurnEnd:   turnEnd,
+		Embedding: embedding,
+	}
+	if err := r.store.Insert(ctx, chunk); err != nil {
+		return fmt.Errorf("rag: inserting chunk: %w", err)
+	}
+	return nil
+}
