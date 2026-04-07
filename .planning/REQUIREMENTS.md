@@ -45,15 +45,15 @@
 - [x] **STOR-01**: SQLite database stores all game data (stories, characters, NPCs, world state)
 - [x] **STOR-02**: Chat history saved as JSONL per session, organized by session > chapter
 - [x] **STOR-03**: Sessions auto-created when player opens a story, closed on exit
-- [ ] **STOR-04**: Separate chat logs for combat, crafting, and deep NPC dialogues
-- [ ] **STOR-05**: Chapter system with AI-generated summaries at chapter boundaries
+- [x] **STOR-04**: Separate chat logs for combat, crafting, and deep NPC dialogues
+- [x] **STOR-05**: Chapter system with AI-generated summaries at chapter boundaries
 
 ### RAG
 
-- [ ] **RAG-01**: Periodic summarization (every N turns) generates text chunks
-- [ ] **RAG-02**: Chunks embedded via text-embedding-3-small through LiteLLM
-- [ ] **RAG-03**: Embeddings stored in sqlite-vec per story
-- [ ] **RAG-04**: Context builder retrieves top-K relevant chunks for AI prompts
+- [x] **RAG-01**: Periodic summarization (every N turns) generates text chunks
+- [x] **RAG-02**: Chunks embedded via text-embedding-3-small through LiteLLM
+- [x] **RAG-03**: Embeddings stored in sqlite-vec per story
+- [x] **RAG-04**: Context builder retrieves top-K relevant chunks for AI prompts
 
 ### Combat
 
@@ -100,15 +100,15 @@
 ### Chat Commands
 
 - [x] **CMD-01**: /inventory, /stats, /save, /load, /help, /quit
-- [ ] **CMD-02**: /map, /journal, /achievements
-- [ ] **CMD-03**: /narrator (/n) — meta-level world-building, lore injection, NPC depth, narrative steering
-- [ ] **CMD-04**: /narrator changes auto-update story.json, NPC files, world_state
+- [x] **CMD-02**: /map, /journal, /achievements
+- [x] **CMD-03**: /narrator (/n) — meta-level world-building, lore injection, NPC depth, narrative steering
+- [x] **CMD-04**: /narrator changes auto-update story.json, NPC files, world_state
 
 ### Dynamic World
 
-- [ ] **WORLD-01**: story.json is a living document — factions, cultures, dangers, rules auto-updated
-- [ ] **WORLD-02**: NPCs' private thoughts, desires, notes evolve as the story progresses
-- [ ] **WORLD-03**: World state tracks unlocked locations, global events, faction standings
+- [x] **WORLD-01**: story.json is a living document — factions, cultures, dangers, rules auto-updated
+- [x] **WORLD-02**: NPCs' private thoughts, desires, notes evolve as the story progresses
+- [x] **WORLD-03**: World state tracks unlocked locations, global events, faction standings
 
 ### Configuration
 
