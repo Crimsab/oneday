@@ -22,33 +22,31 @@ type Narrator struct {
 	story       *storage.Story
 	character   *storage.Character
 	world       *storage.WorldState
-	messages    []ai.Message
+	session     *GameSession
+	contextCfg  ContextConfig
 	lastModel   string
 	lastLatency int64
-	turn        int
 }
 
 // NewNarrator creates a narrator for an existing story.
-func NewNarrator(router *ai.Router, db *storage.DB, story *storage.Story, char *storage.Character, world *storage.WorldState) *Narrator {
-	systemPrompt := prompts.NarratorSystem(
-		story.Name,
-		story.SettingJSON,
-		story.StatsSchemaJSON,
-		char.Name,
-		char.Background,
-		char.StatsJSON,
-	)
-
+// session must be a valid GameSession created via NewGameSession.
+func NewNarrator(
+	router *ai.Router,
+	db *storage.DB,
+	story *storage.Story,
+	char *storage.Character,
+	world *storage.WorldState,
+	session *GameSession,
+	contextCfg ContextConfig,
+) *Narrator {
 	return &Narrator{
-		router:    router,
-		db:        db,
-		story:     story,
-		character: char,
-		world:     world,
-		messages: []ai.Message{
-			{Role: ai.RoleSystem, Content: systemPrompt},
-		},
-		turn: world.CurrentTurn,
+		router:     router,
+		db:         db,
+		story:      story,
+		character:  char,
+		world:      world,
+		session:    session,
+		contextCfg: contextCfg,
 	}
 }
 
@@ -59,7 +57,7 @@ func (n *Narrator) LastModel() string { return n.lastModel }
 func (n *Narrator) LastLatency() int64 { return n.lastLatency }
 
 // Turn returns the current turn number.
-func (n *Narrator) Turn() int { return n.turn }
+func (n *Narrator) Turn() int { return n.session.Turn() }
 
 // Story returns the story being narrated.
 func (n *Narrator) Story() *storage.Story { return n.story }
@@ -69,6 +67,14 @@ func (n *Narrator) Character() *storage.Character { return n.character }
 
 // World returns the current world state.
 func (n *Narrator) World() *storage.WorldState { return n.world }
+
+// CloseSession closes the active game session.
+func (n *Narrator) CloseSession() {
+	if n.session != nil {
+		_ = n.session.Close(n.db)
+		n.session = nil
+	}
+}
 
 // StartNarration sends the first turn to begin the story.
 // Returns the parsed narrative response.
@@ -82,38 +88,41 @@ func (n *Narrator) SendAction(ctx context.Context, action string) (*NarrativeRes
 }
 
 func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeResponse, error) {
-	n.messages = append(n.messages, ai.Message{
-		Role:    ai.RoleUser,
-		Content: input,
-	})
+	// Load recent messages from DB to build context.
+	recentMsgs, err := n.db.GetRecentMessages(n.session.SessionID(), n.contextCfg.RecentMessageCount)
+	if err != nil {
+		return nil, fmt.Errorf("loading recent messages: %w", err)
+	}
+
+	// Build the full context using the context builder.
+	messages := BuildContext(
+		n.story,
+		n.character,
+		n.world,
+		recentMsgs,
+		n.contextCfg.RAGChunks,
+		input,
+	)
 
 	start := time.Now()
 	req := ai.Request{
-		Messages:    n.messages,
+		Messages:    messages,
 		Temperature: 0.85,
 		MaxTokens:   2048,
 	}
 
 	resp, err := n.router.Complete(ctx, req)
 	if err != nil {
-		// Remove failed message to keep conversation state clean
-		n.messages = n.messages[:len(n.messages)-1]
 		return nil, err
 	}
 
 	n.lastModel = resp.Model
 	n.lastLatency = time.Since(start).Milliseconds()
-	n.turn++
 
-	n.messages = append(n.messages, ai.Message{
-		Role:    ai.RoleAssistant,
-		Content: resp.Content,
-	})
-
-	// Parse the structured response using ai.ParseNarrativeJSON then map to engine types
+	// Parse the structured response.
 	narrative, err := parseNarrativeFromAI(resp.Content)
 	if err != nil {
-		// If parsing fails, wrap the raw text as a minimal narrative
+		// If parsing fails, wrap the raw text as a minimal narrative.
 		narrative = &NarrativeResponse{
 			Narrative: resp.Content,
 			Choices: []Choice{
@@ -124,10 +133,38 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		}
 	}
 
-	// Update world location if changed
+	// Update world location if changed.
 	if narrative.Location != "" && narrative.Location != n.world.CurrentLocation {
 		n.world.CurrentLocation = narrative.Location
-		n.world.CurrentTurn = n.turn
+	}
+	n.world.CurrentTurn = n.session.Turn() + 1
+
+	// Extract choice texts for the JSONL entry.
+	choiceTexts := make([]string, len(narrative.Choices))
+	for i, c := range narrative.Choices {
+		choiceTexts[i] = c.Text
+	}
+
+	// Persist the turn to JSONL file and DB.
+	entry := ChatEntry{
+		Timestamp: time.Now(),
+		Chapter:   n.world.CurrentChapter,
+		Location:  n.world.CurrentLocation,
+		Input: &ChatInput{
+			Type: "free_action",
+			Text: input,
+		},
+		Output: &ChatOutput{
+			Narrative: narrative.Narrative,
+			Choices:   choiceTexts,
+			Mood:      narrative.Mood,
+		},
+		AIModel:   resp.Model,
+		AILatency: n.lastLatency,
+	}
+	if err := n.session.AppendTurn(n.db, entry); err != nil {
+		// Non-fatal: log but don't fail the turn.
+		_ = err
 	}
 
 	return narrative, nil

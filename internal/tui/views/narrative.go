@@ -294,6 +294,13 @@ func (m NarrativeModel) View() string {
 	return content
 }
 
+// CloseSession closes the active game session. Safe to call multiple times.
+func (m *NarrativeModel) CloseSession() {
+	if m.narrator != nil {
+		m.narrator.CloseSession()
+	}
+}
+
 // SetSize updates the view dimensions and re-layouts sub-components.
 func (m *NarrativeModel) SetSize(w, h int) {
 	m.width = w

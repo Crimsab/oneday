@@ -1,0 +1,99 @@
+package storage
+
+import "fmt"
+
+// AppendChatMessage inserts a chat message into the DB.
+func (db *DB) AppendChatMessage(m *ChatMessage) error {
+	result, err := db.conn.Exec(
+		`INSERT INTO chat_messages (session_id, story_id, turn, role, content, message_type, metadata_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		m.SessionID, m.StoryID, m.Turn, m.Role, m.Content, m.MessageType, m.MetadataJSON, m.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting chat message: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return fmt.Errorf("getting inserted chat message id: %w", err)
+	}
+	m.ID = id
+	return nil
+}
+
+// GetRecentMessages returns the last N messages for a session, ordered chronologically (ASC).
+func (db *DB) GetRecentMessages(sessionID string, limit int) ([]ChatMessage, error) {
+	// Fetch last N in DESC order, then reverse to get chronological order.
+	rows, err := db.conn.Query(
+		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at
+         FROM chat_messages
+         WHERE session_id = ?
+         ORDER BY turn DESC, id DESC
+         LIMIT ?`,
+		sessionID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting recent messages for session %s: %w", sessionID, err)
+	}
+	defer rows.Close()
+
+	var msgs []ChatMessage
+	for rows.Next() {
+		var m ChatMessage
+		if err := rows.Scan(
+			&m.ID, &m.SessionID, &m.StoryID, &m.Turn, &m.Role,
+			&m.Content, &m.MessageType, &m.MetadataJSON, &m.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning chat message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating chat messages: %w", err)
+	}
+
+	// Reverse to return chronological (ASC) order.
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs, nil
+}
+
+// GetSessionMessages returns all messages for a session, ordered chronologically (ASC).
+func (db *DB) GetSessionMessages(sessionID string) ([]ChatMessage, error) {
+	rows, err := db.conn.Query(
+		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at
+         FROM chat_messages
+         WHERE session_id = ?
+         ORDER BY turn ASC, id ASC`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting messages for session %s: %w", sessionID, err)
+	}
+	defer rows.Close()
+
+	var msgs []ChatMessage
+	for rows.Next() {
+		var m ChatMessage
+		if err := rows.Scan(
+			&m.ID, &m.SessionID, &m.StoryID, &m.Turn, &m.Role,
+			&m.Content, &m.MessageType, &m.MetadataJSON, &m.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning chat message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
+// CountSessionMessages returns the number of messages in a session.
+func (db *DB) CountSessionMessages(sessionID string) (int, error) {
+	var count int
+	err := db.conn.QueryRow(
+		`SELECT COUNT(*) FROM chat_messages WHERE session_id = ?`, sessionID,
+	).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("counting messages for session %s: %w", sessionID, err)
+	}
+	return count, nil
+}
