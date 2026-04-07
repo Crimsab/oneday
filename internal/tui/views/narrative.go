@@ -120,8 +120,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 		m.choices.SetChoices(choiceItems)
 
-		// Append narrative to history and start typewriter from beginning
-		m.history.WriteString(nr.Narrative + "\n\n")
+		// Append rendered narrative to history and start typewriter from beginning
+		rendered := components.RenderMarkdown(nr.Narrative)
+		m.history.WriteString(rendered + "\n")
 		cmd := m.typewriter.SetText(m.history.String())
 		cmds = append(cmds, cmd)
 

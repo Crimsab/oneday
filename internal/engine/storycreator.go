@@ -84,13 +84,29 @@ func (sc *StoryCreator) SendMessage(ctx context.Context, playerInput string) (st
 	}
 }
 
-// StartConversation sends the initial empty message to kick off the AI.
+// StartConversation returns the hardcoded welcome message to start story creation instantly.
+// No API call needed — the first AI call happens when the player responds.
 func (sc *StoryCreator) StartConversation(ctx context.Context) (string, error) {
+	welcome := `# Welcome to Story Creation!
+
+Let's build your world together. I'll guide you through the process step by step.
+
+**First, tell me about the kind of story you want:**
+
+- What **genre** appeals to you? *(fantasy, sci-fi, cyberpunk, post-apocalyptic, noir, horror, historical, slice-of-life, or something else entirely)*
+- What **tone** should it have? *(dark & gritty, epic & heroic, lighthearted, mysterious, comedic, philosophical...)*
+- Any **specific themes** or ideas you already have in mind?
+
+Feel free to be as vague or detailed as you want — we'll shape everything together.`
+
+	// Add the welcome as an assistant message to history so the AI has context
 	sc.messages = append(sc.messages, ai.Message{
-		Role:    ai.RoleUser,
-		Content: "Let's create a new story! Guide me through the process.",
+		Role:    ai.RoleAssistant,
+		Content: welcome,
 	})
-	return sc.callAI(ctx, sc.messages)
+	sc.lastModel = "system"
+	sc.lastLatency = 0
+	return welcome, nil
 }
 
 func (sc *StoryCreator) handleConversation(ctx context.Context, input string) (string, error) {
