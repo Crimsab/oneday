@@ -12,6 +12,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -36,6 +37,7 @@ type Narrator struct {
 	lastLatency   int64
 	dataDir       string
 	autosaveEvery int
+	rag           *rag.RAG // optional — nil means RAG is disabled
 }
 
 // NewNarrator creates a narrator for an existing story.
@@ -65,6 +67,12 @@ func NewNarrator(
 		dataDir:       dataDir,
 		autosaveEvery: autosaveEvery,
 	}
+}
+
+// SetRAG wires a RAG pipeline into the narrator. Call after construction to enable
+// long-term memory retrieval. Passing nil disables RAG gracefully.
+func (n *Narrator) SetRAG(r *rag.RAG) {
+	n.rag = r
 }
 
 // LastModel returns the AI model used for the last response.
@@ -144,6 +152,12 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		npcs = nil // non-fatal: proceed without NPC context
 	}
 
+	// Retrieve RAG chunks for long-term memory context (non-fatal if unavailable).
+	var ragChunks []string
+	if n.rag != nil {
+		ragChunks, _ = n.rag.Retrieve(ctx, input)
+	}
+
 	// Build the full context using the context builder.
 	messages := BuildContext(
 		n.story,
@@ -151,7 +165,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		n.world,
 		npcs,
 		recentMsgs,
-		n.contextCfg.RAGChunks,
+		ragChunks,
 		input,
 	)
 
@@ -247,6 +261,23 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	if err := n.session.AppendTurn(n.db, entry); err != nil {
 		// Non-fatal: log but don't fail the turn.
 		_ = err
+	}
+
+	// Async RAG summarization — fire-and-forget after turn is persisted.
+	// If summarization fails, the next trigger will pick up the gap.
+	if n.rag != nil {
+		storyID := n.story.ID
+		turn := currentTurn
+		ragPipeline := n.rag
+		db := n.db
+		go func() {
+			bgCtx := context.Background()
+			msgs, err := db.GetStoryMessagesByTurnRange(storyID, 0, turn)
+			if err != nil {
+				return
+			}
+			_, _ = ragPipeline.MaybeSummarize(bgCtx, msgs, turn)
+		}()
 	}
 
 	return narrative, nil

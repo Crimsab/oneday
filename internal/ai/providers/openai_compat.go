@@ -134,6 +134,79 @@ func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Respons
 	}, nil
 }
 
+// openAIEmbeddingRequest is the request body for /v1/embeddings.
+type openAIEmbeddingRequest struct {
+	Model string `json:"model"`
+	Input string `json:"input"`
+}
+
+// openAIEmbeddingResponse is the response from /v1/embeddings.
+type openAIEmbeddingResponse struct {
+	Data []struct {
+		Embedding []float32 `json:"embedding"`
+		Index     int       `json:"index"`
+	} `json:"data"`
+	Model string `json:"model"`
+}
+
+// Embed generates an embedding vector for the given text using the /v1/embeddings endpoint.
+func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.EmbeddingResponse, error) {
+	model := req.Model
+	if model == "" {
+		model = o.defaultModel
+	}
+
+	body := openAIEmbeddingRequest{
+		Model: model,
+		Input: req.Input,
+	}
+
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return ai.EmbeddingResponse{}, fmt.Errorf("marshaling embedding request: %w", err)
+	}
+
+	url := o.baseURL + "/embeddings"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return ai.EmbeddingResponse{}, fmt.Errorf("creating embedding request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	if o.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
+
+	resp, err := o.client.Do(httpReq)
+	if err != nil {
+		return ai.EmbeddingResponse{}, fmt.Errorf("HTTP embedding request to %s: %w", o.name, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ai.EmbeddingResponse{}, fmt.Errorf("reading embedding response from %s: %w", o.name, err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return ai.EmbeddingResponse{}, fmt.Errorf("%s embedding returned status %d: %s", o.name, resp.StatusCode, string(respBody))
+	}
+
+	var embResp openAIEmbeddingResponse
+	if err := json.Unmarshal(respBody, &embResp); err != nil {
+		return ai.EmbeddingResponse{}, fmt.Errorf("parsing embedding response from %s: %w", o.name, err)
+	}
+
+	if len(embResp.Data) == 0 {
+		return ai.EmbeddingResponse{}, fmt.Errorf("%s returned no embedding data", o.name)
+	}
+
+	return ai.EmbeddingResponse{
+		Embedding: embResp.Data[0].Embedding,
+		Model:     embResp.Model,
+	}, nil
+}
+
 // Stream implements ai.StreamProvider using Server-Sent Events (SSE).
 // It calls /v1/chat/completions with stream:true and parses the event stream.
 func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {

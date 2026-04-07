@@ -21,6 +21,7 @@ func (db *DB) migrate() error {
 		{1, migrationV1},
 		{2, migrationV2},
 		{3, migrationV3},
+		{4, migrationV4},
 	}
 
 	for _, m := range migrations {
@@ -178,4 +179,21 @@ const migrationV3 = `
 ALTER TABLE npcs ADD COLUMN appearance TEXT NOT NULL DEFAULT '';
 ALTER TABLE npcs ADD COLUMN notes_on_protagonist TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE npcs ADD COLUMN last_seen_turn INTEGER NOT NULL DEFAULT 0;
+`
+
+const migrationV4 = `
+-- RAG chunks table: stores embedded text summaries for long-term memory retrieval
+CREATE TABLE IF NOT EXISTS rag_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    chunk_type TEXT NOT NULL DEFAULT 'summary',
+    turn_start INTEGER NOT NULL DEFAULT 0,
+    turn_end INTEGER NOT NULL DEFAULT 0,
+    embedding BLOB,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_story ON rag_chunks(story_id);
+CREATE INDEX IF NOT EXISTS idx_rag_chunks_story_type ON rag_chunks(story_id, chunk_type);
 `

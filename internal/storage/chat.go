@@ -86,6 +86,36 @@ func (db *DB) GetSessionMessages(sessionID string) ([]ChatMessage, error) {
 	return msgs, rows.Err()
 }
 
+// GetStoryMessagesByTurnRange returns all messages for a story within a turn range [turnStart, turnEnd],
+// ordered chronologically. Used by the RAG summarizer to fetch unsummarized turns.
+func (db *DB) GetStoryMessagesByTurnRange(storyID string, turnStart, turnEnd int) ([]ChatMessage, error) {
+	rows, err := db.conn.Query(
+		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at
+         FROM chat_messages
+         WHERE story_id = ? AND turn >= ? AND turn <= ?
+           AND role IN ('user', 'assistant')
+         ORDER BY turn ASC, id ASC`,
+		storyID, turnStart, turnEnd,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting story messages by turn range: %w", err)
+	}
+	defer rows.Close()
+
+	var msgs []ChatMessage
+	for rows.Next() {
+		var m ChatMessage
+		if err := rows.Scan(
+			&m.ID, &m.SessionID, &m.StoryID, &m.Turn, &m.Role,
+			&m.Content, &m.MessageType, &m.MetadataJSON, &m.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning story message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	return msgs, rows.Err()
+}
+
 // CountSessionMessages returns the number of messages in a session.
 func (db *DB) CountSessionMessages(sessionID string) (int, error) {
 	var count int

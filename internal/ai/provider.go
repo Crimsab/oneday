@@ -60,6 +60,18 @@ type StreamProvider interface {
 	Stream(ctx context.Context, req Request) (<-chan StreamChunk, error)
 }
 
+// EmbeddingRequest holds parameters for a text embedding request.
+type EmbeddingRequest struct {
+	Input string `json:"input"`
+	Model string `json:"model,omitempty"`
+}
+
+// EmbeddingResponse holds the result of an embedding generation.
+type EmbeddingResponse struct {
+	Embedding []float32 `json:"embedding"`
+	Model     string    `json:"model"`
+}
+
 // ProviderError wraps an error with the provider name that caused it.
 type ProviderError struct {
 	ProviderName string
