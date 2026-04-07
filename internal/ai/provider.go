@@ -43,6 +43,23 @@ type Provider interface {
 	Complete(ctx context.Context, req Request) (Response, error)
 }
 
+// StreamChunk is a piece of a streamed AI response.
+type StreamChunk struct {
+	Content string // incremental text delta
+	Done    bool   // true on the final chunk (no more data)
+	Error   error  // non-nil if the stream encountered an error
+}
+
+// StreamProvider extends Provider with streaming capability.
+// Providers that support streaming implement this interface in addition to Provider.
+type StreamProvider interface {
+	Provider
+	// Stream sends a request and returns a channel of incremental chunks.
+	// The channel is closed when streaming completes (after a Done chunk).
+	// The caller must consume all chunks or cancel the context to avoid goroutine leaks.
+	Stream(ctx context.Context, req Request) (<-chan StreamChunk, error)
+}
+
 // ProviderError wraps an error with the provider name that caused it.
 type ProviderError struct {
 	ProviderName string

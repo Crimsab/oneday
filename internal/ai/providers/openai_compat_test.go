@@ -3,6 +3,7 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -100,4 +101,99 @@ func TestOpenAICompatNoChoices(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for empty choices")
 	}
+}
+
+// sseEvent formats a single SSE data line for testing.
+func sseEvent(content string) string {
+	payload := fmt.Sprintf(`{"choices":[{"delta":{"content":%q}}]}`, content)
+	return "data: " + payload + "\n\n"
+}
+
+func TestOpenAICompatStream(t *testing.T) {
+	chunks := []string{"Hello", ", ", "world", "!"}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		// Verify stream:true was sent.
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["stream"] != true {
+			t.Errorf("stream = %v, want true", body["stream"])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		for _, c := range chunks {
+			fmt.Fprint(w, sseEvent(c))
+			flusher.Flush()
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:    "sse-provider",
+		BaseURL: server.URL,
+		Timeout: 5 * time.Second,
+	})
+
+	ch, err := provider.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var got string
+	var gotDone bool
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("chunk error: %v", chunk.Error)
+		}
+		if chunk.Done {
+			gotDone = true
+			break
+		}
+		got += chunk.Content
+	}
+
+	if got != "Hello, world!" {
+		t.Errorf("content = %q, want %q", got, "Hello, world!")
+	}
+	if !gotDone {
+		t.Error("expected Done chunk")
+	}
+}
+
+func TestOpenAICompatStreamServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:    "error-stream",
+		BaseURL: server.URL,
+		Timeout: 5 * time.Second,
+	})
+
+	_, err := provider.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err == nil {
+		t.Error("expected error for non-200 stream response")
+	}
+}
+
+func TestOpenAICompatStreamImplementsStreamProvider(t *testing.T) {
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:    "type-check",
+		BaseURL: "http://localhost",
+		Timeout: time.Second,
+	})
+	// Compile-time check: OpenAICompat must satisfy ai.StreamProvider.
+	var _ ai.StreamProvider = provider
 }

@@ -51,3 +51,43 @@ func (r *Router) ProviderNames() []string {
 	}
 	return names
 }
+
+// Stream tries each provider in order, preferring StreamProvider implementations.
+// If no provider supports streaming it falls back to Complete and wraps the result
+// in a single-chunk channel to simulate streaming.
+// Returns the channel, the name of the provider used, and any error.
+func (r *Router) Stream(ctx context.Context, req Request) (<-chan StreamChunk, string, error) {
+	var errors []string
+
+	// First pass: prefer providers that natively support streaming.
+	for _, p := range r.providers {
+		sp, ok := p.(StreamProvider)
+		if !ok {
+			continue
+		}
+		ch, err := sp.Stream(ctx, req)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s(stream): %s", p.Name(), err))
+			continue
+		}
+		return ch, p.Name(), nil
+	}
+
+	// Second pass: fall back to Complete and simulate a one-chunk stream.
+	for _, p := range r.providers {
+		resp, err := p.Complete(ctx, req)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("%s: %s", p.Name(), err))
+			continue
+		}
+		ch := make(chan StreamChunk, 2)
+		go func() {
+			ch <- StreamChunk{Content: resp.Content}
+			ch <- StreamChunk{Done: true}
+			close(ch)
+		}()
+		return ch, p.Name(), nil
+	}
+
+	return nil, "", fmt.Errorf("all AI providers failed:\n  %s", strings.Join(errors, "\n  "))
+}
