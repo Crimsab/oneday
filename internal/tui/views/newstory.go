@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -100,7 +101,7 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 		m.errMsg = ""
 		// Append AI response to history
 		m.history.WriteString(theme.Subtitle.Render("Narrator") + "\n")
-		m.history.WriteString(msg.content + "\n\n")
+		m.history.WriteString(components.RenderMarkdown(msg.content) + "\n")
 		m.viewport.SetContent(m.history.String())
 		m.viewport.GotoBottom()
 
