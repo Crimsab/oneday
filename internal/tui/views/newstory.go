@@ -33,7 +33,7 @@ type NewStoryModel struct {
 	viewport viewport.Model
 	input    textarea.Model
 	spinner  spinner.Model
-	history  strings.Builder // rendered conversation
+	history  *strings.Builder // rendered conversation (pointer to avoid copy panic)
 	waiting  bool            // waiting for AI
 	errMsg   string
 	width    int
@@ -59,6 +59,7 @@ func NewNewStoryModel(creator *engine.StoryCreator) NewStoryModel {
 		viewport: vp,
 		input:    ta,
 		spinner:  sp,
+		history:  &strings.Builder{},
 	}
 }
 
