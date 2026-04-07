@@ -68,6 +68,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		// Global quit from any view
 		if msg.String() == "ctrl+c" {
+			a.cleanup()
 			return a, tea.Quit
 		}
 
@@ -84,6 +85,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case views.MenuSelectedMsg:
 		switch msg.Action {
 		case views.ActionQuit:
+			a.cleanup()
 			return a, tea.Quit
 		case views.ActionNewStory:
 			creator := engine.NewStoryCreator(a.router, a.db)
@@ -125,6 +127,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.narrative != nil {
 			// Handle esc to return to menu
 			if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEsc {
+				a.narrative.CloseSession()
 				a.view = ViewMenu
 				return a, nil
 			}
@@ -162,6 +165,13 @@ func (a *App) SetView(v View) {
 	a.view = v
 }
 
+// cleanup closes any active session before quitting.
+func (a *App) cleanup() {
+	if a.narrative != nil {
+		a.narrative.CloseSession()
+	}
+}
+
 // enterNarrativeView loads story data, creates a narrator, and starts narration.
 func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 	story, err := a.db.GetStory(storyID)
@@ -179,7 +189,12 @@ func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 		return nil, fmt.Errorf("loading world state: %w", err)
 	}
 
-	narrator := engine.NewNarrator(a.router, a.db, story, char, world)
+	session, err := engine.NewGameSession(a.db, storyID, a.cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("creating game session: %w", err)
+	}
+
+	narrator := engine.NewNarrator(a.router, a.db, story, char, world, session, engine.DefaultContextConfig())
 	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
 	m.SetSize(a.width, a.height)
 	a.narrative = &m
