@@ -20,6 +20,7 @@ func (db *DB) migrate() error {
 	}{
 		{1, migrationV1},
 		{2, migrationV2},
+		{3, migrationV3},
 	}
 
 	for _, m := range migrations {
@@ -170,4 +171,11 @@ CREATE TABLE IF NOT EXISTS saves (
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_saves_story ON saves(story_id);
+`
+
+const migrationV3 = `
+-- Add new NPC columns: appearance, notes_on_protagonist, last_seen_turn
+ALTER TABLE npcs ADD COLUMN appearance TEXT NOT NULL DEFAULT '';
+ALTER TABLE npcs ADD COLUMN notes_on_protagonist TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE npcs ADD COLUMN last_seen_turn INTEGER NOT NULL DEFAULT 0;
 `

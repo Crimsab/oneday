@@ -25,6 +25,7 @@ func DefaultContextConfig() ContextConfig {
 
 // BuildContext assembles the full message list for an AI call.
 // Order: [system prompt, state summary, optional RAG, ...recent messages, current user input]
+// npcsContext is an optional pre-formatted string of known NPC data to inject into the system prompt.
 func BuildContext(
 	story *storage.Story,
 	char *storage.Character,
@@ -32,6 +33,7 @@ func BuildContext(
 	recentMessages []storage.ChatMessage,
 	ragChunks []string,
 	currentInput string,
+	npcsContext string,
 ) []ai.Message {
 	msgs := make([]ai.Message, 0, len(recentMessages)+4)
 
@@ -43,6 +45,7 @@ func BuildContext(
 		char.Name,
 		char.Background,
 		char.StatsJSON,
+		npcsContext,
 	)
 	msgs = append(msgs, ai.Message{
 		Role:    ai.RoleSystem,
