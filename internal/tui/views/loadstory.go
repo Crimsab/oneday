@@ -99,8 +99,13 @@ func (m LoadStoryModel) View() string {
 		// Format last played date
 		lastPlayed := formatRelativeTime(story.UpdatedAt)
 
-		// Extract genre from setting JSON (best-effort)
-		genre := extractGenre(story.SettingJSON)
+		// Use dedicated Genre column; fall back to extractGenre for pre-V6 stories.
+		genre := story.Genre
+		if genre == "" {
+			genre = extractGenre(story.SettingJSON)
+		} else {
+			genre = "[" + genre + "]"
+		}
 
 		line := fmt.Sprintf("%s%-30s  %s  %s", cursor, truncate(story.Name, 28), genre, lastPlayed)
 		sb.WriteString(itemStyle.Render(line))

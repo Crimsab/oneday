@@ -100,11 +100,21 @@ func (m NarrativeModel) Init() tea.Cmd {
 	return textarea.Blink
 }
 
-// StartNarration kicks off the first AI turn.
+// StartNarration kicks off the first AI turn. Only call for brand-new stories.
 func (m *NarrativeModel) StartNarration() tea.Cmd {
 	m.waiting = true
 	return func() tea.Msg {
 		resp, err := m.narrator.StartNarration(context.Background())
+		return narrativeResponseMsg{response: resp, err: err}
+	}
+}
+
+// ResumeNarration restores the narrator state for an existing story without
+// sending a first-turn AI prompt. Use this when loading or resuming a story.
+func (m *NarrativeModel) ResumeNarration() tea.Cmd {
+	m.waiting = true
+	return func() tea.Msg {
+		resp, err := m.narrator.ResumeNarration(context.Background())
 		return narrativeResponseMsg{response: resp, err: err}
 	}
 }
@@ -646,23 +656,17 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 
 	sb.WriteString("\n")
 
-	// Parse inventory JSON — could be a list or a map with sections.
+	// Parse inventory JSON from the dedicated InventoryJSON column.
+	// This is the canonical source; stats_json no longer stores inventory.
 	var inventoryRaw interface{}
 	if char.InventoryJSON != "" && char.InventoryJSON != "null" {
 		_ = json.Unmarshal([]byte(char.InventoryJSON), &inventoryRaw)
 	}
 
-	// Parse stats for currency, equipped items, and inventory within stats.
+	// Parse stats for currency only.
 	var stats map[string]interface{}
 	if char.StatsJSON != "" {
 		_ = json.Unmarshal([]byte(char.StatsJSON), &stats)
-	}
-
-	// Check if inventory is in stats (AI may store there).
-	if inventoryRaw == nil && stats != nil {
-		if inv, ok := stats["inventory"]; ok {
-			inventoryRaw = inv
-		}
 	}
 
 	// Try to extract inventory sections.

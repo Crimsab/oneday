@@ -95,8 +95,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, cmd
 
 	case views.StorySelectedMsg:
-		// User selected a story from the load list
-		cmd, err := a.enterNarrativeView(msg.StoryID)
+		// User selected an existing story from the load list — resume, don't restart.
+		cmd, err := a.enterNarrativeViewResume(msg.StoryID)
 		if err != nil {
 			a.view = ViewMenu
 			return a, nil
@@ -175,7 +175,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.cleanup()
 			return a, tea.Quit
 		case views.ActionNewStory:
-			creator := engine.NewStoryCreator(a.router, a.db)
+			creator := engine.NewStoryCreator(a.router, a.db, a.cfg.AI.Generation)
 			m := views.NewNewStoryModel(creator)
 			m.SetSize(a.width, a.height)
 			a.newStory = &m
@@ -350,6 +350,7 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 	narrator := engine.NewNarrator(
 		a.router, a.db, story, char, world, session,
 		engine.DefaultContextConfig(),
+		a.cfg.AI.Generation,
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)
@@ -359,10 +360,13 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 	a.narrative = &m
 	a.view = ViewNarrative
 
-	return a.narrative.StartNarration(), nil
+	// Save was restored — resume from where we left off without re-triggering
+	// the first-turn AI prompt.
+	return a.narrative.ResumeNarration(), nil
 }
 
 // enterNarrativeView loads story data, creates a narrator, and starts narration.
+// Only use this for brand-new stories. For existing stories use enterNarrativeViewResume.
 func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 	story, err := a.db.GetStory(storyID)
 	if err != nil {
@@ -390,6 +394,7 @@ func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 	narrator := engine.NewNarrator(
 		a.router, a.db, story, char, world, session,
 		engine.DefaultContextConfig(),
+		a.cfg.AI.Generation,
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)
@@ -400,4 +405,52 @@ func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 	a.view = ViewNarrative
 
 	return a.narrative.StartNarration(), nil
+}
+
+// enterNarrativeViewResume loads an existing story and resumes from the last
+// saved turn without sending a first-turn AI prompt.
+func (a *App) enterNarrativeViewResume(storyID string) (tea.Cmd, error) {
+	story, err := a.db.GetStory(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading story: %w", err)
+	}
+
+	char, err := a.db.GetCharacterByStory(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading character: %w", err)
+	}
+
+	world, err := a.db.GetWorldState(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading world state: %w", err)
+	}
+
+	// Close existing session before opening a new one.
+	if a.narrative != nil {
+		a.narrative.CloseSession()
+	}
+
+	session, err := engine.NewGameSession(a.db, storyID, a.cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("creating game session: %w", err)
+	}
+
+	_ = a.db.UpdateStoryTimestamp(storyID)
+
+	narrator := engine.NewNarrator(
+		a.router, a.db, story, char, world, session,
+		engine.DefaultContextConfig(),
+		a.cfg.AI.Generation,
+		a.cfg.DataDir,
+		a.cfg.Game.AutosaveEvery,
+	)
+	narrator.SetRAG(a.buildRAG(storyID))
+	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
+	m.SetSize(a.width, a.height)
+	a.narrative = &m
+	a.view = ViewNarrative
+
+	// Resume from last turn — world.CurrentTurn is set from DB, session turn
+	// will be synced inside ResumeNarration via SetTurn.
+	return a.narrative.ResumeNarration(), nil
 }

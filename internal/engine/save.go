@@ -103,9 +103,11 @@ func LoadGame(
 		return nil, nil, fmt.Errorf("deserializing world state: %w", err)
 	}
 
-	// Persist the restored state to DB.
-	if err := db.UpdateCharacterStats(&char); err != nil {
-		return nil, nil, fmt.Errorf("restoring character stats: %w", err)
+	// Persist the fully restored state to DB — use UpdateCharacterFull so
+	// traits_json, skills_json, inventory_json, and known_recipes_json are all
+	// written back, not just stats_json.
+	if err := db.UpdateCharacterFull(&char); err != nil {
+		return nil, nil, fmt.Errorf("restoring character state: %w", err)
 	}
 	if err := db.UpdateWorldState(&world); err != nil {
 		return nil, nil, fmt.Errorf("restoring world state: %w", err)

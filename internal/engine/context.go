@@ -52,8 +52,12 @@ func BuildContext(
 	}
 
 	// 1. Build system prompt using the NarratorSystem prompt builder.
+	// Include genre and tone from the story model so the narrator is properly
+	// calibrated even when they are not embedded in the setting JSON.
 	systemPrompt := prompts.NarratorSystem(
 		story.Name,
+		story.Genre,
+		story.Tone,
 		story.SettingJSON,
 		story.StatsSchemaJSON,
 		char.Name,

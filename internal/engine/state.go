@@ -43,6 +43,17 @@ func ApplyStateChanges(
 		return nil, fmt.Errorf("parsing character stats: %w", err)
 	}
 
+	// Parse character inventory JSON into a separate mutable slice.
+	// We keep inventory in char.InventoryJSON (not inside stats_json) so that
+	// the full item objects (name, type, rarity, effects, description) survive.
+	var invItems []interface{}
+	if char.InventoryJSON != "" && char.InventoryJSON != "null" {
+		_ = json.Unmarshal([]byte(char.InventoryJSON), &invItems)
+	}
+	if invItems == nil {
+		invItems = []interface{}{}
+	}
+
 	var applied []StateChange
 
 	for key, val := range changes {
@@ -162,56 +173,74 @@ func ApplyStateChanges(
 			})
 
 		case "inventory_add":
-			items := toStringSlice(val)
-			if len(items) == 0 {
-				continue
+			// Accept both string items and full object items from AI.
+			// String  → normalize to {"name": s, "type": "misc", "effects": []}
+			// Object  → use as-is (name, type, rarity, effects, description)
+			rawSlice, ok := val.([]interface{})
+			if !ok {
+				// Single item passed as non-slice — wrap it.
+				rawSlice = []interface{}{val}
 			}
-			inv, _ := stats["inventory"].(map[string]interface{})
-			if inv == nil {
-				inv = map[string]interface{}{"backpack": []interface{}{}}
-				stats["inventory"] = inv
-			}
-			backpack, _ := inv["backpack"].([]interface{})
-			for _, item := range items {
-				backpack = append(backpack, item)
+			for _, rawItem := range rawSlice {
+				var itemObj map[string]interface{}
+				switch v := rawItem.(type) {
+				case string:
+					if v == "" {
+						continue
+					}
+					itemObj = map[string]interface{}{
+						"name":    v,
+						"type":    "misc",
+						"effects": []interface{}{},
+					}
+				case map[string]interface{}:
+					if v["name"] == "" || v["name"] == nil {
+						continue
+					}
+					itemObj = v
+				default:
+					continue
+				}
+				invItems = append(invItems, itemObj)
 				applied = append(applied, StateChange{
 					Target: "character",
-					Field:  "inventory.backpack",
+					Field:  "inventory",
 					Old:    nil,
-					New:    item,
+					New:    itemObj,
 				})
 			}
-			inv["backpack"] = backpack
 
 		case "inventory_remove":
-			items := toStringSlice(val)
-			if len(items) == 0 {
+			// Remove by name — case-insensitive match against item.name or string item.
+			removeNames := toStringSlice(val)
+			if len(removeNames) == 0 {
 				continue
 			}
-			inv, _ := stats["inventory"].(map[string]interface{})
-			if inv == nil {
-				continue
+			removeSet := make(map[string]bool, len(removeNames))
+			for _, n := range removeNames {
+				removeSet[strings.ToLower(n)] = true
 			}
-			backpack, _ := inv["backpack"].([]interface{})
-			removeSet := make(map[string]bool)
-			for _, item := range items {
-				removeSet[item] = true
-			}
-			newBackpack := make([]interface{}, 0, len(backpack))
-			for _, item := range backpack {
-				itemStr, _ := item.(string)
-				if !removeSet[itemStr] {
-					newBackpack = append(newBackpack, item)
-				} else {
+			newItems := make([]interface{}, 0, len(invItems))
+			for _, rawItem := range invItems {
+				var itemName string
+				switch v := rawItem.(type) {
+				case string:
+					itemName = v
+				case map[string]interface{}:
+					itemName, _ = v["name"].(string)
+				}
+				if removeSet[strings.ToLower(itemName)] {
 					applied = append(applied, StateChange{
 						Target: "character",
-						Field:  "inventory.backpack",
-						Old:    item,
+						Field:  "inventory",
+						Old:    rawItem,
 						New:    nil,
 					})
+				} else {
+					newItems = append(newItems, rawItem)
 				}
 			}
-			inv["backpack"] = newBackpack
+			invItems = newItems
 
 		// --- Character growth cases ---
 
@@ -552,6 +581,14 @@ func ApplyStateChanges(
 		return applied, fmt.Errorf("marshaling updated character stats: %w", err)
 	}
 	char.StatsJSON = string(statsBytes)
+
+	// Marshal the inventory items back to char.InventoryJSON (separate column).
+	invBytes, err := json.Marshal(invItems)
+	if err != nil {
+		return applied, fmt.Errorf("marshaling updated inventory: %w", err)
+	}
+	char.InventoryJSON = string(invBytes)
+
 	char.UpdatedAt = time.Now()
 	world.UpdatedAt = time.Now()
 
