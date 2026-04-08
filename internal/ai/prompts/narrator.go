@@ -41,7 +41,8 @@ Current Stats: %s
 - Track the current location
 
 ## Response Format
-You MUST respond with ONLY a JSON block in this exact format:
+You MUST respond with ONLY valid JSON matching this exact format.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
 `+"```json"+`
 {
   "narrative": "Your narrative text here. Can be multiple paragraphs separated by \\n\\n.",

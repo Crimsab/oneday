@@ -98,9 +98,10 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 
 	start := time.Now()
 	req := ai.Request{
-		Messages:    messages,
-		Temperature: 0.80,
-		MaxTokens:   1024,
+		Messages:       messages,
+		Temperature:    0.80,
+		MaxTokens:      1024,
+		ResponseFormat: ai.CraftingResponseFormat(),
 	}
 
 	resp, err := ce.narrator.router.Complete(ctx, req)
@@ -217,13 +218,16 @@ func GetKnownRecipes(char *storage.Character) ([]CraftedItem, error) {
 
 // parseCraftingResponse extracts the JSON block from an AI crafting response.
 func parseCraftingResponse(text string) (*CraftingResponse, error) {
-	matches := narratorJSONRe.FindStringSubmatch(text)
-	if len(matches) < 2 {
+	raw, err := ai.ExtractJSONPayload(text)
+	if err != nil {
+		return nil, fmt.Errorf("extracting crafting JSON: %w", err)
+	}
+	if raw == "" {
 		return nil, fmt.Errorf("no JSON block found in crafting response")
 	}
 
 	var cr CraftingResponse
-	if err := json.Unmarshal([]byte(matches[1]), &cr); err != nil {
+	if err := json.Unmarshal([]byte(raw), &cr); err != nil {
 		return nil, fmt.Errorf("unmarshaling crafting JSON: %w", err)
 	}
 

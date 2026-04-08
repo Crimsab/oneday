@@ -35,7 +35,8 @@ You are a collaborative game master. The player can:
 - Break the internal consistency of the established world
 
 ## Response Format
-Always respond with ONLY valid JSON in this exact format:
+Always respond with ONLY valid JSON in this exact format.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
 `+"```json"+`
 {
   "message": "Your acknowledgment and explanation of how this addition will manifest in the story (1-3 sentences, conversational tone as GM)",

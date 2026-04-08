@@ -113,9 +113,10 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 
 	start := time.Now()
 	req := ai.Request{
-		Messages:    messages,
-		Temperature: 0.85,
-		MaxTokens:   1024,
+		Messages:       messages,
+		Temperature:    0.85,
+		MaxTokens:      1024,
+		ResponseFormat: ai.NarrativeResponseFormat(),
 	}
 
 	resp, err := ce.narrator.router.Complete(ctx, req)
@@ -305,9 +306,10 @@ func (ce *CombatEngine) narrateVictory(ctx context.Context) (*NarrativeResponse,
 		{Role: "user", Content: prompt},
 	}
 	req := ai.Request{
-		Messages:    messages,
-		Temperature: 0.85,
-		MaxTokens:   512,
+		Messages:       messages,
+		Temperature:    0.85,
+		MaxTokens:      512,
+		ResponseFormat: ai.NarrativeResponseFormat(),
 	}
 	resp, err := ce.narrator.router.Complete(ctx, req)
 	if err != nil {
@@ -331,9 +333,10 @@ func (ce *CombatEngine) narrateDefeat(ctx context.Context) (string, string, erro
 		{Role: "user", Content: prompt},
 	}
 	req := ai.Request{
-		Messages:    messages,
-		Temperature: 0.85,
-		MaxTokens:   512,
+		Messages:       messages,
+		Temperature:    0.85,
+		MaxTokens:      512,
+		ResponseFormat: ai.CombatDefeatResponseFormat(),
 	}
 	resp, err := ce.narrator.router.Complete(ctx, req)
 	if err != nil {
@@ -349,8 +352,8 @@ func (ce *CombatEngine) narrateDefeat(ctx context.Context) (string, string, erro
 	raw := resp.Content
 	// Try to extract JSON block.
 	var defeatResp defeatResponse
-	if matches := narratorJSONRe.FindStringSubmatch(raw); len(matches) >= 2 {
-		_ = json.Unmarshal([]byte(matches[1]), &defeatResp)
+	if payload, err := ai.ExtractJSONPayload(raw); err == nil && payload != "" {
+		_ = json.Unmarshal([]byte(payload), &defeatResp)
 	}
 	if defeatResp.Outcome == "" {
 		defeatResp.Outcome = "unconscious"

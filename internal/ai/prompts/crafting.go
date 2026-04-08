@@ -49,7 +49,8 @@ The player wants to craft or create something. Your job is to:
 %s
 
 ## Response Format
-Respond with ONLY a JSON block in this exact format:
+Respond with ONLY valid JSON matching this exact format.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
 `+"```json"+`
 {
   "feasible": true,

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -16,9 +15,6 @@ import (
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 )
-
-// narratorJSONRe matches fenced ```json ... ``` blocks in AI output.
-var narratorJSONRe = regexp.MustCompile("(?s)```json\\s*\\n(.*?)\\n```")
 
 // AutosaveCompleteMsg is sent via Bubbletea when an autosave finishes.
 type AutosaveCompleteMsg struct {
@@ -259,9 +255,10 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 
 	start := time.Now()
 	req := ai.Request{
-		Messages:    messages,
-		Temperature: n.genCfg.Temperature,
-		MaxTokens:   n.genCfg.MaxTokens,
+		Messages:       messages,
+		Temperature:    n.genCfg.Temperature,
+		MaxTokens:      n.genCfg.MaxTokens,
+		ResponseFormat: ai.NarrativeResponseFormat(),
 	}
 
 	resp, err := n.router.Complete(ctx, req)
@@ -454,13 +451,16 @@ func (n *Narrator) GetChapterSummaries() (string, error) {
 // parseNarrativeFromAI extracts the JSON block from an AI response and
 // unmarshals it directly into engine.NarrativeResponse (which includes Location).
 func parseNarrativeFromAI(text string) (*NarrativeResponse, error) {
-	matches := narratorJSONRe.FindStringSubmatch(text)
-	if len(matches) < 2 {
+	raw, err := ai.ExtractJSONPayload(text)
+	if err != nil {
+		return nil, fmt.Errorf("extracting narrative JSON: %w", err)
+	}
+	if raw == "" {
 		return nil, fmt.Errorf("no JSON block found in AI response")
 	}
 
 	var nr NarrativeResponse
-	if err := json.Unmarshal([]byte(matches[1]), &nr); err != nil {
+	if err := json.Unmarshal([]byte(raw), &nr); err != nil {
 		return nil, fmt.Errorf("unmarshaling narrative JSON: %w", err)
 	}
 

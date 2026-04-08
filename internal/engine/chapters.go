@@ -198,8 +198,9 @@ func (cm *ChapterManager) generateChapterSummary(ctx context.Context, startTurn,
 			{Role: ai.RoleSystem, Content: prompts.ChapterSummarySystem},
 			{Role: ai.RoleUser, Content: prompts.ChapterSummaryUser(transcript.String())},
 		},
-		Temperature: 0.5,
-		MaxTokens:   1024,
+		Temperature:    0.5,
+		MaxTokens:      1024,
+		ResponseFormat: ai.ChapterSummaryResponseFormat(),
 	}
 
 	resp, err := cm.router.Complete(ctx, req)
@@ -222,10 +223,9 @@ func (cm *ChapterManager) generateChapterSummary(ctx context.Context, startTurn,
 
 // extractJSONFromResponse extracts a ```json ... ``` block from an AI response.
 func extractJSONFromResponse(text string) string {
-	// Reuse the same regex pattern as narratorJSONRe.
-	matches := narratorJSONRe.FindStringSubmatch(text)
-	if len(matches) >= 2 {
-		return matches[1]
+	raw, err := ai.ExtractJSONPayload(text)
+	if err == nil {
+		return raw
 	}
 	return ""
 }

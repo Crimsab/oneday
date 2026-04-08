@@ -72,7 +72,7 @@ type NarrativeChoice struct {
 // unmarshals it into a NarrativeResponse.  Returns nil, nil when no JSON block
 // is present (pure prose response).
 func ParseNarrativeJSON(text string) (*NarrativeResponse, error) {
-	raw, err := extractJSONBlock(text)
+	raw, err := ExtractJSONPayload(text)
 	if err != nil {
 		return nil, err
 	}
@@ -106,4 +106,25 @@ func extractJSONBlock(text string) (string, error) {
 		return "", err
 	}
 	return matches[1], nil
+}
+
+// ExtractJSONPayload returns a JSON payload from an AI response.
+// It first looks for a fenced ```json block, then falls back to the entire
+// trimmed response when that response is itself valid JSON.
+func ExtractJSONPayload(text string) (string, error) {
+	raw, err := extractJSONBlock(text)
+	if err != nil || raw != "" {
+		return raw, err
+	}
+
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return "", nil
+	}
+
+	var payload json.RawMessage
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return "", nil
+	}
+	return trimmed, nil
 }
