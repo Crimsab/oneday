@@ -53,8 +53,8 @@ type NarrativeModel struct {
 	overlay          components.OverlayModel
 	achievementPopup components.AchievementPopupModel
 	input            textarea.Model
-	history          strings.Builder // full narrative text accumulated so far
-	waiting          bool            // waiting for AI response
+	history          *strings.Builder // full narrative text accumulated so far
+	waiting          bool             // waiting for AI response
 	errMsg           string
 	statusMsg        string    // temporary status message (e.g. "Autosaved")
 	statusExpiry     time.Time // when to clear the status message
@@ -99,6 +99,7 @@ func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) Narrative
 		overlay:          components.NewOverlay(),
 		achievementPopup: components.NewAchievementPopup(),
 		input:            ta,
+		history:          &strings.Builder{},
 		inputFocus:       false, // start on choice list
 		currentMood:      "neutral",
 	}
