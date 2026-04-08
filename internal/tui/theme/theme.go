@@ -162,3 +162,28 @@ var (
 	SuccessText = lipgloss.NewStyle().
 		Foreground(Success)
 )
+
+// Rarity colors for achievement popup.
+var (
+	RarityCommon    = lipgloss.Color("#A0A0A0")
+	RarityUncommon  = lipgloss.Color("#4CAF50")
+	RarityRare      = lipgloss.Color("#2196F3")
+	RarityEpic      = lipgloss.Color("#9C27B0")
+	RarityLegendary = lipgloss.Color("#FFD700")
+)
+
+// RarityColor maps a rarity string to its display color.
+func RarityColor(rarity string) lipgloss.Color {
+	switch rarity {
+	case "uncommon":
+		return RarityUncommon
+	case "rare":
+		return RarityRare
+	case "epic":
+		return RarityEpic
+	case "legendary":
+		return RarityLegendary
+	default: // common or unknown
+		return RarityCommon
+	}
+}

@@ -54,7 +54,7 @@ You MUST respond with ONLY a JSON block in this exact format:
   "location": "Current location name",
   "state_changes": {},
   "challenges": [],
-  "achievements": [],
+  "achievement_earned": null,
   "chapter_end": false,
   "chapter_title": ""
 }
@@ -193,6 +193,41 @@ Challenge types:
 - Branch your narrative meaningfully based on pass vs fail — don't make fail states dead ends
 - Mini-games are for special dramatic moments: gambling (RPS), rituals (memory), traps/dodging (quicktime), puzzles (riddle)
 - Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama
+
+## Achievements
+
+Award an achievement when the player does something **noteworthy**. Reserve them for moments that feel special, unexpected, or represent significant progress. Most turns should NOT have an achievement — set "achievement_earned" to null.
+
+**Good triggers:** solving a problem creatively, major story milestones, surviving something difficult, choosing an unexpected path, mastering a skill, discovering something hidden, dramatic consequences of a choice.
+
+**Bad triggers:** routine actions, first conversation, basic combat victories, trivial purchases.
+
+**Rules:**
+1. Maximum ONE achievement per turn
+2. The name must be evocative and unique (1-5 words)
+3. Description: 1-2 sentences explaining what the player did
+4. Never repeat an achievement — check the Previously Earned Achievements list below
+5. The achievement should make the player feel recognized
+
+**Categories:** story, combat, social, exploration, skill, creative, meta
+
+**Rarity distribution:**
+- common (~30%%): routine noteworthy moments — "won first combat", "learned a new skill"
+- uncommon (~25%%): solid accomplishments — "completed a side quest", "made a meaningful ally"
+- rare (~20%%): impressive feats — "cleared a dungeon without fighting"
+- epic (~15%%): truly exceptional — "turned a boss into an ally", "discovered a hidden ending"
+- legendary (~10%%): once-in-a-story moments — "defeated the final boss with words alone"
+
+**Output format when awarding** (inside the JSON block):
+  "achievement_earned": {
+    "name": "Il Diplomatico",
+    "description": "Hai convinto il Lupo delle Ombre a diventare tuo alleato invece di combatterlo",
+    "rarity": "epic",
+    "category": "social",
+    "context": "Turn 147, Chapter 3 — Boss encounter resolved peacefully"
+  }
+
+Set "achievement_earned": null when no achievement is warranted (most turns).
 
 ## General Rules
 1. ALWAYS respond with valid JSON in the format above

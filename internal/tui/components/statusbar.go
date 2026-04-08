@@ -24,8 +24,10 @@ type StatusBarData struct {
 
 // StatusBarModel renders the bottom status bar.
 type StatusBarModel struct {
-	data  StatusBarData
-	width int
+	data      StatusBarData
+	width     int
+	moodBG    lipgloss.Color
+	hasMoodBG bool
 }
 
 // NewStatusBar creates a status bar.
@@ -88,5 +90,21 @@ func (s StatusBarModel) View() string {
 
 	bar := lipgloss.JoinHorizontal(lipgloss.Top, vitals, spacer, aiInfo)
 
-	return theme.StatusBar.Width(s.width).Render(bar)
+	barStyle := theme.StatusBar.Width(s.width)
+	if s.hasMoodBG {
+		barStyle = barStyle.Background(s.moodBG)
+	}
+	return barStyle.Render(bar)
+}
+
+// SetMoodColor sets the background color tint for the status bar based on narrative mood.
+// Pass an empty string to reset to the default theme color.
+func (s *StatusBarModel) SetMoodColor(bg lipgloss.Color) {
+	if bg == "" {
+		s.hasMoodBG = false
+		s.moodBG = ""
+	} else {
+		s.moodBG = bg
+		s.hasMoodBG = true
+	}
 }

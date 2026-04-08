@@ -9,6 +9,15 @@ import (
 // jsonBlockRe matches fenced ```json ... ``` blocks in AI output.
 var jsonBlockRe = regexp.MustCompile("(?s)```json\\s*\\n(.*?)\\n```")
 
+// AchievementPayload is the structured achievement data the AI returns when awarding an achievement.
+type AchievementPayload struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Rarity      string `json:"rarity"`
+	Category    string `json:"category"`
+	Context     string `json:"context"`
+}
+
 // NarrativeResponse is the structured JSON payload the AI embeds in its reply.
 // Fields mirror the game engine's NarrativeResponse in internal/engine/types.go
 // but are redeclared here so the ai package stays self-contained.
@@ -18,7 +27,7 @@ type NarrativeResponse struct {
 	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
 	Mood              string                 `json:"mood,omitempty"`
 	ASCIIArt          string                 `json:"ascii_art,omitempty"`
-	AchievementEarned string                 `json:"achievement_earned,omitempty"`
+	AchievementEarned *AchievementPayload    `json:"achievement_earned,omitempty"`
 	Challenge         string                 `json:"challenge,omitempty"`
 }
 

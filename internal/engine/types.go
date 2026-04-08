@@ -1,5 +1,7 @@
 package engine
 
+import "github.com/crimsab/oneday/internal/storage"
+
 // StoryDefinition is the AI-generated story structure (story.json equivalent).
 type StoryDefinition struct {
 	Name        string      `json:"name"`
@@ -83,18 +85,28 @@ func (s StatsSchema) InitialStats() map[string]interface{} {
 	return stats
 }
 
+// AchievementData is the structured achievement payload from the AI response.
+type AchievementData struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Rarity      string `json:"rarity"`
+	Category    string `json:"category"`
+	Context     string `json:"context"`
+}
+
 // NarrativeResponse is the standard AI response format during gameplay (AI-02).
 type NarrativeResponse struct {
-	Narrative    string                 `json:"narrative"`
-	Choices      []Choice               `json:"choices"`
-	StateChanges map[string]interface{} `json:"state_changes,omitempty"`
-	Mood         string                 `json:"mood,omitempty"`
-	Location     string                 `json:"location,omitempty"`
-	Challenges   []*ChallengeSpec       `json:"challenges,omitempty"`
-	Achievements []interface{}          `json:"achievements,omitempty"` // TODO: wire in Phase 7 (achievement engine)
-	ChapterEnd   bool                   `json:"chapter_end,omitempty"`
-	ChapterTitle string                 `json:"chapter_title,omitempty"` // title for the ending chapter
-	CombatStart  *EnemyStats            `json:"combat_start,omitempty"`  // set by AI to initiate combat
+	Narrative            string                 `json:"narrative"`
+	Choices              []Choice               `json:"choices"`
+	StateChanges         map[string]interface{} `json:"state_changes,omitempty"`
+	Mood                 string                 `json:"mood,omitempty"`
+	Location             string                 `json:"location,omitempty"`
+	Challenges           []*ChallengeSpec       `json:"challenges,omitempty"`
+	AchievementEarned    *AchievementData       `json:"achievement_earned,omitempty"`
+	ChapterEnd           bool                   `json:"chapter_end,omitempty"`
+	ChapterTitle         string                 `json:"chapter_title,omitempty"`  // title for the ending chapter
+	CombatStart          *EnemyStats            `json:"combat_start,omitempty"`   // set by AI to initiate combat
+	PersistedAchievement *storage.Achievement   `json:"-"`                        // TUI-only: set after DB persist
 }
 
 // Choice represents an AI-suggested action.

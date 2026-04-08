@@ -29,6 +29,7 @@ func DefaultContextConfig() ContextConfig {
 // Order: [system prompt, state summary, optional RAG, ...recent messages, current user input]
 // npcs is the list of recently-seen NPCs; their data is injected into the system prompt and state summary.
 // lastChapterSummary is the AI-generated summary of the previous chapter (empty if chapter 1).
+// earnedAchievements is the list of already-earned achievement names to prevent duplicates.
 func BuildContext(
 	story *storage.Story,
 	char *storage.Character,
@@ -38,6 +39,7 @@ func BuildContext(
 	ragChunks []string,
 	lastChapterSummary string,
 	currentInput string,
+	earnedAchievements []string,
 ) []ai.Message {
 	msgs := make([]ai.Message, 0, len(recentMessages)+4)
 
@@ -86,7 +88,19 @@ func BuildContext(
 		})
 	}
 
-	// 4. Convert recent DB messages to ai.Message.
+	// 4. Inject previously earned achievements so the AI avoids duplicates.
+	if len(earnedAchievements) > 0 {
+		achContent := "## Previously Earned Achievements\nDo NOT award any achievement with these names (already earned):\n"
+		for _, name := range earnedAchievements {
+			achContent += fmt.Sprintf("- %s\n", name)
+		}
+		msgs = append(msgs, ai.Message{
+			Role:    ai.RoleSystem,
+			Content: achContent,
+		})
+	}
+
+	// 5. Convert recent DB messages to ai.Message.
 	for _, m := range recentMessages {
 		role := ai.RoleUser
 		if m.Role == "assistant" {
@@ -98,7 +112,7 @@ func BuildContext(
 		})
 	}
 
-	// 5. Append the current user input as the final message.
+	// 6. Append the current user input as the final message.
 	msgs = append(msgs, ai.Message{
 		Role:    ai.RoleUser,
 		Content: currentInput,

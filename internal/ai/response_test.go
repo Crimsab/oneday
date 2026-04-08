@@ -103,7 +103,7 @@ func TestNarrativeResponseAllFields(t *testing.T) {
   "state_changes": {"health": -5},
   "mood": "stormy",
   "ascii_art": "~~~~~",
-  "achievement_earned": "survivor",
+  "achievement_earned": {"name": "Survivor", "description": "You endured the storm", "rarity": "common", "category": "story", "context": "Turn 1"},
   "challenge": "Endure the storm"
 }` + "\n```"
 
@@ -114,8 +114,14 @@ func TestNarrativeResponseAllFields(t *testing.T) {
 	if nr.ASCIIArt != "~~~~~" {
 		t.Errorf("ASCIIArt = %q, want %q", nr.ASCIIArt, "~~~~~")
 	}
-	if nr.AchievementEarned != "survivor" {
-		t.Errorf("AchievementEarned = %q", nr.AchievementEarned)
+	if nr.AchievementEarned == nil {
+		t.Fatal("AchievementEarned is nil, want a payload")
+	}
+	if nr.AchievementEarned.Name != "Survivor" {
+		t.Errorf("AchievementEarned.Name = %q, want %q", nr.AchievementEarned.Name, "Survivor")
+	}
+	if nr.AchievementEarned.Rarity != "common" {
+		t.Errorf("AchievementEarned.Rarity = %q, want %q", nr.AchievementEarned.Rarity, "common")
 	}
 	if nr.Challenge != "Endure the storm" {
 		t.Errorf("Challenge = %q", nr.Challenge)
