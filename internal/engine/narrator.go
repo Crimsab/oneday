@@ -21,6 +21,14 @@ type AutosaveCompleteMsg struct {
 	Err error
 }
 
+// NarrativeStreamChunk is a high-level streamed narrative update for the TUI.
+type NarrativeStreamChunk struct {
+	Delta    string
+	Done     bool
+	Err      error
+	Response *NarrativeResponse
+}
+
 // Narrator manages the gameplay AI conversation.
 type Narrator struct {
 	router        *ai.Router
@@ -33,6 +41,9 @@ type Narrator struct {
 	genCfg        config.GenerationConfig // AI generation parameters (temperature, max_tokens, timeout)
 	lastModel     string
 	lastLatency   int64
+	lastTTFT      int64
+	lastUsage     ai.Usage
+	lastStreamed  bool
 	dataDir       string
 	autosaveEvery int
 	rag           *rag.RAG         // optional — nil means RAG is disabled
@@ -103,6 +114,15 @@ func (n *Narrator) LastModel() string { return n.lastModel }
 // LastLatency returns the latency in ms for the last response.
 func (n *Narrator) LastLatency() int64 { return n.lastLatency }
 
+// LastTimeToFirstToken returns the time to first streamed content in ms.
+func (n *Narrator) LastTimeToFirstToken() int64 { return n.lastTTFT }
+
+// LastUsage returns token and cost data for the last AI response.
+func (n *Narrator) LastUsage() ai.Usage { return n.lastUsage }
+
+// LastStreamed reports whether the last response used streaming.
+func (n *Narrator) LastStreamed() bool { return n.lastStreamed }
+
 // Turn returns the current turn number.
 func (n *Narrator) Turn() int { return n.session.Turn() }
 
@@ -142,6 +162,11 @@ func (n *Narrator) CloseSession() {
 // Returns the parsed narrative response.
 func (n *Narrator) StartNarration(ctx context.Context) (*NarrativeResponse, error) {
 	return n.sendTurn(ctx, prompts.FirstTurnUser)
+}
+
+// StartNarrationStream streams the first turn for a brand-new story.
+func (n *Narrator) StartNarrationStream(ctx context.Context) (<-chan NarrativeStreamChunk, error) {
+	return n.streamTurn(ctx, prompts.FirstTurnUser)
 }
 
 // ResumeNarration prepares the narrator to resume an existing story without
@@ -194,7 +219,97 @@ func (n *Narrator) SendAction(ctx context.Context, action string) (*NarrativeRes
 	return n.sendTurn(ctx, action)
 }
 
+// StreamAction streams a player action and emits the final structured response
+// once the upstream provider finishes.
+func (n *Narrator) StreamAction(ctx context.Context, action string) (<-chan NarrativeStreamChunk, error) {
+	return n.streamTurn(ctx, action)
+}
+
 func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeResponse, error) {
+	prep, err := n.prepareTurn(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := n.router.Complete(ctx, prep.req)
+	if err != nil {
+		return nil, err
+	}
+
+	return n.finalizeTurn(ctx, prep, input, resp, 0, false)
+}
+
+func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan NarrativeStreamChunk, error) {
+	prep, err := n.prepareTurn(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	stream, providerName, err := n.router.Stream(ctx, prep.req)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make(chan NarrativeStreamChunk, 32)
+	go func() {
+		defer close(out)
+
+		start := time.Now()
+		var builder strings.Builder
+		var model string
+		var usage ai.Usage
+		var firstTokenMs int64
+
+		for chunk := range stream {
+			if chunk.Error != nil {
+				out <- NarrativeStreamChunk{Err: chunk.Error}
+				return
+			}
+			if chunk.Model != "" {
+				model = chunk.Model
+			}
+			if chunk.Usage.TotalTokens > 0 || chunk.Usage.CostUSD > 0 {
+				usage = chunk.Usage
+			}
+			if chunk.Content != "" {
+				if firstTokenMs == 0 {
+					firstTokenMs = time.Since(start).Milliseconds()
+				}
+				builder.WriteString(chunk.Content)
+				out <- NarrativeStreamChunk{Delta: chunk.Content}
+			}
+			if chunk.Done {
+				resp := ai.Response{
+					Content:   builder.String(),
+					Model:     model,
+					Provider:  providerName,
+					LatencyMs: time.Since(start).Milliseconds(),
+					Usage:     usage,
+				}
+				narrative, err := n.finalizeTurn(ctx, prep, input, resp, firstTokenMs, true)
+				if err != nil {
+					out <- NarrativeStreamChunk{Err: err}
+					return
+				}
+				out <- NarrativeStreamChunk{
+					Done:     true,
+					Response: narrative,
+				}
+				return
+			}
+		}
+	}()
+
+	return out, nil
+}
+
+type preparedTurn struct {
+	inputType   string
+	currentTurn int
+	req         ai.Request
+}
+
+func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn, error) {
 	// Determine input type.
 	inputType := "free_action"
 	if strings.HasPrefix(input, "[Choice ") {
@@ -253,21 +368,31 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		earnedAchievements,
 	)
 
-	start := time.Now()
-	req := ai.Request{
-		Messages:       messages,
-		Temperature:    n.genCfg.Temperature,
-		MaxTokens:      n.genCfg.MaxTokens,
-		ResponseFormat: ai.NarrativeResponseFormat(),
-	}
+	return &preparedTurn{
+		inputType:   inputType,
+		currentTurn: currentTurn,
+		req: ai.Request{
+			Messages:       messages,
+			Temperature:    n.genCfg.Temperature,
+			MaxTokens:      n.genCfg.MaxTokens,
+			ResponseFormat: ai.NarrativeResponseFormat(),
+		},
+	}, nil
+}
 
-	resp, err := n.router.Complete(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-
+func (n *Narrator) finalizeTurn(
+	ctx context.Context,
+	prep *preparedTurn,
+	input string,
+	resp ai.Response,
+	firstTokenMs int64,
+	streamed bool,
+) (*NarrativeResponse, error) {
 	n.lastModel = resp.Model
-	n.lastLatency = time.Since(start).Milliseconds()
+	n.lastLatency = resp.LatencyMs
+	n.lastTTFT = firstTokenMs
+	n.lastUsage = resp.Usage
+	n.lastStreamed = streamed
 
 	// Parse the structured response.
 	narrative, err := parseNarrativeFromAI(resp.Content)
@@ -291,7 +416,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 			n.world,
 			n.db,
 			n.story.ID,
-			currentTurn,
+			prep.currentTurn,
 		)
 		if applyErr != nil {
 			// Non-fatal: log but continue.
@@ -318,7 +443,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 
 	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
 	if narrative.Narrative != "" {
-		_ = UpdateNPCLastSeen(n.db, n.story.ID, narrative.Narrative, currentTurn)
+		_ = UpdateNPCLastSeen(n.db, n.story.ID, narrative.Narrative, prep.currentTurn)
 	}
 
 	// If AI specified a location (and state_changes didn't already update it), sync it.
@@ -328,7 +453,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 
 	// Auto-add the current location to known locations if not already tracked.
 	if n.world.CurrentLocation != "" {
-		AddLocationToWorldState(n.world, n.world.CurrentLocation, currentTurn)
+		AddLocationToWorldState(n.world, n.world.CurrentLocation, prep.currentTurn)
 	}
 
 	// Handle chapter end if AI signalled one.
@@ -337,7 +462,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		if title == "" {
 			title = fmt.Sprintf("Chapter %d", n.world.CurrentChapter)
 		}
-		if err := n.chapters.HandleChapterEnd(ctx, currentTurn, title); err != nil {
+		if err := n.chapters.HandleChapterEnd(ctx, prep.currentTurn, title); err != nil {
 			_ = err // non-fatal: chapter management failure does not break gameplay
 		} else {
 			n.world.CurrentChapter++
@@ -349,7 +474,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		_ = err // non-fatal
 	}
 
-	n.world.CurrentTurn = currentTurn + 1
+	n.world.CurrentTurn = prep.currentTurn + 1
 	if err := n.db.UpdateWorldState(n.world); err != nil {
 		_ = err // non-fatal
 	}
@@ -366,7 +491,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		Chapter:   n.world.CurrentChapter,
 		Location:  n.world.CurrentLocation,
 		Input: &ChatInput{
-			Type: inputType,
+			Type: prep.inputType,
 			Text: input,
 		},
 		Output: &ChatOutput{
@@ -387,7 +512,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	// If summarization fails, the next trigger will pick up the gap.
 	if n.rag != nil {
 		storyID := n.story.ID
-		turn := currentTurn
+		turn := prep.currentTurn
 		ragPipeline := n.rag
 		db := n.db
 		go func() {

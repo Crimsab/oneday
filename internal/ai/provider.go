@@ -33,6 +33,7 @@ type Response struct {
 	Model     string `json:"model"`
 	LatencyMs int64  `json:"latency_ms"`
 	Provider  string `json:"provider"`
+	Usage     Usage  `json:"usage"`
 }
 
 // ResponseFormat requests provider-side response shaping for compatible APIs.
@@ -63,8 +64,20 @@ type Provider interface {
 // StreamChunk is a piece of a streamed AI response.
 type StreamChunk struct {
 	Content string // incremental text delta
+	Model   string // resolved model for the stream
+	Usage   Usage  // final usage snapshot when provided by the upstream
 	Done    bool   // true on the final chunk (no more data)
 	Error   error  // non-nil if the stream encountered an error
+}
+
+// Usage captures token and cost metadata from a provider response when
+// available. Zero values mean the provider did not return the field.
+type Usage struct {
+	PromptTokens     int     `json:"prompt_tokens"`
+	CompletionTokens int     `json:"completion_tokens"`
+	ReasoningTokens  int     `json:"reasoning_tokens"`
+	TotalTokens      int     `json:"total_tokens"`
+	CostUSD          float64 `json:"cost_usd"`
 }
 
 // StreamProvider extends Provider with streaming capability.

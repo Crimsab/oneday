@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -17,9 +18,16 @@ type Vital struct {
 
 // StatusBarData holds all the data the status bar needs to render.
 type StatusBarData struct {
-	Vitals  []Vital
-	Model   string
-	Latency int64 // milliseconds
+	Vitals           []Vital
+	Model            string
+	Latency          int64 // milliseconds
+	TimeToFirstToken int64 // milliseconds
+	PromptTokens     int
+	CompletionTokens int
+	ReasoningTokens  int
+	TotalTokens      int
+	CostUSD          float64
+	Streamed         bool
 }
 
 // StatusBarModel renders the bottom status bar.
@@ -76,7 +84,31 @@ func (s StatusBarModel) View() string {
 	// Right side: AI model + latency
 	var aiInfo string
 	if s.data.Model != "" {
-		aiInfo = theme.MutedText.Render(fmt.Sprintf("%s · %dms", s.data.Model, s.data.Latency))
+		parts := []string{
+			compactModelName(s.data.Model),
+			formatDurationSeconds(s.data.Latency),
+		}
+		if s.data.Streamed && s.data.TimeToFirstToken > 0 {
+			parts = append(parts, "ft "+formatDurationSeconds(s.data.TimeToFirstToken))
+		}
+		if s.data.TotalTokens > 0 {
+			tokenPart := fmt.Sprintf("%dt", s.data.TotalTokens)
+			if s.data.CompletionTokens > 0 || s.data.PromptTokens > 0 {
+				tokenPart = fmt.Sprintf("%dt (%dp/%dc", s.data.TotalTokens, s.data.PromptTokens, s.data.CompletionTokens)
+				if s.data.ReasoningTokens > 0 {
+					tokenPart += fmt.Sprintf(", r%d", s.data.ReasoningTokens)
+				}
+				tokenPart += ")"
+			}
+			parts = append(parts, tokenPart)
+			if rate := throughputTokensPerSecond(s.data.CompletionTokens, s.data.Latency); rate > 0 {
+				parts = append(parts, fmt.Sprintf("%.1ft/s", rate))
+			}
+		}
+		if s.data.CostUSD > 0 {
+			parts = append(parts, fmt.Sprintf("$%.5f", s.data.CostUSD))
+		}
+		aiInfo = theme.MutedText.Render(joinStatusParts(parts))
 	}
 
 	// Compose the bar with vitals on left, ai info on right
@@ -95,6 +127,39 @@ func (s StatusBarModel) View() string {
 		barStyle = barStyle.Background(s.moodBG)
 	}
 	return barStyle.Render(bar)
+}
+
+func compactModelName(model string) string {
+	model = strings.TrimSpace(model)
+	model = strings.TrimPrefix(model, "x-ai/")
+	model = strings.TrimPrefix(model, "google/")
+	model = strings.TrimPrefix(model, "qwen/")
+	return model
+}
+
+func formatDurationSeconds(ms int64) string {
+	if ms <= 0 {
+		return "0.0s"
+	}
+	return fmt.Sprintf("%.1fs", float64(ms)/1000)
+}
+
+func throughputTokensPerSecond(tokens int, latencyMs int64) float64 {
+	if tokens <= 0 || latencyMs <= 0 {
+		return 0
+	}
+	return float64(tokens) / (float64(latencyMs) / 1000)
+}
+
+func joinStatusParts(parts []string) string {
+	filtered := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if strings.TrimSpace(part) == "" {
+			continue
+		}
+		filtered = append(filtered, part)
+	}
+	return strings.Join(filtered, " · ")
 }
 
 // SetMoodColor sets the background color tint for the status bar based on narrative mood.

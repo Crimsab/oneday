@@ -25,6 +25,15 @@ type narrativeResponseMsg struct {
 	err      error
 }
 
+type narrativeStreamStartedMsg struct {
+	stream <-chan engine.NarrativeStreamChunk
+	err    error
+}
+
+type narrativeStreamChunkMsg struct {
+	chunk engine.NarrativeStreamChunk
+}
+
 // narratorMetaResponseMsg carries a /narrator command response.
 type narratorMetaResponseMsg struct {
 	message string
@@ -54,7 +63,10 @@ type NarrativeModel struct {
 	achievementPopup components.AchievementPopupModel
 	input            textarea.Model
 	history          *strings.Builder // full narrative text accumulated so far
-	waiting          bool             // waiting for AI response
+	streamRaw        *strings.Builder // raw streamed JSON chunks for the current turn
+	streaming        bool
+	streamCh         <-chan engine.NarrativeStreamChunk
+	waiting          bool // waiting for AI response
 	errMsg           string
 	statusMsg        string    // temporary status message (e.g. "Autosaved")
 	statusExpiry     time.Time // when to clear the status message
@@ -100,6 +112,7 @@ func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) Narrative
 		achievementPopup: components.NewAchievementPopup(),
 		input:            ta,
 		history:          &strings.Builder{},
+		streamRaw:        &strings.Builder{},
 		inputFocus:       false, // start on choice list
 		currentMood:      "neutral",
 	}
@@ -113,8 +126,8 @@ func (m NarrativeModel) Init() tea.Cmd {
 func (m *NarrativeModel) StartNarration() tea.Cmd {
 	m.waiting = true
 	return func() tea.Msg {
-		resp, err := m.narrator.StartNarration(context.Background())
-		return narrativeResponseMsg{response: resp, err: err}
+		stream, err := m.narrator.StartNarrationStream(context.Background())
+		return narrativeStreamStartedMsg{stream: stream, err: err}
 	}
 }
 
@@ -219,91 +232,49 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		m.relayout()
 		return m, nil
 
-	case narrativeResponseMsg:
-		m.waiting = false
+	case narrativeStreamStartedMsg:
 		if msg.err != nil {
+			m.waiting = false
+			m.streaming = false
 			m.errMsg = fmt.Sprintf("AI Error: %v", msg.err)
 			return m, nil
 		}
-		m.errMsg = ""
-		nr := msg.response
+		m.streaming = true
+		m.streamCh = msg.stream
+		m.streamRaw.Reset()
+		return m, waitNarrativeStreamChunk(m.streamCh)
 
-		// Update status bar with current vitals and AI metadata
-		m.updateStatusBar()
-
-		// Update mood for theming before choice rendering so semantic badges
-		// inherit the right accent palette for this turn.
-		if nr.Mood != "" {
-			m.currentMood = nr.Mood
-			m.statusBar.SetMoodColor(theme.GetMoodPalette(nr.Mood).StatusBarBG)
+	case narrativeStreamChunkMsg:
+		if msg.chunk.Err != nil {
+			m.waiting = false
+			m.streaming = false
+			m.streamCh = nil
+			m.errMsg = fmt.Sprintf("AI Error: %v", msg.chunk.Err)
+			return m, nil
 		}
-
-		// Set choices with optional semantic metadata and story-specific stat badges.
-		m.choices.SetMood(m.currentMood)
-		m.choices.SetChoices(m.buildChoiceItems(nr.Choices))
-
-		// Append rendered narrative to history and start typewriter from beginning.
-		rendered := m.renderNarrativeResponse(nr)
-		if strings.TrimSpace(rendered) == "" {
-			rendered = components.RenderMarkdown(nr.Narrative)
+		if msg.chunk.Delta != "" {
+			m.streamRaw.WriteString(msg.chunk.Delta)
+			m.renderStreamingNarrative()
+			return m, waitNarrativeStreamChunk(m.streamCh)
 		}
-		m.history.WriteString(rendered + "\n")
-		cmd := m.typewriter.SetText(m.history.String())
-		cmds = append(cmds, cmd)
-
-		// Focus on choices if available, otherwise free input
-		if len(nr.Choices) > 0 {
-			m.inputFocus = false
-			m.input.Blur()
-		} else {
-			m.inputFocus = true
-			m.input.Focus()
-		}
-
-		// Check if AI initiated combat
-		if nr.CombatStart != nil {
-			combatEngine, err := engine.NewCombatEngine(m.narrator, nr.CombatStart)
-			if err == nil {
-				combatView := NewCombatModel(combatEngine, m.narrator, m.width, m.height)
-				m.combatView = &combatView
-				m.inCombat = true
+		if msg.chunk.Done {
+			m.streaming = false
+			m.streamCh = nil
+			if msg.chunk.Response == nil {
+				m.waiting = false
 				return m, nil
 			}
-			// If combat engine creation fails, continue normally.
-			m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
+			return m, m.applyNarrativeResponse(msg.chunk.Response, true)
 		}
+		return m, waitNarrativeStreamChunk(m.streamCh)
 
-		// Check if AI proposed challenges.
-		if len(nr.Challenges) > 0 {
-			m.pendingChallenges = nr.Challenges
-			if nextCmd := m.startNextChallenge(); nextCmd != nil {
-				cmds = append(cmds, nextCmd)
-				return m, tea.Batch(cmds...)
-			}
+	case narrativeResponseMsg:
+		if msg.err != nil {
+			m.waiting = false
+			m.errMsg = fmt.Sprintf("AI Error: %v", msg.err)
+			return m, nil
 		}
-
-		// Show achievement popup if one was earned and persisted.
-		// If the popup is already visible, queue the new achievement to show next.
-		if nr.PersistedAchievement != nil {
-			if m.achievementPopup.Visible() {
-				m.pendingAchievements = append(m.pendingAchievements, *nr.PersistedAchievement)
-			} else {
-				m.achievementPopup.Show(
-					nr.PersistedAchievement.Name,
-					nr.PersistedAchievement.Description,
-					nr.PersistedAchievement.Rarity,
-					nr.PersistedAchievement.Category,
-				)
-				cmds = append(cmds, components.AchievementAutoDismissCmd(m.achievementPopup.Generation()))
-			}
-		}
-
-		// Fire autosave cmd if it's time
-		if autosaveCmd := m.maybeAutosaveCmd(); autosaveCmd != nil {
-			cmds = append(cmds, autosaveCmd)
-		}
-
-		return m, tea.Batch(cmds...)
+		return m, m.applyNarrativeResponse(msg.response, false)
 
 	case components.AchievementDismissedMsg:
 		// Achievement popup dismissed — show next queued achievement if any.
@@ -1254,8 +1225,8 @@ func (m *NarrativeModel) sendAction(action string) tea.Cmd {
 	m.choices.SetChoices(nil) // clear choices while waiting for AI
 	narrator := m.narrator
 	return func() tea.Msg {
-		resp, err := narrator.SendAction(context.Background(), action)
-		return narrativeResponseMsg{response: resp, err: err}
+		stream, err := narrator.StreamAction(context.Background(), action)
+		return narrativeStreamStartedMsg{stream: stream, err: err}
 	}
 }
 
@@ -1266,6 +1237,171 @@ func (m *NarrativeModel) maybeAutosaveCmd() tea.Cmd {
 		return m.narrator.AutosaveCmd()
 	}
 	return nil
+}
+
+func waitNarrativeStreamChunk(stream <-chan engine.NarrativeStreamChunk) tea.Cmd {
+	return func() tea.Msg {
+		if stream == nil {
+			return narrativeStreamChunkMsg{chunk: engine.NarrativeStreamChunk{Done: true}}
+		}
+		chunk, ok := <-stream
+		if !ok {
+			return narrativeStreamChunkMsg{chunk: engine.NarrativeStreamChunk{Done: true}}
+		}
+		return narrativeStreamChunkMsg{chunk: chunk}
+	}
+}
+
+func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, streamed bool) tea.Cmd {
+	m.waiting = false
+	m.errMsg = ""
+
+	m.updateStatusBar()
+
+	if nr.Mood != "" {
+		m.currentMood = nr.Mood
+		m.statusBar.SetMoodColor(theme.GetMoodPalette(nr.Mood).StatusBarBG)
+	}
+
+	m.choices.SetMood(m.currentMood)
+	m.choices.SetChoices(m.buildChoiceItems(nr.Choices))
+
+	rendered := m.renderNarrativeResponse(nr)
+	if strings.TrimSpace(rendered) == "" {
+		rendered = components.RenderMarkdown(nr.Narrative)
+	}
+	m.history.WriteString(rendered + "\n")
+	m.streamRaw.Reset()
+	m.viewport.SetContent(m.history.String())
+	m.viewport.GotoBottom()
+
+	var cmds []tea.Cmd
+	if !streamed {
+		if cmd := m.typewriter.SetText(m.history.String()); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+
+	if len(nr.Choices) > 0 {
+		m.inputFocus = false
+		m.input.Blur()
+	} else {
+		m.inputFocus = true
+		m.input.Focus()
+	}
+
+	if nr.CombatStart != nil {
+		combatEngine, err := engine.NewCombatEngine(m.narrator, nr.CombatStart)
+		if err == nil {
+			combatView := NewCombatModel(combatEngine, m.narrator, m.width, m.height)
+			m.combatView = &combatView
+			m.inCombat = true
+			return nil
+		}
+		m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
+	}
+
+	if len(nr.Challenges) > 0 {
+		m.pendingChallenges = nr.Challenges
+		if nextCmd := m.startNextChallenge(); nextCmd != nil {
+			cmds = append(cmds, nextCmd)
+			return tea.Batch(cmds...)
+		}
+	}
+
+	if nr.PersistedAchievement != nil {
+		if m.achievementPopup.Visible() {
+			m.pendingAchievements = append(m.pendingAchievements, *nr.PersistedAchievement)
+		} else {
+			m.achievementPopup.Show(
+				nr.PersistedAchievement.Name,
+				nr.PersistedAchievement.Description,
+				nr.PersistedAchievement.Rarity,
+				nr.PersistedAchievement.Category,
+			)
+			cmds = append(cmds, components.AchievementAutoDismissCmd(m.achievementPopup.Generation()))
+		}
+	}
+
+	if autosaveCmd := m.maybeAutosaveCmd(); autosaveCmd != nil {
+		cmds = append(cmds, autosaveCmd)
+	}
+
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m *NarrativeModel) renderStreamingNarrative() {
+	partial := extractStreamingNarrative(m.streamRaw.String())
+	if strings.TrimSpace(partial) == "" {
+		return
+	}
+	content := m.history.String() + partial
+	m.viewport.SetContent(content)
+	m.viewport.GotoBottom()
+}
+
+func extractStreamingNarrative(raw string) string {
+	const key = `"narrative"`
+	start := strings.Index(raw, key)
+	if start == -1 {
+		return ""
+	}
+
+	i := start + len(key)
+	for i < len(raw) && (raw[i] == ' ' || raw[i] == '\n' || raw[i] == '\t' || raw[i] == '\r') {
+		i++
+	}
+	if i >= len(raw) || raw[i] != ':' {
+		return ""
+	}
+	i++
+	for i < len(raw) && (raw[i] == ' ' || raw[i] == '\n' || raw[i] == '\t' || raw[i] == '\r') {
+		i++
+	}
+	if i >= len(raw) || raw[i] != '"' {
+		return ""
+	}
+	i++
+
+	var out strings.Builder
+	escaped := false
+	for i < len(raw) {
+		ch := raw[i]
+		if escaped {
+			switch ch {
+			case 'n':
+				out.WriteByte('\n')
+			case 'r':
+				out.WriteByte('\r')
+			case 't':
+				out.WriteByte('\t')
+			case '"':
+				out.WriteByte('"')
+			case '\\':
+				out.WriteByte('\\')
+			default:
+				out.WriteByte(ch)
+			}
+			escaped = false
+			i++
+			continue
+		}
+		if ch == '\\' {
+			escaped = true
+			i++
+			continue
+		}
+		if ch == '"' {
+			break
+		}
+		out.WriteByte(ch)
+		i++
+	}
+
+	return out.String()
 }
 
 // updateStatusBar reads the character's stats JSON and populates the status bar.
@@ -1289,9 +1425,16 @@ func (m *NarrativeModel) updateStatusBar() {
 	}
 
 	m.statusBar.SetData(components.StatusBarData{
-		Vitals:  vitals,
-		Model:   m.narrator.LastModel(),
-		Latency: m.narrator.LastLatency(),
+		Vitals:           vitals,
+		Model:            m.narrator.LastModel(),
+		Latency:          m.narrator.LastLatency(),
+		TimeToFirstToken: m.narrator.LastTimeToFirstToken(),
+		PromptTokens:     m.narrator.LastUsage().PromptTokens,
+		CompletionTokens: m.narrator.LastUsage().CompletionTokens,
+		ReasoningTokens:  m.narrator.LastUsage().ReasoningTokens,
+		TotalTokens:      m.narrator.LastUsage().TotalTokens,
+		CostUSD:          m.narrator.LastUsage().CostUSD,
+		Streamed:         m.narrator.LastStreamed(),
 	})
 }
 
@@ -1352,7 +1495,11 @@ func (m NarrativeModel) View() string {
 	// Waiting indicator
 	var waitLine string
 	if m.waiting {
-		waitLine = theme.MutedText.Render("  The narrator is writing...")
+		if m.streaming {
+			waitLine = theme.MutedText.Render("  The narrator is streaming...")
+		} else {
+			waitLine = theme.MutedText.Render("  The narrator is writing...")
+		}
 	}
 
 	// Choices

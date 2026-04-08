@@ -363,8 +363,15 @@ func (m CombatModel) View() string {
 		Vitals: []components.Vital{
 			{Label: "HP", Current: playerHP, Max: playerMaxHP},
 		},
-		Model:   m.narrator.LastModel(),
-		Latency: m.narrator.LastLatency(),
+		Model:            m.narrator.LastModel(),
+		Latency:          m.narrator.LastLatency(),
+		TimeToFirstToken: m.narrator.LastTimeToFirstToken(),
+		PromptTokens:     m.narrator.LastUsage().PromptTokens,
+		CompletionTokens: m.narrator.LastUsage().CompletionTokens,
+		ReasoningTokens:  m.narrator.LastUsage().ReasoningTokens,
+		TotalTokens:      m.narrator.LastUsage().TotalTokens,
+		CostUSD:          m.narrator.LastUsage().CostUSD,
+		Streamed:         m.narrator.LastStreamed(),
 	}
 	m.statusBar.SetData(statusData)
 	m.statusBar.SetWidth(m.width)
