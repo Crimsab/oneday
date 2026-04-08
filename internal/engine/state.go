@@ -520,6 +520,29 @@ func ApplyStateChanges(
 				New:         desire,
 				Description: fmt.Sprintf("%s's desires updated", npcName),
 			})
+
+		case "combat_start":
+			// AI signals combat should begin. Records the event; the TUI/narrator
+			// layer starts the actual CombatEngine when it sees NarrativeResponse.CombatStart.
+			enemyMap, ok := toStringMap(val)
+			if !ok {
+				continue
+			}
+			applied = append(applied, StateChange{
+				Target:      "world",
+				Field:       "combat_start",
+				New:         enemyMap,
+				Description: "Combat initiated!",
+			})
+
+		case "crafting_start":
+			// AI signals a crafting session should begin.
+			applied = append(applied, StateChange{
+				Target:      "world",
+				Field:       "crafting_start",
+				New:         val,
+				Description: "Crafting session initiated",
+			})
 		}
 	}
 

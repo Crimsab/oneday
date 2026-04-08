@@ -183,3 +183,42 @@ func (db *DB) UpdateStorySetting(storyID, settingJSON string) error {
 	}
 	return nil
 }
+
+// InsertCombatLog records a combat encounter outcome.
+func (db *DB) InsertCombatLog(log *CombatLog) error {
+	_, err := db.conn.Exec(
+		`INSERT INTO combat_log
+			(story_id, session_id, enemy_name, enemy_hp, turns, victory, defeat_outcome, player_hp_start, player_hp_end, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		log.StoryID, log.SessionID, log.EnemyName, log.EnemyHP,
+		log.Turns, log.Victory, log.DefeatOutcome,
+		log.PlayerHPStart, log.PlayerHPEnd, log.CreatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting combat log: %w", err)
+	}
+	return nil
+}
+
+// GetCombatStats returns the win/loss totals for a story.
+func (db *DB) GetCombatStats(storyID string) (wins int, losses int, err error) {
+	rows, err := db.conn.Query(
+		`SELECT victory FROM combat_log WHERE story_id = ?`, storyID,
+	)
+	if err != nil {
+		return 0, 0, fmt.Errorf("querying combat stats: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var victory bool
+		if scanErr := rows.Scan(&victory); scanErr != nil {
+			return wins, losses, fmt.Errorf("scanning combat stat row: %w", scanErr)
+		}
+		if victory {
+			wins++
+		} else {
+			losses++
+		}
+	}
+	return wins, losses, rows.Err()
+}
