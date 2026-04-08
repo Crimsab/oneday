@@ -44,7 +44,7 @@ type CraftingModel struct {
 	input      textarea.Model
 
 	// State
-	history     strings.Builder
+	history     *strings.Builder
 	inventory   string // rendered inventory sidebar
 	inputFocus  bool
 	waiting     bool
@@ -88,6 +88,7 @@ func NewCraftingModel(crafting *engine.CraftingEngine, narrator *engine.Narrator
 		typewriter: tw,
 		choices:    choices,
 		input:      input,
+		history:    &strings.Builder{},
 		inputFocus: true,
 	}
 
