@@ -230,15 +230,22 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		// Update status bar with current vitals and AI metadata
 		m.updateStatusBar()
 
-		// Set choices
-		choiceItems := make([]components.ChoiceItem, len(nr.Choices))
-		for i, c := range nr.Choices {
-			choiceItems[i] = components.ChoiceItem{ID: c.ID, Text: c.Text}
+		// Update mood for theming before choice rendering so semantic badges
+		// inherit the right accent palette for this turn.
+		if nr.Mood != "" {
+			m.currentMood = nr.Mood
+			m.statusBar.SetMoodColor(theme.GetMoodPalette(nr.Mood).StatusBarBG)
 		}
-		m.choices.SetChoices(choiceItems)
 
-		// Append rendered narrative to history and start typewriter from beginning
-		rendered := components.RenderMarkdown(nr.Narrative)
+		// Set choices with optional semantic metadata and story-specific stat badges.
+		m.choices.SetMood(m.currentMood)
+		m.choices.SetChoices(m.buildChoiceItems(nr.Choices))
+
+		// Append rendered narrative to history and start typewriter from beginning.
+		rendered := m.renderNarrativeResponse(nr)
+		if strings.TrimSpace(rendered) == "" {
+			rendered = components.RenderMarkdown(nr.Narrative)
+		}
 		m.history.WriteString(rendered + "\n")
 		cmd := m.typewriter.SetText(m.history.String())
 		cmds = append(cmds, cmd)
@@ -272,12 +279,6 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				cmds = append(cmds, nextCmd)
 				return m, tea.Batch(cmds...)
 			}
-		}
-
-		// Update mood for theming.
-		if nr.Mood != "" {
-			m.currentMood = nr.Mood
-			m.statusBar.SetMoodColor(theme.GetMoodPalette(nr.Mood).StatusBarBG)
 		}
 
 		// Show achievement popup if one was earned and persisted.
@@ -992,7 +993,10 @@ func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
 		if attrsMap, ok := stats["attributes"].(map[string]interface{}); ok && len(attrsMap) > 0 {
 			sb.WriteString(theme.Title.Render("Attributes") + "\n")
 			// Use schema order if available.
-			type attrEntry struct{ label string; val int }
+			type attrEntry struct {
+				label string
+				val   int
+			}
 			var attrEntries []attrEntry
 			if len(attrDefs) > 0 {
 				for _, def := range attrDefs {
