@@ -45,21 +45,23 @@ type QuitToMenuMsg struct{}
 
 // NarrativeModel is the core gameplay view.
 type NarrativeModel struct {
-	narrator     *engine.Narrator
-	viewport     viewport.Model
-	typewriter   components.TypewriterModel
-	statusBar    components.StatusBarModel
-	choices      components.ChoiceListModel
-	overlay      components.OverlayModel
-	input        textarea.Model
-	history      strings.Builder // full narrative text accumulated so far
-	waiting      bool            // waiting for AI response
-	errMsg       string
-	statusMsg    string    // temporary status message (e.g. "Autosaved")
-	statusExpiry time.Time // when to clear the status message
-	width        int
-	height       int
-	inputFocus   bool // true = free input active, false = choice list active
+	narrator         *engine.Narrator
+	viewport         viewport.Model
+	typewriter       components.TypewriterModel
+	statusBar        components.StatusBarModel
+	choices          components.ChoiceListModel
+	overlay          components.OverlayModel
+	achievementPopup components.AchievementPopupModel
+	input            textarea.Model
+	history          strings.Builder // full narrative text accumulated so far
+	waiting          bool            // waiting for AI response
+	errMsg           string
+	statusMsg        string    // temporary status message (e.g. "Autosaved")
+	statusExpiry     time.Time // when to clear the status message
+	width            int
+	height           int
+	inputFocus       bool // true = free input active, false = choice list active
+	currentMood      string
 
 	// Combat sub-view
 	combatView *CombatModel
@@ -85,14 +87,15 @@ func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) Narrative
 	vp := viewport.New(80, 20)
 
 	return NarrativeModel{
-		narrator:   narrator,
-		viewport:   vp,
-		typewriter: components.NewTypewriter(typewriterSpeed),
-		statusBar:  components.NewStatusBar(),
-		choices:    components.NewChoiceList(),
-		overlay:    components.NewOverlay(),
-		input:      ta,
-		inputFocus: false, // start on choice list
+		narrator:         narrator,
+		viewport:         vp,
+		typewriter:       components.NewTypewriter(typewriterSpeed),
+		statusBar:        components.NewStatusBar(),
+		choices:          components.NewChoiceList(),
+		overlay:          components.NewOverlay(),
+		achievementPopup: components.NewAchievementPopup(),
+		input:            ta,
+		inputFocus:       false, // start on choice list
 	}
 }
 
@@ -266,12 +269,33 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			}
 		}
 
+		// Update mood for theming.
+		if nr.Mood != "" {
+			m.currentMood = nr.Mood
+			m.statusBar.SetMoodColor(theme.GetMoodPalette(nr.Mood).StatusBarBG)
+		}
+
+		// Show achievement popup if one was earned and persisted.
+		if nr.PersistedAchievement != nil {
+			m.achievementPopup.Show(
+				nr.PersistedAchievement.Name,
+				nr.PersistedAchievement.Description,
+				nr.PersistedAchievement.Rarity,
+				nr.PersistedAchievement.Category,
+			)
+			cmds = append(cmds, components.AchievementAutoDismissCmd())
+		}
+
 		// Fire autosave cmd if it's time
 		if autosaveCmd := m.maybeAutosaveCmd(); autosaveCmd != nil {
 			cmds = append(cmds, autosaveCmd)
 		}
 
 		return m, tea.Batch(cmds...)
+
+	case components.AchievementDismissedMsg:
+		// Achievement popup dismissed — resume normal input state.
+		return m, nil
 
 	case narratorMetaResponseMsg:
 		m.waiting = false
@@ -341,6 +365,13 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		// If achievement popup is visible, route key events to it first.
+		if m.achievementPopup.Visible() {
+			var cmd tea.Cmd
+			m.achievementPopup, cmd = m.achievementPopup.Update(msg)
+			return m, cmd
+		}
+
 		// If overlay is visible, route all key events to it first.
 		if m.overlay.Visible() {
 			var cmd tea.Cmd
@@ -1277,11 +1308,16 @@ func (m NarrativeModel) View() string {
 		return m.overlay.View()
 	}
 
+	// Determine mood palette for theming accents.
+	moodPalette := theme.GetMoodPalette(m.currentMood)
+	accentStyle := lipgloss.NewStyle().Foreground(moodPalette.Accent)
+	subtitleStyle := lipgloss.NewStyle().Foreground(moodPalette.NarrativeAccent)
+
 	// Header: chapter + location
 	world := m.narrator.World()
-	header := theme.Title.Render(fmt.Sprintf("Chapter %d", world.CurrentChapter))
+	header := accentStyle.Bold(true).Render(fmt.Sprintf("Chapter %d", world.CurrentChapter))
 	if world.CurrentLocation != "" {
-		header += "  " + theme.Subtitle.Render(world.CurrentLocation)
+		header += "  " + subtitleStyle.Render(world.CurrentLocation)
 	}
 
 	// Narrative viewport
@@ -1335,6 +1371,11 @@ func (m NarrativeModel) View() string {
 		statusView,
 	)
 
+	// Render achievement popup on top if visible.
+	if m.achievementPopup.Visible() {
+		return m.achievementPopup.View()
+	}
+
 	return content
 }
 
@@ -1364,6 +1405,7 @@ func (m *NarrativeModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	m.overlay.SetSize(w, h)
+	m.achievementPopup.SetSize(w, h)
 	m.relayout()
 }
 

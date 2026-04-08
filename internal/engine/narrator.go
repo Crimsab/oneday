@@ -238,6 +238,14 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		}
 	}
 
+	// Load existing achievements to prevent AI from re-awarding duplicates.
+	var earnedAchievementNames []string
+	if existingAchs, achErr := n.db.ListAchievements(n.story.ID); achErr == nil {
+		for _, a := range existingAchs {
+			earnedAchievementNames = append(earnedAchievementNames, a.Name)
+		}
+	}
+
 	// Build the full context using the context builder.
 	messages := BuildContext(
 		n.story,
@@ -248,6 +256,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		ragChunks,
 		lastChapterSummary,
 		input,
+		earnedAchievementNames,
 	)
 
 	start := time.Now()
@@ -299,10 +308,12 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, n.db, n.story, n.world, n.rag)
 	}
 
-	// The full NarrativeResponse (including Challenges and Achievements) is returned
-	// to the caller. The TUI narrative view checks narrative.Challenges and queues
-	// them for the ChallengeView overlay. Achievements are kept in the response type
-	// but will be consumed in Phase 7 (achievement engine).
+	// Process achievement_earned from AI: validate, check duplicates, persist to DB.
+	if narrative.AchievementEarned != nil {
+		if persisted := ValidateAndPersistAchievement(n.db, n.story.ID, narrative.AchievementEarned); persisted != nil {
+			narrative.PersistedAchievement = persisted
+		}
+	}
 
 	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
 	if narrative.Narrative != "" {
