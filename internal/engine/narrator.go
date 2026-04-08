@@ -186,29 +186,16 @@ func (n *Narrator) ResumeNarration(ctx context.Context) (*NarrativeResponse, err
 		recentMsgs = nil
 	}
 
-	var lastNarrative string
-	var lastChoices []Choice
 	for i := len(recentMsgs) - 1; i >= 0; i-- {
 		if recentMsgs[i].Role == "assistant" {
-			// Try to parse it as a NarrativeResponse.
-			if nr, parseErr := parseNarrativeFromAI(recentMsgs[i].Content); parseErr == nil {
-				lastNarrative = nr.Narrative
-				lastChoices = nr.Choices
+			if nr := resumeNarrativeFromStoredMessage(recentMsgs[i], n.world.CurrentLocation); nr != nil {
+				return nr, nil
 			}
-			break
 		}
 	}
 
-	if lastNarrative == "" {
-		lastNarrative = fmt.Sprintf("Welcome back to %s. Your adventure continues...", n.story.Name)
-	}
-	if len(lastChoices) == 0 {
-		lastChoices = []Choice{{ID: 1, Text: "Continue..."}}
-	}
-
 	return &NarrativeResponse{
-		Narrative: lastNarrative,
-		Choices:   lastChoices,
+		Narrative: fmt.Sprintf("Welcome back to %s. Your adventure continues...", n.story.Name),
 		Location:  n.world.CurrentLocation,
 		Mood:      "neutral",
 	}, nil
@@ -399,7 +386,7 @@ func (n *Narrator) finalizeTurn(
 	if err != nil {
 		// If parsing fails, wrap the raw text as a minimal narrative.
 		narrative = &NarrativeResponse{
-			Narrative: resp.Content,
+			Narrative: normalizeNarrativeText(resp.Content),
 			Choices: []Choice{
 				{ID: 1, Text: "Continue..."},
 			},
@@ -407,6 +394,7 @@ func (n *Narrator) finalizeTurn(
 			Location: n.world.CurrentLocation,
 		}
 	}
+	normalizeNarrativeResponse(narrative)
 
 	// Apply state_changes from AI response, including NPC creation/updates.
 	if len(narrative.StateChanges) > 0 {
@@ -433,6 +421,7 @@ func (n *Narrator) finalizeTurn(
 		// This allows the AI to organically update factions, events, and locations mid-story.
 		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, n.db, n.story, n.world, n.rag)
 	}
+	normalizeNarrativeResponse(narrative)
 
 	// Process achievement_earned from AI: validate, check duplicates, persist to DB.
 	if narrative.AchievementEarned != nil {
@@ -495,10 +484,17 @@ func (n *Narrator) finalizeTurn(
 			Text: input,
 		},
 		Output: &ChatOutput{
-			Narrative:    narrative.Narrative,
-			Choices:      choiceTexts,
-			Mood:         narrative.Mood,
-			StateChanges: narrative.StateChanges,
+			Narrative:         narrative.Narrative,
+			Choices:           choiceTexts,
+			ChoicesData:       narrative.Choices,
+			Mood:              narrative.Mood,
+			Location:          n.world.CurrentLocation,
+			SceneType:         narrative.SceneType,
+			DialogueBlocks:    narrative.DialogueBlocks,
+			EntitiesMentioned: narrative.EntitiesMentioned,
+			EventCallouts:     narrative.EventCallouts,
+			ASCIIArt:          narrative.ASCIIArt,
+			StateChanges:      narrative.StateChanges,
 		},
 		AIModel:   resp.Model,
 		AILatency: n.lastLatency,
@@ -594,4 +590,168 @@ func parseNarrativeFromAI(text string) (*NarrativeResponse, error) {
 	}
 
 	return &nr, nil
+}
+
+type persistedAssistantMeta struct {
+	Mood     string      `json:"mood"`
+	Location string      `json:"location"`
+	Choices  []string    `json:"choices"`
+	Output   *ChatOutput `json:"output"`
+}
+
+func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation string) *NarrativeResponse {
+	narrative := normalizeNarrativeText(msg.Content)
+	if narrative == "" {
+		return nil
+	}
+
+	nr := &NarrativeResponse{
+		Narrative: narrative,
+		Location:  defaultLocation,
+		Mood:      "neutral",
+	}
+
+	if strings.TrimSpace(msg.MetadataJSON) == "" || strings.TrimSpace(msg.MetadataJSON) == "{}" {
+		return nr
+	}
+
+	var meta persistedAssistantMeta
+	if err := json.Unmarshal([]byte(msg.MetadataJSON), &meta); err != nil {
+		return nr
+	}
+
+	if meta.Output != nil {
+		if text := normalizeNarrativeText(meta.Output.Narrative); text != "" {
+			nr.Narrative = text
+		}
+		if len(meta.Output.ChoicesData) > 0 {
+			nr.Choices = sanitizeChoices(meta.Output.ChoicesData)
+		} else if len(meta.Output.Choices) > 0 {
+			nr.Choices = stringsToChoices(meta.Output.Choices)
+		}
+		nr.Mood = firstNonEmpty(meta.Output.Mood, meta.Mood, nr.Mood)
+		nr.Location = firstNonEmpty(meta.Output.Location, meta.Location, nr.Location)
+		nr.SceneType = strings.TrimSpace(meta.Output.SceneType)
+		nr.DialogueBlocks = normalizeDialogueBlocks(meta.Output.DialogueBlocks)
+		nr.EntitiesMentioned = meta.Output.EntitiesMentioned
+		nr.EventCallouts = normalizeEventCallouts(meta.Output.EventCallouts)
+		nr.ASCIIArt = normalizeASCIIArt(meta.Output.ASCIIArt)
+	} else {
+		nr.Mood = firstNonEmpty(meta.Mood, nr.Mood)
+		nr.Location = firstNonEmpty(meta.Location, nr.Location)
+		nr.Choices = stringsToChoices(meta.Choices)
+	}
+
+	normalizeNarrativeResponse(nr)
+	return nr
+}
+
+func normalizeNarrativeResponse(nr *NarrativeResponse) {
+	if nr == nil {
+		return
+	}
+	nr.Narrative = normalizeNarrativeText(nr.Narrative)
+	nr.Choices = sanitizeChoices(nr.Choices)
+	nr.DialogueBlocks = normalizeDialogueBlocks(nr.DialogueBlocks)
+	nr.EventCallouts = normalizeEventCallouts(nr.EventCallouts)
+	nr.ASCIIArt = normalizeASCIIArt(nr.ASCIIArt)
+}
+
+func normalizeDialogueBlocks(blocks []DialogueBlock) []DialogueBlock {
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make([]DialogueBlock, 0, len(blocks))
+	for _, block := range blocks {
+		text := normalizeNarrativeText(block.Text)
+		speaker := strings.TrimSpace(block.Speaker)
+		role := strings.TrimSpace(block.Role)
+		if text == "" {
+			continue
+		}
+		out = append(out, DialogueBlock{
+			Speaker: speaker,
+			Role:    role,
+			Text:    text,
+		})
+	}
+	return out
+}
+
+func normalizeEventCallouts(callouts []EventCallout) []EventCallout {
+	if len(callouts) == 0 {
+		return nil
+	}
+	out := make([]EventCallout, 0, len(callouts))
+	for _, callout := range callouts {
+		title := normalizeNarrativeText(callout.Title)
+		detail := normalizeNarrativeText(callout.Detail)
+		if title == "" && detail == "" {
+			continue
+		}
+		out = append(out, EventCallout{
+			Kind:   strings.TrimSpace(callout.Kind),
+			Title:  title,
+			Detail: detail,
+		})
+	}
+	return out
+}
+
+func normalizeASCIIArt(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	return strings.Trim(text, "\n")
+}
+
+func normalizeNarrativeText(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	if strings.Contains(text, `\n`) || strings.Contains(text, `\t`) || strings.Contains(text, `\"`) {
+		replacer := strings.NewReplacer(`\n`, "\n", `\t`, "\t", `\"`, `"`)
+		text = replacer.Replace(text)
+	}
+	return strings.TrimSpace(text)
+}
+
+func sanitizeChoices(choices []Choice) []Choice {
+	if len(choices) == 0 {
+		return nil
+	}
+
+	out := make([]Choice, 0, len(choices))
+	seen := make(map[string]bool, len(choices))
+	for _, choice := range choices {
+		text := strings.Join(strings.Fields(normalizeNarrativeText(choice.Text)), " ")
+		if text == "" {
+			continue
+		}
+		key := strings.ToLower(text)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		choice.ID = len(out) + 1
+		choice.Text = text
+		out = append(out, choice)
+	}
+	return out
+}
+
+func stringsToChoices(items []string) []Choice {
+	if len(items) == 0 {
+		return nil
+	}
+	choices := make([]Choice, 0, len(items))
+	for _, item := range items {
+		choices = append(choices, Choice{Text: item})
+	}
+	return sanitizeChoices(choices)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }

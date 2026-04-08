@@ -113,6 +113,30 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.view = ViewMenu
 		return a, nil
 
+	case views.StoryArchiveToggleMsg:
+		if err := engine.SetStoryArchived(a.db, msg.StoryID, msg.Archived); err != nil {
+			return a, nil
+		}
+		if a.loadStory != nil {
+			stories, err := a.db.ListStories()
+			if err == nil {
+				a.loadStory.SetStories(stories)
+			}
+		}
+		return a, nil
+
+	case views.StoryDeleteMsg:
+		if err := engine.DeleteStory(a.db, a.cfg.DataDir, msg.StoryID); err != nil {
+			return a, nil
+		}
+		if a.loadStory != nil {
+			stories, err := a.db.ListStories()
+			if err == nil {
+				a.loadStory.SetStories(stories)
+			}
+		}
+		return a, nil
+
 	case views.SettingsBackMsg:
 		a.view = ViewMenu
 		return a, nil
@@ -167,6 +191,25 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// User pressed Esc in save picker — back to game
 		a.saveLoad = nil
 		a.view = ViewNarrative
+		return a, nil
+
+	case views.SaveLoadDeleteMsg:
+		if a.narrative == nil {
+			return a, nil
+		}
+		if err := engine.DeleteSave(a.db, a.cfg.DataDir, msg.SaveID); err != nil {
+			a.narrative.SetStatusMsg("Delete save failed")
+			return a, nil
+		}
+		saves, err := engine.ListSaves(a.db, a.narrative.StoryID())
+		if err != nil || len(saves) == 0 {
+			a.saveLoad = nil
+			a.view = ViewNarrative
+		} else if a.saveLoad != nil {
+			a.saveLoad.SetSaves(saves)
+			a.view = ViewSaveLoad
+		}
+		a.narrative.SetStatusMsg("Save deleted")
 		return a, nil
 
 	case views.SaveCompleteMsg:
@@ -231,11 +274,6 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ViewNarrative:
 		if a.narrative != nil {
-			if key, ok := msg.(tea.KeyMsg); ok && key.Type == tea.KeyEsc {
-				a.narrative.CloseSession()
-				a.view = ViewMenu
-				return a, nil
-			}
 			var cmd tea.Cmd
 			updated, cmd := a.narrative.Update(msg)
 			a.narrative = &updated

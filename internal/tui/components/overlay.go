@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/reflow/wrap"
 
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -82,10 +83,11 @@ func (m OverlayModel) Update(msg tea.Msg) (OverlayModel, tea.Cmd) {
 // maxScroll returns the maximum scroll offset.
 func (m OverlayModel) maxScroll() int {
 	visibleLines := m.innerHeight()
-	if len(m.lines) <= visibleLines {
+	lines := m.wrappedLines()
+	if len(lines) <= visibleLines {
 		return 0
 	}
-	return len(m.lines) - visibleLines
+	return len(lines) - visibleLines
 }
 
 // innerHeight returns the number of visible content lines.
@@ -135,18 +137,15 @@ func (m OverlayModel) View() string {
 		visibleLines = 1
 	}
 
+	lines := m.wrappedLines()
 	start := m.scroll
 	end := start + visibleLines
-	if end > len(m.lines) {
-		end = len(m.lines)
+	if end > len(lines) {
+		end = len(lines)
 	}
 
 	var contentLines []string
-	for _, line := range m.lines[start:end] {
-		// Truncate lines that are too wide
-		if len(line) > innerW {
-			line = line[:innerW]
-		}
+	for _, line := range lines[start:end] {
 		contentLines = append(contentLines, line)
 	}
 
@@ -183,4 +182,40 @@ func (m OverlayModel) View() string {
 
 	// Center the box in the terminal.
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+}
+
+func (m OverlayModel) wrappedLines() []string {
+	innerW := m.innerWidth()
+	if innerW <= 0 {
+		return m.lines
+	}
+
+	var wrapped []string
+	for _, line := range m.lines {
+		line = strings.TrimRight(line, "\r")
+		if strings.TrimSpace(line) == "" {
+			wrapped = append(wrapped, "")
+			continue
+		}
+
+		segment := wrap.String(line, innerW)
+		for _, part := range strings.Split(segment, "\n") {
+			wrapped = append(wrapped, part)
+		}
+	}
+	if len(wrapped) == 0 {
+		return []string{""}
+	}
+	return wrapped
+}
+
+func (m OverlayModel) innerWidth() int {
+	w := int(float64(m.width) * 0.60)
+	if w < 40 {
+		w = 40
+	}
+	if m.width > 0 && w > m.width-4 {
+		w = m.width - 4
+	}
+	return w - 4
 }

@@ -34,10 +34,17 @@ type ChatInput struct {
 
 // ChatOutput represents the AI's output for a turn.
 type ChatOutput struct {
-	Narrative    string                 `json:"narrative"`
-	Choices      []string               `json:"choices,omitempty"`
-	Mood         string                 `json:"mood,omitempty"`
-	StateChanges map[string]interface{} `json:"state_changes,omitempty"`
+	Narrative         string                 `json:"narrative"`
+	Choices           []string               `json:"choices,omitempty"`
+	ChoicesData       []Choice               `json:"choices_data,omitempty"`
+	Mood              string                 `json:"mood,omitempty"`
+	Location          string                 `json:"location,omitempty"`
+	SceneType         string                 `json:"scene_type,omitempty"`
+	DialogueBlocks    []DialogueBlock        `json:"dialogue_blocks,omitempty"`
+	EntitiesMentioned []EntityMention        `json:"entities_mentioned,omitempty"`
+	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
+	ASCIIArt          string                 `json:"ascii_art,omitempty"`
+	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
 }
 
 // GameSession manages a play session's lifecycle and JSONL persistence.
@@ -203,8 +210,9 @@ func (gs *GameSession) AppendTurn(db *storage.DB, entry ChatEntry) error {
 			"model":      entry.AIModel,
 			"latency_ms": entry.AILatency,
 			"mood":       entry.Output.Mood,
-			"location":   entry.Location,
+			"location":   entry.Output.Location,
 			"choices":    entry.Output.Choices,
+			"output":     entry.Output,
 		}
 		metaJSON, err := json.Marshal(meta)
 		if err != nil {

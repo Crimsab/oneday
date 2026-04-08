@@ -10,11 +10,11 @@ func (db *DB) CreateStory(s *Story) error {
 	_, err := db.conn.Exec(
 		`INSERT INTO stories (
 			id, name, setting_json, stats_schema_json, description, genre, tone,
-			language, writing_style, prompt_directives, created_at, updated_at
+			language, writing_style, prompt_directives, is_archived, created_at, updated_at
 		)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Name, s.SettingJSON, s.StatsSchemaJSON, s.Description, s.Genre, s.Tone,
-		s.Language, s.WritingStyle, s.PromptDirectives, s.CreatedAt, s.UpdatedAt,
+		s.Language, s.WritingStyle, s.PromptDirectives, s.IsArchived, s.CreatedAt, s.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting story: %w", err)
@@ -27,11 +27,11 @@ func (db *DB) GetStory(id string) (*Story, error) {
 	s := &Story{}
 	err := db.conn.QueryRow(
 		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone,
-                language, writing_style, prompt_directives, created_at, updated_at
+                language, writing_style, prompt_directives, is_archived, created_at, updated_at
          FROM stories WHERE id = ?`, id,
 	).Scan(
 		&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON, &s.Description, &s.Genre, &s.Tone,
-		&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.CreatedAt, &s.UpdatedAt,
+		&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.IsArchived, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("getting story %s: %w", id, err)
@@ -43,7 +43,7 @@ func (db *DB) GetStory(id string) (*Story, error) {
 func (db *DB) ListStories() ([]Story, error) {
 	rows, err := db.conn.Query(
 		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone,
-                language, writing_style, prompt_directives, created_at, updated_at
+                language, writing_style, prompt_directives, is_archived, created_at, updated_at
          FROM stories ORDER BY updated_at DESC`,
 	)
 	if err != nil {
@@ -57,7 +57,7 @@ func (db *DB) ListStories() ([]Story, error) {
 		if err := rows.Scan(
 			&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON,
 			&s.Description, &s.Genre, &s.Tone,
-			&s.Language, &s.WritingStyle, &s.PromptDirectives,
+			&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.IsArchived,
 			&s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning story: %w", err)
@@ -193,6 +193,27 @@ func (db *DB) UpdateStorySetting(storyID, settingJSON string) error {
 	)
 	if err != nil {
 		return fmt.Errorf("updating story setting for %s: %w", storyID, err)
+	}
+	return nil
+}
+
+// SetStoryArchived updates the archived flag for a story and bumps updated_at.
+func (db *DB) SetStoryArchived(storyID string, archived bool) error {
+	_, err := db.conn.Exec(
+		`UPDATE stories SET is_archived = ?, updated_at = ? WHERE id = ?`,
+		archived, time.Now(), storyID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating story archived flag for %s: %w", storyID, err)
+	}
+	return nil
+}
+
+// DeleteStory removes a story row; cascading foreign keys clean up related rows.
+func (db *DB) DeleteStory(storyID string) error {
+	_, err := db.conn.Exec(`DELETE FROM stories WHERE id = ?`, storyID)
+	if err != nil {
+		return fmt.Errorf("deleting story %s: %w", storyID, err)
 	}
 	return nil
 }
