@@ -129,6 +129,29 @@
 - [x] **TUI-13**: Suggested choices can display generic semantic metadata (intent/risk/scope/certainty) plus optional story-schema stat badges with graceful fallback
 - [x] **TUI-14**: Narrative renderer has strong fallback behavior for partial/missing metadata and is covered by focused rendering tests
 
+## v1.2 Requirements
+
+### AI / Telemetry
+
+- [x] **AI-07**: Runtime status telemetry can surface provider token, cost, and cache metadata when available without breaking providers that omit some or all of those fields
+
+### Storage / Resume
+
+- [x] **STOR-06**: Resume/load restores the last locally persisted turn without synthetic fallback narration whenever local turn data exists, and without issuing a fresh AI generation request
+- [x] **STOR-07**: Manual and quick saves remain explicit snapshots until the player deletes them; only the rotating autosave may replace its previous version
+- [x] **STOR-08**: Stories and save snapshots can be archived or deleted from management flows without manual filesystem cleanup
+
+### TUI Narrative UX
+
+- [x] **TUI-15**: Structured dialogue renders with stronger speaker-aware formatting and quote treatment, clearly distinct from narrator prose
+- [x] **TUI-16**: Relationship, NPC, skill, item, and similar state updates render as readable callout blocks rather than raw merged markdown blobs
+- [x] **TUI-17**: Choice lifecycle is reliable: malformed/duplicate AI choice IDs are sanitized, stale choices disappear after selection, and old rows do not leak into the next turn
+- [x] **TUI-18**: Keyboard-first parity is improved: `Space` mirrors `Enter` in selection UIs, and `Esc` from the narrative view routes to a safer in-session flow instead of an abrupt menu exit
+- [x] **TUI-19**: Overlay-style views such as `/stats` wrap long content cleanly so biographies, relationships, and similar sections are readable instead of truncated
+- [x] **TUI-20**: Narrative rendering normalizes escaped newlines and can surface optional ASCII art safely when present
+- [x] **TUI-21**: Footer/status UI keeps vitals within valid displayed ranges and presents clearer timing/token/cache/cost telemetry when available
+- [x] **TUI-22**: The TUI offers quick keyboard access for save/session management and exposes save/story cleanup actions from the relevant picker views
+
 ## v2 Requirements
 
 ### Plugin System
@@ -156,7 +179,7 @@
 | Psyche integration | Removed from scope |
 | Companion combat system | NPCs help narratively, not mechanically |
 | AI history log file | Only latency in statusbar, avoid file bloat |
-| Per-story AI config | Config is global, not per-story |
+| Per-story AI config | Story-level language/style guidance exists, but provider config remains global |
 
 ## Traceability
 
@@ -236,6 +259,18 @@
 | TUI-12 | Phase 8: TUI Rendering Polish |
 | TUI-13 | Phase 8: TUI Rendering Polish |
 | TUI-14 | Phase 8: TUI Rendering Polish |
+| AI-07 | Phase 9: Narrative UX and Input Polish |
+| STOR-06 | Phase 9: Narrative UX and Input Polish |
+| STOR-07 | Phase 9: Narrative UX and Input Polish |
+| STOR-08 | Phase 9: Narrative UX and Input Polish |
+| TUI-15 | Phase 9: Narrative UX and Input Polish |
+| TUI-16 | Phase 9: Narrative UX and Input Polish |
+| TUI-17 | Phase 9: Narrative UX and Input Polish |
+| TUI-18 | Phase 9: Narrative UX and Input Polish |
+| TUI-19 | Phase 9: Narrative UX and Input Polish |
+| TUI-20 | Phase 9: Narrative UX and Input Polish |
+| TUI-21 | Phase 9: Narrative UX and Input Polish |
+| TUI-22 | Phase 9: Narrative UX and Input Polish |
 
 ---
-*Last updated: 2026-04-07 after initialization*
+*Last updated: 2026-04-09 after adding Phase 9 requirements*

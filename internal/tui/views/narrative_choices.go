@@ -18,7 +18,7 @@ func (m *NarrativeModel) buildChoiceItems(choices []engine.Choice) []components.
 	items := make([]components.ChoiceItem, len(choices))
 	for i, choice := range choices {
 		items[i] = components.ChoiceItem{
-			ID:           choice.ID,
+			ID:           i + 1,
 			Text:         choice.Text,
 			Intent:       choice.Intent,
 			Risk:         choice.Risk,

@@ -14,6 +14,7 @@ type Story struct {
 	Language         string    `json:"language"`
 	WritingStyle     string    `json:"writing_style"`
 	PromptDirectives string    `json:"prompt_directives"`
+	IsArchived       bool      `json:"is_archived"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
 }

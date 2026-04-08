@@ -128,6 +128,7 @@ type NarrativeResponse struct {
 	DialogueBlocks       []DialogueBlock        `json:"dialogue_blocks,omitempty"`
 	EntitiesMentioned    []EntityMention        `json:"entities_mentioned,omitempty"`
 	EventCallouts        []EventCallout         `json:"event_callouts,omitempty"`
+	ASCIIArt             string                 `json:"ascii_art,omitempty"`
 	Challenges           []*ChallengeSpec       `json:"challenges,omitempty"`
 	AchievementEarned    *AchievementData       `json:"achievement_earned,omitempty"`
 	ChapterEnd           bool                   `json:"chapter_end,omitempty"`

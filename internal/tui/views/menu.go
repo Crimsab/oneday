@@ -20,7 +20,7 @@ type MenuItem struct {
 type MenuAction int
 
 const (
-	ActionNewStory  MenuAction = iota
+	ActionNewStory MenuAction = iota
 	ActionLoadStory
 	ActionSettings
 	ActionQuit
@@ -65,7 +65,7 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 			if m.cursor < len(m.items)-1 {
 				m.cursor++
 			}
-		case "enter":
+		case "enter", " ":
 			return m, func() tea.Msg {
 				return MenuSelectedMsg{Action: m.items[m.cursor].Action}
 			}
@@ -91,7 +91,7 @@ func (m MenuModel) View() string {
 		items += fmt.Sprintf("%s%s\n", cursor, style.Render(item.Label))
 	}
 
-	help := theme.MutedText.Render("↑/↓ navigate • enter select • q quit")
+	help := theme.MutedText.Render("↑/↓ navigate • enter/space select • q quit")
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		logo,

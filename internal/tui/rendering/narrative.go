@@ -13,7 +13,11 @@ import (
 // can be passed through the existing markdown renderer. It prefers trusted
 // structured metadata but always falls back to safe plain narrative text.
 func RenderNarrativeMarkdown(input NarrativeInput) string {
-	parts := make([]string, 0, 3)
+	parts := make([]string, 0, 4)
+
+	if art := renderASCIIArt(input.ASCIIArt); art != "" {
+		parts = append(parts, art)
+	}
 
 	if callouts := renderEventCallouts(input.EventCallouts); callouts != "" {
 		parts = append(parts, callouts)
@@ -24,7 +28,7 @@ func RenderNarrativeMarkdown(input NarrativeInput) string {
 		parts = append(parts, highlightEntities(narrative, collectHighlightCandidates(input)))
 	}
 
-	if dialogue := renderDialogueBlocks(input.DialogueBlocks, collectHighlightCandidates(input)); dialogue != "" {
+	if dialogue := renderDialogueBlocks(input.DialogueBlocks, collectHighlightCandidates(input), narrative); dialogue != "" {
 		parts = append(parts, dialogue)
 	}
 
@@ -36,7 +40,7 @@ func renderEventCallouts(callouts []engine.EventCallout) string {
 		return ""
 	}
 
-	var lines []string
+	var blocks []string
 	for _, callout := range callouts {
 		title := strings.TrimSpace(callout.Title)
 		detail := strings.TrimSpace(callout.Detail)
@@ -47,26 +51,31 @@ func renderEventCallouts(callouts []engine.EventCallout) string {
 		if label == "" {
 			label = "event"
 		}
-		line := fmt.Sprintf("> [%s] %s", strings.ToUpper(label), title)
+		block := fmt.Sprintf("**[%s] %s**", strings.ToUpper(label), title)
 		if detail != "" {
-			line += " — " + detail
+			block += "\n" + detail
 		}
-		lines = append(lines, line)
+		blocks = append(blocks, block)
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(blocks, "\n\n")
 }
 
-func renderDialogueBlocks(blocks []engine.DialogueBlock, candidates []string) string {
+func renderDialogueBlocks(blocks []engine.DialogueBlock, candidates []string, narrative string) string {
 	if len(blocks) == 0 {
 		return ""
 	}
 
 	var rendered []string
+	narrativeLower := strings.ToLower(narrative)
 	for _, block := range blocks {
 		text := highlightEntities(strings.TrimSpace(block.Text), candidates)
 		if text == "" {
 			continue
 		}
+		if narrativeLower != "" && strings.Contains(narrativeLower, strings.ToLower(strings.TrimSpace(block.Text))) {
+			continue
+		}
+		quoted := quoteDialogueText(text)
 
 		role := strings.ToLower(strings.TrimSpace(block.Role))
 		speaker := strings.TrimSpace(block.Speaker)
@@ -75,24 +84,24 @@ func renderDialogueBlocks(blocks []engine.DialogueBlock, candidates []string) st
 			if speaker == "" {
 				speaker = "Someone"
 			}
-			rendered = append(rendered, fmt.Sprintf("**%s:** %s", speaker, text))
+			rendered = append(rendered, fmt.Sprintf("**%s:** _%s_", speaker, quoted))
 		case "player":
 			label := "You"
 			if speaker != "" {
 				label = speaker
 			}
-			rendered = append(rendered, fmt.Sprintf("**%s:** %s", label, text))
+			rendered = append(rendered, fmt.Sprintf("**%s:** _%s_", label, quoted))
 		case "meta", "system":
 			label := "[Game Master]"
 			if speaker != "" {
 				label = "[" + speaker + "]"
 			}
-			rendered = append(rendered, fmt.Sprintf("**%s** %s", label, text))
+			rendered = append(rendered, fmt.Sprintf("**%s** _%s_", label, quoted))
 		case "narrator":
 			rendered = append(rendered, text)
 		default:
 			if speaker != "" {
-				rendered = append(rendered, fmt.Sprintf("**%s:** %s", speaker, text))
+				rendered = append(rendered, fmt.Sprintf("**%s:** _%s_", speaker, quoted))
 			} else {
 				rendered = append(rendered, text)
 			}
@@ -171,4 +180,39 @@ func entityPattern(name string) string {
 
 func isWordRune(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
+}
+
+func renderASCIIArt(text string) string {
+	text = strings.Trim(text, "\n")
+	if text == "" {
+		return ""
+	}
+
+	lines := strings.Split(text, "\n")
+	if len(lines) > 12 {
+		return ""
+	}
+
+	maxWidth := 0
+	for _, line := range lines {
+		if width := len([]rune(line)); width > maxWidth {
+			maxWidth = width
+		}
+	}
+	if maxWidth > 72 {
+		return ""
+	}
+
+	return "```text\n" + text + "\n```"
+}
+
+func quoteDialogueText(text string) string {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return trimmed
+	}
+	if strings.HasPrefix(trimmed, "\"") || strings.HasPrefix(trimmed, "“") {
+		return trimmed
+	}
+	return "\"" + trimmed + "\""
 }

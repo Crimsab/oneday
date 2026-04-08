@@ -19,6 +19,7 @@ func (m *NarrativeModel) renderNarrativeResponse(nr *engine.NarrativeResponse) s
 	}
 
 	renderedMarkdown := rendering.RenderNarrativeMarkdown(rendering.NarrativeInput{
+		ASCIIArt:          nr.ASCIIArt,
 		Narrative:         nr.Narrative,
 		DialogueBlocks:    nr.DialogueBlocks,
 		EntitiesMentioned: nr.EntitiesMentioned,
