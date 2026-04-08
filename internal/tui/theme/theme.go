@@ -15,6 +15,51 @@ var (
 	Highlight  = lipgloss.Color("#FFD700") // gold highlight
 )
 
+// Combat and crafting specific colors.
+var (
+	CombatRed    = lipgloss.Color("#FF4444") // bright red for combat header
+	CombatGold   = lipgloss.Color("#FFD700") // gold for combat accents
+	CraftingBlue = lipgloss.Color("#4A9BD9") // blue for crafting header
+)
+
+// Combat styles.
+var (
+	CombatHeader = lipgloss.NewStyle().
+			Foreground(CombatRed).
+			Bold(true)
+
+	CombatTurn = lipgloss.NewStyle().
+			Foreground(CombatGold).
+			Bold(true)
+
+	HPBarFull = lipgloss.NewStyle().
+			Foreground(Success)
+
+	HPBarMid = lipgloss.NewStyle().
+			Foreground(Accent)
+
+	HPBarLow = lipgloss.NewStyle().
+			Foreground(Danger)
+
+	HPBarEmpty = lipgloss.NewStyle().
+			Foreground(Muted)
+)
+
+// Crafting styles.
+var (
+	CraftingHeader = lipgloss.NewStyle().
+			Foreground(CraftingBlue).
+			Bold(true)
+
+	InventorySidebar = lipgloss.NewStyle().
+				Foreground(Text).
+				BorderForeground(Secondary).
+				PaddingLeft(1)
+
+	RecipeItem = lipgloss.NewStyle().
+			Foreground(Accent)
+)
+
 // Styles — reusable across all views.
 var (
 	// Title is for view titles and headers.
