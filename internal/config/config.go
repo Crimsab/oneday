@@ -93,11 +93,11 @@ func Default() Config {
 			},
 			LiteLLM: LiteLLMConfig{
 				Enabled:      true,
-				BaseURL:      "http://ai-proxy:4000/v1",
-				DefaultModel: "x-ai/grok-4.1-fast",
+				BaseURL:      "http://lite.homelab.local/v1",
+				DefaultModel: "grok-4.1-fast",
 			},
 			OpenRouter: OpenRouterConfig{
-				Enabled:      true,
+				Enabled:      false,
 				BaseURL:      "https://openrouter.ai/api/v1",
 				DefaultModel: "google/gemini-2.5-flash-lite",
 			},

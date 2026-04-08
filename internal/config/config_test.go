@@ -18,11 +18,17 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.ProviderPriority[0] != "litellm" {
 		t.Errorf("ProviderPriority[0] = %q, want %q", cfg.AI.ProviderPriority[0], "litellm")
 	}
-	if cfg.AI.LiteLLM.DefaultModel != "x-ai/grok-4.1-fast" {
-		t.Errorf("LiteLLM.DefaultModel = %q, want %q", cfg.AI.LiteLLM.DefaultModel, "x-ai/grok-4.1-fast")
+	if cfg.AI.LiteLLM.BaseURL != "http://lite.homelab.local/v1" {
+		t.Errorf("LiteLLM.BaseURL = %q, want %q", cfg.AI.LiteLLM.BaseURL, "http://lite.homelab.local/v1")
+	}
+	if cfg.AI.LiteLLM.DefaultModel != "grok-4.1-fast" {
+		t.Errorf("LiteLLM.DefaultModel = %q, want %q", cfg.AI.LiteLLM.DefaultModel, "grok-4.1-fast")
 	}
 	if cfg.AI.OpenRouter.DefaultModel != "google/gemini-2.5-flash-lite" {
 		t.Errorf("OpenRouter.DefaultModel = %q, want %q", cfg.AI.OpenRouter.DefaultModel, "google/gemini-2.5-flash-lite")
+	}
+	if cfg.AI.OpenRouter.Enabled {
+		t.Error("OpenRouter.Enabled = true, want false by default")
 	}
 	if cfg.AI.Generation.Temperature != 0.8 {
 		t.Errorf("Temperature = %f, want 0.8", cfg.AI.Generation.Temperature)
@@ -105,17 +111,14 @@ func TestValidateEmptyPriority(t *testing.T) {
 
 func TestEnabledProviders(t *testing.T) {
 	cfg := Default()
-	// Default: litellm primary, openrouter fallback, claude-code disabled
+	// Default: litellm primary, openrouter disabled, claude-code disabled
 	enabled := cfg.EnabledProviders()
 
-	if len(enabled) != 2 {
-		t.Fatalf("EnabledProviders length = %d, want 2", len(enabled))
+	if len(enabled) != 1 {
+		t.Fatalf("EnabledProviders length = %d, want 1", len(enabled))
 	}
 	if enabled[0] != "litellm" {
 		t.Errorf("EnabledProviders[0] = %q, want litellm", enabled[0])
-	}
-	if enabled[1] != "openrouter" {
-		t.Errorf("EnabledProviders[1] = %q, want openrouter", enabled[1])
 	}
 }
 

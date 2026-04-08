@@ -21,13 +21,15 @@ ai:
   # LiteLLM / OpenAI-compatible endpoint
   litellm:
     enabled: true
-    base_url: "http://ai-proxy:4000/v1"
+    # Host-native default. If you run OneDay inside Docker on the homelab network,
+    # use http://ai-proxy:4000/v1 instead.
+    base_url: "http://lite.homelab.local/v1"
     api_key: ""
-    default_model: "x-ai/grok-4.1-fast"
+    default_model: "grok-4.1-fast"
 
   # OpenRouter
   openrouter:
-    enabled: true
+    enabled: false
     base_url: "https://openrouter.ai/api/v1"
     api_key: ""
     default_model: "google/gemini-2.5-flash-lite"

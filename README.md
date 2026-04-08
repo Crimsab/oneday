@@ -68,8 +68,8 @@ Practical rules:
 
 Current default provider strategy:
 
-- primary: `litellm` with `x-ai/grok-4.1-fast`
-- fallback: `openrouter` with `google/gemini-2.5-flash-lite`
+- primary: `litellm` via `http://lite.homelab.local/v1` with `grok-4.1-fast`
+- `openrouter` is available but disabled by default until you provide a real API key
 - final fallback: `claude-code` if enabled
 
 RAG / embeddings note:
@@ -85,13 +85,13 @@ GitHub Actions is configured to:
 - run `go test ./...` and `go vet ./...`
 - build `oneday` and `oneday-benchmark`
 - cross-compile Linux amd64 and Windows amd64 artifacts
-- publish a GitHub Release automatically when a `v*` tag is pushed
-- maintain automated release PRs and tags through `release-please`
+- open or update a release PR through `release-please`
+- publish the GitHub Release after that release PR is merged
 
 Workflow files:
 
-- `.github/workflows/build-release.yml` for CI and manual tag builds
-- `.github/workflows/release-please.yml` for automated release PRs, tagging, and artifact upload
+- `.github/workflows/build-release.yml` for CI and tag-based release builds
+- `.github/workflows/release-please.yml` for automated release PRs, tags, and release asset upload
 
 ## License
 

@@ -176,8 +176,8 @@ In practice:
 
 Current defaults:
 
-- `litellm` enabled, model `x-ai/grok-4.1-fast`
-- `openrouter` enabled, model `google/gemini-2.5-flash-lite`
+- `litellm` enabled, base URL `http://lite.homelab.local/v1`, model `grok-4.1-fast`
+- `openrouter` disabled by default until a real API key is configured
 - `claude-code` disabled by default
 
 RAG note:
@@ -194,7 +194,8 @@ Behavior:
 
 - on push / pull request: runs `go test ./...`, `go vet ./...`, builds Linux amd64 + Windows amd64
 - on tag `v*`: also publishes a GitHub Release with the built artifacts
-- on push to `main`: `release-please` can open/update the release PR and, when it cuts a release, upload Linux/Windows artifacts directly to that GitHub Release
+- on push to `main`: `release-please` opens or updates the release PR
+- after that release PR is merged, `release-please` creates the tag/release and uploads Linux/Windows artifacts directly to that GitHub Release
 
 Workflows:
 
