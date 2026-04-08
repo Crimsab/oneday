@@ -80,10 +80,10 @@
 
 ### Achievements
 
-- [ ] **ACH-01**: No predefined achievements — AI recognizes noteworthy moments using rules doc
-- [ ] **ACH-02**: Achievement categories: story, combat, social, exploration, skill, creative, meta
-- [ ] **ACH-03**: Achievements are per-story, shown with TUI notification
-- [ ] **ACH-04**: Achievement rarity: common, uncommon, rare, epic, legendary
+- [x] **ACH-01**: No predefined achievements — AI recognizes noteworthy moments using rules doc
+- [x] **ACH-02**: Achievement categories: story, combat, social, exploration, skill, creative, meta
+- [x] **ACH-03**: Achievements are per-story, shown with TUI notification
+- [x] **ACH-04**: Achievement rarity: common, uncommon, rare, epic, legendary
 
 ### TUI
 
@@ -94,8 +94,8 @@
 - [x] **TUI-05**: Crafting view with inventory display and conversation
 - [x] **TUI-06**: Character sheet view (stats, attributes, skills, titles, traits, relationships)
 - [x] **TUI-07**: Inventory view
-- [ ] **TUI-08**: Achievement notification popup
-- [ ] **TUI-09**: Mood-based theming (Lipgloss styles change with narrative mood/genre)
+- [x] **TUI-08**: Achievement notification popup
+- [x] **TUI-09**: Mood-based theming (Lipgloss styles change with narrative mood/genre)
 
 ### Chat Commands
 
