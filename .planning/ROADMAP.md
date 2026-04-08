@@ -155,6 +155,16 @@
 
 ---
 
+### Phase 06.1: Bugfix and Stabilization — fix resume/load, save restoration, inventory contract, config alignment, story metadata, runtime contract (INSERTED)
+
+**Goal:** [Urgent work - to be planned]
+**Requirements**: TBD
+**Depends on:** Phase 6
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 06.1 to break down)
+
 ## Phase 7: Polish, Achievements, and Mood Theming
 
 **Goal:** The game feels complete and cohesive — achievements fire dynamically, the TUI reacts to narrative mood with themed styles, and all remaining quality-of-life features are in place.
