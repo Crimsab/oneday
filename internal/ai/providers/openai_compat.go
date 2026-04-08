@@ -53,7 +53,8 @@ type openAIChatResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
-	Model string `json:"model"`
+	Model string         `json:"model"`
+	Usage openAIUsageDTO `json:"usage"`
 }
 
 type openAICompatHTTPError struct {
@@ -78,6 +79,16 @@ type openAIModelCatalogResponse struct {
 type openAIModelCatalogEntry struct {
 	ID                  string   `json:"id"`
 	SupportedParameters []string `json:"supported_parameters"`
+}
+
+type openAIUsageDTO struct {
+	PromptTokens            int     `json:"prompt_tokens"`
+	CompletionTokens        int     `json:"completion_tokens"`
+	TotalTokens             int     `json:"total_tokens"`
+	Cost                    float64 `json:"cost"`
+	CompletionTokensDetails struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
 }
 
 // NewOpenAICompat creates a new OpenAI-compatible provider.
@@ -110,7 +121,7 @@ func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Respons
 	}
 
 	responseFormat := o.selectResponseFormat(ctx, model, req.ResponseFormat)
-	content, resolvedModel, err := o.completeOnce(ctx, openAIChatRequest{
+	content, resolvedModel, usage, err := o.completeOnce(ctx, openAIChatRequest{
 		Model:          model,
 		Messages:       req.Messages,
 		Temperature:    req.Temperature,
@@ -120,7 +131,7 @@ func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Respons
 	if err != nil {
 		httpErr, ok := err.(*openAICompatHTTPError)
 		if responseFormat != nil && ok && shouldRetryWithoutResponseFormat(httpErr) {
-			content, resolvedModel, err = o.completeOnce(ctx, openAIChatRequest{
+			content, resolvedModel, usage, err = o.completeOnce(ctx, openAIChatRequest{
 				Model:       model,
 				Messages:    req.Messages,
 				Temperature: req.Temperature,
@@ -137,19 +148,20 @@ func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Respons
 		Model:     resolvedModel,
 		LatencyMs: time.Since(start).Milliseconds(),
 		Provider:  o.name,
+		Usage:     usage,
 	}, nil
 }
 
-func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest) (string, string, error) {
+func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest) (string, string, ai.Usage, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
-		return "", "", fmt.Errorf("marshaling request: %w", err)
+		return "", "", ai.Usage{}, fmt.Errorf("marshaling request: %w", err)
 	}
 
 	url := o.baseURL + "/chat/completions"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
-		return "", "", fmt.Errorf("creating request: %w", err)
+		return "", "", ai.Usage{}, fmt.Errorf("creating request: %w", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -159,17 +171,17 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest)
 
 	resp, err := o.client.Do(httpReq)
 	if err != nil {
-		return "", "", err
+		return "", "", ai.Usage{}, err
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", fmt.Errorf("reading response from %s: %w", o.name, err)
+		return "", "", ai.Usage{}, fmt.Errorf("reading response from %s: %w", o.name, err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", &openAICompatHTTPError{
+		return "", "", ai.Usage{}, &openAICompatHTTPError{
 			StatusCode: resp.StatusCode,
 			Body:       strings.TrimSpace(string(respBody)),
 		}
@@ -177,14 +189,14 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest)
 
 	var chatResp openAIChatResponse
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		return "", "", fmt.Errorf("parsing response from %s: %w", o.name, err)
+		return "", "", ai.Usage{}, fmt.Errorf("parsing response from %s: %w", o.name, err)
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", "", fmt.Errorf("%s returned no choices", o.name)
+		return "", "", ai.Usage{}, fmt.Errorf("%s returned no choices", o.name)
 	}
 
-	return chatResp.Choices[0].Message.Content, chatResp.Model, nil
+	return chatResp.Choices[0].Message.Content, chatResp.Model, usageFromDTO(chatResp.Usage), nil
 }
 
 // openAIEmbeddingRequest is the request body for /v1/embeddings.
@@ -274,6 +286,9 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 		"temperature": req.Temperature,
 		"max_tokens":  req.MaxTokens,
 		"stream":      true,
+		"stream_options": map[string]bool{
+			"include_usage": true,
+		},
 	}
 	if responseFormat := o.selectResponseFormat(ctx, model, req.ResponseFormat); responseFormat != nil {
 		body["response_format"] = responseFormat
@@ -311,6 +326,8 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 
 		// sseChunk mirrors the SSE delta payload from OpenAI-compatible endpoints.
 		type sseChunk struct {
+			Model   string         `json:"model"`
+			Usage   openAIUsageDTO `json:"usage"`
 			Choices []struct {
 				Delta struct {
 					Content string `json:"content"`
@@ -333,8 +350,17 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 				continue // skip malformed chunks
 			}
+			if chunk.Usage.TotalTokens > 0 || chunk.Usage.Cost > 0 {
+				ch <- ai.StreamChunk{
+					Model: chunk.Model,
+					Usage: usageFromDTO(chunk.Usage),
+				}
+			}
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-				ch <- ai.StreamChunk{Content: chunk.Choices[0].Delta.Content}
+				ch <- ai.StreamChunk{
+					Content: chunk.Choices[0].Delta.Content,
+					Model:   chunk.Model,
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -344,6 +370,16 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 	}()
 
 	return ch, nil
+}
+
+func usageFromDTO(dto openAIUsageDTO) ai.Usage {
+	return ai.Usage{
+		PromptTokens:     dto.PromptTokens,
+		CompletionTokens: dto.CompletionTokens,
+		ReasoningTokens:  dto.CompletionTokensDetails.ReasoningTokens,
+		TotalTokens:      dto.TotalTokens,
+		CostUSD:          dto.Cost,
+	}
 }
 
 func (o *OpenAICompat) selectResponseFormat(ctx context.Context, model string, requested *ai.ResponseFormat) *ai.ResponseFormat {
