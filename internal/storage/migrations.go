@@ -25,6 +25,7 @@ func (db *DB) migrate() error {
 		{5, migrationV5},
 		{6, migrationV6},
 		{7, migrationV7},
+		{8, migrationV8},
 	}
 
 	for _, m := range migrations {
@@ -232,4 +233,9 @@ const migrationV7 = `
 ALTER TABLE stories ADD COLUMN language TEXT NOT NULL DEFAULT '';
 ALTER TABLE stories ADD COLUMN writing_style TEXT NOT NULL DEFAULT '';
 ALTER TABLE stories ADD COLUMN prompt_directives TEXT NOT NULL DEFAULT '';
+`
+
+const migrationV8 = `
+-- Add story archive flag for management workflows.
+ALTER TABLE stories ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;
 `

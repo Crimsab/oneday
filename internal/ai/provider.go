@@ -73,11 +73,12 @@ type StreamChunk struct {
 // Usage captures token and cost metadata from a provider response when
 // available. Zero values mean the provider did not return the field.
 type Usage struct {
-	PromptTokens     int     `json:"prompt_tokens"`
-	CompletionTokens int     `json:"completion_tokens"`
-	ReasoningTokens  int     `json:"reasoning_tokens"`
-	TotalTokens      int     `json:"total_tokens"`
-	CostUSD          float64 `json:"cost_usd"`
+	PromptTokens       int     `json:"prompt_tokens"`
+	CompletionTokens   int     `json:"completion_tokens"`
+	ReasoningTokens    int     `json:"reasoning_tokens"`
+	TotalTokens        int     `json:"total_tokens"`
+	CachedPromptTokens int     `json:"cached_prompt_tokens"`
+	CostUSD            float64 `json:"cost_usd"`
 }
 
 // StreamProvider extends Provider with streaming capability.

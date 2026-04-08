@@ -10,6 +10,7 @@ type KnownEntity struct {
 
 // NarrativeInput is the renderer-facing contract for the narrative view.
 type NarrativeInput struct {
+	ASCIIArt          string
 	Narrative         string
 	DialogueBlocks    []engine.DialogueBlock
 	EntitiesMentioned []engine.EntityMention

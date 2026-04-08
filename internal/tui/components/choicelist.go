@@ -74,10 +74,9 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 			if c.cursor < len(c.choices)-1 {
 				c.cursor++
 			}
-		case "1", "2", "3", "4", "5":
-			idx := int(msg.String()[0]-'0') - 1
-			if idx >= 0 && idx < len(c.choices) {
-				selected := c.choices[idx]
+		case "enter", " ":
+			if len(c.choices) > 0 {
+				selected := c.choices[c.cursor]
 				return c, func() tea.Msg {
 					return ChoiceSelectedMsg{
 						ID:   selected.ID,
@@ -85,13 +84,19 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 					}
 				}
 			}
-		case "enter":
-			if len(c.choices) > 0 {
-				selected := c.choices[c.cursor]
-				return c, func() tea.Msg {
-					return ChoiceSelectedMsg{
-						ID:   selected.ID,
-						Text: selected.Text,
+		default:
+			if len(msg.String()) == 1 {
+				ch := msg.String()[0]
+				if ch >= '1' && ch <= '9' {
+					idx := int(ch - '0' - 1)
+					if idx >= 0 && idx < len(c.choices) {
+						selected := c.choices[idx]
+						return c, func() tea.Msg {
+							return ChoiceSelectedMsg{
+								ID:   selected.ID,
+								Text: selected.Text,
+							}
+						}
 					}
 				}
 			}

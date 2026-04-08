@@ -23,6 +23,7 @@ import (
 type narrativeResponseMsg struct {
 	response *engine.NarrativeResponse
 	err      error
+	instant  bool
 }
 
 type narrativeStreamStartedMsg struct {
@@ -52,28 +53,45 @@ type SaveCompleteMsg struct {
 // QuitToMenuMsg signals the app to return to the main menu.
 type QuitToMenuMsg struct{}
 
+type sessionMenuAction int
+
+const (
+	sessionMenuResume sessionMenuAction = iota
+	sessionMenuQuickSave
+	sessionMenuLoadSave
+	sessionMenuQuitToMenu
+)
+
+type sessionMenuItem struct {
+	Label  string
+	Hint   string
+	Action sessionMenuAction
+}
+
 // NarrativeModel is the core gameplay view.
 type NarrativeModel struct {
-	narrator         *engine.Narrator
-	viewport         viewport.Model
-	typewriter       components.TypewriterModel
-	statusBar        components.StatusBarModel
-	choices          components.ChoiceListModel
-	overlay          components.OverlayModel
-	achievementPopup components.AchievementPopupModel
-	input            textarea.Model
-	history          *strings.Builder // full narrative text accumulated so far
-	streamRaw        *strings.Builder // raw streamed JSON chunks for the current turn
-	streaming        bool
-	streamCh         <-chan engine.NarrativeStreamChunk
-	waiting          bool // waiting for AI response
-	errMsg           string
-	statusMsg        string    // temporary status message (e.g. "Autosaved")
-	statusExpiry     time.Time // when to clear the status message
-	width            int
-	height           int
-	inputFocus       bool // true = free input active, false = choice list active
-	currentMood      string
+	narrator           *engine.Narrator
+	viewport           viewport.Model
+	typewriter         components.TypewriterModel
+	statusBar          components.StatusBarModel
+	choices            components.ChoiceListModel
+	overlay            components.OverlayModel
+	achievementPopup   components.AchievementPopupModel
+	input              textarea.Model
+	history            *strings.Builder // full narrative text accumulated so far
+	streamRaw          *strings.Builder // raw streamed JSON chunks for the current turn
+	streaming          bool
+	streamCh           <-chan engine.NarrativeStreamChunk
+	waiting            bool // waiting for AI response
+	errMsg             string
+	statusMsg          string    // temporary status message (e.g. "Autosaved")
+	statusExpiry       time.Time // when to clear the status message
+	width              int
+	height             int
+	inputFocus         bool // true = free input active, false = choice list active
+	sessionMenuVisible bool
+	sessionMenuCursor  int
+	currentMood        string
 
 	// Combat sub-view
 	combatView *CombatModel
@@ -137,7 +155,7 @@ func (m *NarrativeModel) ResumeNarration() tea.Cmd {
 	m.waiting = true
 	return func() tea.Msg {
 		resp, err := m.narrator.ResumeNarration(context.Background())
-		return narrativeResponseMsg{response: resp, err: err}
+		return narrativeResponseMsg{response: resp, err: err, instant: true}
 	}
 }
 
@@ -274,7 +292,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.errMsg = fmt.Sprintf("AI Error: %v", msg.err)
 			return m, nil
 		}
-		return m, m.applyNarrativeResponse(msg.response, false)
+		return m, m.applyNarrativeResponse(msg.response, msg.instant)
 
 	case components.AchievementDismissedMsg:
 		// Achievement popup dismissed — show next queued achievement if any.
@@ -368,6 +386,10 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, cmd
 		}
 
+		if m.sessionMenuVisible {
+			return m.handleSessionMenu(msg)
+		}
+
 		if m.waiting {
 			return m, nil
 		}
@@ -398,8 +420,14 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			}
 			// If on choices, let choice list handle it below
 
+		case "S", "f5":
+			if !m.inputFocus {
+				return m, m.doQuickSave()
+			}
+
 		case "esc":
-			// Handled by parent app for menu return
+			m.sessionMenuVisible = true
+			m.sessionMenuCursor = 0
 			return m, nil
 		}
 
@@ -578,6 +606,11 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /load                Load a saved game
   /help         (/h)   Show this help
   /quit         (/q)   Save and quit to menu
+
+Keyboard Shortcuts:
+  S / F5              Quick save snapshot
+  Esc                 Open session menu (resume, quick save, load, main menu)
+  Space               Confirms the highlighted option in menus and pickers
 
 Narrator examples:
   /n Add a secret underground city
@@ -1189,6 +1222,19 @@ func (m NarrativeModel) doSave(args []string) (NarrativeModel, tea.Cmd) {
 	}
 }
 
+func (m NarrativeModel) doQuickSave() tea.Cmd {
+	saveName := fmt.Sprintf("Quicksave T%d", m.narrator.Turn())
+	narrator := m.narrator
+	return func() tea.Msg {
+		_, err := engine.SaveGame(
+			narrator.DB(), narrator.DataDir(),
+			narrator.Story(), narrator.Character(), narrator.World(),
+			narrator.SessionID(), saveName,
+		)
+		return SaveCompleteMsg{Name: saveName, Err: err}
+	}
+}
+
 // doLoad shows the save list overlay (triggers a view switch in the app via SaveLoadMsg).
 func (m NarrativeModel) doLoad() (NarrativeModel, tea.Cmd) {
 	narrator := m.narrator
@@ -1425,16 +1471,17 @@ func (m *NarrativeModel) updateStatusBar() {
 	}
 
 	m.statusBar.SetData(components.StatusBarData{
-		Vitals:           vitals,
-		Model:            m.narrator.LastModel(),
-		Latency:          m.narrator.LastLatency(),
-		TimeToFirstToken: m.narrator.LastTimeToFirstToken(),
-		PromptTokens:     m.narrator.LastUsage().PromptTokens,
-		CompletionTokens: m.narrator.LastUsage().CompletionTokens,
-		ReasoningTokens:  m.narrator.LastUsage().ReasoningTokens,
-		TotalTokens:      m.narrator.LastUsage().TotalTokens,
-		CostUSD:          m.narrator.LastUsage().CostUSD,
-		Streamed:         m.narrator.LastStreamed(),
+		Vitals:             vitals,
+		Model:              m.narrator.LastModel(),
+		Latency:            m.narrator.LastLatency(),
+		TimeToFirstToken:   m.narrator.LastTimeToFirstToken(),
+		PromptTokens:       m.narrator.LastUsage().PromptTokens,
+		CompletionTokens:   m.narrator.LastUsage().CompletionTokens,
+		ReasoningTokens:    m.narrator.LastUsage().ReasoningTokens,
+		TotalTokens:        m.narrator.LastUsage().TotalTokens,
+		CachedPromptTokens: m.narrator.LastUsage().CachedPromptTokens,
+		CostUSD:            m.narrator.LastUsage().CostUSD,
+		Streamed:           m.narrator.LastStreamed(),
 	})
 }
 
@@ -1520,7 +1567,7 @@ func (m NarrativeModel) View() string {
 	}
 
 	// Help line
-	help := theme.MutedText.Render("tab toggle · 1-4 choose · enter send · /help commands · esc menu")
+	help := theme.MutedText.Render("tab toggle · 1-9 choose · enter send · S quicksave · /save /load · esc session")
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)
@@ -1539,6 +1586,11 @@ func (m NarrativeModel) View() string {
 		statusView,
 	)
 
+	// Render session menu on top if visible.
+	if m.sessionMenuVisible {
+		return m.sessionMenuView(content)
+	}
+
 	// Render achievement popup on top if visible.
 	if m.achievementPopup.Visible() {
 		return m.achievementPopup.View()
@@ -1551,6 +1603,75 @@ func (m NarrativeModel) View() string {
 func (m *NarrativeModel) SetStatusMsg(msg string) {
 	m.statusMsg = msg
 	m.statusExpiry = time.Now().Add(3 * time.Second)
+}
+
+func (m NarrativeModel) handleSessionMenu(msg tea.KeyMsg) (NarrativeModel, tea.Cmd) {
+	items := sessionMenuItems()
+	switch msg.String() {
+	case "up", "k":
+		if m.sessionMenuCursor > 0 {
+			m.sessionMenuCursor--
+		}
+		return m, nil
+	case "down", "j":
+		if m.sessionMenuCursor < len(items)-1 {
+			m.sessionMenuCursor++
+		}
+		return m, nil
+	case "esc":
+		m.sessionMenuVisible = false
+		return m, nil
+	case "enter", " ":
+		m.sessionMenuVisible = false
+		switch items[m.sessionMenuCursor].Action {
+		case sessionMenuResume:
+			return m, nil
+		case sessionMenuQuickSave:
+			return m, m.doQuickSave()
+		case sessionMenuLoadSave:
+			updated, cmd := m.doLoad()
+			return updated, cmd
+		case sessionMenuQuitToMenu:
+			updated, cmd := m.doQuit()
+			return updated, cmd
+		}
+	}
+	return m, nil
+}
+
+func sessionMenuItems() []sessionMenuItem {
+	return []sessionMenuItem{
+		{Label: "Resume", Hint: "Return to the current scene", Action: sessionMenuResume},
+		{Label: "Quick Save", Hint: "Create a new snapshot right now", Action: sessionMenuQuickSave},
+		{Label: "Load Save", Hint: "Open the save picker", Action: sessionMenuLoadSave},
+		{Label: "Main Menu", Hint: "Autosave and leave this session", Action: sessionMenuQuitToMenu},
+	}
+}
+
+func (m NarrativeModel) sessionMenuView(background string) string {
+	_ = background
+	items := sessionMenuItems()
+	lines := []string{theme.Title.Render("Session"), ""}
+	for i, item := range items {
+		cursor := "  "
+		style := theme.UnselectedItem
+		if i == m.sessionMenuCursor {
+			cursor = "▸ "
+			style = theme.SelectedItem
+		}
+		lines = append(lines, cursor+style.Render(item.Label))
+		lines = append(lines, "   "+theme.MutedText.Render(item.Hint))
+	}
+	lines = append(lines, "", theme.MutedText.Render("↑/↓ navigate · Enter/Space select · Esc resume"))
+
+	box := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Secondary).
+		Padding(1, 2).
+		Width(44).
+		Render(strings.Join(lines, "\n"))
+
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
 }
 
 // StoryID returns the ID of the current story.

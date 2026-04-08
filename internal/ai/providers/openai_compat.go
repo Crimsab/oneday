@@ -82,10 +82,13 @@ type openAIModelCatalogEntry struct {
 }
 
 type openAIUsageDTO struct {
-	PromptTokens            int     `json:"prompt_tokens"`
-	CompletionTokens        int     `json:"completion_tokens"`
-	TotalTokens             int     `json:"total_tokens"`
-	Cost                    float64 `json:"cost"`
+	PromptTokens        int     `json:"prompt_tokens"`
+	CompletionTokens    int     `json:"completion_tokens"`
+	TotalTokens         int     `json:"total_tokens"`
+	Cost                float64 `json:"cost"`
+	PromptTokensDetails struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
 	CompletionTokensDetails struct {
 		ReasoningTokens int `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details"`
@@ -374,11 +377,12 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 
 func usageFromDTO(dto openAIUsageDTO) ai.Usage {
 	return ai.Usage{
-		PromptTokens:     dto.PromptTokens,
-		CompletionTokens: dto.CompletionTokens,
-		ReasoningTokens:  dto.CompletionTokensDetails.ReasoningTokens,
-		TotalTokens:      dto.TotalTokens,
-		CostUSD:          dto.Cost,
+		PromptTokens:       dto.PromptTokens,
+		CompletionTokens:   dto.CompletionTokens,
+		ReasoningTokens:    dto.CompletionTokensDetails.ReasoningTokens,
+		TotalTokens:        dto.TotalTokens,
+		CachedPromptTokens: dto.PromptTokensDetails.CachedTokens,
+		CostUSD:            dto.Cost,
 	}
 }
 

@@ -146,3 +146,39 @@ func Autosave(
 	_, err = SaveGame(db, dataDir, story, char, world, sessionID, "autosave")
 	return err
 }
+
+// DeleteSave removes a save snapshot from both the DB and the on-disk save directory.
+func DeleteSave(db *storage.DB, dataDir, saveID string) error {
+	snap, err := db.GetSave(saveID)
+	if err != nil {
+		return fmt.Errorf("getting save %s: %w", saveID, err)
+	}
+
+	if err := db.DeleteSave(saveID); err != nil {
+		return err
+	}
+
+	snapPath := filepath.Join(dataDir, "stories", snap.StoryID, "saves", snap.ID+".json")
+	if err := os.Remove(snapPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("removing save file %s: %w", snapPath, err)
+	}
+	return nil
+}
+
+// SetStoryArchived toggles whether a story appears in the active story list.
+func SetStoryArchived(db *storage.DB, storyID string, archived bool) error {
+	return db.SetStoryArchived(storyID, archived)
+}
+
+// DeleteStory removes a story from the DB and deletes its local data directory.
+func DeleteStory(db *storage.DB, dataDir, storyID string) error {
+	if err := db.DeleteStory(storyID); err != nil {
+		return err
+	}
+
+	storyDir := filepath.Join(dataDir, "stories", storyID)
+	if err := os.RemoveAll(storyDir); err != nil {
+		return fmt.Errorf("removing story directory %s: %w", storyDir, err)
+	}
+	return nil
+}

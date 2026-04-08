@@ -16,15 +16,21 @@ type SaveLoadSelectedMsg struct {
 	SaveID string
 }
 
+// SaveLoadDeleteMsg requests deletion of the selected save.
+type SaveLoadDeleteMsg struct {
+	SaveID string
+}
+
 // SaveLoadCancelMsg signals that the user cancelled the load picker.
 type SaveLoadCancelMsg struct{}
 
 // SaveLoadModel shows a list of saves to pick from during gameplay.
 type SaveLoadModel struct {
-	saves    []storage.SaveSnapshot
-	selected int
-	width    int
-	height   int
+	saves         []storage.SaveSnapshot
+	selected      int
+	width         int
+	height        int
+	confirmDelete bool
 }
 
 // NewSaveLoadModel creates the save picker view.
@@ -49,21 +55,42 @@ func (m SaveLoadModel) Update(msg tea.Msg) (SaveLoadModel, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "up", "k":
+			if m.confirmDelete {
+				return m, nil
+			}
 			if m.selected > 0 {
 				m.selected--
 			}
 		case "down", "j":
+			if m.confirmDelete {
+				return m, nil
+			}
 			if m.selected < len(m.saves)-1 {
 				m.selected++
 			}
-		case "enter":
+		case "enter", " ":
 			if len(m.saves) > 0 {
+				if m.confirmDelete {
+					saveID := m.saves[m.selected].ID
+					m.confirmDelete = false
+					return m, func() tea.Msg {
+						return SaveLoadDeleteMsg{SaveID: saveID}
+					}
+				}
 				saveID := m.saves[m.selected].ID
 				return m, func() tea.Msg {
 					return SaveLoadSelectedMsg{SaveID: saveID}
 				}
 			}
+		case "x", "delete", "backspace":
+			if len(m.saves) > 0 {
+				m.confirmDelete = true
+			}
 		case "esc":
+			if m.confirmDelete {
+				m.confirmDelete = false
+				return m, nil
+			}
 			return m, func() tea.Msg {
 				return SaveLoadCancelMsg{}
 			}
@@ -112,7 +139,11 @@ func (m SaveLoadModel) View() string {
 	}
 
 	sb.WriteString("\n")
-	sb.WriteString(theme.MutedText.Render("  ↑↓ navigate · enter load · esc cancel"))
+	if m.confirmDelete && len(m.saves) > 0 {
+		sb.WriteString(theme.DangerText.Render("  Delete this save? Enter/Space confirm · Esc cancel"))
+	} else {
+		sb.WriteString(theme.MutedText.Render("  ↑↓ navigate · enter/space load · x delete · esc cancel"))
+	}
 
 	content := sb.String()
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
@@ -122,4 +153,21 @@ func (m SaveLoadModel) View() string {
 func (m *SaveLoadModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
+}
+
+// SetSaves refreshes the save list while preserving valid cursor state.
+func (m *SaveLoadModel) SetSaves(saves []storage.SaveSnapshot) {
+	m.saves = saves
+	if len(m.saves) == 0 {
+		m.selected = 0
+		m.confirmDelete = false
+		return
+	}
+	if m.selected >= len(m.saves) {
+		m.selected = len(m.saves) - 1
+	}
+	if m.selected < 0 {
+		m.selected = 0
+	}
+	m.confirmDelete = false
 }

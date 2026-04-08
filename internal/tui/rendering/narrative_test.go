@@ -22,13 +22,13 @@ func TestRenderNarrativeMarkdownUsesCalloutsHighlightsAndDialogue(t *testing.T) 
 		},
 	})
 
-	if !strings.Contains(rendered, "> [LOCATION] Silver Vale") {
+	if !strings.Contains(rendered, "**[LOCATION] Silver Vale**") {
 		t.Fatalf("expected callout in rendered markdown, got %q", rendered)
 	}
 	if !strings.Contains(rendered, "**Lyanna** studies the **Silver Vale**") {
 		t.Fatalf("expected highlighted narrative text, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "**Lyanna:** We cannot stay in **Silver Vale**.") {
+	if !strings.Contains(rendered, "**Lyanna:** _\"We cannot stay in **Silver Vale**.\"_") {
 		t.Fatalf("expected speaker-styled dialogue block, got %q", rendered)
 	}
 }

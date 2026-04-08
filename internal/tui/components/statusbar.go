@@ -18,16 +18,17 @@ type Vital struct {
 
 // StatusBarData holds all the data the status bar needs to render.
 type StatusBarData struct {
-	Vitals           []Vital
-	Model            string
-	Latency          int64 // milliseconds
-	TimeToFirstToken int64 // milliseconds
-	PromptTokens     int
-	CompletionTokens int
-	ReasoningTokens  int
-	TotalTokens      int
-	CostUSD          float64
-	Streamed         bool
+	Vitals             []Vital
+	Model              string
+	Latency            int64 // milliseconds
+	TimeToFirstToken   int64 // milliseconds
+	PromptTokens       int
+	CompletionTokens   int
+	ReasoningTokens    int
+	TotalTokens        int
+	CachedPromptTokens int
+	CostUSD            float64
+	Streamed           bool
 }
 
 // StatusBarModel renders the bottom status bar.
@@ -65,9 +66,16 @@ func (s StatusBarModel) View() string {
 		if i > 0 {
 			vitals += "  "
 		}
+		current := v.Current
+		if v.Max > 0 && current > v.Max {
+			current = v.Max
+		}
+		if current < 0 {
+			current = 0
+		}
 		var style lipgloss.Style
 		if v.Max > 0 {
-			pct := float64(v.Current) / float64(v.Max)
+			pct := float64(current) / float64(v.Max)
 			if pct <= 0.25 {
 				style = theme.DangerText
 			} else if pct <= 0.5 {
@@ -78,7 +86,7 @@ func (s StatusBarModel) View() string {
 		} else {
 			style = theme.NormalText
 		}
-		vitals += style.Render(fmt.Sprintf("%s: %d/%d", v.Label, v.Current, v.Max))
+		vitals += style.Render(fmt.Sprintf("%s: %d/%d", v.Label, current, v.Max))
 	}
 
 	// Right side: AI model + latency
@@ -101,6 +109,9 @@ func (s StatusBarModel) View() string {
 				tokenPart += ")"
 			}
 			parts = append(parts, tokenPart)
+			if s.data.CachedPromptTokens > 0 {
+				parts = append(parts, fmt.Sprintf("cache %dp", s.data.CachedPromptTokens))
+			}
 			if rate := throughputTokensPerSecond(s.data.CompletionTokens, s.data.Latency); rate > 0 {
 				parts = append(parts, fmt.Sprintf("%.1ft/s", rate))
 			}

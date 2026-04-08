@@ -13,8 +13,8 @@ import (
 
 // StateChange records a single change that was applied to character or world state.
 type StateChange struct {
-	Target string      // "character" or "world"
-	Field  string      // e.g. "vitals.hp.current", "location", "attributes.str"
+	Target string // "character" or "world"
+	Field  string // e.g. "vitals.hp.current", "location", "attributes.str"
 	Old    interface{}
 	New    interface{}
 	// Description is a human-readable summary (used for character growth events).
@@ -91,6 +91,23 @@ func ApplyStateChanges(
 						Old:    oldVal,
 						New:    newVal,
 					})
+				}
+				maxVal := toFloat(existing["max"])
+				if maxVal < 0 {
+					maxVal = 0
+				}
+				if _, ok := existing["max"]; ok {
+					existing["max"] = maxVal
+				}
+				currentVal := toFloat(existing["current"])
+				if currentVal < 0 {
+					currentVal = 0
+				}
+				if maxVal > 0 && currentVal > maxVal {
+					currentVal = maxVal
+				}
+				if _, ok := existing["current"]; ok {
+					existing["current"] = currentVal
 				}
 				statsVitals[vitalKey] = existing
 			}

@@ -1,8 +1,8 @@
 # Roadmap: OneDay
 
 **Milestone:** v1.0 — First Playable
-**Phases:** 8
-**Requirements:** 69 mapped
+**Phases:** 9
+**Requirements:** 81 mapped
 
 ---
 
@@ -218,6 +218,30 @@ Note for future planning:
 - [x] Plan 8.1: Define the rendering data contract and build the narrative semantic renderer foundation — speaker styling, entity highlighting, event callout pipeline, and strong fallback behavior
 - [x] Plan 8.2: Implement semantic choice rendering and integration polish — intent/risk metadata, dynamic stat badges, renderer verification, and narrative-view integration pass
 
+### Phase 9: Narrative UX and Input Polish
+
+**Goal:** Tighten the live play experience around the narrative view: make dialogue and relationship updates readable, fix stale/duplicated choice behavior, improve resume/load/session UX, and add keyboard-first + telemetry polish without changing the core game loop.
+**Requirements**: AI-07, STOR-06, STOR-07, STOR-08, TUI-15, TUI-16, TUI-17, TUI-18, TUI-19, TUI-20, TUI-21, TUI-22
+**Depends on:** Phase 8
+**UI hint:** no
+**Status:** Complete (2026-04-09)
+
+### Success Criteria
+
+1. Resume/load restores the last local turn cleanly without synthetic fallback narration, stale choices, or a fresh AI bill.
+2. Structured dialogue renders with stronger speaker formatting and quoted speech treatment; relationship/NPC/skill/item updates are readable as separate callout blocks, not markdown blobs.
+3. Choice lists sanitize duplicate/malformed IDs, clear immediately after selection, and do not leak stale rows into the next turn.
+4. `Space` behaves like `Enter` anywhere the player is selecting or confirming an action, and `Esc` from the narrative view no longer throws the player straight back to the main menu without an in-game decision.
+5. Quick save is available from a convenient hotkey, manual saves remain as explicit snapshots, and save deletion is available from the save-management UI.
+6. Stories can be archived or deleted from the load/manage flow, and archived stories are kept out of the active play list by default.
+7. `/stats` and other overlays wrap long content correctly, vitals stay clamped within valid ranges, escaped newlines are normalized, and optional ASCII art can appear safely when provided.
+8. The footer/status line shows clearer response timing and token/cost telemetry, including cached prompt usage when the provider exposes it.
+
+Plans:
+- [x] Plan 9.1: Fix turn-flow reliability — resume/load restoration, choice sanitization/lifecycle, escaped-newline cleanup, and state clamping
+- [x] Plan 9.2: Polish narrative presentation — dialogue quotes, relationship/system callout cards, optional ASCII art surfacing, overlay wrapping, and stronger trusted highlights
+- [x] Plan 9.3: Improve keyboard/session UX, save/story management, and footer telemetry — Space/Enter parity, safer Esc flow, quick save, delete/archive flows, and cached-token/status metrics
+
 ---
 
 ## Requirements Coverage
@@ -232,6 +256,7 @@ Note for future planning:
 | 6 | 17 | COMBAT-01–COMBAT-06, CRAFT-01–CRAFT-04, CHAL-01–CHAL-04, STOR-04*, TUI-04, TUI-05 |
 | 7 | 6 | ACH-01–ACH-04, TUI-08, TUI-09 |
 | 8 | 6 | AI-06, TUI-10–TUI-14 |
-| **Total** | **69** | All mapped requirements through Phase 8 |
+| 9 | 12 | AI-07, STOR-06–STOR-08, TUI-15–TUI-22 |
+| **Total** | **81** | All mapped requirements through Phase 9 |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.
