@@ -24,6 +24,7 @@ func (db *DB) migrate() error {
 		{4, migrationV4},
 		{5, migrationV5},
 		{6, migrationV6},
+		{7, migrationV7},
 	}
 
 	for _, m := range migrations {
@@ -224,4 +225,11 @@ const migrationV6 = `
 ALTER TABLE stories ADD COLUMN description TEXT NOT NULL DEFAULT '';
 ALTER TABLE stories ADD COLUMN genre TEXT NOT NULL DEFAULT '';
 ALTER TABLE stories ADD COLUMN tone TEXT NOT NULL DEFAULT '';
+`
+
+const migrationV7 = `
+-- Add per-story language and authoring controls for consistent prompt behavior.
+ALTER TABLE stories ADD COLUMN language TEXT NOT NULL DEFAULT '';
+ALTER TABLE stories ADD COLUMN writing_style TEXT NOT NULL DEFAULT '';
+ALTER TABLE stories ADD COLUMN prompt_directives TEXT NOT NULL DEFAULT '';
 `

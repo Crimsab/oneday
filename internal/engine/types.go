@@ -4,12 +4,15 @@ import "github.com/crimsab/oneday/internal/storage"
 
 // StoryDefinition is the AI-generated story structure (story.json equivalent).
 type StoryDefinition struct {
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Genre       string      `json:"genre"`
-	Tone        string      `json:"tone"`
-	Setting     Setting     `json:"setting"`
-	StatsSchema StatsSchema `json:"stats_schema"`
+	Name             string      `json:"name"`
+	Description      string      `json:"description"`
+	Genre            string      `json:"genre"`
+	Tone             string      `json:"tone"`
+	Language         string      `json:"language"`
+	WritingStyle     string      `json:"writing_style"`
+	PromptDirectives string      `json:"prompt_directives"`
+	Setting          Setting     `json:"setting"`
+	StatsSchema      StatsSchema `json:"stats_schema"`
 }
 
 // Setting describes the story world.

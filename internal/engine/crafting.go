@@ -83,6 +83,9 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 
 	systemPrompt := prompts.CraftingSystem(
 		story.Name,
+		story.Language,
+		story.WritingStyle,
+		story.PromptDirectives,
 		story.SettingJSON,
 		char.Name,
 		inventoryJSON,

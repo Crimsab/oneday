@@ -58,12 +58,19 @@ func storyDefinitionSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
 		"additionalProperties": false,
-		"required":             []string{"name", "description", "genre", "tone", "setting", "stats_schema"},
+		"required": []string{
+			"name", "description", "genre", "tone",
+			"language", "writing_style", "prompt_directives",
+			"setting", "stats_schema",
+		},
 		"properties": map[string]any{
-			"name":        stringSchema(),
-			"description": stringSchema(),
-			"genre":       stringSchema(),
-			"tone":        stringSchema(),
+			"name":              stringSchema(),
+			"description":       stringSchema(),
+			"genre":             stringSchema(),
+			"tone":              stringSchema(),
+			"language":          stringSchema(),
+			"writing_style":     stringSchema(),
+			"prompt_directives": stringSchema(),
 			"setting": map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,

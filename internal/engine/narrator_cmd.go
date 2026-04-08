@@ -72,6 +72,9 @@ func (nc *NarratorCommand) Execute(ctx context.Context, input string) (*Narrator
 	// Build the meta system prompt.
 	systemPrompt := prompts.NarratorMetaSystem(
 		nc.story.Name,
+		nc.story.Language,
+		nc.story.WritingStyle,
+		nc.story.PromptDirectives,
 		nc.story.SettingJSON,
 		worldStateJSON,
 		npcsContext,

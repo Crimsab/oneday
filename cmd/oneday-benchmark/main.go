@@ -358,10 +358,10 @@ func buildBenchmarkCases() []benchmarkCase {
 func buildStoryCreationCase() benchmarkCase {
 	messages := []ai.Message{
 		{Role: ai.RoleSystem, Content: prompts.StoryCreationSystem},
-		{Role: ai.RoleUser, Content: "Vorrei un fantasy oscuro ispirato a una Venezia decadente, con politica, culti del mare e un tono malinconico ma avventuroso."},
-		{Role: ai.RoleAssistant, Content: "Perfetto. Ti propongo una città-laguna chiamata Vespera, costruita su isole nere e canali di sale. La magia nasce dal suono delle campane sommerse e ogni casata nobile cerca di controllarne gli echi. Il tono è cupo, elegante e pieno di intrighi. Se vuoi, possiamo fissare regole del mondo, fazioni e statistiche."},
-		{Role: ai.RoleUser, Content: "Sì. Voglio che ci siano corporazioni mercantili spietate, una religione delle campane sommerse, guardie di porto corrotte e quartieri allagati pieni di reliquie."},
-		{Role: ai.RoleAssistant, Content: "Ottimo. Regole del mondo: la magia ha sempre un costo, il sale protegge dai sussurri del mare, le campane sommerse alterano memoria e volontà, i giuramenti pubblici hanno valore legale e spirituale, il debito non pagato può essere venduto come servitù. Fazioni: Casata Valcerra, Coro del Sale, Guardie di Marea. Culture: nobili di canale, scavatori di relitti, pellegrini delle campane. Pericoli: nebbie senzienti, reliquie infette, inquisitori del suono, allagamenti improvvisi. Statistiche: vigore, agilità, ingegno, presenza, volontà, occulto, più reputazione e debito. Confermi il pacchetto finale?"},
+		{Role: ai.RoleUser, Content: "Vorrei un fantasy oscuro ispirato a una Venezia decadente, con politica, culti del mare e un tono malinconico ma avventuroso. Voglio la storia in italiano, con una prosa elegante e inquieta, e come direttiva extra tieni i dialoghi asciutti e il pericolo sempre vicino."},
+		{Role: ai.RoleAssistant, Content: "Perfetto. Ti propongo una citta-laguna chiamata Vespera, costruita su isole nere e canali di sale. La magia nasce dal suono delle campane sommerse e ogni casata nobile cerca di controllarne gli echi. Il tono e cupo, elegante e pieno di intrighi. La storia restera in italiano con una voce elegante e inquieta, dialoghi asciutti e tensione costante. Se vuoi, possiamo fissare regole del mondo, fazioni e statistiche."},
+		{Role: ai.RoleUser, Content: "Si. Voglio che ci siano corporazioni mercantili spietate, una religione delle campane sommerse, guardie di porto corrotte e quartieri allagati pieni di reliquie."},
+		{Role: ai.RoleAssistant, Content: "Ottimo. Regole del mondo: la magia ha sempre un costo, il sale protegge dai sussurri del mare, le campane sommerse alterano memoria e volonta, i giuramenti pubblici hanno valore legale e spirituale, il debito non pagato puo essere venduto come servitu. Fazioni: Casata Valcerra, Coro del Sale, Guardie di Marea. Culture: nobili di canale, scavatori di relitti, pellegrini delle campane. Pericoli: nebbie senzienti, reliquie infette, inquisitori del suono, allagamenti improvvisi. Statistiche: vigore, agilita, ingegno, presenza, volonta, occulto, piu reputazione e debito. Confermi il pacchetto finale?"},
 		{Role: ai.RoleUser, Content: "Sì, confermo tutto. Genera adesso il JSON finale definitivo."},
 	}
 
@@ -380,12 +380,15 @@ func buildStoryCreationCase() benchmarkCase {
 
 func buildNarrativeIntroCase() benchmarkCase {
 	story := &storage.Story{
-		Name:            "Le Campane di Vespera",
-		Description:     "Un fantasy oscuro di intrighi, culti sommersi e reliquie cantanti.",
-		Genre:           "fantasy oscuro",
-		Tone:            "malinconico, elegante, teso",
-		SettingJSON:     `{"world_name":"Vespera","era":"Età delle Maree Spezzate","geography":"Una città lagunare di ponti bassi, banchine nere e isole collegate da canali salmastri","magic_system":"Il suono delle campane sommerse piega memoria, volontà e fortuna, ma ogni uso lascia un prezzo","technology_level":"Rinascimento decadente con alchimia del sale","society":"Casate nobili, corporazioni mercantili, scavatori di relitti e ordini religiosi in lotta","rules":["La magia del suono ha sempre un prezzo","Il sale puro protegge dai sussurri","I debiti possono diventare servitù legale","Le reliquie emerse attirano culti e predoni"],"factions":["Casata Valcerra — nobili mercanti che controllano le banchine orientali","Coro del Sale — ordine religioso che custodisce campane e reliquie","Guardie di Marea — pattuglie portuali corrotte ma indispensabili"],"cultures":["Nobili di canale","Scavatori di relitti","Pellegrini delle campane"],"dangers":["Nebbie senzienti","Reliquie infette","Allagamenti improvvisi","Predoni dei canali"]}`,
-		StatsSchemaJSON: `{"vitals":[{"key":"hp","label":"Salute","starting":10},{"key":"stress","label":"Stress","starting":3}],"attributes":[{"key":"vig","label":"Vigore","starting":3},{"key":"agi","label":"Agilità","starting":3},{"key":"ing","label":"Ingegno","starting":3},{"key":"pre","label":"Presenza","starting":3},{"key":"vol","label":"Volontà","starting":3},{"key":"occ","label":"Occulto","starting":3}],"secondary":[{"key":"rep","label":"Reputazione","starting":0},{"key":"debt","label":"Debito","starting":2}],"currency":{"name":"Corone di sale","starting":8},"has_combat":true}`,
+		Name:             "Le Campane di Vespera",
+		Description:      "Un fantasy oscuro di intrighi, culti sommersi e reliquie cantanti.",
+		Genre:            "fantasy oscuro",
+		Tone:             "malinconico, elegante, teso",
+		Language:         "italiano",
+		WritingStyle:     "fantasy urbano malinconico con prosa elegante, sensoriale e controllata",
+		PromptDirectives: "Dialoghi asciutti, pericolo costante, evita prolissita.",
+		SettingJSON:      `{"world_name":"Vespera","era":"Età delle Maree Spezzate","geography":"Una città lagunare di ponti bassi, banchine nere e isole collegate da canali salmastri","magic_system":"Il suono delle campane sommerse piega memoria, volontà e fortuna, ma ogni uso lascia un prezzo","technology_level":"Rinascimento decadente con alchimia del sale","society":"Casate nobili, corporazioni mercantili, scavatori di relitti e ordini religiosi in lotta","rules":["La magia del suono ha sempre un prezzo","Il sale puro protegge dai sussurri","I debiti possono diventare servitù legale","Le reliquie emerse attirano culti e predoni"],"factions":["Casata Valcerra — nobili mercanti che controllano le banchine orientali","Coro del Sale — ordine religioso che custodisce campane e reliquie","Guardie di Marea — pattuglie portuali corrotte ma indispensabili"],"cultures":["Nobili di canale","Scavatori di relitti","Pellegrini delle campane"],"dangers":["Nebbie senzienti","Reliquie infette","Allagamenti improvvisi","Predoni dei canali"]}`,
+		StatsSchemaJSON:  `{"vitals":[{"key":"hp","label":"Salute","starting":10},{"key":"stress","label":"Stress","starting":3}],"attributes":[{"key":"vig","label":"Vigore","starting":3},{"key":"agi","label":"Agilità","starting":3},{"key":"ing","label":"Ingegno","starting":3},{"key":"pre","label":"Presenza","starting":3},{"key":"vol","label":"Volontà","starting":3},{"key":"occ","label":"Occulto","starting":3}],"secondary":[{"key":"rep","label":"Reputazione","starting":0},{"key":"debt","label":"Debito","starting":2}],"currency":{"name":"Corone di sale","starting":8},"has_combat":true}`,
 	}
 	character := &storage.Character{
 		Name:       "Nerea",
@@ -416,12 +419,15 @@ func buildNarrativeIntroCase() benchmarkCase {
 
 func buildDialogueMetadataCase() benchmarkCase {
 	story := &storage.Story{
-		Name:            "Le Campane di Vespera",
-		Description:     "Fantasy oscuro veneziano pieno di debiti, reliquie e culti del suono.",
-		Genre:           "fantasy oscuro",
-		Tone:            "teso, urbano, misterioso",
-		SettingJSON:     `{"world_name":"Vespera","era":"Età delle Maree Spezzate","geography":"Città di moli, cortili allagati e campanili semi-affondati","magic_system":"Le campane sommerse risvegliano ricordi e giuramenti","technology_level":"Rinascimento decadente","society":"Mercanti, contrabbandieri, pellegrini e guardie corrotte","rules":["Il sale sigilla i sussurri","La memoria può essere alterata dal suono","I debiti sono pubblici e spietati"],"factions":["Dock Wardens","Salt Choir","House Valcerra"],"cultures":["Scavatori","Mercanti","Pellegrini"],"dangers":["Patrols","Flood surges","Relic fever"]}`,
-		StatsSchemaJSON: `{"vitals":[{"key":"hp","label":"Salute","starting":10},{"key":"stress","label":"Stress","starting":4}],"attributes":[{"key":"agi","label":"Agilità","starting":3},{"key":"ing","label":"Ingegno","starting":4},{"key":"pre","label":"Presenza","starting":3},{"key":"vol","label":"Volontà","starting":3}],"secondary":[{"key":"rep","label":"Reputazione","starting":1}],"currency":{"name":"Corone di sale","starting":5},"has_combat":true}`,
+		Name:             "Le Campane di Vespera",
+		Description:      "Fantasy oscuro veneziano pieno di debiti, reliquie e culti del suono.",
+		Genre:            "fantasy oscuro",
+		Tone:             "teso, urbano, misterioso",
+		Language:         "italiano",
+		WritingStyle:     "dark fantasy urbano con dialoghi tesi e immagini acquatiche precise",
+		PromptDirectives: "Tieni il ritmo serrato, fai emergere il pericolo attraverso suoni e dettagli d'acqua.",
+		SettingJSON:      `{"world_name":"Vespera","era":"Età delle Maree Spezzate","geography":"Città di moli, cortili allagati e campanili semi-affondati","magic_system":"Le campane sommerse risvegliano ricordi e giuramenti","technology_level":"Rinascimento decadente","society":"Mercanti, contrabbandieri, pellegrini e guardie corrotte","rules":["Il sale sigilla i sussurri","La memoria può essere alterata dal suono","I debiti sono pubblici e spietati"],"factions":["Dock Wardens","Salt Choir","House Valcerra"],"cultures":["Scavatori","Mercanti","Pellegrini"],"dangers":["Patrols","Flood surges","Relic fever"]}`,
+		StatsSchemaJSON:  `{"vitals":[{"key":"hp","label":"Salute","starting":10},{"key":"stress","label":"Stress","starting":4}],"attributes":[{"key":"agi","label":"Agilità","starting":3},{"key":"ing","label":"Ingegno","starting":4},{"key":"pre","label":"Presenza","starting":3},{"key":"vol","label":"Volontà","starting":3}],"secondary":[{"key":"rep","label":"Reputazione","starting":1}],"currency":{"name":"Corone di sale","starting":5},"has_combat":true}`,
 	}
 	character := &storage.Character{
 		Name:       "Nerea",
@@ -485,12 +491,15 @@ func buildDialogueMetadataCase() benchmarkCase {
 
 func buildChallengeCase() benchmarkCase {
 	story := &storage.Story{
-		Name:            "Le Campane di Vespera",
-		Description:     "Un fantasy urbano in cui ogni fuga costa sangue, sale o memoria.",
-		Genre:           "fantasy oscuro",
-		Tone:            "teso, cinematico, disperato",
-		SettingJSON:     `{"world_name":"Vespera","era":"Età delle Maree Spezzate","geography":"Ponti stretti, canali gonfi e torri piegate","magic_system":"Le reliquie del suono alterano memoria e fortuna","technology_level":"Rinascimento decadente","society":"Ordini religiosi, mercanti e contrabbandieri si contendono i canali","rules":["La magia richiede sempre un prezzo","Le reliquie attirano pattuglie e culti","Le fughe lasciano tracce"],"factions":["Guardie di Marea","Coro del Sale"],"cultures":["Scavatori","Battellieri"],"dangers":["Ponti cedevoli","Lanternieri armati","Piene improvvise"]}`,
-		StatsSchemaJSON: `{"vitals":[{"key":"hp","label":"Salute","starting":10},{"key":"stress","label":"Stress","starting":5}],"attributes":[{"key":"agi","label":"Agilità","starting":4},{"key":"vol","label":"Volontà","starting":3},{"key":"vig","label":"Vigore","starting":3}],"secondary":[{"key":"rep","label":"Reputazione","starting":0}],"currency":{"name":"Corone di sale","starting":2},"has_combat":true}`,
+		Name:             "Le Campane di Vespera",
+		Description:      "Un fantasy urbano in cui ogni fuga costa sangue, sale o memoria.",
+		Genre:            "fantasy oscuro",
+		Tone:             "teso, cinematico, disperato",
+		Language:         "italiano",
+		WritingStyle:     "cinematico, nervoso, fisico, con frasi compatte",
+		PromptDirectives: "Mantieni alta la pressione della scena e fai sentire il rischio in ogni scelta.",
+		SettingJSON:      `{"world_name":"Vespera","era":"Età delle Maree Spezzate","geography":"Ponti stretti, canali gonfi e torri piegate","magic_system":"Le reliquie del suono alterano memoria e fortuna","technology_level":"Rinascimento decadente","society":"Ordini religiosi, mercanti e contrabbandieri si contendono i canali","rules":["La magia richiede sempre un prezzo","Le reliquie attirano pattuglie e culti","Le fughe lasciano tracce"],"factions":["Guardie di Marea","Coro del Sale"],"cultures":["Scavatori","Battellieri"],"dangers":["Ponti cedevoli","Lanternieri armati","Piene improvvise"]}`,
+		StatsSchemaJSON:  `{"vitals":[{"key":"hp","label":"Salute","starting":10},{"key":"stress","label":"Stress","starting":5}],"attributes":[{"key":"agi","label":"Agilità","starting":4},{"key":"vol","label":"Volontà","starting":3},{"key":"vig","label":"Vigore","starting":3}],"secondary":[{"key":"rep","label":"Reputazione","starting":0}],"currency":{"name":"Corone di sale","starting":2},"has_combat":true}`,
 	}
 	character := &storage.Character{
 		Name:       "Nerea",
@@ -562,7 +571,14 @@ ASSISTANT: La notte si chiude con le campane sommerse che tornano a suonare e un
 		Temperature: 0.3,
 		MaxTokens:   900,
 		Messages: []ai.Message{
-			{Role: ai.RoleSystem, Content: prompts.ChapterSummarySystem},
+			{
+				Role: ai.RoleSystem,
+				Content: prompts.ChapterSummarySystem(
+					"italiano",
+					"fantasy urbano malinconico con prosa elegante e concreta",
+					"Privilegia chiarezza, ritmo e continuita emotiva.",
+				),
+			},
 			{Role: ai.RoleUser, Content: prompts.ChapterSummaryUser(transcript)},
 		},
 		Schema: ai.ChapterSummaryResponseFormat(),
@@ -572,10 +588,11 @@ ASSISTANT: La notte si chiude con le campane sommerse che tornano a suonare e un
 
 func evaluateStoryDefinition(raw string) caseEvaluation {
 	points := map[string]float64{
-		"json_block":          15,
+		"json_block":          10,
 		"json_only":           5,
 		"parseable":           15,
-		"required_fields":     15,
+		"required_fields":     10,
+		"authoring_fields":    10,
 		"setting_fields":      15,
 		"setting_counts":      15,
 		"stats_schema_shape":  10,
@@ -609,6 +626,12 @@ func evaluateStoryDefinition(raw string) caseEvaluation {
 		score += points["required_fields"]
 	} else {
 		eval.Notes = append(eval.Notes, "Mancano campi top-level richiesti")
+	}
+
+	if strings.TrimSpace(def.Language) != "" && strings.TrimSpace(def.WritingStyle) != "" {
+		score += points["authoring_fields"]
+	} else {
+		eval.Notes = append(eval.Notes, "Mancano language e/o writing_style nella story definition")
 	}
 
 	settingFilled := 0

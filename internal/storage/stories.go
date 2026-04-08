@@ -8,9 +8,13 @@ import (
 // CreateStory inserts a new story.
 func (db *DB) CreateStory(s *Story) error {
 	_, err := db.conn.Exec(
-		`INSERT INTO stories (id, name, setting_json, stats_schema_json, description, genre, tone, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.Name, s.SettingJSON, s.StatsSchemaJSON, s.Description, s.Genre, s.Tone, s.CreatedAt, s.UpdatedAt,
+		`INSERT INTO stories (
+			id, name, setting_json, stats_schema_json, description, genre, tone,
+			language, writing_style, prompt_directives, created_at, updated_at
+		)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.Name, s.SettingJSON, s.StatsSchemaJSON, s.Description, s.Genre, s.Tone,
+		s.Language, s.WritingStyle, s.PromptDirectives, s.CreatedAt, s.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting story: %w", err)
@@ -22,9 +26,13 @@ func (db *DB) CreateStory(s *Story) error {
 func (db *DB) GetStory(id string) (*Story, error) {
 	s := &Story{}
 	err := db.conn.QueryRow(
-		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone, created_at, updated_at
+		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone,
+                language, writing_style, prompt_directives, created_at, updated_at
          FROM stories WHERE id = ?`, id,
-	).Scan(&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON, &s.Description, &s.Genre, &s.Tone, &s.CreatedAt, &s.UpdatedAt)
+	).Scan(
+		&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON, &s.Description, &s.Genre, &s.Tone,
+		&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.CreatedAt, &s.UpdatedAt,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("getting story %s: %w", id, err)
 	}
@@ -34,7 +42,8 @@ func (db *DB) GetStory(id string) (*Story, error) {
 // ListStories returns all stories ordered by most recent.
 func (db *DB) ListStories() ([]Story, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone, created_at, updated_at
+		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone,
+                language, writing_style, prompt_directives, created_at, updated_at
          FROM stories ORDER BY updated_at DESC`,
 	)
 	if err != nil {
@@ -45,8 +54,12 @@ func (db *DB) ListStories() ([]Story, error) {
 	var stories []Story
 	for rows.Next() {
 		var s Story
-		if err := rows.Scan(&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON,
-			&s.Description, &s.Genre, &s.Tone, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON,
+			&s.Description, &s.Genre, &s.Tone,
+			&s.Language, &s.WritingStyle, &s.PromptDirectives,
+			&s.CreatedAt, &s.UpdatedAt,
+		); err != nil {
 			return nil, fmt.Errorf("scanning story: %w", err)
 		}
 		stories = append(stories, s)

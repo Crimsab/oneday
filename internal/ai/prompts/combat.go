@@ -5,13 +5,19 @@ import "fmt"
 // CombatSystem builds the system prompt for combat AI calls.
 func CombatSystem(
 	storyName string,
+	language string,
+	writingStyle string,
+	promptDirectives string,
 	settingJSON string,
 	playerName string,
 	playerStatsJSON string,
 	enemyJSON string,
 	combatTurn int,
 ) string {
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
 	return fmt.Sprintf(`You are the combat narrator for "%s", a text RPG.
+%s
 
 ## Setting
 %s
@@ -21,7 +27,7 @@ You are narrating a turn-based combat encounter. The GAME ENGINE handles all mec
 
 1. Describe the action narratively (what the attack looks like, how the enemy reacts)
 2. Propose 2-4 choices for the player's next action
-3. Suggest state_changes if appropriate (but NOT HP/damage — the engine handles that)
+3. Suggest state_changes if appropriate (but NOT HP/damage - the engine handles that)
 
 CRITICAL: Do NOT calculate damage. Do NOT decide hit/miss. Do NOT change HP values. The engine does all math. You describe, the engine decides.
 
@@ -53,34 +59,40 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
 `+"```"+`
 
 IMPORTANT:
-- Always include a "talk" or creative option — the player can always try non-violent solutions
+- Always include a "talk" or creative option - the player can always try non-violent solutions
 - If the player tries to flee or talk, narrate the attempt. The engine will determine success via dice roll.
-- Use the player's language in narrative and choices.
+- Write narrative and choices in the configured story language above.
 - Write combat descriptions that are vivid but not gratuitously violent.
 - Adapt tone based on the combat state (desperate if player HP is low, triumphant if winning).
 - mood must be one of: tense, epic, desperate, triumphant, mysterious
-`, storyName, settingJSON, playerName, playerStatsJSON, enemyJSON, combatTurn)
+`, storyName, authoringSection, settingJSON, playerName, playerStatsJSON, enemyJSON, combatTurn)
 }
 
 // CombatDefeatPrompt asks the AI to decide the defeat outcome.
 func CombatDefeatPrompt(
 	storyName string,
+	language string,
+	writingStyle string,
+	promptDirectives string,
 	playerName string,
 	enemyName string,
 	combatSummary string,
 ) string {
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
 	return fmt.Sprintf(`The player "%s" has been defeated by %s in "%s".
+%s
 
 Combat summary: %s
 
 Decide the defeat outcome. Choose ONE:
-- "death" — character dies, player must reload a save
-- "capture" — character is captured, wakes up imprisoned (story continues)
-- "rescue" — an NPC ally intervenes at the last moment (story continues)
-- "retreat" — character barely escapes, losing some items/reputation (story continues)
-- "unconscious" — character passes out, wakes up later (story continues)
+- "death" - character dies, player must reload a save
+- "capture" - character is captured, wakes up imprisoned (story continues)
+- "rescue" - an NPC ally intervenes at the last moment (story continues)
+- "retreat" - character barely escapes, losing some items/reputation (story continues)
+- "unconscious" - character passes out, wakes up later (story continues)
 
-Consider the story context, enemy type, and narrative drama. Death should be RARE — only for truly overwhelming enemies or foolish repeated choices.
+Consider the story context, enemy type, and narrative drama. Death should be RARE - only for truly overwhelming enemies or foolish repeated choices.
 
 Respond with ONLY valid JSON matching this structure.
 Do NOT add prose before or after the JSON object. Markdown code fences are optional.
@@ -91,16 +103,22 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
   "state_changes": {}
 }
 `+"```"+`
-`, playerName, enemyName, storyName, combatSummary)
+`, playerName, enemyName, storyName, authoringSection, combatSummary)
 }
 
 // CombatVictoryPrompt asks the AI to narrate the victory.
 func CombatVictoryPrompt(
+	language string,
+	writingStyle string,
+	promptDirectives string,
 	playerName string,
 	enemyName string,
 	combatTurns int,
 ) string {
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
 	return fmt.Sprintf(`%s has defeated %s after %d turns of combat!
+%s
 
 Narrate the victory moment. Include:
 - How the final blow landed
@@ -121,5 +139,5 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
   "state_changes": {}
 }
 `+"```"+`
-`, playerName, enemyName, combatTurns)
+`, playerName, enemyName, combatTurns, authoringSection)
 }

@@ -9,7 +9,10 @@ import (
 // It includes the story setting, rules, stats schema, character info,
 // and optionally a block of known NPC context.
 // genre and tone come from the Story model (persisted in DB since migration V6).
-func NarratorSystem(storyName, genre, tone, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcsContext string) string {
+func NarratorSystem(
+	storyName, genre, tone, language, writingStyle, promptDirectives,
+	settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcsContext string,
+) string {
 	npcSection := ""
 	if strings.TrimSpace(npcsContext) != "" {
 		npcSection = fmt.Sprintf("\n## Known NPCs\n%s", npcsContext)
@@ -20,7 +23,10 @@ func NarratorSystem(storyName, genre, tone, settingJSON, statsSchemaJSON, charNa
 		genreToneSection = fmt.Sprintf("\n## Story Identity\n- Genre: %s\n- Tone: %s\n", genre, tone)
 	}
 
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
 	return fmt.Sprintf(`You are the Narrator for "%s", an AI-driven text RPG.
+%s
 %s
 ## Story Setting
 %s
@@ -269,7 +275,8 @@ Set "achievement_earned": null when no achievement is warranted (most turns).
 3. Provide 2-4 choices that make sense for the situation
 4. The player can ALSO type their own free action — your choices are suggestions, not limitations
 5. Use the player's language (match whatever language they use)
-6. Keep the mood field updated — it affects the UI theming`, storyName, genreToneSection, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcSection)
+6. Keep the mood field updated — it affects the UI theming
+7. The "player's language" rule only applies when it matches the story language or when the player is clearly asking for an out-of-band translation. Otherwise keep the story in the configured story language above.`, storyName, genreToneSection, authoringSection, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcSection)
 }
 
 // FirstTurnUser is the initial user message to start the story.

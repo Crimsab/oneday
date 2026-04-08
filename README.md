@@ -17,6 +17,7 @@ Stories are infinite, AI-generated, and deeply personalized. Every NPC has perso
 - **AI Achievements** — no predefined list. The AI recognizes noteworthy moments and awards unique achievements
 - **Persistent Memory** — full chat history saved, RAG-powered long-term context. Stories can be infinite
 - **Multiple Genres** — fantasy, cyberpunk, horror, slice-of-life, anything. Each genre defines its own stat system and rules
+- **Per-Story Authoring Control** — each story can lock its own language, prose style, and reusable prompt directives so narration stays consistent across turns, combat, crafting, summaries, and GM meta commands
 
 ## Tech Stack
 
@@ -85,8 +86,12 @@ GitHub Actions is configured to:
 - build `oneday` and `oneday-benchmark`
 - cross-compile Linux amd64 and Windows amd64 artifacts
 - publish a GitHub Release automatically when a `v*` tag is pushed
+- maintain automated release PRs and tags through `release-please`
 
-The workflow file is `.github/workflows/build-release.yml`.
+Workflow files:
+
+- `.github/workflows/build-release.yml` for CI and manual tag builds
+- `.github/workflows/release-please.yml` for automated release PRs, tagging, and artifact upload
 
 ## License
 

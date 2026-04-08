@@ -1,7 +1,13 @@
 package prompts
 
+import "fmt"
+
 // ChapterSummarySystem is the system prompt for generating chapter summaries.
-const ChapterSummarySystem = `You are summarizing a chapter of a text RPG adventure.
+func ChapterSummarySystem(language, writingStyle, promptDirectives string) string {
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
+	return fmt.Sprintf(`You are summarizing a chapter of a text RPG adventure.
+%s
 
 Generate a concise chapter summary based on the conversation transcript provided.
 
@@ -17,12 +23,13 @@ Also provide a short, evocative chapter title (3-6 words).
 
 Respond with ONLY valid JSON in this exact format.
 Do NOT add prose before or after the JSON object. Markdown code fences are optional.
-` + "```json" + `
+`+"```json"+`
 {
   "title": "Evocative chapter title here",
   "summary": "Chapter summary here (200-400 words describing the key events and developments)"
 }
-` + "```"
+`+"```", authoringSection)
+}
 
 // ChapterSummaryUser builds the user message for generating a chapter summary.
 // It takes the chat transcript for the chapter as input.
