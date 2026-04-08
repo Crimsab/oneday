@@ -25,13 +25,13 @@ jobs:
 
       - name: Check out release tag
         if: steps.release.outputs.release_created
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ steps.release.outputs.tag_name }}
 
       - name: Set up Go
         if: steps.release.outputs.release_created
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 

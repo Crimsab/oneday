@@ -24,6 +24,7 @@ const (
 	ViewNarrative
 	ViewLoadStory
 	ViewSaveLoad
+	ViewSettings
 )
 
 // App is the top-level Bubbletea model.
@@ -41,6 +42,7 @@ type App struct {
 	narrative *views.NarrativeModel
 	loadStory *views.LoadStoryModel
 	saveLoad  *views.SaveLoadModel
+	settings  *views.SettingsModel
 }
 
 // New creates the app with all dependencies.
@@ -76,6 +78,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.saveLoad != nil {
 			a.saveLoad.SetSize(msg.Width, msg.Height)
 		}
+		if a.settings != nil {
+			a.settings.SetSize(msg.Width, msg.Height)
+		}
 		return a, nil
 
 	case tea.KeyMsg:
@@ -105,6 +110,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case views.LoadStoryBackMsg:
 		// User pressed Esc in load story view — back to menu
+		a.view = ViewMenu
+		return a, nil
+
+	case views.SettingsBackMsg:
 		a.view = ViewMenu
 		return a, nil
 
@@ -193,7 +202,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.view = ViewLoadStory
 			return a, nil
 		case views.ActionSettings:
-			// Will be implemented later
+			m := views.NewSettingsModel(a.cfg)
+			m.SetSize(a.width, a.height)
+			a.settings = &m
+			a.view = ViewSettings
 			return a, nil
 		}
 	}
@@ -245,6 +257,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.saveLoad = &updated
 			return a, cmd
 		}
+
+	case ViewSettings:
+		if a.settings != nil {
+			var cmd tea.Cmd
+			updated, cmd := a.settings.Update(msg)
+			a.settings = &updated
+			return a, cmd
+		}
 	}
 
 	return a, nil
@@ -272,6 +292,11 @@ func (a App) View() string {
 	case ViewSaveLoad:
 		if a.saveLoad != nil {
 			return a.saveLoad.View()
+		}
+		return a.menu.View()
+	case ViewSettings:
+		if a.settings != nil {
+			return a.settings.View()
 		}
 		return a.menu.View()
 	default:
