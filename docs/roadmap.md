@@ -1,5 +1,7 @@
 # OneDay — Roadmap
 
+> Note: this is a high-level historical roadmap. The authoritative phase-by-phase record lives in `.planning/ROADMAP.md`.
+
 ## v0.1 — Foundation
 
 The minimum to play a basic story.
@@ -7,7 +9,7 @@ The minimum to play a basic story.
 - [ ] Project setup (Go module, dependencies, build)
 - [ ] Global config system (`config.yaml`)
 - [ ] SQLite storage layer (connection, migrations, CRUD)
-- [ ] AI client with provider router (Claude Code → LiteLLM → OpenRouter fallback)
+- [ ] AI client with provider router (LiteLLM → OpenRouter → Claude Code fallback)
 - [ ] TUI shell: Bubbletea app with navigation, views, theme
 - [ ] Main menu (new story, load story, settings, quit)
 - [ ] Story creation flow (AI asks questions, builds story.json collaboratively)
@@ -29,7 +31,7 @@ Making the game actually interesting.
 - [ ] Relationship tracking (disposition, history)
 - [ ] RAG system:
   - Embedding generation (text-embedding-3-small via LiteLLM)
-  - sqlite-vec storage and retrieval
+  - SQLite BLOB storage + cosine similarity retrieval in Go
   - Periodic summarization (every N turns → chunk)
   - Context builder uses RAG for relevant history
 - [ ] Chapter system (AI determines chapter boundaries, generates summaries)

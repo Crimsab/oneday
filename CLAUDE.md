@@ -10,8 +10,8 @@ AI-driven text RPG with TUI interface. Highly modular, narrative-focused, everyt
 |-----------|------------|
 | Language | Go 1.24+ |
 | TUI | Bubbletea + Bubbles + Lipgloss |
-| Database | SQLite + sqlite-vec (vector search) |
-| AI | Claude Code CLI → LiteLLM → OpenRouter (fallback chain) |
+| Database | SQLite + embedding BLOBs + cosine similarity in Go |
+| AI | LiteLLM → OpenRouter → Claude Code (configurable fallback chain) |
 | Embeddings | text-embedding-3-small via LiteLLM |
 | Plugins | Lua (gopher-lua) — v2+ |
 
@@ -27,7 +27,7 @@ oneday/
 │   │   ├── providers/       # Claude Code, LiteLLM, OpenRouter adapters
 │   │   └── prompts/         # System prompts (narrator, combat, crafting, etc.)
 │   ├── engine/              # Game logic (story, character, npc, combat, crafting, challenge, inventory, achievement, events)
-│   ├── rag/                 # Embedding generation + sqlite-vec store + summarizer
+│   ├── rag/                 # Embedding generation + SQLite vector store + summarizer
 │   ├── storage/             # SQLite connection, migrations, models, session management
 │   ├── tui/                 # Bubbletea app
 │   │   ├── views/           # Screens (menu, narrative, combat, crafting, character, inventory, etc.)
@@ -69,13 +69,14 @@ oneday/
 ## AI Provider Chain
 
 ```
-config.yaml → provider_priority: [claude-code, litellm, openrouter]
+config.yaml → provider_priority: [litellm, openrouter, claude-code]
 ```
 
-- **Claude Code**: shell out to `claude -p "prompt" --output-format json`
-- **LiteLLM**: OpenAI-compatible API at configured endpoint
-- **OpenRouter**: direct API with model routing
+- **LiteLLM**: OpenAI-compatible endpoint, current primary runtime provider
+- **OpenRouter**: direct OpenAI-compatible fallback
+- **Claude Code**: optional local CLI fallback when enabled
 - Automatic fallback: if provider 1 fails/timeouts → try provider 2 → etc.
+- OpenAI-compatible providers support provider-side `response_format` with automatic fallback to prompt-only when structured output is rejected.
 
 ---
 
@@ -97,7 +98,7 @@ oneday_data/
 │   │   ├── crafting_*.jsonl    # Crafting sessions (separate context)
 │   │   └── dialogue_*.jsonl    # Deep NPC dialogues
 │   ├── chapters/{chapter_N}.json  # AI-generated summaries per chapter
-│   └── vectors/embeddings.db  # sqlite-vec for this story's RAG
+│   └── vectors/embeddings.db  # SQLite DB storing embedding BLOBs for this story's RAG
 └── global/
     └── config.yaml
 ```
@@ -117,7 +118,7 @@ oneday_data/
 
 ---
 
-## Key Dependencies (planned)
+## Key Dependencies
 
 | Package | Purpose |
 |---------|---------|
@@ -125,23 +126,73 @@ oneday_data/
 | `github.com/charmbracelet/bubbles` | Common TUI components |
 | `github.com/charmbracelet/lipgloss` | TUI styling |
 | `modernc.org/sqlite` | Pure Go SQLite (no CGO) |
-| `github.com/asg017/sqlite-vec-go-bindings` | Vector search extension |
 | `github.com/yuin/gopher-lua` | Lua scripting (v2+) |
 
 ---
 
-## Running
+## Build And Run
 
 ```bash
-# Development
+# Copy local config
+cp config.example.yaml config.yaml
+
+# Edit provider keys / endpoints
+$EDITOR config.yaml
+
+# Verify
+go test ./...
+go vet ./...
+
+# Run the game
 go run ./cmd/oneday
 
-# Build
+# Build main binary
 go build -o oneday ./cmd/oneday
 
-# Cross-compile for Windows
-GOOS=windows GOARCH=amd64 go build -o oneday.exe ./cmd/oneday
+# Build benchmark helper
+go build -o oneday-benchmark ./cmd/oneday-benchmark
+
+# Cross-compile Linux amd64
+GOOS=linux GOARCH=amd64 go build -o oneday-linux-amd64 ./cmd/oneday
+
+# Cross-compile Windows amd64
+GOOS=windows GOARCH=amd64 go build -o oneday-windows-amd64.exe ./cmd/oneday
 ```
+
+## Configuration Model
+
+Runtime config is layered:
+
+1. `internal/config/config.go` provides built-in defaults through `config.Default()`
+2. `cmd/oneday/main.go` loads `config.yaml` from the current working directory
+3. `config.example.yaml` is the tracked template
+4. `config.yaml` is local-only and ignored by git
+
+In practice:
+
+- defaults live inside the code
+- secrets, endpoints, model choices, and machine-specific overrides live outside the code
+
+Current defaults:
+
+- `litellm` enabled, model `x-ai/grok-4.1-fast`
+- `openrouter` enabled, model `google/gemini-2.5-flash-lite`
+- `claude-code` disabled by default
+
+RAG note:
+
+- embeddings are stored as BLOBs in SQLite
+- similarity search runs in Go
+- this repo does not use `sqlite-vec`
+
+## CI / Release
+
+Workflow: `.github/workflows/build-release.yml`
+
+Behavior:
+
+- on push / pull request: runs `go test ./...`, `go vet ./...`, builds Linux amd64 + Windows amd64
+- on tag `v*`: also publishes a GitHub Release with the built artifacts
 
 ---
 
@@ -194,8 +245,8 @@ A personal AI-driven text RPG played entirely in the terminal (TUI). Stories are
 
 ### Constraints
 
-- **Stack**: Go + Bubbletea/Bubbles/Lipgloss + SQLite + sqlite-vec
-- **AI**: Must work with multiple providers (Claude Code, LiteLLM, OpenRouter) via fallback chain
+- **Stack**: Go + Bubbletea/Bubbles/Lipgloss + SQLite + embedding BLOB RAG
+- **AI**: Must work with multiple providers (LiteLLM, OpenRouter, Claude Code) via fallback chain
 - **No hardcoding**: Stats, skills, NPCs, items, locations, objectives, achievements all AI-generated
 - **Modularity**: Every system is a separate package with clean interfaces
 - **Cross-platform**: Must compile for Windows (primary target) and Linux

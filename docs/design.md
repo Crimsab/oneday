@@ -1,5 +1,7 @@
 # OneDay — Design Document
 
+> Note: this is a historical design document. The current implementation differs in a few important places, especially provider defaults and RAG storage.
+
 ## Overview
 
 OneDay is a personal TUI-based text RPG where every aspect of the game is driven by AI. Stories are infinite, characters start from nothing and grow through their actions, and the game world responds dynamically to player choices.
@@ -392,7 +394,7 @@ A **chapter** is an AI-determined narrative arc. The AI decides when a chapter e
     "ascii_art": null,
     "achievement_earned": null
   },
-  "ai_model": "claude-sonnet-4-6",
+  "ai_model": "x-ai/grok-4.1-fast",
   "ai_latency_ms": 1847
 }
 ```
@@ -411,11 +413,11 @@ Stories can be infinite. Context windows are not. RAG bridges the gap by retriev
 Every N turns (configurable, default 10):
   1. AI summarizes the last N turns → "summary chunk"
   2. Generate embedding via text-embedding-3-small (through LiteLLM)
-  3. Store embedding + text in sqlite-vec
+  3. Store embedding + text in SQLite as BLOB vectors
 
 When building AI context:
   1. Take current situation as query
-  2. Vector search → top K relevant chunks
+  2. Cosine similarity in Go → top K relevant chunks
   3. Inject into prompt alongside recent chat history
 ```
 
@@ -463,7 +465,7 @@ ASCII art is generated inline by the AI as part of its narrative response. No pr
 │  > Scrivi la tua azione...                            │
 │                                                        │
 ├────────────────────────────────────────────────────────┤
-│ HP: 62/100 │ Mana: 15/50 │ claude-sonnet-4-6 · 1.2s  │
+│ HP: 62/100 │ Mana: 15/50 │ x-ai/grok-4.1-fast · 1.2s │
 └────────────────────────────────────────────────────────┘
 ```
 

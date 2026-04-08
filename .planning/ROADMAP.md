@@ -18,7 +18,7 @@
 1. Running `oneday` binary starts without error on both Linux and Windows (cross-compile).
 2. `config.yaml` controls AI provider order; switching the chain changes which provider is called.
 3. SQLite database is created automatically on first run with all v1 schema tables.
-4. AI provider router falls back from Claude Code CLI → LiteLLM → OpenRouter on failure, logged to console.
+4. AI provider router falls back across the configured chain (currently LiteLLM → OpenRouter → Claude Code) on failure, logged to console.
 
 ### Plans
 
@@ -111,8 +111,8 @@
 
 ### Success Criteria
 
-1. Every N turns, the last N turns are summarized and the summary is embedded and stored in `sqlite-vec`.
-2. Context builder retrieves top-K relevant chunks from `sqlite-vec` and includes them in AI prompts.
+1. Every N turns, the last N turns are summarized and the summary is embedded and stored in SQLite as BLOB vectors.
+2. Context builder retrieves top-K relevant chunks through cosine similarity in Go and includes them in AI prompts.
 3. Combat and crafting sessions have separate `.jsonl` files from the main narrative.
 4. When a chapter ends, the AI generates and saves a chapter summary; `/journal` shows chapters.
 5. `/n Aggiungi una fazione segreta` updates `story.json` factions and the AI weaves it into future turns.
@@ -120,7 +120,7 @@
 
 ### Plans
 
-- [ ] Plan 5.1: Implement `rag/` package — periodic summarization trigger, embedding via LiteLLM text-embedding-3-small, `sqlite-vec` store/retrieve
+- [ ] Plan 5.1: Implement `rag/` package — periodic summarization trigger, embedding via LiteLLM text-embedding-3-small, SQLite BLOB vector store/retrieve
 - [ ] Plan 5.2: Wire RAG retrieval into context builder (`RAG-04`); implement separate chat logs for combat/crafting/dialogue (`STOR-04`)
 - [ ] Plan 5.3: Implement chapter system — AI-driven chapter boundary detection, summary generation, JSONL organization by chapter (`STOR-05`)
 - [ ] Plan 5.4: Implement `/narrator` (`CMD-03`, `CMD-04`) — meta-input tagging, AI system instruction path, auto-update to `story.json`/NPC files/`world_state`

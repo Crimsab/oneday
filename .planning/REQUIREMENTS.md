@@ -52,7 +52,7 @@
 
 - [x] **RAG-01**: Periodic summarization (every N turns) generates text chunks
 - [x] **RAG-02**: Chunks embedded via text-embedding-3-small through LiteLLM
-- [x] **RAG-03**: Embeddings stored in sqlite-vec per story
+- [x] **RAG-03**: Embeddings stored in SQLite as BLOB vectors per story
 - [x] **RAG-04**: Context builder retrieves top-K relevant chunks for AI prompts
 
 ### Combat
@@ -113,7 +113,7 @@
 ### Configuration
 
 - [x] **CONF-01**: Global config.yaml for AI providers, endpoints, keys, game settings
-- [x] **CONF-02**: AI provider priority chain configurable (Claude Code → LiteLLM → OpenRouter)
+- [x] **CONF-02**: AI provider priority chain configurable (LiteLLM → OpenRouter → Claude Code)
 
 ## v1.1 Requirements
 

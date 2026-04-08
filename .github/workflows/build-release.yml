@@ -1,0 +1,118 @@
+name: Build And Release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run vet
+        run: go vet ./...
+
+  build:
+    name: Build ${{ matrix.target.goos }}-${{ matrix.target.goarch }}
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - goos: linux
+            goarch: amd64
+            suffix: linux-amd64
+            ext: ""
+            archive: tar.gz
+          - goos: windows
+            goarch: amd64
+            suffix: windows-amd64
+            ext: .exe
+            archive: zip
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binaries
+        env:
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+        run: |
+          mkdir -p dist package release
+          go build -o "dist/oneday-${{ matrix.target.suffix }}${{ matrix.target.ext }}" ./cmd/oneday
+          go build -o "dist/oneday-benchmark-${{ matrix.target.suffix }}${{ matrix.target.ext }}" ./cmd/oneday-benchmark
+
+      - name: Package tar.gz artifact
+        if: matrix.target.archive == 'tar.gz'
+        run: |
+          pkg_dir="package/oneday-${{ matrix.target.suffix }}"
+          mkdir -p "$pkg_dir"
+          cp "dist/oneday-${{ matrix.target.suffix }}${{ matrix.target.ext }}" "$pkg_dir/oneday${{ matrix.target.ext }}"
+          cp "dist/oneday-benchmark-${{ matrix.target.suffix }}${{ matrix.target.ext }}" "$pkg_dir/oneday-benchmark${{ matrix.target.ext }}"
+          tar -C package -czf "release/oneday-${{ matrix.target.suffix }}.tar.gz" "oneday-${{ matrix.target.suffix }}"
+
+      - name: Package zip artifact
+        if: matrix.target.archive == 'zip'
+        run: |
+          pkg_dir="package/oneday-${{ matrix.target.suffix }}"
+          mkdir -p "$pkg_dir"
+          cp "dist/oneday-${{ matrix.target.suffix }}${{ matrix.target.ext }}" "$pkg_dir/oneday${{ matrix.target.ext }}"
+          cp "dist/oneday-benchmark-${{ matrix.target.suffix }}${{ matrix.target.ext }}" "$pkg_dir/oneday-benchmark${{ matrix.target.ext }}"
+          cd package
+          zip -r "../release/oneday-${{ matrix.target.suffix }}.zip" "oneday-${{ matrix.target.suffix }}"
+
+      - name: Upload packaged artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target.suffix }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          merge-multiple: true
+          path: release-artifacts
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-artifacts/*
+          generate_release_notes: true

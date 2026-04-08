@@ -41,16 +41,16 @@ The player can start a story and have an engaging, coherent, infinite narrative 
 ## Context
 
 - Built for personal use on Windows (primary) and Linux
-- AI backend: Claude Code CLI (direct) → LiteLLM proxy → OpenRouter (fallback chain)
+- AI backend: LiteLLM proxy → OpenRouter → Claude Code CLI (configurable fallback chain)
 - Runs on homelab (Debian 13, AMD Ryzen 7) for development, Windows for playing
 - Inspired by psychology discussions about personal growth through narrative
-- Embedding: text-embedding-3-small generates vectors, sqlite-vec stores/searches them
+- Embedding: text-embedding-3-small generates vectors, SQLite stores them as BLOBs, retrieval uses cosine similarity in Go
 - The game engine handles mechanics (dice, damage, checks); the AI handles narrative
 
 ## Constraints
 
-- **Stack**: Go + Bubbletea/Bubbles/Lipgloss + SQLite + sqlite-vec
-- **AI**: Must work with multiple providers (Claude Code, LiteLLM, OpenRouter) via fallback chain
+- **Stack**: Go + Bubbletea/Bubbles/Lipgloss + SQLite + embedding BLOB RAG
+- **AI**: Must work with multiple providers (LiteLLM, OpenRouter, Claude Code) via fallback chain
 - **No hardcoding**: Stats, skills, NPCs, items, locations, objectives, achievements all AI-generated
 - **Modularity**: Every system is a separate package with clean interfaces
 - **Cross-platform**: Must compile for Windows (primary target) and Linux
@@ -60,10 +60,10 @@ The player can start a story and have an engaging, coherent, infinite narrative 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Go over Python/Rust | Best TUI ecosystem (Bubbletea), good performance, easy cross-compile | ✓ Good |
-| SQLite + sqlite-vec over Qdrant/ChromaDB | Zero infrastructure, single file, fast enough for personal use (~5ms/100k vectors) | ✓ Good |
+| SQLite BLOB vectors over external vector DBs | Zero infrastructure, single file, simple with `modernc.org/sqlite`, fast enough for personal use | ✓ Good |
 | No stat templates | Each story defines its own stats schema — more flexible, more creative | ✓ Good |
 | Items have narrative effects not numerical stats | AI uses description/effects to determine capabilities, more flexible | ✓ Good |
-| Claude Code CLI as primary AI provider | Uses existing subscription, best quality | ✓ Good |
+| LiteLLM primary, OpenRouter fallback, Claude Code optional | Best balance of routing flexibility, local homelab integration, and fallback safety | ✓ Good |
 | Lua for future plugin system | Standard for game modding (WoW, Factorio), gopher-lua is pure Go | — Pending |
 | Separate chat sessions for combat/crafting | Keeps AI context focused and efficient | ✓ Good |
 | /narrator command for meta world-building | Adds depth without breaking immersion, evolves story.json dynamically | ✓ Good |
