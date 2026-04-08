@@ -22,6 +22,7 @@ func (db *DB) migrate() error {
 		{2, migrationV2},
 		{3, migrationV3},
 		{4, migrationV4},
+		{5, migrationV5},
 	}
 
 	for _, m := range migrations {
@@ -196,4 +197,23 @@ CREATE TABLE IF NOT EXISTS rag_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_story ON rag_chunks(story_id);
 CREATE INDEX IF NOT EXISTS idx_rag_chunks_story_type ON rag_chunks(story_id, chunk_type);
+`
+
+const migrationV5 = `
+-- Combat log table: records outcomes of combat encounters per story
+CREATE TABLE IF NOT EXISTS combat_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL,
+    enemy_name TEXT NOT NULL,
+    enemy_hp INTEGER NOT NULL,
+    turns INTEGER NOT NULL,
+    victory BOOLEAN NOT NULL,
+    defeat_outcome TEXT NOT NULL DEFAULT '',
+    player_hp_start INTEGER NOT NULL,
+    player_hp_end INTEGER NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_combat_log_story ON combat_log(story_id);
 `

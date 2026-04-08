@@ -105,3 +105,18 @@ type Achievement struct {
 	Context     string    `json:"context"`
 	EarnedAt    time.Time `json:"earned_at"`
 }
+
+// CombatLog records the outcome of a single combat encounter.
+type CombatLog struct {
+	ID            int64     `json:"id"`
+	StoryID       string    `json:"story_id"`
+	SessionID     string    `json:"session_id"`
+	EnemyName     string    `json:"enemy_name"`
+	EnemyHP       int       `json:"enemy_hp"`
+	Turns         int       `json:"turns"`
+	Victory       bool      `json:"victory"`
+	DefeatOutcome string    `json:"defeat_outcome"`
+	PlayerHPStart int       `json:"player_hp_start"`
+	PlayerHPEnd   int       `json:"player_hp_end"`
+	CreatedAt     time.Time `json:"created_at"`
+}
