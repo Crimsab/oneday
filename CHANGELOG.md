@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.0](https://github.com/Crimsab/oneday/compare/v1.1.0...v1.2.0) (2026-04-08)
+
+
+### Features
+
+* **tui:** complete phase 9 narrative ux polish ([213bfad](https://github.com/Crimsab/oneday/commit/213bfad3776441a851f17d565c4b42dbe5660e66))
+
 ## [1.1.0](https://github.com/Crimsab/oneday/compare/v1.0.1...v1.1.0) (2026-04-08)
 
 
