@@ -1,0 +1,67 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release Please
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: go
+          package-name: oneday
+
+      - name: Check out release tag
+        if: steps.release.outputs.release_created
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag_name }}
+
+      - name: Set up Go
+        if: steps.release.outputs.release_created
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build release artifacts
+        if: steps.release.outputs.release_created
+        run: |
+          mkdir -p dist package release
+
+          GOOS=linux GOARCH=amd64 go build -o dist/oneday-linux-amd64 ./cmd/oneday
+          GOOS=linux GOARCH=amd64 go build -o dist/oneday-benchmark-linux-amd64 ./cmd/oneday-benchmark
+
+          GOOS=windows GOARCH=amd64 go build -o dist/oneday-windows-amd64.exe ./cmd/oneday
+          GOOS=windows GOARCH=amd64 go build -o dist/oneday-benchmark-windows-amd64.exe ./cmd/oneday-benchmark
+
+          linux_dir="package/oneday-linux-amd64"
+          mkdir -p "$linux_dir"
+          cp dist/oneday-linux-amd64 "$linux_dir/oneday"
+          cp dist/oneday-benchmark-linux-amd64 "$linux_dir/oneday-benchmark"
+          tar -C package -czf release/oneday-linux-amd64.tar.gz oneday-linux-amd64
+
+          windows_dir="package/oneday-windows-amd64"
+          mkdir -p "$windows_dir"
+          cp dist/oneday-windows-amd64.exe "$windows_dir/oneday.exe"
+          cp dist/oneday-benchmark-windows-amd64.exe "$windows_dir/oneday-benchmark.exe"
+          cd package
+          zip -r ../release/oneday-windows-amd64.zip oneday-windows-amd64
+
+      - name: Upload artifacts to GitHub Release
+        if: steps.release.outputs.release_created
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.release.outputs.tag_name }}" release/* --clobber

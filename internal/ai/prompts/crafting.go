@@ -6,13 +6,19 @@ import "fmt"
 // No hardcoded recipes — AI evaluates each request based on inventory, skills, and world logic.
 func CraftingSystem(
 	storyName string,
+	language string,
+	writingStyle string,
+	promptDirectives string,
 	settingJSON string,
 	playerName string,
 	inventoryJSON string,
 	knownRecipesJSON string,
 	skillsJSON string,
 ) string {
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
 	return fmt.Sprintf(`You are the crafting evaluator for "%s", a text RPG.
+%s
 
 ## Setting
 %s
@@ -75,9 +81,9 @@ IMPORTANT:
 - NO hardcoded recipes. Evaluate each request creatively based on the world's logic.
 - Items have NARRATIVE effects, not stats. "Glows in the dark" is acceptable; "+5 DEF" is NOT.
 - Materials must actually be in the inventory to be consumed.
-- Use the player's language in narrative and choices.
+- Write narrative and choices in the configured story language above.
 - The "item" field should ONLY be present when "feasible" is true.
 - When "feasible" is false, always provide "missing" and at least one "alternative".
 - Always include 2-4 "choices" for what the player can do next.
-`, storyName, settingJSON, playerName, inventoryJSON, knownRecipesJSON, skillsJSON)
+`, storyName, authoringSection, settingJSON, playerName, inventoryJSON, knownRecipesJSON, skillsJSON)
 }

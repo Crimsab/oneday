@@ -55,9 +55,7 @@ func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.Generation
 		messages: []ai.Message{
 			{Role: ai.RoleSystem, Content: prompts.StoryCreationSystem},
 		},
-		charMsgs: []ai.Message{
-			{Role: ai.RoleSystem, Content: prompts.CharacterCreationSystem},
-		},
+		charMsgs: []ai.Message{},
 	}
 }
 
@@ -105,7 +103,13 @@ Let's build your world together. I'll guide you through the process step by step
 - What **tone** should it have? *(dark & gritty, epic & heroic, lighthearted, mysterious, comedic, philosophical...)*
 - Any **specific themes** or ideas you already have in mind?
 
-Feel free to be as vague or detailed as you want — we'll shape everything together.`
+Feel free to be as vague or detailed as you want — we'll shape everything together.
+
+It also helps to mention:
+
+- what language you want the story written in
+- what kind of prose voice you want (comic, dark, arcaico, cyberpunk, minimalist, poetic...)
+- any extra direction you want every future prompt to respect`
 
 	// Add the welcome as an assistant message to history so the AI has context
 	sc.messages = append(sc.messages, ai.Message{
@@ -135,6 +139,16 @@ func (sc *StoryCreator) handleConversation(ctx context.Context, input string) (s
 		sc.definition = def
 		sc.phase = PhaseCharacter
 		// Start character creation phase
+		sc.charMsgs = []ai.Message{
+			{
+				Role: ai.RoleSystem,
+				Content: prompts.CharacterCreationSystem(
+					def.Language,
+					def.WritingStyle,
+					def.PromptDirectives,
+				),
+			},
+		}
 		sc.charMsgs = append(sc.charMsgs, ai.Message{
 			Role:    ai.RoleUser,
 			Content: fmt.Sprintf("The story \"%s\" has been created. Now I need to create my character.", def.Name),
@@ -219,15 +233,18 @@ func (sc *StoryCreator) persistStory(charName, charBackground string) error {
 	statsJSON, _ := json.Marshal(initialStats)
 
 	sc.story = &storage.Story{
-		ID:              storyID,
-		Name:            sc.definition.Name,
-		SettingJSON:     string(settingJSON),
-		StatsSchemaJSON: string(schemaJSON),
-		Description:     sc.definition.Description,
-		Genre:           sc.definition.Genre,
-		Tone:            sc.definition.Tone,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:               storyID,
+		Name:             sc.definition.Name,
+		SettingJSON:      string(settingJSON),
+		StatsSchemaJSON:  string(schemaJSON),
+		Description:      sc.definition.Description,
+		Genre:            sc.definition.Genre,
+		Tone:             sc.definition.Tone,
+		Language:         sc.definition.Language,
+		WritingStyle:     sc.definition.WritingStyle,
+		PromptDirectives: sc.definition.PromptDirectives,
+		CreatedAt:        now,
+		UpdatedAt:        now,
 	}
 
 	sc.character = &storage.Character{
@@ -281,7 +298,7 @@ func extractStoryJSON(text string) *StoryDefinition {
 		return nil
 	}
 	// Basic validation
-	if def.Name == "" || def.Genre == "" || len(def.Setting.Rules) == 0 {
+	if def.Name == "" || def.Genre == "" || def.Language == "" || def.WritingStyle == "" || len(def.Setting.Rules) == 0 {
 		return nil
 	}
 	return &def

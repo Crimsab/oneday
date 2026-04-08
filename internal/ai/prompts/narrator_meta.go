@@ -5,13 +5,19 @@ import "fmt"
 // NarratorMetaSystem is the system prompt for meta-level /narrator commands.
 // It instructs the AI to act as a collaborative game master accepting lore injections,
 // NPC modifications, and narrative steering — separate from normal gameplay.
-func NarratorMetaSystem(storyName, settingJSON, worldStateJSON, npcsContext string) string {
+func NarratorMetaSystem(
+	storyName, language, writingStyle, promptDirectives,
+	settingJSON, worldStateJSON, npcsContext string,
+) string {
 	npcSection := ""
 	if npcsContext != "" {
 		npcSection = fmt.Sprintf("\n## Known NPCs\n%s", npcsContext)
 	}
 
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
 	return fmt.Sprintf(`You are the Game Master for "%s", operating at a META level — outside the story narrative.
+%s
 
 The player is speaking directly to you as a collaborative author, not as their character. This is a world-building and narrative steering conversation.
 
@@ -63,5 +69,6 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
 4. If the request is vague, implement a reasonable interpretation and explain it
 5. Keep additions consistent with the established world tone and setting
 6. For NPC modifications, only modify NPCs that already exist in Known NPCs section
-`, storyName, settingJSON, worldStateJSON, npcSection)
+7. Write the message field in the configured story language above unless the player explicitly asks for an out-of-band translation
+`, storyName, authoringSection, settingJSON, worldStateJSON, npcSection)
 }

@@ -4,15 +4,18 @@ import "time"
 
 // Story represents a game story with its setting and rules.
 type Story struct {
-	ID              string    `json:"id"`
-	Name            string    `json:"name"`
-	SettingJSON     string    `json:"setting_json"`
-	StatsSchemaJSON string    `json:"stats_schema_json"`
-	Description     string    `json:"description"`
-	Genre           string    `json:"genre"`
-	Tone            string    `json:"tone"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	SettingJSON      string    `json:"setting_json"`
+	StatsSchemaJSON  string    `json:"stats_schema_json"`
+	Description      string    `json:"description"`
+	Genre            string    `json:"genre"`
+	Tone             string    `json:"tone"`
+	Language         string    `json:"language"`
+	WritingStyle     string    `json:"writing_style"`
+	PromptDirectives string    `json:"prompt_directives"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // Character represents the player's protagonist.
@@ -32,22 +35,22 @@ type Character struct {
 
 // NPC represents an AI-generated non-player character.
 type NPC struct {
-	ID                  string    `json:"id"`
-	StoryID             string    `json:"story_id"`
-	Name                string    `json:"name"`
-	Role                string    `json:"role"`
-	Appearance          string    `json:"appearance"`
-	PersonalityJSON     string    `json:"personality_json"`
-	PrivateThoughts     string    `json:"private_thoughts"`
-	NotesOnProtagonist  string    `json:"notes_on_protagonist"`
-	Desires             string    `json:"desires"`
-	Disposition         int       `json:"disposition"`
-	IsAlive             bool      `json:"is_alive"`
-	FirstAppearedTurn   int       `json:"first_appeared_turn"`
-	LastSeenTurn        int       `json:"last_seen_turn"`
-	CanHelp             bool      `json:"can_help"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID                 string    `json:"id"`
+	StoryID            string    `json:"story_id"`
+	Name               string    `json:"name"`
+	Role               string    `json:"role"`
+	Appearance         string    `json:"appearance"`
+	PersonalityJSON    string    `json:"personality_json"`
+	PrivateThoughts    string    `json:"private_thoughts"`
+	NotesOnProtagonist string    `json:"notes_on_protagonist"`
+	Desires            string    `json:"desires"`
+	Disposition        int       `json:"disposition"`
+	IsAlive            bool      `json:"is_alive"`
+	FirstAppearedTurn  int       `json:"first_appeared_turn"`
+	LastSeenTurn       int       `json:"last_seen_turn"`
+	CanHelp            bool      `json:"can_help"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 // WorldState tracks the global state of a story.

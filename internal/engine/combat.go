@@ -98,6 +98,9 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 
 	systemPrompt := prompts.CombatSystem(
 		ce.narrator.story.Name,
+		ce.narrator.story.Language,
+		ce.narrator.story.WritingStyle,
+		ce.narrator.story.PromptDirectives,
 		settingJSON,
 		ce.narrator.character.Name,
 		ce.narrator.character.StatsJSON,
@@ -298,6 +301,9 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 // narrateVictory asks AI to narrate the victory moment.
 func (ce *CombatEngine) narrateVictory(ctx context.Context) (*NarrativeResponse, error) {
 	prompt := prompts.CombatVictoryPrompt(
+		ce.narrator.story.Language,
+		ce.narrator.story.WritingStyle,
+		ce.narrator.story.PromptDirectives,
 		ce.narrator.character.Name,
 		ce.state.Enemy.Name,
 		ce.state.Turn,
@@ -325,6 +331,9 @@ func (ce *CombatEngine) narrateDefeat(ctx context.Context) (string, string, erro
 
 	prompt := prompts.CombatDefeatPrompt(
 		ce.narrator.story.Name,
+		ce.narrator.story.Language,
+		ce.narrator.story.WritingStyle,
+		ce.narrator.story.PromptDirectives,
 		ce.narrator.character.Name,
 		ce.state.Enemy.Name,
 		summary,

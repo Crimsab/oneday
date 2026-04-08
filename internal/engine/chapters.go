@@ -192,10 +192,22 @@ func (cm *ChapterManager) generateChapterSummary(ctx context.Context, startTurn,
 		transcript.WriteString(fmt.Sprintf("[%s]: %s\n\n", role, m.Content))
 	}
 
+	story, err := cm.db.GetStory(cm.storyID)
+	if err != nil {
+		return "", fmt.Errorf("getting story for chapter summary: %w", err)
+	}
+
 	// Call AI with the chapter summary prompt.
 	req := ai.Request{
 		Messages: []ai.Message{
-			{Role: ai.RoleSystem, Content: prompts.ChapterSummarySystem},
+			{
+				Role: ai.RoleSystem,
+				Content: prompts.ChapterSummarySystem(
+					story.Language,
+					story.WritingStyle,
+					story.PromptDirectives,
+				),
+			},
 			{Role: ai.RoleUser, Content: prompts.ChapterSummaryUser(transcript.String())},
 		},
 		Temperature:    0.5,

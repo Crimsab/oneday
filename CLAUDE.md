@@ -50,6 +50,7 @@ oneday/
 5. **Free action always available** — every choice list includes an option for the player to write their own action
 6. **Start from nothing** — characters begin with minimal stats, no traits, no skills. Everything is earned through gameplay
 7. **Persistent context** — full chat history saved per session, RAG for long-term memory across sessions
+8. **Story-level authoring** — every story can persist its own language, writing style, and extra prompt directives; all runtime prompts must respect them
 
 ---
 
@@ -193,6 +194,12 @@ Behavior:
 
 - on push / pull request: runs `go test ./...`, `go vet ./...`, builds Linux amd64 + Windows amd64
 - on tag `v*`: also publishes a GitHub Release with the built artifacts
+- on push to `main`: `release-please` can open/update the release PR and, when it cuts a release, upload Linux/Windows artifacts directly to that GitHub Release
+
+Workflows:
+
+- `.github/workflows/build-release.yml`
+- `.github/workflows/release-please.yml`
 
 ---
 
