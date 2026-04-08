@@ -22,6 +22,55 @@ var (
 	CraftingBlue = lipgloss.Color("#4A9BD9") // blue for crafting header
 )
 
+// Challenge-specific colors.
+var (
+	DiceGold         = lipgloss.Color("#FFD700")
+	RPSPurple        = lipgloss.Color("#9B59B6")
+	MemoryTeal       = lipgloss.Color("#1ABC9C")
+	QuickTimeOrange  = lipgloss.Color("#E67E22")
+	RiddleCyan       = lipgloss.Color("#3498DB")
+)
+
+// Challenge styles.
+var (
+	ChallengeOverlay = lipgloss.NewStyle().
+				Foreground(DiceGold)
+
+	DicePassed = lipgloss.NewStyle().
+			Foreground(Success).
+			Bold(true)
+
+	DiceFailed = lipgloss.NewStyle().
+			Foreground(Danger).
+			Bold(true)
+
+	RPSHeader = lipgloss.NewStyle().
+			Foreground(RPSPurple).
+			Bold(true)
+
+	MemorySymbol = lipgloss.NewStyle().
+			Foreground(MemoryTeal).
+			Bold(true)
+
+	MemoryCorrect = lipgloss.NewStyle().
+			Foreground(Success)
+
+	MemoryWrong = lipgloss.NewStyle().
+			Foreground(Danger)
+
+	QuickTimePrompt = lipgloss.NewStyle().
+				Foreground(QuickTimeOrange).
+				Bold(true).
+				Blink(true)
+
+	QuickTimeBar = lipgloss.NewStyle().
+			Foreground(QuickTimeOrange)
+
+	RiddleText = lipgloss.NewStyle().
+			Foreground(RiddleCyan).
+			Italic(true)
+)
+
 // Combat styles.
 var (
 	CombatHeader = lipgloss.NewStyle().

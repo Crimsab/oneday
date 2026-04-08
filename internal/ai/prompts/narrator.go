@@ -155,6 +155,37 @@ Chapter endings happen organically, roughly every 15-30 turns. Do not force them
 
 Examples of chapter endings: completing a major quest, escaping a dangerous situation, arriving at a new city, a major betrayal or revelation, the end of a significant journey.
 
+## Challenges
+
+When the narrative calls for a skill test, luck check, or interactive moment, include a "challenges" array in your response. The GAME ENGINE resolves all challenges — do NOT decide the outcome yourself. Wait for the player to send a "[Challenge Result: ...]" message, then narrate what happened based on pass/fail.
+
+Challenge types:
+
+- **stat_check** — passive test against a character attribute (resolves instantly)
+  ` + "`" + `{"type": "stat_check", "stat": "dex", "difficulty": 8, "description": "Reflexes test"}` + "`" + `
+- **dice_roll** — active d100 roll with optional modifiers (shows animated dice)
+  ` + "`" + `{"type": "dice_roll", "difficulty": 60, "description": "Pick the lock", "modifiers": [{"source": "Lockpicking skill", "value": 10}]}` + "`" + `
+- **item_check** — require the player to have a specific item (resolves instantly)
+  ` + "`" + `{"type": "item_check", "item": "Golden Key", "description": "Need a key"}` + "`" + `
+- **skill_check** — require a specific skill, optionally at a minimum level (resolves instantly)
+  ` + "`" + `{"type": "skill_check", "skill": "Lockpicking", "skill_level": 2, "description": "Expert lock"}` + "`" + `
+- **relationship_check** — require NPC disposition above a threshold (resolves instantly)
+  ` + "`" + `{"type": "relationship_check", "npc_name": "Lyanna", "disposition": 30, "description": "Lyanna trusts you"}` + "`" + `
+- **mini_game** — interactive mini-game the player must play:
+  - RPS: ` + "`" + `{"type": "mini_game", "mini_game": "rps", "description": "Gamble on a hand game"}` + "`" + `
+  - Memory: ` + "`" + `{"type": "mini_game", "mini_game": "memory", "sequence": ["up","down","left","right","up"], "description": "Repeat the ritual pattern"}` + "`" + `
+  - Quick-time: ` + "`" + `{"type": "mini_game", "mini_game": "quicktime", "time_limit": 3.0, "description": "Dodge the trap!"}` + "`" + `
+  - Riddle: ` + "`" + `{"type": "mini_game", "mini_game": "riddle", "riddle": "I speak without a mouth...", "answer": "echo", "description": "Answer the sphinx"}` + "`" + `
+
+### Challenge Rules
+- Use challenges **sparingly** — 1-2 per scene at most, never every turn
+- Difficulty scale: easy 20-40, medium 40-60, hard 60-80, extreme 80+
+- Include relevant modifiers for skills/items/traits that would logically help
+- After the player sends ` + "`" + `[Challenge Result: type PASSED/FAILED — detail]` + "`" + `, narrate the outcome accordingly
+- Branch your narrative meaningfully based on pass vs fail — don't make fail states dead ends
+- Mini-games are for special dramatic moments: gambling (RPS), rituals (memory), traps/dodging (quicktime), puzzles (riddle)
+- Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama
+
 ## General Rules
 1. ALWAYS respond with valid JSON in the format above
 2. The narrative field contains the story text the player sees

@@ -68,6 +68,11 @@ type NarrativeModel struct {
 	// Crafting sub-view
 	craftingView *CraftingModel
 	inCrafting   bool
+
+	// Challenge sub-view
+	challengeView     *ChallengeView
+	inChallenge       bool
+	pendingChallenges []*engine.ChallengeSpec // queue of challenges to resolve
 }
 
 // NewNarrativeModel creates the narrative view.
@@ -145,6 +150,48 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 	}
 
+	// --- Delegate to challenge sub-view when in challenge ---
+	if m.inChallenge && m.challengeView != nil {
+		updated, cmd := m.challengeView.Update(msg)
+		m.challengeView = updated
+		if crMsg, ok := msg.(ChallengeResolvedMsg); ok {
+			m.inChallenge = false
+			m.challengeView = nil
+
+			// Show brief result note in narrative history.
+			var resultNote string
+			if crMsg.Result.Passed {
+				resultNote = fmt.Sprintf("\n*[✓ %s]*\n", crMsg.Result.Detail)
+			} else {
+				resultNote = fmt.Sprintf("\n*[✗ %s]*\n", crMsg.Result.Detail)
+			}
+			m.history.WriteString(components.RenderMarkdown(resultNote))
+			histCmd := m.typewriter.SetText(m.history.String())
+			cmds = append(cmds, histCmd)
+
+			// Send result to AI for narrative continuation.
+			outcome := "PASSED"
+			if !crMsg.Result.Passed {
+				outcome = "FAILED"
+			}
+			resultMsg := fmt.Sprintf("[Challenge Result: %s %s — %s]",
+				crMsg.Spec.Type, outcome, crMsg.Result.Detail)
+			m.waiting = true
+			cmds = append(cmds, func() tea.Msg {
+				resp, err := m.narrator.SendAction(context.Background(), resultMsg)
+				return narrativeResponseMsg{response: resp, err: err}
+			})
+
+			// Start next pending challenge if any.
+			if nextCmd := m.startNextChallenge(); nextCmd != nil {
+				return m, nextCmd
+			}
+
+			return m, tea.Batch(cmds...)
+		}
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -198,6 +245,15 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			}
 			// If combat engine creation fails, continue normally.
 			m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
+		}
+
+		// Check if AI proposed challenges.
+		if len(nr.Challenges) > 0 {
+			m.pendingChallenges = nr.Challenges
+			if nextCmd := m.startNextChallenge(); nextCmd != nil {
+				cmds = append(cmds, nextCmd)
+				return m, tea.Batch(cmds...)
+			}
 		}
 
 		// Fire autosave cmd if it's time
@@ -455,6 +511,29 @@ func (m NarrativeModel) startCrafting() (NarrativeModel, tea.Cmd) {
 	return m, nil
 }
 
+// startNextChallenge launches the first challenge in pendingChallenges queue.
+// Returns nil if the queue is empty.
+func (m *NarrativeModel) startNextChallenge() tea.Cmd {
+	if len(m.pendingChallenges) == 0 {
+		return nil
+	}
+	spec := m.pendingChallenges[0]
+	m.pendingChallenges = m.pendingChallenges[1:]
+
+	ce := engine.NewChallengeEngine()
+	cv, cmd := NewChallengeView(
+		spec,
+		ce,
+		m.narrator.Character(),
+		m.narrator.DB(),
+		m.narrator.Story().ID,
+		m.width, m.height,
+	)
+	m.challengeView = cv
+	m.inChallenge = true
+	return cmd
+}
+
 func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 	helpText := `Available Commands:
 
@@ -474,7 +553,13 @@ Narrator examples:
   /n Add a secret underground city
   /n Make Lyanna secretly jealous
   /n What factions exist in this world?
-  /n I want the next area to be a haunted forest`
+  /n I want the next area to be a haunted forest
+
+Challenges:
+  Challenges appear automatically when the narrator proposes a test.
+  Types: dice roll (d100), rock-paper-scissors, memory sequence,
+         quick-time (press key in time), riddle, stat/skill/item checks.
+  The game engine resolves the outcome fairly — the AI then narrates the result.`
 
 	m.showOverlay("Help", helpText)
 	return m, nil
@@ -1176,6 +1261,11 @@ func (m NarrativeModel) View() string {
 	// Delegate to crafting sub-view when crafting.
 	if m.inCrafting && m.craftingView != nil {
 		return m.craftingView.View()
+	}
+
+	// Delegate to challenge sub-view when in challenge.
+	if m.inChallenge && m.challengeView != nil {
+		return m.challengeView.View()
 	}
 
 	// If overlay is visible, render it full-screen.
