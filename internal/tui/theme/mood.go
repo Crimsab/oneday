@@ -54,6 +54,42 @@ var MoodPalettes = map[string]MoodPalette{
 		StatusBarBG:     lipgloss.Color("#3A1A1A"),
 		NarrativeAccent: lipgloss.Color("#F1948A"),
 	},
+	// "neutral" is the default on story start/resume — no strong tint, uses base theme.
+	"neutral": {
+		Accent:          Accent,
+		Border:          Secondary,
+		StatusBarBG:     lipgloss.Color("#2A2A2A"),
+		NarrativeAccent: Primary,
+	},
+}
+
+// moodAliases maps common AI-generated mood words to canonical palette keys.
+// Allows the AI to use natural language mood descriptions that map to our palettes.
+var moodAliases = map[string]string{
+	"calm":         "peaceful",
+	"serene":       "peaceful",
+	"tranquil":     "peaceful",
+	"hopeful":      "lighthearted",
+	"cheerful":     "lighthearted",
+	"comedic":      "lighthearted",
+	"humorous":     "lighthearted",
+	"horror":       "dark",
+	"grim":         "dark",
+	"gloomy":       "dark",
+	"bleak":        "dark",
+	"ominous":      "dark",
+	"triumphant":   "epic",
+	"heroic":       "epic",
+	"glorious":     "epic",
+	"suspenseful":  "mysterious",
+	"eerie":        "mysterious",
+	"foreboding":   "mysterious",
+	"combat":       "tense",
+	"sad":          "dramatic",
+	"melancholic":  "dramatic",
+	"sorrowful":    "dramatic",
+	"tense":        "tense",
+	"intense":      "tense",
 }
 
 // defaultPalette is used when no mood matches.
@@ -64,10 +100,18 @@ var defaultPalette = MoodPalette{
 	NarrativeAccent: Primary,
 }
 
-// GetMoodPalette returns the palette for a mood, falling back to the default theme.
+// GetMoodPalette returns the palette for a mood, resolving aliases first,
+// then falling back to the default theme if no match is found.
 func GetMoodPalette(mood string) MoodPalette {
+	// Direct palette match.
 	if p, ok := MoodPalettes[mood]; ok {
 		return p
+	}
+	// Alias resolution.
+	if canonical, ok := moodAliases[mood]; ok {
+		if p, ok := MoodPalettes[canonical]; ok {
+			return p
+		}
 	}
 	return defaultPalette
 }
