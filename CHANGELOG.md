@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/Crimsab/oneday/compare/v1.0.1...v1.1.0) (2026-04-08)
+
+
+### Features
+
+* **story:** add guided new story wizard ([caf588d](https://github.com/Crimsab/oneday/commit/caf588da8457851a2c117c8963ac4822f7eb1223))
+* **tui:** add streamed narrative telemetry ([3083d6a](https://github.com/Crimsab/oneday/commit/3083d6a58778628dd0464cb2ce2583994689bd88))
+
 ## [1.0.1](https://github.com/Crimsab/oneday/compare/v1.0.0...v1.0.1) (2026-04-08)
 
 
