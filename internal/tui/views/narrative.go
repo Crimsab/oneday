@@ -60,6 +60,14 @@ type NarrativeModel struct {
 	width        int
 	height       int
 	inputFocus   bool // true = free input active, false = choice list active
+
+	// Combat sub-view
+	combatView *CombatModel
+	inCombat   bool
+
+	// Crafting sub-view
+	craftingView *CraftingModel
+	inCrafting   bool
 }
 
 // NewNarrativeModel creates the narrative view.
@@ -98,6 +106,44 @@ func (m *NarrativeModel) StartNarration() tea.Cmd {
 
 func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	// --- Delegate to combat sub-view when in combat ---
+	if m.inCombat && m.combatView != nil {
+		switch endMsg := msg.(type) {
+		case CombatEndMsg:
+			m.inCombat = false
+			m.combatView = nil
+			// Append combat summary to narrative history.
+			summary := components.RenderMarkdown("\n---\n**[Riepilogo Combattimento]** " + endMsg.Summary + "\n---\n")
+			m.history.WriteString(summary)
+			cmd := m.typewriter.SetText(m.history.String())
+			return m, cmd
+		default:
+			updated, cmd := m.combatView.Update(msg)
+			m.combatView = &updated
+			return m, cmd
+		}
+	}
+
+	// --- Delegate to crafting sub-view when crafting ---
+	if m.inCrafting && m.craftingView != nil {
+		switch endMsg := msg.(type) {
+		case CraftingEndMsg:
+			m.inCrafting = false
+			m.craftingView = nil
+			if endMsg.ItemCrafted {
+				note := components.RenderMarkdown(fmt.Sprintf("\n*[Craftato: %s]*\n", endMsg.ItemName))
+				m.history.WriteString(note)
+				cmd := m.typewriter.SetText(m.history.String())
+				return m, cmd
+			}
+			return m, nil
+		default:
+			updated, cmd := m.craftingView.Update(msg)
+			m.craftingView = &updated
+			return m, cmd
+		}
+	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -139,6 +185,19 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		} else {
 			m.inputFocus = true
 			m.input.Focus()
+		}
+
+		// Check if AI initiated combat
+		if nr.CombatStart != nil {
+			combatEngine, err := engine.NewCombatEngine(m.narrator, nr.CombatStart)
+			if err == nil {
+				combatView := NewCombatModel(combatEngine, m.narrator, m.width, m.height)
+				m.combatView = &combatView
+				m.inCombat = true
+				return m, nil
+			}
+			// If combat engine creation fails, continue normally.
+			m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
 		}
 
 		// Fire autosave cmd if it's time
@@ -316,6 +375,8 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.showMap()
 	case "achievements":
 		return m.showAchievements()
+	case "craft", "crafting":
+		return m.startCrafting()
 	default:
 		if len(cmd.Args) > 0 {
 			m.errMsg = fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", cmd.Args[0])
@@ -381,6 +442,19 @@ func (m NarrativeModel) showAchievements() (NarrativeModel, tea.Cmd) {
 }
 
 // showHelp displays the help overlay.
+// startCrafting opens a crafting conversation session.
+func (m NarrativeModel) startCrafting() (NarrativeModel, tea.Cmd) {
+	craftingEngine, err := engine.NewCraftingEngine(m.narrator)
+	if err != nil {
+		m.errMsg = fmt.Sprintf("Cannot start crafting: %v", err)
+		return m, nil
+	}
+	craftingView := NewCraftingModel(craftingEngine, m.narrator, m.width, m.height)
+	m.craftingView = &craftingView
+	m.inCrafting = true
+	return m, nil
+}
+
 func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 	helpText := `Available Commands:
 
@@ -390,6 +464,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /journal      (/j)   Show chapter journal
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
+  /craft               Open crafting station (AI-driven)
   /save [name]         Save your game
   /load                Load a saved game
   /help         (/h)   Show this help
@@ -1093,6 +1168,16 @@ func toInt(v interface{}) int {
 }
 
 func (m NarrativeModel) View() string {
+	// Delegate to combat sub-view when in combat.
+	if m.inCombat && m.combatView != nil {
+		return m.combatView.View()
+	}
+
+	// Delegate to crafting sub-view when crafting.
+	if m.inCrafting && m.craftingView != nil {
+		return m.craftingView.View()
+	}
+
 	// If overlay is visible, render it full-screen.
 	if m.overlay.Visible() {
 		return m.overlay.View()
