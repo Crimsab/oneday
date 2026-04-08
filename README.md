@@ -21,25 +21,72 @@ Stories are infinite, AI-generated, and deeply personalized. Every NPC has perso
 ## Tech Stack
 
 - **Go** + Bubbletea/Bubbles/Lipgloss (TUI)
-- **SQLite** + sqlite-vec (storage + vector search)
-- AI via **Claude Code** / **LiteLLM** / **OpenRouter** (configurable fallback chain)
+- **SQLite** + embedding BLOBs + cosine similarity in Go (RAG, no `sqlite-vec`)
+- AI via **LiteLLM** / **OpenRouter** / **Claude Code** (configurable fallback chain)
 
 ## Quick Start
 
 ```bash
-# Build
+# Copy local config
+cp config.example.yaml config.yaml
+
+# Edit provider keys / endpoints
+$EDITOR config.yaml
+
+# Run tests
+go test ./...
+
+# Run the game
+go run ./cmd/oneday
+
+# Build the main binary
 go build -o oneday ./cmd/oneday
 
-# Run
-./oneday
+# Build the benchmark tool
+go build -o oneday-benchmark ./cmd/oneday-benchmark
 
-# Windows
-GOOS=windows GOARCH=amd64 go build -o oneday.exe ./cmd/oneday
+# Linux amd64
+GOOS=linux GOARCH=amd64 go build -o oneday-linux-amd64 ./cmd/oneday
+
+# Windows amd64
+GOOS=windows GOARCH=amd64 go build -o oneday-windows-amd64.exe ./cmd/oneday
 ```
 
 ## Configuration
 
-Copy `config.example.yaml` to `config.yaml` and set your AI provider endpoints/keys.
+Config lives in two places:
+
+- **inside the code**: `internal/config/config.go` contains safe defaults via `config.Default()`
+- **outside the code**: `config.yaml` is the local runtime override loaded by `cmd/oneday/main.go`
+
+Practical rules:
+
+- `config.example.yaml` is the tracked template for the repo
+- `config.yaml` is ignored by git and is where local secrets / endpoints go
+- if `config.yaml` is missing, the app falls back to the built-in defaults
+
+Current default provider strategy:
+
+- primary: `litellm` with `x-ai/grok-4.1-fast`
+- fallback: `openrouter` with `google/gemini-2.5-flash-lite`
+- final fallback: `claude-code` if enabled
+
+RAG / embeddings note:
+
+- embeddings are stored in SQLite as raw BLOB vectors
+- retrieval uses cosine similarity in Go
+- this project does **not** use `sqlite-vec`
+
+## CI / Release
+
+GitHub Actions is configured to:
+
+- run `go test ./...` and `go vet ./...`
+- build `oneday` and `oneday-benchmark`
+- cross-compile Linux amd64 and Windows amd64 artifacts
+- publish a GitHub Release automatically when a `v*` tag is pushed
+
+The workflow file is `.github/workflows/build-release.yml`.
 
 ## License
 
