@@ -239,11 +239,9 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	}
 
 	// Load existing achievements to prevent AI from re-awarding duplicates.
-	var earnedAchievementNames []string
+	var earnedAchievements []storage.Achievement
 	if existingAchs, achErr := n.db.ListAchievements(n.story.ID); achErr == nil {
-		for _, a := range existingAchs {
-			earnedAchievementNames = append(earnedAchievementNames, a.Name)
-		}
+		earnedAchievements = existingAchs
 	}
 
 	// Build the full context using the context builder.
@@ -256,7 +254,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		ragChunks,
 		lastChapterSummary,
 		input,
-		earnedAchievementNames,
+		earnedAchievements,
 	)
 
 	start := time.Now()

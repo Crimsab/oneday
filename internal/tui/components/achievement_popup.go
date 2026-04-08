@@ -15,7 +15,8 @@ import (
 type AchievementDismissedMsg struct{}
 
 // achievementTickMsg is an internal tick for the auto-dismiss timer.
-type achievementTickMsg struct{}
+// The generation field prevents stale timeouts from dismissing newer popups.
+type achievementTickMsg struct{ generation int }
 
 // AchievementPopupModel renders a brief rarity-colored achievement notification.
 type AchievementPopupModel struct {
@@ -27,6 +28,7 @@ type AchievementPopupModel struct {
 	width       int
 	height      int
 	showAt      time.Time
+	generation  int // incremented on each Show() to invalidate stale timers
 }
 
 // NewAchievementPopup creates a new AchievementPopupModel.
@@ -35,6 +37,8 @@ func NewAchievementPopup() AchievementPopupModel {
 }
 
 // Show displays the achievement popup with the given data.
+// It increments the generation counter so any in-flight auto-dismiss timer
+// from a previous popup will be ignored.
 func (m *AchievementPopupModel) Show(name, description, rarity, category string) {
 	m.name = name
 	m.description = description
@@ -42,11 +46,18 @@ func (m *AchievementPopupModel) Show(name, description, rarity, category string)
 	m.category = category
 	m.visible = true
 	m.showAt = time.Now()
+	m.generation++
 }
 
 // Visible returns whether the popup is currently shown.
 func (m AchievementPopupModel) Visible() bool {
 	return m.visible
+}
+
+// Generation returns the current generation counter.
+// Used by callers to stamp auto-dismiss commands so stale timers can be ignored.
+func (m AchievementPopupModel) Generation() int {
+	return m.generation
 }
 
 // SetSize updates the terminal dimensions for centering.
@@ -56,9 +67,11 @@ func (m *AchievementPopupModel) SetSize(w, h int) {
 }
 
 // AchievementAutoDismissCmd returns a Cmd that auto-dismisses the popup after 5 seconds.
-func AchievementAutoDismissCmd() tea.Cmd {
+// The generation parameter is captured in the message so stale timers (from a previous
+// popup that was replaced by a new one) do not dismiss the current popup.
+func AchievementAutoDismissCmd(generation int) tea.Cmd {
 	return tea.Tick(5*time.Second, func(_ time.Time) tea.Msg {
-		return achievementTickMsg{}
+		return achievementTickMsg{generation: generation}
 	})
 }
 
@@ -67,11 +80,16 @@ func (m AchievementPopupModel) Update(msg tea.Msg) (AchievementPopupModel, tea.C
 	if !m.visible {
 		return m, nil
 	}
-	switch msg.(type) {
+	switch msg := msg.(type) {
 	case achievementTickMsg:
+		// Ignore timer firings from a previous generation (stale timers).
+		if msg.generation != m.generation {
+			return m, nil
+		}
 		m.visible = false
 		return m, func() tea.Msg { return AchievementDismissedMsg{} }
 	case tea.KeyMsg:
+		_ = msg
 		m.visible = false
 		return m, func() tea.Msg { return AchievementDismissedMsg{} }
 	}

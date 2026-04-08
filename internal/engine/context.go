@@ -29,7 +29,7 @@ func DefaultContextConfig() ContextConfig {
 // Order: [system prompt, state summary, optional RAG, ...recent messages, current user input]
 // npcs is the list of recently-seen NPCs; their data is injected into the system prompt and state summary.
 // lastChapterSummary is the AI-generated summary of the previous chapter (empty if chapter 1).
-// earnedAchievements is the list of already-earned achievement names to prevent duplicates.
+// earnedAchievements is the list of already-earned achievements (name + category) to prevent duplicates.
 func BuildContext(
 	story *storage.Story,
 	char *storage.Character,
@@ -39,7 +39,7 @@ func BuildContext(
 	ragChunks []string,
 	lastChapterSummary string,
 	currentInput string,
-	earnedAchievements []string,
+	earnedAchievements []storage.Achievement,
 ) []ai.Message {
 	msgs := make([]ai.Message, 0, len(recentMessages)+4)
 
@@ -91,8 +91,12 @@ func BuildContext(
 	// 4. Inject previously earned achievements so the AI avoids duplicates.
 	if len(earnedAchievements) > 0 {
 		achContent := "## Previously Earned Achievements\nDo NOT award any achievement with these names (already earned):\n"
-		for _, name := range earnedAchievements {
-			achContent += fmt.Sprintf("- %s\n", name)
+		for _, a := range earnedAchievements {
+			cat := strings.ToLower(a.Category)
+			if cat == "" {
+				cat = "story"
+			}
+			achContent += fmt.Sprintf("- \"%s\" (%s)\n", a.Name, cat)
 		}
 		msgs = append(msgs, ai.Message{
 			Role:    ai.RoleSystem,

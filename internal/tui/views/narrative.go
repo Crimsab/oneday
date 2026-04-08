@@ -75,6 +75,10 @@ type NarrativeModel struct {
 	challengeView     *ChallengeView
 	inChallenge       bool
 	pendingChallenges []*engine.ChallengeSpec // queue of challenges to resolve
+
+	// Achievement queue — holds achievements earned while the popup is already visible.
+	// Dequeued one-by-one as each popup is dismissed.
+	pendingAchievements []storage.Achievement
 }
 
 // NewNarrativeModel creates the narrative view.
@@ -96,6 +100,7 @@ func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) Narrative
 		achievementPopup: components.NewAchievementPopup(),
 		input:            ta,
 		inputFocus:       false, // start on choice list
+		currentMood:      "neutral",
 	}
 }
 
@@ -276,14 +281,19 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 
 		// Show achievement popup if one was earned and persisted.
+		// If the popup is already visible, queue the new achievement to show next.
 		if nr.PersistedAchievement != nil {
-			m.achievementPopup.Show(
-				nr.PersistedAchievement.Name,
-				nr.PersistedAchievement.Description,
-				nr.PersistedAchievement.Rarity,
-				nr.PersistedAchievement.Category,
-			)
-			cmds = append(cmds, components.AchievementAutoDismissCmd())
+			if m.achievementPopup.Visible() {
+				m.pendingAchievements = append(m.pendingAchievements, *nr.PersistedAchievement)
+			} else {
+				m.achievementPopup.Show(
+					nr.PersistedAchievement.Name,
+					nr.PersistedAchievement.Description,
+					nr.PersistedAchievement.Rarity,
+					nr.PersistedAchievement.Category,
+				)
+				cmds = append(cmds, components.AchievementAutoDismissCmd(m.achievementPopup.Generation()))
+			}
 		}
 
 		// Fire autosave cmd if it's time
@@ -294,7 +304,13 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case components.AchievementDismissedMsg:
-		// Achievement popup dismissed — resume normal input state.
+		// Achievement popup dismissed — show next queued achievement if any.
+		if len(m.pendingAchievements) > 0 {
+			next := m.pendingAchievements[0]
+			m.pendingAchievements = m.pendingAchievements[1:]
+			m.achievementPopup.Show(next.Name, next.Description, next.Rarity, next.Category)
+			return m, components.AchievementAutoDismissCmd(m.achievementPopup.Generation())
+		}
 		return m, nil
 
 	case narratorMetaResponseMsg:
