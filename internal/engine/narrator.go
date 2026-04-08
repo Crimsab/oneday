@@ -12,6 +12,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 )
@@ -33,6 +34,7 @@ type Narrator struct {
 	world         *storage.WorldState
 	session       *GameSession
 	contextCfg    ContextConfig
+	genCfg        config.GenerationConfig // AI generation parameters (temperature, max_tokens, timeout)
 	lastModel     string
 	lastLatency   int64
 	dataDir       string
@@ -52,11 +54,22 @@ func NewNarrator(
 	world *storage.WorldState,
 	session *GameSession,
 	contextCfg ContextConfig,
+	genCfg config.GenerationConfig,
 	dataDir string,
 	autosaveEvery int,
 ) *Narrator {
 	if autosaveEvery <= 0 {
 		autosaveEvery = 5
+	}
+	// Apply defaults for any zero-value generation config fields.
+	if genCfg.Temperature == 0 {
+		genCfg.Temperature = 0.8
+	}
+	if genCfg.MaxTokens == 0 {
+		genCfg.MaxTokens = 2048
+	}
+	if genCfg.TimeoutSeconds == 0 {
+		genCfg.TimeoutSeconds = 60
 	}
 	return &Narrator{
 		router:        router,
@@ -66,6 +79,7 @@ func NewNarrator(
 		world:         world,
 		session:       session,
 		contextCfg:    contextCfg,
+		genCfg:        genCfg,
 		dataDir:       dataDir,
 		autosaveEvery: autosaveEvery,
 	}
@@ -128,9 +142,55 @@ func (n *Narrator) CloseSession() {
 }
 
 // StartNarration sends the first turn to begin the story.
+// Only call this for brand-new stories. For existing stories use ResumeNarration.
 // Returns the parsed narrative response.
 func (n *Narrator) StartNarration(ctx context.Context) (*NarrativeResponse, error) {
 	return n.sendTurn(ctx, prompts.FirstTurnUser)
+}
+
+// ResumeNarration prepares the narrator to resume an existing story without
+// triggering a new first-turn AI call. It restores world.CurrentTurn from the
+// DB world state (already loaded by the caller) and returns a synthetic response
+// so the narrative view shows the last known state while awaiting player input.
+func (n *Narrator) ResumeNarration(ctx context.Context) (*NarrativeResponse, error) {
+	// The world.CurrentTurn was loaded from DB by the caller — no reset needed.
+	// Restore session turn counter to match DB world state so the next AppendTurn
+	// uses the correct turn number.
+	n.session.SetTurn(n.world.CurrentTurn)
+
+	// Load the most recent messages by story (not by session) so we can replay
+	// the last known narrative even when this is a brand-new session object.
+	recentMsgs, err := n.db.GetRecentMessagesByStory(n.story.ID, 2)
+	if err != nil {
+		recentMsgs = nil
+	}
+
+	var lastNarrative string
+	var lastChoices []Choice
+	for i := len(recentMsgs) - 1; i >= 0; i-- {
+		if recentMsgs[i].Role == "assistant" {
+			// Try to parse it as a NarrativeResponse.
+			if nr, parseErr := parseNarrativeFromAI(recentMsgs[i].Content); parseErr == nil {
+				lastNarrative = nr.Narrative
+				lastChoices = nr.Choices
+			}
+			break
+		}
+	}
+
+	if lastNarrative == "" {
+		lastNarrative = fmt.Sprintf("Welcome back to %s. Your adventure continues...", n.story.Name)
+	}
+	if len(lastChoices) == 0 {
+		lastChoices = []Choice{{ID: 1, Text: "Continue..."}}
+	}
+
+	return &NarrativeResponse{
+		Narrative: lastNarrative,
+		Choices:   lastChoices,
+		Location:  n.world.CurrentLocation,
+		Mood:      "neutral",
+	}, nil
 }
 
 // SendAction sends a player action (choice or free text) and returns the AI narrative.
@@ -193,8 +253,8 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	start := time.Now()
 	req := ai.Request{
 		Messages:    messages,
-		Temperature: 0.85,
-		MaxTokens:   2048,
+		Temperature: n.genCfg.Temperature,
+		MaxTokens:   n.genCfg.MaxTokens,
 	}
 
 	resp, err := n.router.Complete(ctx, req)
@@ -238,6 +298,11 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		// This allows the AI to organically update factions, events, and locations mid-story.
 		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, n.db, n.story, n.world, n.rag)
 	}
+
+	// The full NarrativeResponse (including Challenges and Achievements) is returned
+	// to the caller. The TUI narrative view checks narrative.Challenges and queues
+	// them for the ChallengeView overlay. Achievements are kept in the response type
+	// but will be consumed in Phase 7 (achievement engine).
 
 	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
 	if narrative.Narrative != "" {

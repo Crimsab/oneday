@@ -116,6 +116,44 @@ func (db *DB) GetStoryMessagesByTurnRange(storyID string, turnStart, turnEnd int
 	return msgs, rows.Err()
 }
 
+// GetRecentMessagesByStory returns the last N messages for a story across all
+// sessions, ordered chronologically (ASC). Used by ResumeNarration to rebuild
+// context when a new session is started for an already-played story.
+func (db *DB) GetRecentMessagesByStory(storyID string, limit int) ([]ChatMessage, error) {
+	rows, err := db.conn.Query(
+		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at
+         FROM chat_messages
+         WHERE story_id = ?
+         ORDER BY turn DESC, id DESC
+         LIMIT ?`,
+		storyID, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("getting recent messages for story %s: %w", storyID, err)
+	}
+	defer rows.Close()
+
+	var msgs []ChatMessage
+	for rows.Next() {
+		var m ChatMessage
+		if err := rows.Scan(
+			&m.ID, &m.SessionID, &m.StoryID, &m.Turn, &m.Role,
+			&m.Content, &m.MessageType, &m.MetadataJSON, &m.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning chat message: %w", err)
+		}
+		msgs = append(msgs, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating chat messages: %w", err)
+	}
+	// Reverse to return chronological (ASC) order.
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+	return msgs, nil
+}
+
 // CountSessionMessages returns the number of messages in a session.
 func (db *DB) CountSessionMessages(sessionID string) (int, error) {
 	var count int

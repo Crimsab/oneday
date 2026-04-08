@@ -23,6 +23,7 @@ func (db *DB) migrate() error {
 		{3, migrationV3},
 		{4, migrationV4},
 		{5, migrationV5},
+		{6, migrationV6},
 	}
 
 	for _, m := range migrations {
@@ -216,4 +217,11 @@ CREATE TABLE IF NOT EXISTS combat_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_combat_log_story ON combat_log(story_id);
+`
+
+const migrationV6 = `
+-- Add description, genre, and tone columns to stories for richer metadata display.
+ALTER TABLE stories ADD COLUMN description TEXT NOT NULL DEFAULT '';
+ALTER TABLE stories ADD COLUMN genre TEXT NOT NULL DEFAULT '';
+ALTER TABLE stories ADD COLUMN tone TEXT NOT NULL DEFAULT '';
 `

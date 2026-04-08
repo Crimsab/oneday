@@ -8,14 +8,20 @@ import (
 // NarratorSystem builds the system prompt for narrative gameplay.
 // It includes the story setting, rules, stats schema, character info,
 // and optionally a block of known NPC context.
-func NarratorSystem(storyName, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcsContext string) string {
+// genre and tone come from the Story model (persisted in DB since migration V6).
+func NarratorSystem(storyName, genre, tone, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcsContext string) string {
 	npcSection := ""
 	if strings.TrimSpace(npcsContext) != "" {
 		npcSection = fmt.Sprintf("\n## Known NPCs\n%s", npcsContext)
 	}
 
-	return fmt.Sprintf(`You are the Narrator for "%s", an AI-driven text RPG.
+	genreToneSection := ""
+	if genre != "" || tone != "" {
+		genreToneSection = fmt.Sprintf("\n## Story Identity\n- Genre: %s\n- Tone: %s\n", genre, tone)
+	}
 
+	return fmt.Sprintf(`You are the Narrator for "%s", an AI-driven text RPG.
+%s
 ## Story Setting
 %s
 
@@ -66,8 +72,10 @@ Use state_changes to trigger game engine updates. All keys are optional — only
 - "location": "Location Name" — update current location
 
 ### Inventory
-- "inventory_add": [{"name": "Item Name", "type": "weapon|armor|tool|consumable|quest|misc"}]
-- "inventory_remove": ["Item Name"]
+- "inventory_add": array of item objects. Each object MUST have "name" and "type". Optional fields: "rarity" (common|uncommon|rare|epic|legendary), "description", "effects" (array of strings).
+  Example: [{"name": "Iron Sword", "type": "weapon", "rarity": "common", "description": "A sturdy blade", "effects": ["+2 attack"]}]
+  You may also pass a plain string for simple items: ["Torch"] — the engine will normalize it.
+- "inventory_remove": ["Item Name"] — exact or approximate name match, case-insensitive.
 
 ### Character Growth
 - "trait_add": "Trait Name" — assign a character trait when you observe repeated behavior patterns.
@@ -192,7 +200,7 @@ Challenge types:
 3. Provide 2-4 choices that make sense for the situation
 4. The player can ALSO type their own free action — your choices are suggestions, not limitations
 5. Use the player's language (match whatever language they use)
-6. Keep the mood field updated — it affects the UI theming`, storyName, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcSection)
+6. Keep the mood field updated — it affects the UI theming`, storyName, genreToneSection, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcSection)
 }
 
 // FirstTurnUser is the initial user message to start the story.

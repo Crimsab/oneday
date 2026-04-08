@@ -12,6 +12,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -28,6 +29,7 @@ const (
 type StoryCreator struct {
 	router      *ai.Router
 	db          *storage.DB
+	genCfg      config.GenerationConfig
 	phase       StoryCreationPhase
 	messages    []ai.Message     // conversation history
 	charMsgs    []ai.Message     // character creation history
@@ -39,10 +41,17 @@ type StoryCreator struct {
 }
 
 // NewStoryCreator initializes the story creation flow.
-func NewStoryCreator(router *ai.Router, db *storage.DB) *StoryCreator {
+func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.GenerationConfig) *StoryCreator {
+	if genCfg.Temperature == 0 {
+		genCfg.Temperature = 0.9
+	}
+	if genCfg.MaxTokens == 0 {
+		genCfg.MaxTokens = 2048
+	}
 	return &StoryCreator{
 		router: router,
 		db:     db,
+		genCfg: genCfg,
 		phase:  PhaseConversation,
 		messages: []ai.Message{
 			{Role: ai.RoleSystem, Content: prompts.StoryCreationSystem},
@@ -167,8 +176,8 @@ func (sc *StoryCreator) handleCharacter(ctx context.Context, input string) (stri
 func (sc *StoryCreator) callAI(ctx context.Context, msgs []ai.Message) (string, error) {
 	req := ai.Request{
 		Messages:    msgs,
-		Temperature: 0.9,
-		MaxTokens:   2048,
+		Temperature: sc.genCfg.Temperature,
+		MaxTokens:   sc.genCfg.MaxTokens,
 	}
 	resp, err := sc.router.Complete(ctx, req)
 	if err != nil {
@@ -212,6 +221,9 @@ func (sc *StoryCreator) persistStory(charName, charBackground string) error {
 		Name:            sc.definition.Name,
 		SettingJSON:     string(settingJSON),
 		StatsSchemaJSON: string(schemaJSON),
+		Description:     sc.definition.Description,
+		Genre:           sc.definition.Genre,
+		Tone:            sc.definition.Tone,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}

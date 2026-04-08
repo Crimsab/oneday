@@ -271,6 +271,14 @@ func (gs *GameSession) Turn() int {
 	return gs.turn
 }
 
+// SetTurn overrides the internal turn counter. Used when resuming a story to
+// align the session counter with the persisted world.CurrentTurn from the DB.
+func (gs *GameSession) SetTurn(turn int) {
+	if turn > 0 {
+		gs.turn = turn
+	}
+}
+
 // countJSONLLines counts non-empty lines in a file.
 // Used to restore the turn counter when resuming a session.
 func countJSONLLines(path string) (int, error) {

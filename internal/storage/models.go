@@ -8,6 +8,9 @@ type Story struct {
 	Name            string    `json:"name"`
 	SettingJSON     string    `json:"setting_json"`
 	StatsSchemaJSON string    `json:"stats_schema_json"`
+	Description     string    `json:"description"`
+	Genre           string    `json:"genre"`
+	Tone            string    `json:"tone"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 }
