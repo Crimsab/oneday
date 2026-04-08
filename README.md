@@ -18,6 +18,7 @@ Stories are infinite, AI-generated, and deeply personalized. Every NPC has perso
 - **Persistent Memory** — full chat history saved, RAG-powered long-term context. Stories can be infinite
 - **Multiple Genres** — fantasy, cyberpunk, horror, slice-of-life, anything. Each genre defines its own stat system and rules
 - **Per-Story Authoring Control** — each story can lock its own language, prose style, and reusable prompt directives so narration stays consistent across turns, combat, crafting, summaries, and GM meta commands
+- **Guided Story Setup** — `New Story` now uses a review-first wizard with quick choices for world draft, rules, factions, dangers, and stats, while still allowing free text edits at every step
 
 ## Tech Stack
 
@@ -63,6 +64,7 @@ Config lives in two places:
 Practical rules:
 
 - `config.example.yaml` is the tracked template for the repo
+- release archives also include `config.example.yaml` next to the binaries
 - `config.yaml` is ignored by git and is where local secrets / endpoints go
 - the binary looks for `config.yaml` in the current working directory first, then next to the executable itself
 - if `config.yaml` is missing, the app falls back to the built-in defaults

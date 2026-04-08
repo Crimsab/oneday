@@ -19,24 +19,43 @@ import (
 type StoryCreationPhase int
 
 const (
-	PhaseConversation StoryCreationPhase = iota // AI-guided story building
-	PhaseCharacter                              // Name and background
-	PhaseDone                                   // Creation complete
+	PhaseConversation StoryCreationPhase = iota // guided story building
+	PhaseCharacter                              // local character setup
+	PhaseDone                                   // creation complete
 )
 
-// StoryCreator manages the AI-guided story creation conversation.
+type storyCreationStage int
+
+const (
+	stageBrief storyCreationStage = iota
+	stageReviewWorld
+	stageReviewRules
+	stageReviewStats
+	stageConfirm
+	stageCharacterName
+	stageCharacterBackground
+	stageDone
+)
+
+// CreationAction is a quick action shown in the story creation wizard.
+type CreationAction struct {
+	Key   string
+	Label string
+}
+
+// StoryCreator manages the guided story creation wizard.
 type StoryCreator struct {
-	router      *ai.Router
-	db          *storage.DB
-	genCfg      config.GenerationConfig
-	phase       StoryCreationPhase
-	messages    []ai.Message     // conversation history
-	charMsgs    []ai.Message     // character creation history
-	definition  *StoryDefinition // parsed after AI confirms
-	story       *storage.Story
-	character   *storage.Character
-	lastModel   string
-	lastLatency int64
+	router       *ai.Router
+	db           *storage.DB
+	genCfg       config.GenerationConfig
+	stage        storyCreationStage
+	definition   *StoryDefinition
+	story        *storage.Story
+	character    *storage.Character
+	lastModel    string
+	lastLatency  int64
+	initialBrief string
+	charName     string
 }
 
 // NewStoryCreator initializes the story creation flow.
@@ -51,16 +70,115 @@ func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.Generation
 		router: router,
 		db:     db,
 		genCfg: genCfg,
-		phase:  PhaseConversation,
-		messages: []ai.Message{
-			{Role: ai.RoleSystem, Content: prompts.StoryCreationSystem},
-		},
-		charMsgs: []ai.Message{},
+		stage:  stageBrief,
 	}
 }
 
 // Phase returns the current creation phase.
-func (sc *StoryCreator) Phase() StoryCreationPhase { return sc.phase }
+func (sc *StoryCreator) Phase() StoryCreationPhase {
+	switch sc.stage {
+	case stageCharacterName, stageCharacterBackground:
+		return PhaseCharacter
+	case stageDone:
+		return PhaseDone
+	default:
+		return PhaseConversation
+	}
+}
+
+// StageLabel returns a compact label for the current wizard step.
+func (sc *StoryCreator) StageLabel() string {
+	switch sc.stage {
+	case stageBrief:
+		return "Choose the story brief"
+	case stageReviewWorld:
+		return "Review world draft"
+	case stageReviewRules:
+		return "Review rules and factions"
+	case stageReviewStats:
+		return "Review stats schema"
+	case stageConfirm:
+		return "Confirm story"
+	case stageCharacterName:
+		return "Name your protagonist"
+	case stageCharacterBackground:
+		return "Add a background"
+	default:
+		return "Finalizing story"
+	}
+}
+
+// InputPlaceholder returns the most useful textarea hint for the current step.
+func (sc *StoryCreator) InputPlaceholder() string {
+	switch sc.stage {
+	case stageBrief:
+		return "Describe the story you want: genre, tone, language, style, extra direction..."
+	case stageReviewWorld:
+		return "Type how to change the world draft..."
+	case stageReviewRules:
+		return "Type how to change rules, factions, cultures, or dangers..."
+	case stageReviewStats:
+		return "Type how to change the stats schema..."
+	case stageConfirm:
+		return "Type final adjustments before creating the story..."
+	case stageCharacterName:
+		return "Type your protagonist's name..."
+	case stageCharacterBackground:
+		return "Type a short background, or use the quick choice to skip..."
+	default:
+		return "Type your response..."
+	}
+}
+
+// Actions returns quick actions for the current wizard step.
+func (sc *StoryCreator) Actions() []CreationAction {
+	switch sc.stage {
+	case stageBrief:
+		return []CreationAction{
+			{Key: "preset_dark_fantasy", Label: "Dark fantasy"},
+			{Key: "preset_cyberpunk", Label: "Cyberpunk noir"},
+			{Key: "preset_horror", Label: "Horror mystery"},
+			{Key: "preset_cozy", Label: "Cozy slice-of-life"},
+			{Key: "focus_input", Label: "Write my own"},
+		}
+	case stageReviewWorld:
+		return []CreationAction{
+			{Key: "accept_world", Label: "Accept world"},
+			{Key: "regenerate_world", Label: "Regenerate world"},
+			{Key: "make_darker", Label: "Make darker"},
+			{Key: "make_lighter", Label: "Make lighter"},
+			{Key: "edit_world", Label: "Edit manually"},
+		}
+	case stageReviewRules:
+		return []CreationAction{
+			{Key: "accept_rules", Label: "Accept rules"},
+			{Key: "more_danger", Label: "More danger"},
+			{Key: "fewer_factions", Label: "Fewer factions"},
+			{Key: "regenerate_rules", Label: "Regenerate section"},
+			{Key: "edit_rules", Label: "Edit manually"},
+		}
+	case stageReviewStats:
+		return []CreationAction{
+			{Key: "accept_stats", Label: "Accept stats"},
+			{Key: "lighter_stats", Label: "Lighter rules"},
+			{Key: "crunchier_stats", Label: "More crunchy"},
+			{Key: "no_combat", Label: "No combat"},
+			{Key: "edit_stats", Label: "Edit manually"},
+		}
+	case stageConfirm:
+		return []CreationAction{
+			{Key: "create_story", Label: "Create story"},
+			{Key: "regenerate_all", Label: "Regenerate all"},
+			{Key: "edit_final", Label: "Edit final details"},
+		}
+	case stageCharacterBackground:
+		return []CreationAction{
+			{Key: "skip_background", Label: "Skip background"},
+		}
+	default:
+		return nil
+	}
+}
 
 // LastModel returns the model name from the last AI call.
 func (sc *StoryCreator) LastModel() string { return sc.lastModel }
@@ -74,148 +192,458 @@ func (sc *StoryCreator) Story() *storage.Story { return sc.story }
 // Character returns the created character (nil until PhaseDone).
 func (sc *StoryCreator) Character() *storage.Character { return sc.character }
 
-// Definition returns the parsed story definition (nil until PhaseCharacter).
+// Definition returns the current draft story definition.
 func (sc *StoryCreator) Definition() *StoryDefinition { return sc.definition }
 
-// SendMessage sends a player message and gets the AI response.
-// Returns the AI's text response.
+// StartConversation returns the local wizard intro instantly.
+func (sc *StoryCreator) StartConversation(ctx context.Context) (string, error) {
+	sc.lastModel = "system"
+	sc.lastLatency = 0
+	return `Story setup starts with one short brief.
+
+Tell me the kind of story you want and include, if relevant:
+- genre
+- tone
+- language
+- prose style
+- extra direction for every future prompt
+
+Example:
+"Italian cyberpunk noir, fast dialogue, a little darkly comic, avoid purple prose."
+
+You can also use one of the quick choices below.`, nil
+}
+
+// SendMessage handles free-text input for the current wizard stage.
 func (sc *StoryCreator) SendMessage(ctx context.Context, playerInput string) (string, error) {
-	switch sc.phase {
-	case PhaseConversation:
-		return sc.handleConversation(ctx, playerInput)
-	case PhaseCharacter:
-		return sc.handleCharacter(ctx, playerInput)
+	input := strings.TrimSpace(playerInput)
+	if input == "" {
+		return "", fmt.Errorf("empty input")
+	}
+
+	switch sc.stage {
+	case stageBrief:
+		return sc.handleBrief(ctx, input)
+	case stageReviewWorld:
+		return sc.handleRevision(ctx, "world", input)
+	case stageReviewRules:
+		return sc.handleRevision(ctx, "rules", input)
+	case stageReviewStats:
+		return sc.handleRevision(ctx, "stats", input)
+	case stageConfirm:
+		return sc.handleRevision(ctx, "final", input)
+	case stageCharacterName:
+		return sc.handleCharacterName(input)
+	case stageCharacterBackground:
+		return sc.handleCharacterBackground(input)
 	default:
 		return "", fmt.Errorf("story creation already complete")
 	}
 }
 
-// StartConversation returns the hardcoded welcome message to start story creation instantly.
-// No API call needed — the first AI call happens when the player responds.
-func (sc *StoryCreator) StartConversation(ctx context.Context) (string, error) {
-	welcome := `# Welcome to Story Creation!
+// ExecuteAction handles a quick choice for the current wizard stage.
+func (sc *StoryCreator) ExecuteAction(ctx context.Context, actionKey string) (string, error) {
+	switch actionKey {
+	case "focus_input":
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return "Write your own brief in the input box. A single compact paragraph is enough.", nil
+	case "preset_dark_fantasy":
+		return sc.handleBrief(ctx, "Italian dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue.")
+	case "preset_cyberpunk":
+		return sc.handleBrief(ctx, "Italian cyberpunk noir with sharp dialogue, neon decay, corporate power, and a slightly darkly comic edge.")
+	case "preset_horror":
+		return sc.handleBrief(ctx, "Italian horror mystery with oppressive atmosphere, slow dread, and clear, controlled prose.")
+	case "preset_cozy":
+		return sc.handleBrief(ctx, "Italian cozy slice-of-life fantasy with gentle humor, warm relationships, and light, vivid prose.")
+	}
 
-Let's build your world together. I'll guide you through the process step by step.
+	switch sc.stage {
+	case stageReviewWorld:
+		return sc.executeWorldAction(ctx, actionKey)
+	case stageReviewRules:
+		return sc.executeRulesAction(ctx, actionKey)
+	case stageReviewStats:
+		return sc.executeStatsAction(ctx, actionKey)
+	case stageConfirm:
+		return sc.executeConfirmAction(ctx, actionKey)
+	case stageCharacterBackground:
+		if actionKey == "skip_background" {
+			return sc.handleCharacterBackground("")
+		}
+	}
 
-**First, tell me about the kind of story you want:**
+	return "", fmt.Errorf("unsupported action: %s", actionKey)
+}
 
-- What **genre** appeals to you? *(fantasy, sci-fi, cyberpunk, post-apocalyptic, noir, horror, historical, slice-of-life, or something else entirely)*
-- What **tone** should it have? *(dark & gritty, epic & heroic, lighthearted, mysterious, comedic, philosophical...)*
-- Any **specific themes** or ideas you already have in mind?
+func (sc *StoryCreator) handleBrief(ctx context.Context, input string) (string, error) {
+	sc.initialBrief = input
 
-Feel free to be as vague or detailed as you want — we'll shape everything together.
+	def, err := sc.generateDraft(ctx, input)
+	if err != nil {
+		return "", err
+	}
 
-It also helps to mention:
+	sc.definition = def
+	sc.stage = stageReviewWorld
+	return sc.renderCurrentStage(), nil
+}
 
-- what language you want the story written in
-- what kind of prose voice you want (comic, dark, arcaico, cyberpunk, minimalist, poetic...)
-- any extra direction you want every future prompt to respect`
+func (sc *StoryCreator) handleRevision(ctx context.Context, section, input string) (string, error) {
+	if sc.definition == nil {
+		return "", fmt.Errorf("no story draft to revise")
+	}
 
-	// Add the welcome as an assistant message to history so the AI has context
-	sc.messages = append(sc.messages, ai.Message{
-		Role:    ai.RoleAssistant,
-		Content: welcome,
-	})
+	def, err := sc.reviseDraft(ctx, section, input)
+	if err != nil {
+		return "", err
+	}
+
+	sc.definition = def
+	return sc.renderCurrentStage(), nil
+}
+
+func (sc *StoryCreator) handleCharacterName(input string) (string, error) {
+	name := strings.TrimSpace(input)
+	if name == "" {
+		return "", fmt.Errorf("character name is required")
+	}
+
+	sc.charName = name
 	sc.lastModel = "system"
 	sc.lastLatency = 0
-	return welcome, nil
+	sc.stage = stageCharacterBackground
+	return fmt.Sprintf("Protagonist name locked in: %s\n\nNow add a brief background, or use the quick choice below to skip it.", sc.charName), nil
 }
 
-func (sc *StoryCreator) handleConversation(ctx context.Context, input string) (string, error) {
-	sc.messages = append(sc.messages, ai.Message{
-		Role:    ai.RoleUser,
-		Content: input,
+func (sc *StoryCreator) handleCharacterBackground(input string) (string, error) {
+	if sc.charName == "" {
+		return "", fmt.Errorf("character name is required before background")
+	}
+
+	if err := sc.persistStory(sc.charName, strings.TrimSpace(input)); err != nil {
+		return "", fmt.Errorf("saving story: %w", err)
+	}
+
+	sc.stage = stageDone
+	sc.lastModel = "system"
+	sc.lastLatency = 0
+	return fmt.Sprintf("Story created. %s is ready. Starting the adventure...", sc.charName), nil
+}
+
+func (sc *StoryCreator) executeWorldAction(ctx context.Context, actionKey string) (string, error) {
+	switch actionKey {
+	case "accept_world":
+		sc.stage = stageReviewRules
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return sc.renderCurrentStage(), nil
+	case "regenerate_world":
+		return sc.handleRevision(ctx, "world", "Regenerate the world section. Keep the same core concept, language, style, and overall promise, but propose a clearly different world setup.")
+	case "make_darker":
+		return sc.handleRevision(ctx, "world", "Keep the same core concept, but make the world harsher, darker, and more dangerous.")
+	case "make_lighter":
+		return sc.handleRevision(ctx, "world", "Keep the same core concept, but make the world lighter, more adventurous, and less oppressive.")
+	case "edit_world":
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return "Type the world changes you want in the input box, then press Enter.", nil
+	default:
+		return "", fmt.Errorf("unsupported world action: %s", actionKey)
+	}
+}
+
+func (sc *StoryCreator) executeRulesAction(ctx context.Context, actionKey string) (string, error) {
+	switch actionKey {
+	case "accept_rules":
+		sc.stage = stageReviewStats
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return sc.renderCurrentStage(), nil
+	case "more_danger":
+		return sc.handleRevision(ctx, "rules", "Keep the current direction, but make the dangers sharper and the world rules more consequential.")
+	case "fewer_factions":
+		return sc.handleRevision(ctx, "rules", "Reduce faction sprawl. Keep only the strongest factions and make them more distinct.")
+	case "regenerate_rules":
+		return sc.handleRevision(ctx, "rules", "Regenerate rules, factions, cultures, and dangers while preserving the world identity.")
+	case "edit_rules":
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return "Type the rules, factions, cultures, or danger changes you want in the input box, then press Enter.", nil
+	default:
+		return "", fmt.Errorf("unsupported rules action: %s", actionKey)
+	}
+}
+
+func (sc *StoryCreator) executeStatsAction(ctx context.Context, actionKey string) (string, error) {
+	switch actionKey {
+	case "accept_stats":
+		sc.stage = stageConfirm
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return sc.renderCurrentStage(), nil
+	case "lighter_stats":
+		return sc.handleRevision(ctx, "stats", "Keep the same story identity, but make the stats schema lighter, simpler, and more narrative-first.")
+	case "crunchier_stats":
+		return sc.handleRevision(ctx, "stats", "Keep the same story identity, but make the stats schema more tactical, crunchy, and game-like.")
+	case "no_combat":
+		return sc.handleRevision(ctx, "stats", "Disable combat. Build a schema centered on narrative tension, social pressure, travel, investigation, or survival instead.")
+	case "edit_stats":
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return "Type the stat changes you want in the input box, then press Enter.", nil
+	default:
+		return "", fmt.Errorf("unsupported stats action: %s", actionKey)
+	}
+}
+
+func (sc *StoryCreator) executeConfirmAction(ctx context.Context, actionKey string) (string, error) {
+	switch actionKey {
+	case "create_story":
+		sc.stage = stageCharacterName
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return "Story locked in.\n\nNow type your protagonist's name.", nil
+	case "regenerate_all":
+		if strings.TrimSpace(sc.initialBrief) == "" {
+			return "", fmt.Errorf("missing initial brief")
+		}
+		return sc.handleBrief(ctx, sc.initialBrief)
+	case "edit_final":
+		sc.lastModel = "system"
+		sc.lastLatency = 0
+		return "Type any final story changes in the input box, then press Enter.", nil
+	default:
+		return "", fmt.Errorf("unsupported confirm action: %s", actionKey)
+	}
+}
+
+func (sc *StoryCreator) generateDraft(ctx context.Context, brief string) (*StoryDefinition, error) {
+	return sc.requestStoryDefinition(ctx, []ai.Message{
+		{Role: ai.RoleSystem, Content: prompts.StoryDefinitionSystemPrompt()},
+		{Role: ai.RoleUser, Content: prompts.StoryDefinitionUserPrompt(brief)},
 	})
-
-	resp, err := sc.callAI(ctx, sc.messages)
-	if err != nil {
-		// Remove the failed message so player can retry
-		sc.messages = sc.messages[:len(sc.messages)-1]
-		return "", err
-	}
-
-	// Check if the response contains the final JSON
-	if def := extractStoryJSON(resp); def != nil {
-		sc.definition = def
-		sc.phase = PhaseCharacter
-		// Start character creation phase
-		sc.charMsgs = []ai.Message{
-			{
-				Role: ai.RoleSystem,
-				Content: prompts.CharacterCreationSystem(
-					def.Language,
-					def.WritingStyle,
-					def.PromptDirectives,
-				),
-			},
-		}
-		sc.charMsgs = append(sc.charMsgs, ai.Message{
-			Role:    ai.RoleUser,
-			Content: fmt.Sprintf("The story \"%s\" has been created. Now I need to create my character.", def.Name),
-		})
-		charResp, err := sc.callAI(ctx, sc.charMsgs)
-		if err != nil {
-			return resp + "\n\n[Story created! Now let's create your character. What's your protagonist's name?]", nil
-		}
-		return resp + "\n\n---\n\n" + charResp, nil
-	}
-
-	return resp, nil
 }
 
-func (sc *StoryCreator) handleCharacter(ctx context.Context, input string) (string, error) {
-	sc.charMsgs = append(sc.charMsgs, ai.Message{
-		Role:    ai.RoleUser,
-		Content: input,
+func (sc *StoryCreator) reviseDraft(ctx context.Context, section, feedback string) (*StoryDefinition, error) {
+	if sc.definition == nil {
+		return nil, fmt.Errorf("no story draft to revise")
+	}
+
+	draftJSON, err := json.MarshalIndent(sc.definition, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling story draft: %w", err)
+	}
+
+	return sc.requestStoryDefinition(ctx, []ai.Message{
+		{Role: ai.RoleSystem, Content: prompts.StoryRevisionSystemPrompt()},
+		{Role: ai.RoleUser, Content: prompts.StoryRevisionUserPrompt(section, string(draftJSON), feedback)},
 	})
-
-	resp, err := sc.callAI(ctx, sc.charMsgs)
-	if err != nil {
-		sc.charMsgs = sc.charMsgs[:len(sc.charMsgs)-1]
-		return "", err
-	}
-
-	// Check if character JSON is in the response
-	if name, bg := extractCharacterJSON(resp); name != "" {
-		if err := sc.persistStory(name, bg); err != nil {
-			return "", fmt.Errorf("saving story: %w", err)
-		}
-		sc.phase = PhaseDone
-	}
-
-	return resp, nil
 }
 
-func (sc *StoryCreator) callAI(ctx context.Context, msgs []ai.Message) (string, error) {
+func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Message) (*StoryDefinition, error) {
 	req := ai.Request{
-		Messages:    msgs,
-		Temperature: sc.genCfg.Temperature,
-		MaxTokens:   sc.genCfg.MaxTokens,
+		Messages:       msgs,
+		Temperature:    sc.genCfg.Temperature,
+		MaxTokens:      sc.genCfg.MaxTokens,
+		ResponseFormat: ai.StoryDefinitionResponseFormat(),
 	}
-	if sc.phase == PhaseCharacter {
-		req.ResponseFormat = ai.CharacterCreationResponseFormat()
-	}
+
+	start := time.Now()
 	resp, err := sc.router.Complete(ctx, req)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+
 	sc.lastModel = resp.Model
-	sc.lastLatency = resp.LatencyMs
+	sc.lastLatency = time.Since(start).Milliseconds()
 
-	// Append assistant response to the active message list
-	if sc.phase == PhaseCharacter {
-		sc.charMsgs = append(sc.charMsgs, ai.Message{
-			Role:    ai.RoleAssistant,
-			Content: resp.Content,
-		})
-	} else {
-		sc.messages = append(sc.messages, ai.Message{
-			Role:    ai.RoleAssistant,
-			Content: resp.Content,
-		})
+	def := extractStoryJSON(resp.Content)
+	if def == nil {
+		return nil, fmt.Errorf("invalid story definition returned by AI")
 	}
 
-	return resp.Content, nil
+	return def, nil
+}
+
+func (sc *StoryCreator) renderCurrentStage() string {
+	if sc.definition == nil {
+		return ""
+	}
+
+	switch sc.stage {
+	case stageReviewWorld:
+		return sc.renderWorldReview()
+	case stageReviewRules:
+		return sc.renderRulesReview()
+	case stageReviewStats:
+		return sc.renderStatsReview()
+	case stageConfirm:
+		return sc.renderConfirmReview()
+	default:
+		return ""
+	}
+}
+
+func (sc *StoryCreator) renderWorldReview() string {
+	def := sc.definition
+
+	lines := []string{
+		"World Draft",
+		"",
+		fmt.Sprintf("Story: %s", def.Name),
+		fmt.Sprintf("Genre: %s", def.Genre),
+		fmt.Sprintf("Tone: %s", def.Tone),
+		fmt.Sprintf("Language: %s", emptyFallback(def.Language, "inferred by AI")),
+		fmt.Sprintf("Writing style: %s", emptyFallback(def.WritingStyle, "default")),
+		fmt.Sprintf("Extra directives: %s", emptyFallback(def.PromptDirectives, "none")),
+		"",
+		fmt.Sprintf("World: %s", def.Setting.WorldName),
+		fmt.Sprintf("Era: %s", def.Setting.Era),
+		fmt.Sprintf("Geography: %s", def.Setting.Geography),
+		fmt.Sprintf("Magic / unusual system: %s", def.Setting.MagicSystem),
+		fmt.Sprintf("Technology level: %s", def.Setting.TechnologyLevel),
+		fmt.Sprintf("Society: %s", def.Setting.Society),
+		"",
+		"Description:",
+		def.Description,
+		"",
+		"Use a quick choice below or type changes manually.",
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (sc *StoryCreator) renderRulesReview() string {
+	def := sc.definition
+
+	lines := []string{
+		"Rules, Factions, And Dangers",
+		"",
+		"World rules:",
+		formatBulletedList(def.Setting.Rules),
+		"",
+		"Factions:",
+		formatBulletedList(def.Setting.Factions),
+		"",
+		"Cultures:",
+		formatBulletedList(def.Setting.Cultures),
+		"",
+		"Dangers:",
+		formatBulletedList(def.Setting.Dangers),
+		"",
+		"Use a quick choice below or type changes manually.",
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (sc *StoryCreator) renderStatsReview() string {
+	def := sc.definition
+	combat := "No"
+	if def.StatsSchema.HasCombat {
+		combat = "Yes"
+	}
+
+	lines := []string{
+		"Stats Schema",
+		"",
+		fmt.Sprintf("Combat enabled: %s", combat),
+		"",
+		"Vitals:",
+		formatStatDefs(def.StatsSchema.Vitals),
+		"",
+		"Attributes:",
+		formatStatDefs(def.StatsSchema.Attributes),
+		"",
+		"Secondary stats:",
+		formatStatDefs(def.StatsSchema.Secondary),
+		"",
+		fmt.Sprintf("Currency: %s", formatCurrency(def.StatsSchema.Currency)),
+		"",
+		"Use a quick choice below or type changes manually.",
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func (sc *StoryCreator) renderConfirmReview() string {
+	def := sc.definition
+
+	lines := []string{
+		"Final Story Draft",
+		"",
+		fmt.Sprintf("Story: %s", def.Name),
+		fmt.Sprintf("Genre / Tone: %s / %s", def.Genre, def.Tone),
+		fmt.Sprintf("Language / Style: %s / %s", def.Language, def.WritingStyle),
+		fmt.Sprintf("World: %s", def.Setting.WorldName),
+		fmt.Sprintf("Combat: %s", yesNo(def.StatsSchema.HasCombat)),
+		"",
+		"Description:",
+		def.Description,
+		"",
+		"Quick review:",
+		fmt.Sprintf("- %d world rules", len(def.Setting.Rules)),
+		fmt.Sprintf("- %d factions", len(def.Setting.Factions)),
+		fmt.Sprintf("- %d cultures", len(def.Setting.Cultures)),
+		fmt.Sprintf("- %d dangers", len(def.Setting.Dangers)),
+		fmt.Sprintf("- %d vitals, %d attributes, %d secondary stats",
+			len(def.StatsSchema.Vitals),
+			len(def.StatsSchema.Attributes),
+			len(def.StatsSchema.Secondary),
+		),
+		"",
+		"Use a quick choice below or type final changes manually.",
+	}
+
+	return strings.Join(lines, "\n")
+}
+
+func formatBulletedList(items []string) string {
+	if len(items) == 0 {
+		return "- none"
+	}
+	var lines []string
+	for _, item := range items {
+		lines = append(lines, "- "+item)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatStatDefs(defs []StatDef) string {
+	if len(defs) == 0 {
+		return "- none"
+	}
+	var lines []string
+	for _, def := range defs {
+		line := fmt.Sprintf("- %s (%s)", def.Label, def.Key)
+		if def.Starting != 0 {
+			line += fmt.Sprintf(" start %d", def.Starting)
+		}
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func formatCurrency(currency *CurrencyDef) string {
+	if currency == nil {
+		return "none"
+	}
+	return fmt.Sprintf("%s (start %d)", currency.Name, currency.Starting)
+}
+
+func emptyFallback(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func yesNo(v bool) string {
+	if v {
+		return "yes"
+	}
+	return "no"
 }
 
 func (sc *StoryCreator) persistStory(charName, charBackground string) error {
@@ -261,7 +689,6 @@ func (sc *StoryCreator) persistStory(charName, charBackground string) error {
 		UpdatedAt:        now,
 	}
 
-	// Persist to DB
 	if err := sc.db.CreateStory(sc.story); err != nil {
 		return fmt.Errorf("creating story: %w", err)
 	}
@@ -269,7 +696,6 @@ func (sc *StoryCreator) persistStory(charName, charBackground string) error {
 		return fmt.Errorf("creating character: %w", err)
 	}
 
-	// Create initial world state
 	worldState := &storage.WorldState{
 		ID:                   uuid.New().String(),
 		StoryID:              storyID,
@@ -297,7 +723,6 @@ func extractStoryJSON(text string) *StoryDefinition {
 	if err := json.Unmarshal([]byte(raw), &def); err != nil {
 		return nil
 	}
-	// Basic validation
 	if def.Name == "" || def.Genre == "" || def.Language == "" || def.WritingStyle == "" || len(def.Setting.Rules) == 0 {
 		return nil
 	}
