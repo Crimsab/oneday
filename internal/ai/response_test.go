@@ -130,3 +130,52 @@ func TestNarrativeResponseAllFields(t *testing.T) {
 		t.Errorf("StateChanges[health] = %v", nr.StateChanges["health"])
 	}
 }
+
+func TestParseNarrativeJSONStructuredRenderingMetadata(t *testing.T) {
+	input := "```json\n" + `{
+  "narrative": "Lyanna leads you into Silver Vale.",
+  "location": "Silver Vale",
+  "scene_type": "travel",
+  "dialogue_blocks": [{"speaker": "Lyanna", "role": "npc", "text": "Stay close."}],
+  "entities_mentioned": [{"name": "Lyanna", "type": "npc"}, {"name": "Silver Vale", "type": "location"}],
+  "event_callouts": [{"kind": "location", "title": "Silver Vale", "detail": "Location updated"}],
+  "choices": [{
+    "id": 1,
+    "text": "Follow Lyanna",
+    "intent": "follow",
+    "risk": "low",
+    "scope": "immediate",
+    "certainty": "clear",
+    "related_stats": ["perception", "agility"]
+  }]
+}` + "\n```"
+
+	nr, err := ParseNarrativeJSON(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nr.Location != "Silver Vale" {
+		t.Fatalf("Location = %q, want %q", nr.Location, "Silver Vale")
+	}
+	if nr.SceneType != "travel" {
+		t.Fatalf("SceneType = %q, want %q", nr.SceneType, "travel")
+	}
+	if len(nr.DialogueBlocks) != 1 || nr.DialogueBlocks[0].Speaker != "Lyanna" {
+		t.Fatalf("DialogueBlocks = %+v", nr.DialogueBlocks)
+	}
+	if len(nr.EntitiesMentioned) != 2 || nr.EntitiesMentioned[1].Name != "Silver Vale" {
+		t.Fatalf("EntitiesMentioned = %+v", nr.EntitiesMentioned)
+	}
+	if len(nr.EventCallouts) != 1 || nr.EventCallouts[0].Kind != "location" {
+		t.Fatalf("EventCallouts = %+v", nr.EventCallouts)
+	}
+	if len(nr.Choices) != 1 {
+		t.Fatalf("Choices len = %d, want 1", len(nr.Choices))
+	}
+	if nr.Choices[0].Intent != "follow" || nr.Choices[0].Risk != "low" {
+		t.Fatalf("Choice semantic fields not parsed: %+v", nr.Choices[0])
+	}
+	if len(nr.Choices[0].RelatedStats) != 2 || nr.Choices[0].RelatedStats[0] != "perception" {
+		t.Fatalf("Choice related stats = %+v", nr.Choices[0].RelatedStats)
+	}
+}

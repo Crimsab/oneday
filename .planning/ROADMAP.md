@@ -1,8 +1,8 @@
 # Roadmap: OneDay
 
 **Milestone:** v1.0 — First Playable
-**Phases:** 7
-**Requirements:** 63 mapped
+**Phases:** 8
+**Requirements:** 69 mapped
 
 ---
 
@@ -197,6 +197,29 @@ Note for future planning:
 
 ---
 
+## Phase 8: TUI Rendering Polish
+
+**Goal:** The narrative TUI becomes more readable, semantically expressive, and decision-friendly without relying on brittle prose parsing or decorative-only styling. This phase focuses on the main narrative view only.
+**Requirements:** AI-06, TUI-10, TUI-11, TUI-12, TUI-13, TUI-14
+**Depends on:** Phase 7
+**UI hint:** no
+**Status:** Complete (2026-04-08)
+
+### Success Criteria
+
+1. Narrative rendering can distinguish narrator prose, NPC speech, player/meta voice, and structured dialogue blocks when metadata is available.
+2. Known entities (NPCs, locations, factions, items, skills, titles, chapter names) can be highlighted using persisted state and/or structured metadata rather than ad-hoc keyword coloring.
+3. Important state changes surface as compact event callouts separate from the main prose.
+4. Suggested choices can render semantic intent/risk metadata and optional story-schema stat badges, while remaining fully usable when metadata is absent.
+5. The renderer degrades gracefully to safe plain rendering when metadata is partial or missing, and this behavior is covered by focused renderer tests.
+
+### Plans
+
+- [x] Plan 8.1: Define the rendering data contract and build the narrative semantic renderer foundation — speaker styling, entity highlighting, event callout pipeline, and strong fallback behavior
+- [x] Plan 8.2: Implement semantic choice rendering and integration polish — intent/risk metadata, dynamic stat badges, renderer verification, and narrative-view integration pass
+
+---
+
 ## Requirements Coverage
 
 | Phase | Requirement Count | IDs |
@@ -208,6 +231,7 @@ Note for future planning:
 | 5 | 12 | RAG-01–RAG-04, STOR-04, STOR-05, WORLD-01–WORLD-03, CMD-02–CMD-04 |
 | 6 | 17 | COMBAT-01–COMBAT-06, CRAFT-01–CRAFT-04, CHAL-01–CHAL-04, STOR-04*, TUI-04, TUI-05 |
 | 7 | 6 | ACH-01–ACH-04, TUI-08, TUI-09 |
-| **Total** | **63** | All v1 requirements mapped |
+| 8 | 6 | AI-06, TUI-10–TUI-14 |
+| **Total** | **69** | All mapped requirements through Phase 8 |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.

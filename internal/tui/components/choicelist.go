@@ -2,8 +2,10 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -16,8 +18,13 @@ type ChoiceSelectedMsg struct {
 
 // ChoiceItem is a choice displayed in the list.
 type ChoiceItem struct {
-	ID   int
-	Text string
+	ID           int
+	Text         string
+	Intent       string
+	Risk         string
+	Scope        string
+	Certainty    string
+	RelatedStats []string
 }
 
 // ChoiceListModel displays AI-suggested choices and handles selection.
@@ -25,6 +32,7 @@ type ChoiceListModel struct {
 	choices []ChoiceItem
 	cursor  int
 	width   int
+	mood    string
 }
 
 // NewChoiceList creates a choice list.
@@ -41,6 +49,11 @@ func (c *ChoiceListModel) SetChoices(items []ChoiceItem) {
 // SetWidth sets the component width.
 func (c *ChoiceListModel) SetWidth(w int) {
 	c.width = w
+}
+
+// SetMood updates the mood-aware accenting used by semantic badges.
+func (c *ChoiceListModel) SetMood(mood string) {
+	c.mood = mood
 }
 
 // HasChoices returns true if there are choices to display.
@@ -97,11 +110,75 @@ func (c ChoiceListModel) View() string {
 	for i, ch := range c.choices {
 		prefix := "  "
 		style := theme.UnselectedItem
+		selected := i == c.cursor
 		if i == c.cursor {
 			prefix = "▸ "
 			style = theme.SelectedItem
 		}
 		s += fmt.Sprintf("%s%d. %s\n", prefix, ch.ID, style.Render(ch.Text))
+		if meta := c.renderChoiceMeta(ch, selected); meta != "" {
+			indent := strings.Repeat(" ", len(prefix)+len(fmt.Sprintf("%d", ch.ID))+2)
+			s += indent + meta + "\n"
+		}
 	}
 	return s
+}
+
+func (c ChoiceListModel) renderChoiceMeta(choice ChoiceItem, selected bool) string {
+	if !choiceHasSemanticMetadata(choice) {
+		return ""
+	}
+
+	palette := theme.GetMoodPalette(c.mood)
+	var badges []string
+
+	if choice.Intent != "" {
+		badges = append(badges, renderChoiceBadge("intent:"+strings.ToLower(choice.Intent), palette.NarrativeAccent, selected))
+	}
+	if choice.Risk != "" {
+		badges = append(badges, renderChoiceBadge("risk:"+strings.ToLower(choice.Risk), riskColor(choice.Risk), selected))
+	}
+	if choice.Certainty != "" {
+		badges = append(badges, renderChoiceBadge("certainty:"+strings.ToLower(choice.Certainty), palette.Accent, selected))
+	}
+	if choice.Scope != "" {
+		badges = append(badges, renderChoiceBadge("scope:"+strings.ToLower(choice.Scope), theme.Secondary, selected))
+	}
+	for _, stat := range choice.RelatedStats {
+		if strings.TrimSpace(stat) == "" {
+			continue
+		}
+		badges = append(badges, renderChoiceBadge(stat, theme.Highlight, selected))
+	}
+
+	return strings.Join(badges, " ")
+}
+
+func choiceHasSemanticMetadata(choice ChoiceItem) bool {
+	return choice.Intent != "" ||
+		choice.Risk != "" ||
+		choice.Scope != "" ||
+		choice.Certainty != "" ||
+		len(choice.RelatedStats) > 0
+}
+
+func renderChoiceBadge(label string, color lipgloss.Color, selected bool) string {
+	style := lipgloss.NewStyle().Foreground(color)
+	if selected {
+		style = style.Bold(true)
+	}
+	return style.Render("[" + label + "]")
+}
+
+func riskColor(risk string) lipgloss.Color {
+	switch strings.ToLower(strings.TrimSpace(risk)) {
+	case "low":
+		return theme.Success
+	case "medium":
+		return theme.Accent
+	case "high":
+		return theme.Danger
+	default:
+		return theme.Muted
+	}
 }

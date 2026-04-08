@@ -94,6 +94,26 @@ type AchievementData struct {
 	Context     string `json:"context"`
 }
 
+// DialogueBlock is optional renderer-facing metadata for structured dialogue.
+type DialogueBlock struct {
+	Speaker string `json:"speaker"`
+	Role    string `json:"role,omitempty"` // narrator, npc, player, meta, system
+	Text    string `json:"text"`
+}
+
+// EntityMention is optional renderer metadata for important named entities.
+type EntityMention struct {
+	Name string `json:"name"`
+	Type string `json:"type,omitempty"` // npc, location, faction, item, skill, title, chapter
+}
+
+// EventCallout is optional renderer metadata for compact state/event summaries.
+type EventCallout struct {
+	Kind   string `json:"kind,omitempty"`
+	Title  string `json:"title"`
+	Detail string `json:"detail,omitempty"`
+}
+
 // NarrativeResponse is the standard AI response format during gameplay (AI-02).
 type NarrativeResponse struct {
 	Narrative            string                 `json:"narrative"`
@@ -101,19 +121,29 @@ type NarrativeResponse struct {
 	StateChanges         map[string]interface{} `json:"state_changes,omitempty"`
 	Mood                 string                 `json:"mood,omitempty"`
 	Location             string                 `json:"location,omitempty"`
+	SceneType            string                 `json:"scene_type,omitempty"`
+	DialogueBlocks       []DialogueBlock        `json:"dialogue_blocks,omitempty"`
+	EntitiesMentioned    []EntityMention        `json:"entities_mentioned,omitempty"`
+	EventCallouts        []EventCallout         `json:"event_callouts,omitempty"`
 	Challenges           []*ChallengeSpec       `json:"challenges,omitempty"`
 	AchievementEarned    *AchievementData       `json:"achievement_earned,omitempty"`
 	ChapterEnd           bool                   `json:"chapter_end,omitempty"`
-	ChapterTitle         string                 `json:"chapter_title,omitempty"`  // title for the ending chapter
-	CombatStart          *EnemyStats            `json:"combat_start,omitempty"`   // set by AI to initiate combat
-	PersistedAchievement *storage.Achievement   `json:"-"`                        // TUI-only: set after DB persist
+	ChapterTitle         string                 `json:"chapter_title,omitempty"` // title for the ending chapter
+	CombatStart          *EnemyStats            `json:"combat_start,omitempty"`  // set by AI to initiate combat
+	PersistedAchievement *storage.Achievement   `json:"-"`                       // TUI-only: set after DB persist
+	AppliedStateChanges  []StateChange          `json:"-"`                       // TUI-only: engine-applied changes for renderer/callouts
 }
 
 // Choice represents an AI-suggested action.
 type Choice struct {
-	ID   int    `json:"id"`
-	Text string `json:"text"`
-	Mood string `json:"mood,omitempty"`
+	ID           int      `json:"id"`
+	Text         string   `json:"text"`
+	Mood         string   `json:"mood,omitempty"`
+	Intent       string   `json:"intent,omitempty"`
+	Risk         string   `json:"risk,omitempty"`
+	Scope        string   `json:"scope,omitempty"`
+	Certainty    string   `json:"certainty,omitempty"`
+	RelatedStats []string `json:"related_stats,omitempty"`
 }
 
 // --- Challenge Types ---
@@ -122,29 +152,29 @@ type Choice struct {
 type ChallengeType string
 
 const (
-	ChallengeStatCheck ChallengeType = "stat_check"
-	ChallengeDiceRoll  ChallengeType = "dice_roll"
-	ChallengeItemCheck ChallengeType = "item_check"
+	ChallengeStatCheck  ChallengeType = "stat_check"
+	ChallengeDiceRoll   ChallengeType = "dice_roll"
+	ChallengeItemCheck  ChallengeType = "item_check"
 	ChallengeSkillCheck ChallengeType = "skill_check"
-	ChallengeRelCheck  ChallengeType = "relationship_check"
-	ChallengeMiniGame  ChallengeType = "mini_game"
+	ChallengeRelCheck   ChallengeType = "relationship_check"
+	ChallengeMiniGame   ChallengeType = "mini_game"
 )
 
 // ChallengeSpec is what the AI includes in its response to request a challenge.
 type ChallengeSpec struct {
 	Type        ChallengeType `json:"type"`
-	Difficulty  int           `json:"difficulty,omitempty"`   // threshold for dice/stat checks
-	Stat        string        `json:"stat,omitempty"`         // which stat to check (e.g., "per", "str")
-	Item        string        `json:"item,omitempty"`         // required item name
-	Skill       string        `json:"skill,omitempty"`        // required skill name
-	SkillLevel  int           `json:"skill_level,omitempty"`  // minimum skill level
-	NPCName     string        `json:"npc_name,omitempty"`     // NPC for relationship check
-	Disposition int           `json:"disposition,omitempty"`  // min disposition threshold
-	MiniGame    string        `json:"mini_game,omitempty"`    // "rps", "memory", "quicktime", "riddle"
-	Modifiers   []Modifier    `json:"modifiers,omitempty"`    // bonuses/penalties
+	Difficulty  int           `json:"difficulty,omitempty"`  // threshold for dice/stat checks
+	Stat        string        `json:"stat,omitempty"`        // which stat to check (e.g., "per", "str")
+	Item        string        `json:"item,omitempty"`        // required item name
+	Skill       string        `json:"skill,omitempty"`       // required skill name
+	SkillLevel  int           `json:"skill_level,omitempty"` // minimum skill level
+	NPCName     string        `json:"npc_name,omitempty"`    // NPC for relationship check
+	Disposition int           `json:"disposition,omitempty"` // min disposition threshold
+	MiniGame    string        `json:"mini_game,omitempty"`   // "rps", "memory", "quicktime", "riddle"
+	Modifiers   []Modifier    `json:"modifiers,omitempty"`   // bonuses/penalties
 	// For riddles: AI provides these
-	Riddle   string   `json:"riddle,omitempty"`
-	Answer   string   `json:"answer,omitempty"`
+	Riddle string `json:"riddle,omitempty"`
+	Answer string `json:"answer,omitempty"`
 	// For memory sequence
 	Sequence []string `json:"sequence,omitempty"`
 	// For quick-time
@@ -160,8 +190,8 @@ type Modifier struct {
 // ChallengeResult is the engine's resolution of a challenge.
 type ChallengeResult struct {
 	Passed     bool       `json:"passed"`
-	Roll       int        `json:"roll,omitempty"`       // the raw d100 roll (for dice_roll)
-	Total      int        `json:"total,omitempty"`      // roll + modifiers
+	Roll       int        `json:"roll,omitempty"`  // the raw d100 roll (for dice_roll)
+	Total      int        `json:"total,omitempty"` // roll + modifiers
 	Difficulty int        `json:"difficulty,omitempty"`
 	Modifiers  []Modifier `json:"modifiers,omitempty"`
 	Detail     string     `json:"detail"` // human-readable summary
@@ -186,8 +216,8 @@ type EnemyStats struct {
 	Description string        `json:"description,omitempty"`
 	HP          int           `json:"hp"`
 	MaxHP       int           `json:"max_hp"`
-	Attack      int           `json:"attack"`   // base attack power
-	Defense     int           `json:"defense"`  // damage reduction
+	Attack      int           `json:"attack"`  // base attack power
+	Defense     int           `json:"defense"` // damage reduction
 	Behavior    EnemyBehavior `json:"behavior"`
 	Abilities   []string      `json:"abilities,omitempty"` // special moves (narrative only)
 	WeakTo      string        `json:"weak_to,omitempty"`   // narrative weakness hint
@@ -209,17 +239,17 @@ type CombatState struct {
 
 // CombatTurnResult contains everything the TUI needs after a combat turn.
 type CombatTurnResult struct {
-	Narrative    string
-	Choices      []Choice
-	PlayerDamage int    // damage dealt TO player this turn
-	EnemyDamage  int    // damage dealt TO enemy this turn
-	PlayerHP     int
-	EnemyHP      int
-	CombatOver   bool
-	Victory      bool
+	Narrative     string
+	Choices       []Choice
+	PlayerDamage  int // damage dealt TO player this turn
+	EnemyDamage   int // damage dealt TO enemy this turn
+	PlayerHP      int
+	EnemyHP       int
+	CombatOver    bool
+	Victory       bool
 	DefeatOutcome string // only set if CombatOver && !Victory
-	Summary      string // only set if CombatOver
-	Mood         string
+	Summary       string // only set if CombatOver
+	Mood          string
 }
 
 // MiniGameType identifies a specific mini-game.

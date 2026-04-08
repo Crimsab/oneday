@@ -115,6 +115,20 @@
 - [x] **CONF-01**: Global config.yaml for AI providers, endpoints, keys, game settings
 - [x] **CONF-02**: AI provider priority chain configurable (Claude Code → LiteLLM → OpenRouter)
 
+## v1.1 Requirements
+
+### AI / Rendering Contract
+
+- [x] **AI-06**: Narrative responses may include optional renderer metadata (`dialogue_blocks`, `entities_mentioned`, `event_callouts`, enriched choice metadata) without breaking existing gameplay flows when omitted
+
+### TUI Narrative Rendering Polish
+
+- [x] **TUI-10**: Narrative view distinguishes narrator prose, NPC dialogue, player/meta voice, and structured dialogue blocks through speaker-aware styling
+- [x] **TUI-11**: Narrative view highlights only known entities derived from persisted state or structured metadata, not arbitrary regex-only keyword coloring
+- [x] **TUI-12**: Important state changes render as compact event callouts separated from the main narrative prose
+- [x] **TUI-13**: Suggested choices can display generic semantic metadata (intent/risk/scope/certainty) plus optional story-schema stat badges with graceful fallback
+- [x] **TUI-14**: Narrative renderer has strong fallback behavior for partial/missing metadata and is covered by focused rendering tests
+
 ## v2 Requirements
 
 ### Plugin System
@@ -216,6 +230,12 @@
 | ACH-04 | Phase 7: Polish, Achievements, and Mood Theming |
 | TUI-08 | Phase 7: Polish, Achievements, and Mood Theming |
 | TUI-09 | Phase 7: Polish, Achievements, and Mood Theming |
+| AI-06 | Phase 8: TUI Rendering Polish |
+| TUI-10 | Phase 8: TUI Rendering Polish |
+| TUI-11 | Phase 8: TUI Rendering Polish |
+| TUI-12 | Phase 8: TUI Rendering Polish |
+| TUI-13 | Phase 8: TUI Rendering Polish |
+| TUI-14 | Phase 8: TUI Rendering Polish |
 
 ---
 *Last updated: 2026-04-07 after initialization*

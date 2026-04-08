@@ -288,7 +288,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 
 	// Apply state_changes from AI response, including NPC creation/updates.
 	if len(narrative.StateChanges) > 0 {
-		_, applyErr := ApplyStateChanges(
+		appliedChanges, applyErr := ApplyStateChanges(
 			narrative.StateChanges,
 			n.character,
 			n.world,
@@ -299,6 +299,12 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		if applyErr != nil {
 			// Non-fatal: log but continue.
 			_ = applyErr
+		} else {
+			narrative.AppliedStateChanges = appliedChanges
+			narrative.EventCallouts = MergeEventCallouts(
+				narrative.EventCallouts,
+				StateChangesToEventCallouts(appliedChanges),
+			)
 		}
 
 		// Also apply world/setting-modifying keys that come through regular gameplay.

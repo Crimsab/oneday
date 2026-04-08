@@ -52,6 +52,10 @@ You MUST respond with ONLY a JSON block in this exact format:
   ],
   "mood": "tense|peaceful|dark|epic|mysterious|lighthearted|dramatic",
   "location": "Current location name",
+  "scene_type": "",
+  "dialogue_blocks": [],
+  "entities_mentioned": [],
+  "event_callouts": [],
   "state_changes": {},
   "challenges": [],
   "achievement_earned": null,
@@ -133,6 +137,35 @@ As the story progresses, update the living world through state_changes:
 
 Use these naturally — not every turn, but whenever the world genuinely evolves.
 
+## Optional Rendering Metadata
+
+You MAY include extra renderer metadata when it improves clarity, but gameplay must still work if these are omitted.
+
+- "scene_type": short classifier such as "dialogue", "travel", "investigation", "combat_aftermath", "downtime"
+- "dialogue_blocks": structured dialogue entries for speaker-aware rendering
+  Example:
+  [{"speaker":"Lyanna","role":"npc","text":"Keep your voice down."}]
+- "entities_mentioned": important known entities explicitly referenced in this turn
+  Example:
+  [{"name":"Lyanna","type":"npc"},{"name":"Old Harbor","type":"location"}]
+- "event_callouts": compact event summaries worth surfacing apart from the prose
+  Example:
+  [{"kind":"location","title":"Old Harbor","detail":"New location discovered"}]
+
+### Choice metadata
+
+Each choice may optionally include semantic metadata to help the UI communicate intent without hardcoding story vocabularies:
+- "intent": "attack", "social", "stealth", "explore", "observe", "craft", "survive", "flee", "use_item", "lore", "meta"
+- "risk": "low", "medium", "high", "unknown"
+- "scope": "self", "npc", "world", "party", "environment"
+- "certainty": "safe", "uncertain", "desperate"
+- "related_stats": array of stat keys from the active story schema
+
+Example enriched choice:
+{"id":2,"text":"Confront the guard and talk your way through","intent":"social","risk":"medium","related_stats":["cha","wil"]}
+
+These metadata fields are optional guidance, not mandatory every turn.
+
 ## Rules for Character Growth
 1. Attributes: suggest +1 only at natural narrative moments (heavy lifting → STR, casting spell → INT).
    Maximum once per 3-5 turns for any single attribute.
@@ -170,26 +203,26 @@ When the narrative calls for a skill test, luck check, or interactive moment, in
 Challenge types:
 
 - **stat_check** — passive test against a character attribute (resolves instantly)
-  ` + "`" + `{"type": "stat_check", "stat": "dex", "difficulty": 8, "description": "Reflexes test"}` + "`" + `
+  `+"`"+`{"type": "stat_check", "stat": "dex", "difficulty": 8, "description": "Reflexes test"}`+"`"+`
 - **dice_roll** — active d100 roll with optional modifiers (shows animated dice)
-  ` + "`" + `{"type": "dice_roll", "difficulty": 60, "description": "Pick the lock", "modifiers": [{"source": "Lockpicking skill", "value": 10}]}` + "`" + `
+  `+"`"+`{"type": "dice_roll", "difficulty": 60, "description": "Pick the lock", "modifiers": [{"source": "Lockpicking skill", "value": 10}]}`+"`"+`
 - **item_check** — require the player to have a specific item (resolves instantly)
-  ` + "`" + `{"type": "item_check", "item": "Golden Key", "description": "Need a key"}` + "`" + `
+  `+"`"+`{"type": "item_check", "item": "Golden Key", "description": "Need a key"}`+"`"+`
 - **skill_check** — require a specific skill, optionally at a minimum level (resolves instantly)
-  ` + "`" + `{"type": "skill_check", "skill": "Lockpicking", "skill_level": 2, "description": "Expert lock"}` + "`" + `
+  `+"`"+`{"type": "skill_check", "skill": "Lockpicking", "skill_level": 2, "description": "Expert lock"}`+"`"+`
 - **relationship_check** — require NPC disposition above a threshold (resolves instantly)
-  ` + "`" + `{"type": "relationship_check", "npc_name": "Lyanna", "disposition": 30, "description": "Lyanna trusts you"}` + "`" + `
+  `+"`"+`{"type": "relationship_check", "npc_name": "Lyanna", "disposition": 30, "description": "Lyanna trusts you"}`+"`"+`
 - **mini_game** — interactive mini-game the player must play:
-  - RPS: ` + "`" + `{"type": "mini_game", "mini_game": "rps", "description": "Gamble on a hand game"}` + "`" + `
-  - Memory: ` + "`" + `{"type": "mini_game", "mini_game": "memory", "sequence": ["up","down","left","right","up"], "description": "Repeat the ritual pattern"}` + "`" + `
-  - Quick-time: ` + "`" + `{"type": "mini_game", "mini_game": "quicktime", "time_limit": 3.0, "description": "Dodge the trap!"}` + "`" + `
-  - Riddle: ` + "`" + `{"type": "mini_game", "mini_game": "riddle", "riddle": "I speak without a mouth...", "answer": "echo", "description": "Answer the sphinx"}` + "`" + `
+  - RPS: `+"`"+`{"type": "mini_game", "mini_game": "rps", "description": "Gamble on a hand game"}`+"`"+`
+  - Memory: `+"`"+`{"type": "mini_game", "mini_game": "memory", "sequence": ["up","down","left","right","up"], "description": "Repeat the ritual pattern"}`+"`"+`
+  - Quick-time: `+"`"+`{"type": "mini_game", "mini_game": "quicktime", "time_limit": 3.0, "description": "Dodge the trap!"}`+"`"+`
+  - Riddle: `+"`"+`{"type": "mini_game", "mini_game": "riddle", "riddle": "I speak without a mouth...", "answer": "echo", "description": "Answer the sphinx"}`+"`"+`
 
 ### Challenge Rules
 - Use challenges **sparingly** — 1-2 per scene at most, never every turn
 - Difficulty scale: easy 20-40, medium 40-60, hard 60-80, extreme 80+
 - Include relevant modifiers for skills/items/traits that would logically help
-- After the player sends ` + "`" + `[Challenge Result: type PASSED/FAILED — detail]` + "`" + `, narrate the outcome accordingly
+- After the player sends `+"`"+`[Challenge Result: type PASSED/FAILED — detail]`+"`"+`, narrate the outcome accordingly
 - Branch your narrative meaningfully based on pass vs fail — don't make fail states dead ends
 - Mini-games are for special dramatic moments: gambling (RPS), rituals (memory), traps/dodging (quicktime), puzzles (riddle)
 - Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama

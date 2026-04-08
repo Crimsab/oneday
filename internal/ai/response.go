@@ -18,6 +18,26 @@ type AchievementPayload struct {
 	Context     string `json:"context"`
 }
 
+// DialogueBlock is optional renderer-facing metadata for structured dialogue.
+type DialogueBlock struct {
+	Speaker string `json:"speaker"`
+	Role    string `json:"role,omitempty"`
+	Text    string `json:"text"`
+}
+
+// EntityMention is optional renderer-facing metadata for important named entities.
+type EntityMention struct {
+	Name string `json:"name"`
+	Type string `json:"type,omitempty"`
+}
+
+// EventCallout is optional renderer-facing metadata for compact state/event summaries.
+type EventCallout struct {
+	Kind   string `json:"kind,omitempty"`
+	Title  string `json:"title"`
+	Detail string `json:"detail,omitempty"`
+}
+
 // NarrativeResponse is the structured JSON payload the AI embeds in its reply.
 // Fields mirror the game engine's NarrativeResponse in internal/engine/types.go
 // but are redeclared here so the ai package stays self-contained.
@@ -26,6 +46,11 @@ type NarrativeResponse struct {
 	Choices           []NarrativeChoice      `json:"choices,omitempty"`
 	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
 	Mood              string                 `json:"mood,omitempty"`
+	Location          string                 `json:"location,omitempty"`
+	SceneType         string                 `json:"scene_type,omitempty"`
+	DialogueBlocks    []DialogueBlock        `json:"dialogue_blocks,omitempty"`
+	EntitiesMentioned []EntityMention        `json:"entities_mentioned,omitempty"`
+	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
 	ASCIIArt          string                 `json:"ascii_art,omitempty"`
 	AchievementEarned *AchievementPayload    `json:"achievement_earned,omitempty"`
 	Challenge         string                 `json:"challenge,omitempty"`
@@ -33,9 +58,14 @@ type NarrativeResponse struct {
 
 // NarrativeChoice is a single player-facing option embedded in a NarrativeResponse.
 type NarrativeChoice struct {
-	ID   int    `json:"id"`
-	Text string `json:"text"`
-	Mood string `json:"mood,omitempty"`
+	ID           int      `json:"id"`
+	Text         string   `json:"text"`
+	Mood         string   `json:"mood,omitempty"`
+	Intent       string   `json:"intent,omitempty"`
+	Risk         string   `json:"risk,omitempty"`
+	Scope        string   `json:"scope,omitempty"`
+	Certainty    string   `json:"certainty,omitempty"`
+	RelatedStats []string `json:"related_stats,omitempty"`
 }
 
 // ParseNarrativeJSON extracts the JSON block from an AI text response and
