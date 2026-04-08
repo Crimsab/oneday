@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/Crimsab/oneday/compare/v1.0.0...v1.0.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **tui:** avoid builder copy panics and improve config lookup ([d8541c5](https://github.com/Crimsab/oneday/commit/d8541c5b2556040838879bf1033483c729d580aa))
+
 ## 1.0.0 (2026-04-08)
 
 
