@@ -30,15 +30,18 @@ type aiResponseMsg struct {
 
 // NewStoryModel handles the story creation conversation.
 type NewStoryModel struct {
-	creator  *engine.StoryCreator
-	viewport viewport.Model
-	input    textarea.Model
-	spinner  spinner.Model
-	history  *strings.Builder // rendered conversation (pointer to avoid copy panic)
-	waiting  bool            // waiting for AI
-	errMsg   string
-	width    int
-	height   int
+	creator    *engine.StoryCreator
+	viewport   viewport.Model
+	choices    components.ChoiceListModel
+	input      textarea.Model
+	spinner    spinner.Model
+	history    *strings.Builder // rendered conversation (pointer to avoid copy panic)
+	waiting    bool             // waiting for AI
+	errMsg     string
+	width      int
+	height     int
+	inputFocus bool
+	actions    []engine.CreationAction
 }
 
 // NewNewStoryModel creates the story creation view.
@@ -55,13 +58,18 @@ func NewNewStoryModel(creator *engine.StoryCreator) NewStoryModel {
 
 	vp := viewport.New(80, 20)
 
-	return NewStoryModel{
-		creator:  creator,
-		viewport: vp,
-		input:    ta,
-		spinner:  sp,
-		history:  &strings.Builder{},
+	m := NewStoryModel{
+		creator:    creator,
+		viewport:   vp,
+		choices:    components.NewChoiceList(),
+		input:      ta,
+		spinner:    sp,
+		history:    &strings.Builder{},
+		inputFocus: false,
 	}
+	m.syncInputPlaceholder()
+	m.refreshActions()
+	return m
 }
 
 func (m NewStoryModel) Init() tea.Cmd {
@@ -88,8 +96,9 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.viewport.Width = msg.Width - 4
-		m.viewport.Height = msg.Height - 10
+		m.viewport.Height = msg.Height - 15
 		m.input.SetWidth(msg.Width - 4)
+		m.choices.SetWidth(msg.Width - 4)
 		return m, nil
 
 	case aiResponseMsg:
@@ -100,10 +109,12 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 		}
 		m.errMsg = ""
 		// Append AI response to history
-		m.history.WriteString(theme.Subtitle.Render("Narrator") + "\n")
+		m.history.WriteString(theme.Subtitle.Render("Story Guide") + "\n")
 		m.history.WriteString(components.RenderMarkdown(msg.content) + "\n")
 		m.viewport.SetContent(m.history.String())
 		m.viewport.GotoBottom()
+		m.refreshActions()
+		m.syncInputPlaceholder()
 
 		// Check if creation is done
 		if m.creator.Phase() == engine.PhaseDone {
@@ -125,6 +136,28 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
+	case components.ChoiceSelectedMsg:
+		if m.waiting {
+			return m, nil
+		}
+		idx := msg.ID - 1
+		if idx < 0 || idx >= len(m.actions) {
+			return m, nil
+		}
+		action := m.actions[idx]
+		if action.Key == "focus_input" || strings.HasPrefix(action.Key, "edit_") {
+			m.inputFocus = true
+			m.input.Focus()
+			m.syncInputPlaceholder()
+			return m, nil
+		}
+		m.waiting = true
+		captured := action.Key
+		return m, func() tea.Msg {
+			resp, err := m.creator.ExecuteAction(context.Background(), captured)
+			return aiResponseMsg{content: resp, err: err}
+		}
+
 	case tea.KeyMsg:
 		if m.waiting {
 			return m, nil // ignore input while waiting
@@ -137,7 +170,19 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 		switch msg.Type {
 		case tea.KeyCtrlC:
 			// handled by parent app
+		case tea.KeyTab:
+			if len(m.actions) > 0 {
+				m.inputFocus = !m.inputFocus
+				if m.inputFocus {
+					m.input.Focus()
+				} else {
+					m.input.Blur()
+				}
+			}
 		case tea.KeyEnter:
+			if !m.inputFocus && len(m.actions) > 0 {
+				break
+			}
 			if msg.Alt {
 				// Alt+Enter for newline in textarea — fall through to textarea update
 				break
@@ -165,9 +210,16 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 
 	// Update child components
 	if !m.waiting {
+		if !m.inputFocus && len(m.actions) > 0 {
+			var cmd tea.Cmd
+			m.choices, cmd = m.choices.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		cmds = append(cmds, cmd)
+		if m.inputFocus || len(m.actions) == 0 {
+			m.input, cmd = m.input.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	var cmd tea.Cmd
@@ -179,12 +231,7 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 
 func (m NewStoryModel) View() string {
 	header := theme.Title.Render("Create Your Story")
-
-	phaseLabel := "Building your world..."
-	if m.creator.Phase() == engine.PhaseCharacter {
-		phaseLabel = "Create your protagonist..."
-	}
-	phaseBar := theme.MutedText.Render(phaseLabel)
+	phaseBar := theme.MutedText.Render(m.creator.StageLabel())
 
 	var statusLine string
 	if m.creator.LastModel() != "" {
@@ -200,11 +247,21 @@ func (m NewStoryModel) View() string {
 		inputArea = m.spinner.View() + " Thinking..."
 	} else if m.errMsg != "" {
 		inputArea = theme.DangerText.Render(m.errMsg)
+	} else if !m.inputFocus && len(m.actions) > 0 {
+		inputArea = theme.MutedText.Render("Press TAB to type a custom reply.")
 	} else {
 		inputArea = m.input.View()
 	}
 
-	help := theme.MutedText.Render("enter send · esc back · ctrl+c quit")
+	choicesView := m.choices.View()
+	if choicesView != "" {
+		choicesView = theme.MutedText.Render("Quick choices") + "\n" + choicesView
+	}
+
+	help := theme.MutedText.Render("tab toggle · enter send/select · esc back · ctrl+c quit")
+	if len(m.actions) == 0 {
+		help = theme.MutedText.Render("enter send · esc back · ctrl+c quit")
+	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		header,
@@ -213,6 +270,7 @@ func (m NewStoryModel) View() string {
 		"",
 		body,
 		"",
+		choicesView,
 		inputArea,
 		help,
 	)
@@ -225,6 +283,33 @@ func (m *NewStoryModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	m.viewport.Width = w - 4
-	m.viewport.Height = h - 10
+	m.viewport.Height = h - 15
 	m.input.SetWidth(w - 4)
+	m.choices.SetWidth(w - 4)
+}
+
+func (m *NewStoryModel) refreshActions() {
+	m.actions = m.creator.Actions()
+	items := make([]components.ChoiceItem, 0, len(m.actions))
+	for i, action := range m.actions {
+		items = append(items, components.ChoiceItem{
+			ID:   i + 1,
+			Text: action.Label,
+		})
+	}
+	m.choices.SetChoices(items)
+	if len(m.actions) == 0 {
+		m.inputFocus = true
+		m.input.Focus()
+		return
+	}
+	if m.inputFocus {
+		m.input.Focus()
+	} else {
+		m.input.Blur()
+	}
+}
+
+func (m *NewStoryModel) syncInputPlaceholder() {
+	m.input.Placeholder = m.creator.InputPlaceholder()
 }
