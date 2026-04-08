@@ -48,7 +48,7 @@ type CombatModel struct {
 	statusBar  components.StatusBarModel
 
 	// State
-	history    strings.Builder
+	history    *strings.Builder
 	inputFocus bool
 	waiting    bool
 	errMsg     string
@@ -98,6 +98,7 @@ func NewCombatModel(combat *engine.CombatEngine, narrator *engine.Narrator, widt
 		input:      input,
 		playerHP:   playerHP,
 		enemyHP:    enemyHP,
+		history:    &strings.Builder{},
 		inputFocus: true,
 		turnCount:  state.Turn,
 	}
@@ -323,7 +324,7 @@ func (m CombatModel) View() string {
 	// --- Narrative viewport ---
 	m.viewport.SetContent(m.typewriter.View())
 	vpStyle := lipgloss.NewStyle().
-		Width(m.width - 2).
+		Width(m.width-2).
 		Padding(0, 1)
 	sections = append(sections, vpStyle.Render(m.viewport.View()))
 

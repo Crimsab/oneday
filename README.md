@@ -64,6 +64,7 @@ Practical rules:
 
 - `config.example.yaml` is the tracked template for the repo
 - `config.yaml` is ignored by git and is where local secrets / endpoints go
+- the binary looks for `config.yaml` in the current working directory first, then next to the executable itself
 - if `config.yaml` is missing, the app falls back to the built-in defaults
 
 Current default provider strategy:

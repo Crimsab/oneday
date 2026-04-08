@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// Load config
-	cfg, err := config.Load("config.yaml")
+	cfg, err := config.Load(resolveConfigPath())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
 		os.Exit(1)
@@ -44,4 +44,24 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func resolveConfigPath() string {
+	const configName = "config.yaml"
+
+	if _, err := os.Stat(configName); err == nil {
+		return configName
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return configName
+	}
+
+	exeConfig := filepath.Join(filepath.Dir(exePath), configName)
+	if _, err := os.Stat(exeConfig); err == nil {
+		return exeConfig
+	}
+
+	return configName
 }
