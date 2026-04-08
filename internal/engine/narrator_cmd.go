@@ -83,8 +83,9 @@ func (nc *NarratorCommand) Execute(ctx context.Context, input string) (*Narrator
 			{Role: ai.RoleSystem, Content: systemPrompt},
 			{Role: ai.RoleUser, Content: input},
 		},
-		Temperature: 0.7,
-		MaxTokens:   1024,
+		Temperature:    0.7,
+		MaxTokens:      1024,
+		ResponseFormat: ai.NarratorMetaResponseFormat(),
 	}
 
 	resp, err := nc.router.Complete(ctx, req)

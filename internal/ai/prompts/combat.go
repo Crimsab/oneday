@@ -35,7 +35,8 @@ Stats: %s
 ## Current Combat Turn: %d
 
 ## Response Format
-Respond with a JSON block inside triple backticks:
+Respond with ONLY valid JSON matching this structure.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
 `+
 		"```json"+`
 {
@@ -81,7 +82,8 @@ Decide the defeat outcome. Choose ONE:
 
 Consider the story context, enemy type, and narrative drama. Death should be RARE — only for truly overwhelming enemies or foolish repeated choices.
 
-Respond with a JSON block inside triple backticks:
+Respond with ONLY valid JSON matching this structure.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
 `+"```json"+`
 {
   "outcome": "capture",
@@ -105,7 +107,8 @@ Narrate the victory moment. Include:
 - What happens to the enemy (killed, fled, surrendered, etc.)
 - Any loot or rewards the player might find
 
-Respond with a JSON block inside triple backticks:
+Respond with ONLY valid JSON matching this structure.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
 `+"```json"+`
 {
   "narrative": "Victory narration...",

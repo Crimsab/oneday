@@ -20,10 +20,11 @@ type Message struct {
 
 // Request holds parameters for an AI completion request.
 type Request struct {
-	Messages    []Message `json:"messages"`
-	Model       string    `json:"model,omitempty"`
-	Temperature float64   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
+	Messages       []Message       `json:"messages"`
+	Model          string          `json:"model,omitempty"`
+	Temperature    float64         `json:"temperature,omitempty"`
+	MaxTokens      int             `json:"max_tokens,omitempty"`
+	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
 }
 
 // Response holds the result of an AI completion.
@@ -32,6 +33,22 @@ type Response struct {
 	Model     string `json:"model"`
 	LatencyMs int64  `json:"latency_ms"`
 	Provider  string `json:"provider"`
+}
+
+// ResponseFormat requests provider-side response shaping for compatible APIs.
+// OpenAI-compatible providers may honor json_object/json_schema, while others
+// simply ignore this field.
+type ResponseFormat struct {
+	Type       string            `json:"type"`
+	JSONSchema *JSONSchemaConfig `json:"json_schema,omitempty"`
+}
+
+// JSONSchemaConfig is the OpenAI-compatible nested schema envelope used when
+// response_format.type is "json_schema".
+type JSONSchemaConfig struct {
+	Name   string         `json:"name"`
+	Strict bool           `json:"strict,omitempty"`
+	Schema map[string]any `json:"schema"`
 }
 
 // Provider is the interface that all AI providers must implement.

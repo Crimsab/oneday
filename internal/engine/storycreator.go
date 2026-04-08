@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 	"time"
 
@@ -21,8 +20,8 @@ type StoryCreationPhase int
 
 const (
 	PhaseConversation StoryCreationPhase = iota // AI-guided story building
-	PhaseCharacter                               // Name and background
-	PhaseDone                                    // Creation complete
+	PhaseCharacter                              // Name and background
+	PhaseDone                                   // Creation complete
 )
 
 // StoryCreator manages the AI-guided story creation conversation.
@@ -179,6 +178,9 @@ func (sc *StoryCreator) callAI(ctx context.Context, msgs []ai.Message) (string, 
 		Temperature: sc.genCfg.Temperature,
 		MaxTokens:   sc.genCfg.MaxTokens,
 	}
+	if sc.phase == PhaseCharacter {
+		req.ResponseFormat = ai.CharacterCreationResponseFormat()
+	}
 	resp, err := sc.router.Complete(ctx, req)
 	if err != nil {
 		return "", err
@@ -269,16 +271,13 @@ func (sc *StoryCreator) persistStory(charName, charBackground string) error {
 	return nil
 }
 
-// extractStoryJSON tries to find and parse a StoryDefinition JSON block in AI output.
-var jsonBlockRe = regexp.MustCompile("(?s)```json\\s*\\n(.*?)\\n```")
-
 func extractStoryJSON(text string) *StoryDefinition {
-	matches := jsonBlockRe.FindStringSubmatch(text)
-	if len(matches) < 2 {
+	raw, err := ai.ExtractJSONPayload(text)
+	if err != nil || raw == "" {
 		return nil
 	}
 	var def StoryDefinition
-	if err := json.Unmarshal([]byte(matches[1]), &def); err != nil {
+	if err := json.Unmarshal([]byte(raw), &def); err != nil {
 		return nil
 	}
 	// Basic validation
@@ -294,12 +293,12 @@ type charJSON struct {
 }
 
 func extractCharacterJSON(text string) (string, string) {
-	matches := jsonBlockRe.FindStringSubmatch(text)
-	if len(matches) < 2 {
+	raw, err := ai.ExtractJSONPayload(text)
+	if err != nil || raw == "" {
 		return "", ""
 	}
 	var c charJSON
-	if err := json.Unmarshal([]byte(matches[1]), &c); err != nil {
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
 		return "", ""
 	}
 	c.Name = strings.TrimSpace(c.Name)

@@ -54,6 +54,28 @@ func TestParseNarrativeJSONErrorsOnInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestParseNarrativeJSONAcceptsRawJSON(t *testing.T) {
+	input := `{
+  "narrative": "You enter the dark forest.",
+  "choices": [{"id": 1, "text": "Go north"}, {"id": 2, "text": "Turn back"}],
+  "mood": "tense"
+}`
+
+	nr, err := ParseNarrativeJSON(input)
+	if err != nil {
+		t.Fatalf("ParseNarrativeJSON: %v", err)
+	}
+	if nr == nil {
+		t.Fatal("expected non-nil NarrativeResponse")
+	}
+	if nr.Narrative != "You enter the dark forest." {
+		t.Errorf("Narrative = %q", nr.Narrative)
+	}
+	if len(nr.Choices) != 2 {
+		t.Errorf("Choices len = %d, want 2", len(nr.Choices))
+	}
+}
+
 func TestExtractNarrativeStripsJSONBlock(t *testing.T) {
 	// The JSON block is replaced with empty string; TrimSpace collapses surrounding whitespace.
 	input := "Intro text.\n\n```json\n{\"narrative\":\"test\"}\n```\n\nOutro text."

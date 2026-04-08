@@ -15,7 +15,8 @@ Include in your summary:
 
 Also provide a short, evocative chapter title (3-6 words).
 
-Respond with ONLY JSON in this exact format:
+Respond with ONLY valid JSON in this exact format.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
 ` + "```json" + `
 {
   "title": "Evocative chapter title here",

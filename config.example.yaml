@@ -8,13 +8,13 @@ ai:
   # Provider priority (first available is used, others are fallbacks)
   # Options: claude-code, litellm, openrouter
   provider_priority:
-    - claude-code
     - litellm
     - openrouter
+    - claude-code
 
   # Claude Code CLI (uses your Claude subscription)
   claude_code:
-    enabled: true
+    enabled: false
     # Path to claude CLI binary (leave empty for PATH lookup)
     binary: ""
 
@@ -23,14 +23,14 @@ ai:
     enabled: true
     base_url: "http://ai-proxy:4000/v1"
     api_key: ""
-    default_model: "claude-sonnet-4-6"
+    default_model: "x-ai/grok-4.1-fast"
 
   # OpenRouter
   openrouter:
-    enabled: false
+    enabled: true
     base_url: "https://openrouter.ai/api/v1"
     api_key: ""
-    default_model: "anthropic/claude-sonnet-4-6"
+    default_model: "google/gemini-2.5-flash-lite"
 
   # Embedding model (for RAG)
   embedding:
@@ -38,9 +38,10 @@ ai:
     # Uses the first available provider that supports embeddings
 
   # Generation settings
-  temperature: 0.8
-  max_tokens: 2048
-  timeout_seconds: 60
+  generation:
+    temperature: 0.8
+    max_tokens: 2048
+    timeout_seconds: 60
 
 # RAG settings
 rag:

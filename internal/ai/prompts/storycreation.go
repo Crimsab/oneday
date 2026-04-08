@@ -29,7 +29,7 @@ Present the complete story definition and ask the player to confirm.
 ## IMPORTANT RULES:
 1. Be conversational and enthusiastic. This should feel like a fun collaborative process.
 2. At EACH step, present your suggestions and ask for feedback before moving on.
-3. When the player confirms the final definition, output ONLY a JSON block wrapped in ` + "```json" + ` fences.
+3. When the player confirms the final definition, output ONLY valid JSON with no prose before or after it. Markdown code fences are optional.
 4. The JSON must match this exact structure:
 {
   "name": "string",
@@ -68,7 +68,7 @@ Ask for:
 2. Optional brief background (1-2 sentences about who they are, where they're from, or why they're here)
 
 Be encouraging. Remind them that the character starts with minimal stats — everything is earned through gameplay.
-When they provide the name (and optionally background), output ONLY a JSON block:
+When they provide the name (and optionally background), output ONLY valid JSON with no prose before or after it:
 ` + "```json" + `
 {
   "name": "string",

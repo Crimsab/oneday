@@ -86,20 +86,20 @@ func Default() Config {
 	return Config{
 		DataDir: "./oneday_data",
 		AI: AIConfig{
-			ProviderPriority: []string{"claude-code", "litellm", "openrouter"},
+			ProviderPriority: []string{"litellm", "openrouter", "claude-code"},
 			ClaudeCode: ClaudeCodeConfig{
-				Enabled: true,
+				Enabled: false,
 				Binary:  "claude",
 			},
 			LiteLLM: LiteLLMConfig{
 				Enabled:      true,
 				BaseURL:      "http://ai-proxy:4000/v1",
-				DefaultModel: "claude-sonnet-4-6",
+				DefaultModel: "x-ai/grok-4.1-fast",
 			},
 			OpenRouter: OpenRouterConfig{
-				Enabled:      false,
+				Enabled:      true,
 				BaseURL:      "https://openrouter.ai/api/v1",
-				DefaultModel: "anthropic/claude-sonnet-4-6",
+				DefaultModel: "google/gemini-2.5-flash-lite",
 			},
 			Embedding: EmbeddingConfig{
 				Model: "text-embedding-3-small",

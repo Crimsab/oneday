@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -100,6 +101,110 @@ func TestOpenAICompatNoChoices(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error for empty choices")
+	}
+}
+
+func TestOpenAICompatCompletePassesResponseFormat(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+
+		rf, ok := body["response_format"].(map[string]any)
+		if !ok {
+			t.Fatalf("response_format missing from request body")
+		}
+		if rf["type"] != "json_schema" {
+			t.Fatalf("response_format.type = %v, want json_schema", rf["type"])
+		}
+
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": `{"narrative":"ok","choices":[{"id":1,"text":"Continue"}]}`}},
+			},
+			"model": "test-model",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "test-provider",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	_, err := provider.Complete(context.Background(), ai.Request{
+		Messages:       []ai.Message{{Role: "user", Content: "hello"}},
+		ResponseFormat: ai.NarrativeResponseFormat(),
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+}
+
+func TestOpenAICompatCompleteRetriesWithoutUnsupportedResponseFormat(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		calls++
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+
+		_, hasResponseFormat := body["response_format"]
+		if calls == 1 {
+			if !hasResponseFormat {
+				t.Fatalf("expected first request to carry response_format")
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"response_format json_schema not supported"}}`))
+			return
+		}
+
+		if hasResponseFormat {
+			t.Fatalf("expected retry request without response_format")
+		}
+
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": `{"narrative":"fallback ok","choices":[{"id":1,"text":"Continue"}]}`}},
+			},
+			"model": "test-model",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "test-provider",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	resp, err := provider.Complete(context.Background(), ai.Request{
+		Messages:       []ai.Message{{Role: "user", Content: "hello"}},
+		ResponseFormat: ai.NarrativeResponseFormat(),
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if !strings.Contains(resp.Content, "fallback ok") {
+		t.Fatalf("unexpected fallback content: %q", resp.Content)
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
 	}
 }
 
