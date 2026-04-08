@@ -76,6 +76,68 @@ Present the complete story definition and ask the player to confirm.
 7. writing_style should be a short prose profile that can guide all later prompts.
 8. prompt_directives should be a short reusable instruction string. Use an empty string if the player wants no extra directive.`
 
+// StoryDefinitionSystemPrompt is used for the guided wizard flow.
+// The AI should produce a complete, usable story definition directly from a
+// short player brief with no conversational filler.
+func StoryDefinitionSystemPrompt() string {
+	return `You are the Story Architect for OneDay.
+
+Generate a complete, playable story definition from the player's brief.
+
+Rules:
+- Obey the brief directly. Do not sell, hype, or pitch the world.
+- Be concise, useful, and gameable.
+- Infer missing details intelligently, but keep them aligned with the brief.
+- If the player does not specify a language, infer it from their wording.
+- writing_style must be a short reusable prose profile.
+- prompt_directives must be a short reusable instruction string, or "" if not needed.
+- The description should be 2-3 focused sentences, not a long monologue.
+- rules should be 4-6 hard world rules.
+- factions should be 2-4 distinct forces.
+- cultures should be 2-3 clear cultures or social blocks.
+- dangers should be 3-5 strong recurring threats.
+- stats must fit the setting and support good play.
+
+Return ONLY valid JSON matching the required schema. Markdown fences are optional.`
+}
+
+// StoryDefinitionUserPrompt requests the initial full story draft.
+func StoryDefinitionUserPrompt(brief string) string {
+	return fmt.Sprintf(`Create a full OneDay story definition from this player brief:
+
+%s
+
+Return the complete story definition as JSON only.`, brief)
+}
+
+// StoryRevisionSystemPrompt revises an existing story draft.
+func StoryRevisionSystemPrompt() string {
+	return `You are revising an existing OneDay story definition.
+
+Rules:
+- Return the FULL revised JSON object, not a patch.
+- Preserve all sections that the player did not ask to change.
+- Make only the smallest changes needed to satisfy the feedback.
+- Keep the story coherent after the revision.
+- Do not add conversational prose or explanations.
+
+Return ONLY valid JSON matching the required schema. Markdown fences are optional.`
+}
+
+// StoryRevisionUserPrompt asks the AI to revise one section of the draft while
+// preserving the rest of the story.
+func StoryRevisionUserPrompt(section, currentDraftJSON, feedback string) string {
+	return fmt.Sprintf(`Target section: %s
+
+Player feedback:
+%s
+
+Current full story draft JSON:
+%s
+
+Revise the full story definition accordingly and return the complete JSON only.`, section, feedback, currentDraftJSON)
+}
+
 // CharacterCreationSystem builds the prompt after story creation,
 // asking for protagonist name and background in the story's chosen language.
 func CharacterCreationSystem(language, writingStyle, promptDirectives string) string {
