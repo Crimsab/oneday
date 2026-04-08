@@ -177,6 +177,14 @@
 - [ ] Plan 7.3: Implement mood-based theming (`TUI-09`) — Lipgloss style sets per mood (tense, peaceful, dark, epic, etc.), reactive to `mood` field in AI response
 - [ ] Plan 7.4: End-to-end integration pass — verify all 63 requirements are exercised, fix edge cases, stabilize for v1.0 release
 
+Note for future planning:
+- See `.planning/TUI_RENDERING_NOTES_2026-04-08.md` for functional TUI expansion ideas:
+  speaker styling, known-entity highlighting, event callouts, semantic choice rendering based on
+  generic intent/risk metadata with optional dynamic stat badges, combat/challenge telemetry, and
+  achievement/chapter moment cards.
+- See `.planning/CODE_REVIEW_2026-04-08.md` for prerequisite reliability fixes that should be
+  considered before or alongside major TUI polish.
+
 ---
 
 ## Requirements Coverage
