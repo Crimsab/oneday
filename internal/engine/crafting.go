@@ -95,7 +95,7 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 
 	// Build messages: system context + recent chat history.
 	messages := []ai.Message{
-		{Role: "user", Content: systemPrompt},
+		{Role: ai.RoleSystem, Content: systemPrompt},
 	}
 	messages = append(messages, ce.chatHistory...)
 

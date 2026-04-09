@@ -110,7 +110,7 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 
 	// Build messages: system + recent combat turns + player action.
 	messages := []ai.Message{
-		{Role: "user", Content: systemPrompt},
+		{Role: ai.RoleSystem, Content: systemPrompt},
 		{Role: "user", Content: fmt.Sprintf("[Combat Turn %d] Player action: %s", ce.state.Turn, action)},
 	}
 
@@ -400,20 +400,25 @@ func (ce *CombatEngine) syncPlayerHP() {
 	_ = ce.narrator.db.UpdateCharacterFull(ce.narrator.character)
 }
 
-// WriteSummaryToMain writes the combat outcome summary to the main narrative JSONL.
+// WriteSummaryToMain writes the combat outcome summary to the main narrative
+// history without consuming a new story turn.
 func (ce *CombatEngine) WriteSummaryToMain() error {
 	if ce.state.Summary == "" {
 		return nil
 	}
 	entry := ChatEntry{
+		Turn:        ce.narrator.World().CurrentTurn,
 		Timestamp:   time.Now(),
 		MessageType: "combat_summary",
+		Chapter:     ce.narrator.World().CurrentChapter,
+		Location:    ce.narrator.World().CurrentLocation,
 		Output: &ChatOutput{
 			Narrative: ce.state.Summary,
 			Mood:      "neutral",
+			Location:  ce.narrator.World().CurrentLocation,
 		},
 	}
-	return ce.session.AppendTurn(ce.narrator.db, entry)
+	return ce.session.AppendHistoryEntry(ce.narrator.db, entry)
 }
 
 // --- Helper functions ---

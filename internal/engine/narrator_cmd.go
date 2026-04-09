@@ -28,7 +28,7 @@ type NarratorCommand struct {
 	character *storage.Character
 	world     *storage.WorldState
 	rag       *rag.RAG
-	sessionID string
+	session   *GameSession
 }
 
 // NewNarratorCommand creates a new NarratorCommand handler.
@@ -39,7 +39,7 @@ func NewNarratorCommand(
 	char *storage.Character,
 	world *storage.WorldState,
 	ragPipeline *rag.RAG,
-	sessionID string,
+	session *GameSession,
 ) *NarratorCommand {
 	return &NarratorCommand{
 		router:    router,
@@ -48,7 +48,7 @@ func NewNarratorCommand(
 		character: char,
 		world:     world,
 		rag:       ragPipeline,
-		sessionID: sessionID,
+		session:   session,
 	}
 }
 
@@ -113,8 +113,10 @@ func (nc *NarratorCommand) Execute(ctx context.Context, input string) (*Narrator
 		}
 	}
 
-	// Log the interaction to DB with message_type "narrator" (does NOT increment turn counter).
-	nc.logNarratorInteraction(input, metaResp.Message)
+	// Persist the interaction canonically without advancing the story turn.
+	if err := nc.logNarratorInteraction(input, metaResp.Message); err != nil {
+		metaResp.Message += fmt.Sprintf("\n\n_(Note: this narrator exchange could not be saved cleanly: %v)_", err)
+	}
 
 	return metaResp, nil
 }
@@ -215,36 +217,29 @@ func (nc *NarratorCommand) buildNPCContext(_ context.Context) string {
 	return strings.Join(parts, "\n---\n")
 }
 
-// logNarratorInteraction saves the /narrator interaction to DB without incrementing turn.
-func (nc *NarratorCommand) logNarratorInteraction(input, response string) {
-	if nc.db == nil || nc.sessionID == "" {
-		return
+// logNarratorInteraction saves the /narrator interaction to the main session
+// history without incrementing the story turn.
+func (nc *NarratorCommand) logNarratorInteraction(input, response string) error {
+	if nc.db == nil || nc.session == nil {
+		return nil
 	}
 
-	now := time.Now()
-	userMsg := &storage.ChatMessage{
-		SessionID:    nc.sessionID,
-		StoryID:      nc.story.ID,
-		Turn:         nc.world.CurrentTurn, // same turn — does not increment
-		Role:         "user",
-		Content:      "/narrator " + input,
-		MessageType:  "narrator",
-		MetadataJSON: "{}",
-		CreatedAt:    now,
-	}
-	_ = nc.db.AppendChatMessage(userMsg)
-
-	assistantMsg := &storage.ChatMessage{
-		SessionID:    nc.sessionID,
-		StoryID:      nc.story.ID,
-		Turn:         nc.world.CurrentTurn,
-		Role:         "assistant",
-		Content:      response,
-		MessageType:  "narrator",
-		MetadataJSON: "{}",
-		CreatedAt:    now,
-	}
-	_ = nc.db.AppendChatMessage(assistantMsg)
+	return nc.session.AppendHistoryEntry(nc.db, ChatEntry{
+		Turn:        nc.world.CurrentTurn,
+		Timestamp:   time.Now(),
+		Chapter:     nc.world.CurrentChapter,
+		Location:    nc.world.CurrentLocation,
+		MessageType: "narrator",
+		Input: &ChatInput{
+			Type: "command",
+			Text: "/narrator " + input,
+		},
+		Output: &ChatOutput{
+			Narrative: response,
+			Mood:      "neutral",
+			Location:  nc.world.CurrentLocation,
+		},
+	})
 }
 
 // parseNarratorMetaResponse extracts JSON from the AI response and unmarshals it.

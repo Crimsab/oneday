@@ -90,6 +90,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "load config: %v\n", err)
 		os.Exit(1)
 	}
+	if secs := int(timeout.Seconds()); secs > 0 {
+		cfg.AI.Generation.TimeoutSeconds = secs
+	}
 
 	realRouter, err := aifactory.NewRouterFromConfig(cfg)
 	if err != nil {

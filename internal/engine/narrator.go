@@ -117,7 +117,7 @@ func (n *Narrator) SetRAG(r *rag.RAG) {
 			_ = n.chapters.EnsureCurrentChapter(0)
 		}
 		if n.narratorCmd == nil {
-			n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, r, n.session.SessionID())
+			n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, r, n.session)
 		}
 	}
 }
@@ -198,13 +198,18 @@ func (n *Narrator) ResumeNarration(ctx context.Context) (*NarrativeResponse, err
 
 	// Load the most recent messages by story (not by session) so we can replay
 	// the last known narrative even when this is a brand-new session object.
-	recentMsgs, err := n.db.GetRecentMessagesByStory(n.story.ID, 2)
+	limit := n.contextCfg.RecentMessageCount
+	if limit < 10 {
+		limit = 10
+	}
+	recentMsgs, err := n.db.GetRecentMessagesByStory(n.story.ID, limit)
 	if err != nil {
 		recentMsgs = nil
 	}
 
 	for i := len(recentMsgs) - 1; i >= 0; i-- {
-		if recentMsgs[i].Role == "assistant" {
+		if recentMsgs[i].Role == "assistant" && recentMsgs[i].MessageType != "narrator" {
+			n.restoreTelemetryFromStoredMessage(recentMsgs[i])
 			if nr := resumeNarrativeFromStoredMessage(recentMsgs[i], n.world.CurrentLocation); nr != nil {
 				return nr, nil
 			}
@@ -519,8 +524,11 @@ func (n *Narrator) finalizeTurn(
 			ASCIIArt:          narrative.ASCIIArt,
 			StateChanges:      narrative.StateChanges,
 		},
-		AIModel:   resp.Model,
-		AILatency: n.lastLatency,
+		AIModel:    resp.Model,
+		AILatency:  n.lastLatency,
+		AITTFT:     n.lastTTFT,
+		AIUsage:    n.lastUsage,
+		AIStreamed: n.lastStreamed,
 	}
 	if err := n.session.AppendTurn(n.db, entry); err != nil {
 		// Non-fatal: log but don't fail the turn.
@@ -579,7 +587,7 @@ func (n *Narrator) AutosaveCmd() tea.Cmd {
 func (n *Narrator) ExecuteNarratorCommand(ctx context.Context, input string) (*NarratorMetaResponse, error) {
 	if n.narratorCmd == nil {
 		// Lazily initialize narrator command handler even without RAG.
-		n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, n.rag, n.session.SessionID())
+		n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, n.rag, n.session)
 	}
 	return n.narratorCmd.Execute(ctx, input)
 }
@@ -588,7 +596,7 @@ func (n *Narrator) ExecuteNarratorCommand(ctx context.Context, input string) (*N
 // the story turn or mutating state.
 func (n *Narrator) ExecuteAsideQuestion(ctx context.Context, input string) (string, error) {
 	if n.narratorCmd == nil {
-		n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, n.rag, n.session.SessionID())
+		n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, n.rag, n.session)
 	}
 	return n.narratorCmd.ExecuteAside(ctx, input)
 }
@@ -625,10 +633,39 @@ func parseNarrativeFromAI(text string) (*NarrativeResponse, error) {
 }
 
 type persistedAssistantMeta struct {
-	Mood     string      `json:"mood"`
-	Location string      `json:"location"`
-	Choices  []string    `json:"choices"`
-	Output   *ChatOutput `json:"output"`
+	Model              string      `json:"model"`
+	LatencyMS          int64       `json:"latency_ms"`
+	TimeToFirstTokenMS int64       `json:"time_to_first_token_ms"`
+	Usage              ai.Usage    `json:"usage"`
+	Streamed           bool        `json:"streamed"`
+	Mood               string      `json:"mood"`
+	Location           string      `json:"location"`
+	Choices            []string    `json:"choices"`
+	Output             *ChatOutput `json:"output"`
+}
+
+func (n *Narrator) restoreTelemetryFromStoredMessage(msg storage.ChatMessage) {
+	meta, ok := parsePersistedAssistantMeta(msg.MetadataJSON)
+	if !ok {
+		return
+	}
+	n.lastModel = strings.TrimSpace(meta.Model)
+	n.lastLatency = meta.LatencyMS
+	n.lastTTFT = meta.TimeToFirstTokenMS
+	n.lastUsage = meta.Usage
+	n.lastStreamed = meta.Streamed
+}
+
+func parsePersistedAssistantMeta(raw string) (*persistedAssistantMeta, bool) {
+	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "{}" {
+		return nil, false
+	}
+
+	var meta persistedAssistantMeta
+	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
+		return nil, false
+	}
+	return &meta, true
 }
 
 func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation string) *NarrativeResponse {
@@ -647,8 +684,8 @@ func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation s
 		return nr
 	}
 
-	var meta persistedAssistantMeta
-	if err := json.Unmarshal([]byte(msg.MetadataJSON), &meta); err != nil {
+	meta, ok := parsePersistedAssistantMeta(msg.MetadataJSON)
+	if !ok {
 		return nr
 	}
 
@@ -901,12 +938,15 @@ func (n *Narrator) persistAmbientASCII(turn int, base *NarrativeResponse, art st
 	}
 
 	meta := map[string]any{
-		"model":      n.lastModel,
-		"latency_ms": n.lastLatency,
-		"mood":       base.Mood,
-		"location":   output.Location,
-		"choices":    choiceTexts,
-		"output":     output,
+		"model":                  n.lastModel,
+		"latency_ms":             n.lastLatency,
+		"time_to_first_token_ms": n.lastTTFT,
+		"usage":                  n.lastUsage,
+		"streamed":               n.lastStreamed,
+		"mood":                   base.Mood,
+		"location":               output.Location,
+		"choices":                choiceTexts,
+		"output":                 output,
 	}
 	if strings.TrimSpace(artModel) != "" {
 		meta["ascii_model"] = artModel

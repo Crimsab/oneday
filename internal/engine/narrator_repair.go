@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/crimsab/oneday/internal/ai"
@@ -9,35 +11,60 @@ import (
 )
 
 func (n *Narrator) repairNarrativeResponse(ctx context.Context, invalidOutput string, parseErr error) (*NarrativeResponse, error) {
-	req := ai.Request{
+	baseReq := ai.Request{
 		Messages: []ai.Message{
 			{Role: ai.RoleSystem, Content: prompts.NarrativeRepairSystemPrompt()},
 			{Role: ai.RoleUser, Content: prompts.NarrativeRepairUserPrompt(invalidOutput, parseErr.Error())},
 		},
-		Model:          n.genCfg.RepairModel,
 		Temperature:    0.1,
 		MaxTokens:      n.genCfg.MaxTokens,
 		ResponseFormat: ai.NarrativeResponseFormat(),
 	}
-
-	start := time.Now()
-	resp, err := n.router.Complete(ctx, req)
-	if err != nil {
-		return nil, err
+	candidates := n.genCfg.RepairModelCandidates()
+	if len(candidates) == 0 {
+		candidates = []string{""}
 	}
 
-	n.lastLatency += time.Since(start).Milliseconds()
-	n.lastUsage = mergeUsage(n.lastUsage, resp.Usage)
-	if resp.Model != "" {
-		n.lastModel = resp.Model
+	var errs []string
+	for _, model := range candidates {
+		req := baseReq
+		req.Model = model
+
+		start := time.Now()
+		resp, err := n.router.Complete(ctx, req)
+		latency := time.Since(start).Milliseconds()
+		if err != nil {
+			label := strings.TrimSpace(model)
+			if label == "" {
+				label = "provider-default"
+			}
+			errs = append(errs, fmt.Sprintf("%s: %v", label, err))
+			continue
+		}
+
+		n.lastLatency += latency
+		n.lastUsage = mergeUsage(n.lastUsage, resp.Usage)
+		if resp.Model != "" {
+			n.lastModel = resp.Model
+		}
+
+		repaired, err := parseNarrativeFromAI(resp.Content)
+		if err == nil {
+			normalizeNarrativeResponse(repaired)
+			return repaired, nil
+		}
+
+		label := resp.Model
+		if strings.TrimSpace(label) == "" {
+			label = strings.TrimSpace(model)
+		}
+		if label == "" {
+			label = "provider-default"
+		}
+		errs = append(errs, fmt.Sprintf("%s: %v", label, err))
 	}
 
-	repaired, err := parseNarrativeFromAI(resp.Content)
-	if err != nil {
-		return nil, err
-	}
-	normalizeNarrativeResponse(repaired)
-	return repaired, nil
+	return nil, fmt.Errorf("repair models failed: %s", strings.Join(errs, " | "))
 }
 
 func mergeUsage(base, extra ai.Usage) ai.Usage {

@@ -489,14 +489,62 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 				{Role: ai.RoleSystem, Content: prompts.StoryRepairSystemPrompt()},
 				{Role: ai.RoleUser, Content: prompts.StoryRepairUserPrompt(resp.Content, parseErr.Error(), sc.initialBrief, previousDraftJSON)},
 			},
-			Model:          sc.genCfg.RepairModel,
 			Temperature:    0.2,
 			MaxTokens:      sc.genCfg.MaxTokens,
 			ResponseFormat: repairFormats[min(attempt, len(repairFormats)-1)],
 		}
+		def, repairResp, repairErr := sc.runRepairModels(ctx, req)
+		if repairErr == nil {
+			sc.lastModel = repairResp.Model
+			sc.lastLatency += repairResp.LatencyMs
+			return def, nil
+		}
+		lastErr = repairErr
 	}
 
 	return nil, fmt.Errorf("invalid story definition returned by AI: %w", lastErr)
+}
+
+func (sc *StoryCreator) runRepairModels(ctx context.Context, req ai.Request) (*StoryDefinition, ai.Response, error) {
+	candidates := sc.genCfg.RepairModelCandidates()
+	if len(candidates) == 0 {
+		candidates = []string{""}
+	}
+
+	var errs []string
+	for _, model := range candidates {
+		candidateReq := req
+		candidateReq.Model = model
+
+		start := time.Now()
+		resp, err := sc.router.Complete(ctx, candidateReq)
+		latency := time.Since(start).Milliseconds()
+		if err != nil {
+			label := strings.TrimSpace(model)
+			if label == "" {
+				label = "provider-default"
+			}
+			errs = append(errs, fmt.Sprintf("%s: %v", label, err))
+			continue
+		}
+		resp.LatencyMs = latency
+
+		def, parseErr := parseStoryDefinitionWithFallback(resp.Content, sc.initialBrief, sc.definition)
+		if parseErr == nil {
+			return def, resp, nil
+		}
+
+		label := resp.Model
+		if strings.TrimSpace(label) == "" {
+			label = strings.TrimSpace(model)
+		}
+		if label == "" {
+			label = "provider-default"
+		}
+		errs = append(errs, fmt.Sprintf("%s: %v", label, parseErr))
+	}
+
+	return nil, ai.Response{}, fmt.Errorf("repair models failed: %s", strings.Join(errs, " | "))
 }
 
 func (sc *StoryCreator) renderCurrentStage() string {
