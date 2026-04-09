@@ -60,6 +60,12 @@ func StateChangesToEventCallouts(changes []StateChange) []EventCallout {
 			appendCallout("hook", strings.TrimPrefix(desc, "Hook progressed: "), "Open thread progressed")
 		case strings.HasPrefix(desc, "Hook resolved: "):
 			appendCallout("hook", strings.TrimPrefix(desc, "Hook resolved: "), "Open thread resolved")
+		case strings.HasPrefix(desc, "Guidance seeded: "):
+			appendCallout("guidance", strings.TrimPrefix(desc, "Guidance seeded: "), "Requested beat introduced")
+		case strings.HasPrefix(desc, "Guidance fulfilled: "):
+			appendCallout("guidance", strings.TrimPrefix(desc, "Guidance fulfilled: "), "Requested beat paid off")
+		case strings.HasPrefix(desc, "Guidance progressed: "):
+			appendCallout("guidance", strings.TrimPrefix(desc, "Guidance progressed: "), "Requested beat progressed")
 		case strings.HasPrefix(desc, "World reacts: "):
 			appendCallout("reaction", strings.TrimPrefix(desc, "World reacts: "), "Visible consequence")
 		case desc == "Combat initiated!":

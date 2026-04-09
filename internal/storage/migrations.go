@@ -29,6 +29,7 @@ func (db *DB) migrate() error {
 		{9, migrationV9},
 		{10, migrationV10},
 		{11, migrationV11},
+		{12, migrationV12},
 	}
 
 	for _, m := range migrations {
@@ -287,4 +288,9 @@ ALTER TABLE npcs ADD COLUMN relationship_json TEXT NOT NULL DEFAULT '{}';
 ALTER TABLE world_state ADD COLUMN story_hooks_json TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE world_state ADD COLUMN world_reactions_json TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE saves ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';
+`
+
+const migrationV12 = `
+-- Soft player-authored future guidance for upcoming chapter beats.
+ALTER TABLE world_state ADD COLUMN player_guidance_json TEXT NOT NULL DEFAULT '[]';
 `

@@ -41,7 +41,7 @@ func BuildContext(
 	currentInput string,
 	earnedAchievements []storage.Achievement,
 ) []ai.Message {
-	msgs := make([]ai.Message, 0, len(recentMessages)+4)
+	msgs := make([]ai.Message, 0, len(recentMessages)+5)
 
 	// Build NPC context string from the provided NPC list.
 	var npcsContext string
@@ -81,6 +81,13 @@ func BuildContext(
 		Role:    ai.RoleSystem,
 		Content: stateSummary,
 	})
+
+	if guidanceSummary := buildPlayerGuidanceSummary(world); guidanceSummary != "" {
+		msgs = append(msgs, ai.Message{
+			Role:    ai.RoleSystem,
+			Content: guidanceSummary,
+		})
+	}
 
 	// 3. Inject RAG chunks if provided (long-term memory from past turns).
 	if len(ragChunks) > 0 {
@@ -185,6 +192,34 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs 
 	// Previous chapter summary for narrative continuity.
 	if lastChapterSummary != "" {
 		sb.WriteString(fmt.Sprintf("- Previous Chapter Summary: %s\n", lastChapterSummary))
+	}
+	return sb.String()
+}
+
+func buildPlayerGuidanceSummary(world *storage.WorldState) string {
+	guidance := activePlayerGuidance(loadPlayerGuidance(world))
+	if len(guidance) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## Player Guidance\n")
+	sb.WriteString("These are soft future-facing wishes from the player. Use them when they fit naturally. Do not force them immediately, and do not mention this meta guidance explicitly in the narration.\n")
+	for _, item := range guidance {
+		line := fmt.Sprintf("- [%s/%s] %s", item.Scope, item.Priority, item.Title)
+		if item.Kind != "" {
+			line += " {" + item.Kind + "}"
+		}
+		if item.Status != "" {
+			line += " [" + item.Status + "]"
+		}
+		if item.Detail != "" {
+			line += " — " + item.Detail
+		}
+		if item.Progress != "" {
+			line += " | progress: " + item.Progress
+		}
+		sb.WriteString(line + "\n")
 	}
 	return sb.String()
 }

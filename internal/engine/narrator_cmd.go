@@ -19,6 +19,12 @@ type NarratorMetaResponse struct {
 	StateChanges map[string]interface{} `json:"state_changes,omitempty"`
 }
 
+// GuideMetaResponse is the AI's structured response to a /guide command.
+type GuideMetaResponse struct {
+	Message  string           `json:"message"`
+	Guidance []PlayerGuidance `json:"guidance,omitempty"`
+}
+
 // NarratorCommand processes /narrator meta-commands.
 // These are out-of-story interactions where the player speaks to the AI as game master.
 type NarratorCommand struct {
@@ -158,6 +164,66 @@ func (nc *NarratorCommand) ExecuteAside(ctx context.Context, input string) (stri
 	return strings.TrimSpace(resp.Content), nil
 }
 
+// ExecuteGuide processes a /guide command and persists soft future-facing
+// directives without advancing the story turn.
+func (nc *NarratorCommand) ExecuteGuide(ctx context.Context, input string) (*GuideMetaResponse, error) {
+	if strings.TrimSpace(input) == "" {
+		return &GuideMetaResponse{
+			Message: "Tell me what you want seeded later in this chapter, and I'll keep it in mind without forcing the scene forward.",
+		}, nil
+	}
+
+	npcsContext := nc.buildNPCContext(ctx)
+	worldStateJSON := fmt.Sprintf(`{"location":"%s","chapter":%d,"turn":%d}`,
+		nc.world.CurrentLocation, nc.world.CurrentChapter, nc.world.CurrentTurn)
+	activeGuidance := formatPlayerGuidanceList(activePlayerGuidance(loadPlayerGuidance(nc.world)))
+
+	systemPrompt := prompts.GuideMetaSystem(
+		nc.story.Name,
+		nc.story.Language,
+		nc.story.WritingStyle,
+		nc.story.PromptDirectives,
+		nc.story.SettingJSON,
+		worldStateJSON,
+		npcsContext,
+		activeGuidance,
+	)
+
+	req := ai.Request{
+		Messages: []ai.Message{
+			{Role: ai.RoleSystem, Content: systemPrompt},
+			{Role: ai.RoleUser, Content: input},
+		},
+		Temperature:    0.5,
+		MaxTokens:      768,
+		ResponseFormat: ai.GuideMetaResponseFormat(),
+	}
+
+	resp, err := nc.router.Complete(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("guide meta AI call: %w", err)
+	}
+
+	guideResp, err := parseGuideMetaResponse(resp.Content)
+	if err != nil || guideResp == nil {
+		guideResp = &GuideMetaResponse{Message: strings.TrimSpace(resp.Content)}
+	}
+
+	if len(guideResp.Guidance) > 0 {
+		existing := loadPlayerGuidance(nc.world)
+		storePlayerGuidance(nc.world, upsertPlayerGuidance(existing, guideResp.Guidance, nc.world.CurrentTurn))
+		if err := nc.db.UpdateWorldState(nc.world); err != nil {
+			guideResp.Message += fmt.Sprintf("\n\n_(Note: the guidance could not be saved cleanly: %v)_", err)
+		}
+	}
+
+	if err := nc.logMetaInteraction("guide", input, guideResp.Message); err != nil {
+		guideResp.Message += fmt.Sprintf("\n\n_(Note: this guide exchange could not be saved cleanly: %v)_", err)
+	}
+
+	return guideResp, nil
+}
+
 // applyNarratorStateChanges applies the extended state changes from a /narrator response.
 // These extend the normal ApplyStateChanges with story/world mutation operations.
 func (nc *NarratorCommand) applyNarratorStateChanges(ctx context.Context, changes map[string]interface{}) error {
@@ -219,9 +285,13 @@ func (nc *NarratorCommand) buildNPCContext(_ context.Context) string {
 
 // logNarratorInteraction saves the /narrator interaction to the main session
 // history without incrementing the story turn.
-func (nc *NarratorCommand) logNarratorInteraction(input, response string) error {
+func (nc *NarratorCommand) logMetaInteraction(commandName, input, response string) error {
 	if nc.db == nil || nc.session == nil {
 		return nil
+	}
+	commandName = strings.TrimSpace(commandName)
+	if commandName == "" {
+		commandName = "narrator"
 	}
 
 	return nc.session.AppendHistoryEntry(nc.db, ChatEntry{
@@ -232,7 +302,7 @@ func (nc *NarratorCommand) logNarratorInteraction(input, response string) error 
 		MessageType: "narrator",
 		Input: &ChatInput{
 			Type: "command",
-			Text: "/narrator " + input,
+			Text: "/" + commandName + " " + input,
 		},
 		Output: &ChatOutput{
 			Narrative: response,
@@ -240,6 +310,10 @@ func (nc *NarratorCommand) logNarratorInteraction(input, response string) error 
 			Location:  nc.world.CurrentLocation,
 		},
 	})
+}
+
+func (nc *NarratorCommand) logNarratorInteraction(input, response string) error {
+	return nc.logMetaInteraction("narrator", input, response)
 }
 
 // parseNarratorMetaResponse extracts JSON from the AI response and unmarshals it.
@@ -256,5 +330,22 @@ func parseNarratorMetaResponse(text string) (*NarratorMetaResponse, error) {
 	if r.Message == "" {
 		return nil, fmt.Errorf("empty message in narrator meta response")
 	}
+	return &r, nil
+}
+
+func parseGuideMetaResponse(text string) (*GuideMetaResponse, error) {
+	raw := extractJSONFromResponse(text)
+	if raw == "" {
+		return nil, fmt.Errorf("no JSON block found in guide meta response")
+	}
+
+	var r GuideMetaResponse
+	if err := json.Unmarshal([]byte(raw), &r); err != nil {
+		return nil, fmt.Errorf("unmarshaling guide meta response: %w", err)
+	}
+	if strings.TrimSpace(r.Message) == "" {
+		return nil, fmt.Errorf("empty message in guide meta response")
+	}
+	r.Guidance = normalizePlayerGuidance(r.Guidance)
 	return &r, nil
 }
