@@ -504,7 +504,7 @@ Plans:
 **Requirements**: TBD
 **Depends on:** Phase 21
 **UI hint:** no
-**Status:** Planned (2026-04-09)
+**Status:** Complete (2026-04-09)
 
 ### Success Criteria
 
@@ -515,10 +515,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 22.1: Add build identity and runtime provenance for local and release binaries
-- [ ] Plan 22.2: Extend deterministic smoke coverage across critical player flows
-- [ ] Plan 22.3: Run a reusable cross-system QA matrix and triage/fix findings
-- [ ] Plan 22.4: Harden release gates, docs, and operator workflow around rebuild/verify/ship
+- [x] Plan 22.1: Add build identity and runtime provenance for local and release binaries
+- [x] Plan 22.2: Extend deterministic smoke coverage across critical player flows
+- [x] Plan 22.3: Run a reusable cross-system QA matrix and triage/fix findings
+- [x] Plan 22.4: Harden release gates, docs, and operator workflow around rebuild/verify/ship
 
 ---
 
