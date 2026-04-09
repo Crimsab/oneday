@@ -269,7 +269,7 @@ func (m FrontTrackerModel) View() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter open · Esc close"))
+	lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter open · P projects · I investigations · C codex · Esc close"))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Height(boxHeight).Render(strings.Join(lines, "\n")))
 }

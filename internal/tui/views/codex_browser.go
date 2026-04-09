@@ -313,7 +313,7 @@ func (m CodexBrowserModel) rootView() string {
 
 	if m.index == nil || len(m.index.Categories) == 0 {
 		lines = append(lines, theme.MutedText.Render("No codex entries available yet."))
-		lines = append(lines, "", theme.MutedText.Render("Esc close"))
+		lines = append(lines, "", theme.MutedText.Render("P projects · I investigations · F fronts · Esc close"))
 		return strings.Join(lines, "\n")
 	}
 
@@ -360,7 +360,7 @@ func (m CodexBrowserModel) rootView() string {
 		}
 	}
 
-	lines = append(lines, "", theme.MutedText.Render("↑↓ entries · ←→ categories · Enter open · Esc close"))
+	lines = append(lines, "", theme.MutedText.Render("↑↓ entries · ←→ categories · Enter open · P projects · I investigations · F fronts · Esc close"))
 	return strings.Join(lines, "\n")
 }
 
@@ -400,6 +400,7 @@ func (m CodexBrowserModel) detailView() string {
 	if len(entry.Related) == 0 {
 		hint = "↑↓ scroll · Backspace back · Esc close"
 	}
+	hint += " · P projects · I investigations · F fronts"
 	lines = append(lines, theme.MutedText.Render(hint))
 	return strings.Join(lines, "\n")
 }
