@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/storage"
 )
@@ -81,6 +82,80 @@ func TestBuildCraftingChoiceItemsKeepsExitLast(t *testing.T) {
 	}
 }
 
+func TestParseTalkCommandSupportsOneShotMessage(t *testing.T) {
+	model := newTalkTestNarrativeModel(t)
+
+	parsed := model.parseTalkCommand([]string{"Lyanna", "ask", "What", "did", "you", "see?"})
+	if parsed.Target != "Lyanna" {
+		t.Fatalf("parsed.Target = %q, want Lyanna", parsed.Target)
+	}
+	if parsed.Intent != "ask" {
+		t.Fatalf("parsed.Intent = %q, want ask", parsed.Intent)
+	}
+	if parsed.Message != "What did you see?" {
+		t.Fatalf("parsed.Message = %q, want one-shot prompt", parsed.Message)
+	}
+}
+
+func TestParseTalkCommandDefaultsIntentForOneShot(t *testing.T) {
+	model := newTalkTestNarrativeModel(t)
+
+	parsed := model.parseTalkCommand([]string{"Brother", "Alden", "We", "need", "your", "help"})
+	if parsed.Target != "Brother Alden" {
+		t.Fatalf("parsed.Target = %q, want Brother Alden", parsed.Target)
+	}
+	if parsed.Intent != "ask" {
+		t.Fatalf("parsed.Intent = %q, want ask", parsed.Intent)
+	}
+	if parsed.Message != "We need your help" {
+		t.Fatalf("parsed.Message = %q, want default-intent one-shot prompt", parsed.Message)
+	}
+}
+
+func TestNavigateInputHistoryRestoresDraft(t *testing.T) {
+	model := NewNarrativeModel(nil, 0)
+	model.inputFocus = true
+	model.recordInputHistory("/talk Lyanna ask")
+	model.recordInputHistory("Ask about the lantern")
+	model.input.SetValue("/ta")
+
+	if !model.navigateInputHistory(-1) {
+		t.Fatal("expected first history navigation to succeed")
+	}
+	if got := model.input.Value(); got != "Ask about the lantern" {
+		t.Fatalf("first recalled value = %q, want latest entry", got)
+	}
+
+	if !model.navigateInputHistory(-1) {
+		t.Fatal("expected second history navigation to succeed")
+	}
+	if got := model.input.Value(); got != "/talk Lyanna ask" {
+		t.Fatalf("second recalled value = %q, want previous entry", got)
+	}
+
+	if !model.navigateInputHistory(1) {
+		t.Fatal("expected forward history navigation to succeed")
+	}
+	if got := model.input.Value(); got != "Ask about the lantern" {
+		t.Fatalf("forward value = %q, want latest entry", got)
+	}
+
+	if !model.navigateInputHistory(1) {
+		t.Fatal("expected restoring draft to succeed")
+	}
+	if got := model.input.Value(); got != "/ta" {
+		t.Fatalf("restored draft = %q, want original draft", got)
+	}
+}
+
+func TestFormatTalkActionNormalizesIntent(t *testing.T) {
+	got := formatTalkAction("Lyanna", "PROMISE", "I will come back.")
+	want := "[Talk to Lyanna | intent:promise] I will come back."
+	if got != want {
+		t.Fatalf("formatTalkAction = %q, want %q", got, want)
+	}
+}
+
 func openAutocompleteTestDB(t *testing.T) *storage.DB {
 	t.Helper()
 
@@ -113,4 +188,46 @@ func mustCreateNPC(t *testing.T, db *storage.DB, storyID, name, role string, las
 	}); err != nil {
 		t.Fatalf("CreateNPC(%s): %v", name, err)
 	}
+}
+
+func newTalkTestNarrativeModel(t *testing.T) NarrativeModel {
+	t.Helper()
+
+	db := openAutocompleteTestDB(t)
+	now := time.Now()
+	story := &storage.Story{
+		ID:        "story-talk-model",
+		Name:      "Talk Model Story",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	world := &storage.WorldState{
+		ID:              "world-talk-model",
+		StoryID:         story.ID,
+		CurrentChapter:  1,
+		CurrentTurn:     10,
+		CurrentLocation: "Harbor",
+		UpdatedAt:       now,
+	}
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatalf("CreateWorldState: %v", err)
+	}
+
+	mustCreateNPC(t, db, story.ID, "Lyanna", "scout", 10, now)
+	mustCreateNPC(t, db, story.ID, "Brother Alden", "healer", 9, now)
+
+	session, err := engine.NewGameSession(db, story.ID, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewGameSession: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = session.Close(db)
+	})
+
+	narrator := engine.NewNarrator(nil, db, story, &storage.Character{StoryID: story.ID}, world, session, engine.ContextConfig{}, config.GenerationConfig{}, config.ASCIIArtConfig{}, t.TempDir(), 5)
+	return NewNarrativeModel(narrator, 0)
 }

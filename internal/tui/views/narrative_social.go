@@ -11,6 +11,12 @@ import (
 	"github.com/crimsab/oneday/internal/engine"
 )
 
+type parsedTalkCommand struct {
+	Target  string
+	Intent  string
+	Message string
+}
+
 var talkIntentSet = map[string]bool{
 	"ask":      true,
 	"probe":    true,
@@ -39,7 +45,31 @@ func (m NarrativeModel) wrapPlayerAction(action string) string {
 	if action == "" || !m.talkModeActive() {
 		return action
 	}
-	return fmt.Sprintf("[Talk to %s | intent:%s] %s", m.talkTarget, m.activeTalkIntent(), action)
+	return formatTalkAction(m.talkTarget, m.activeTalkIntent(), action)
+}
+
+func formatTalkAction(target, intent, message string) string {
+	target = strings.TrimSpace(target)
+	message = strings.TrimSpace(message)
+	intent = strings.TrimSpace(strings.ToLower(intent))
+	if target == "" || message == "" {
+		return message
+	}
+	if intent == "" {
+		intent = "ask"
+	}
+	return fmt.Sprintf("[Talk to %s | intent:%s] %s", target, intent, message)
+}
+
+func (m *NarrativeModel) closeTalkMode(status string) {
+	if m == nil {
+		return
+	}
+	m.talkTarget = ""
+	m.talkIntent = ""
+	if strings.TrimSpace(status) != "" {
+		m.SetStatusMsg(status)
+	}
 }
 
 func (m NarrativeModel) showHooks() (NarrativeModel, tea.Cmd) {
@@ -57,27 +87,30 @@ func (m NarrativeModel) handleTalkCommand(args []string) (NarrativeModel, tea.Cm
 	if len(args) == 1 {
 		switch strings.ToLower(strings.TrimSpace(args[0])) {
 		case "off", "exit", "stop":
-			m.talkTarget = ""
-			m.talkIntent = ""
-			m.SetStatusMsg("Talk mode closed")
+			m.closeTalkMode("Talk mode closed")
 			return m, nil
 		}
 	}
 
-	target, intent := m.parseTalkTargetAndIntent(args)
-	if target == "" {
+	parsed := m.parseTalkCommand(args)
+	if parsed.Target == "" {
 		m.errMsg = "Usage: /talk <npc> [ask|probe|bond|bargain|threaten|promise|lie|confess]"
 		return m, nil
 	}
 
-	npc, err := m.narrator.DB().GetNPCByName(m.narrator.Story().ID, target)
+	npc, err := m.narrator.DB().GetNPCByName(m.narrator.Story().ID, parsed.Target)
 	if err != nil || npc == nil {
-		m.errMsg = fmt.Sprintf("No known NPC named %q. Use /talk to see nearby candidates.", target)
+		m.errMsg = fmt.Sprintf("No known NPC named %q. Use /talk to see nearby candidates.", parsed.Target)
 		return m, nil
 	}
 
+	if parsed.Message != "" {
+		m.SetStatusMsg(fmt.Sprintf("Talking to %s [%s]", npc.Name, parsed.Intent))
+		return m, m.sendRawAction(formatTalkAction(npc.Name, parsed.Intent, parsed.Message))
+	}
+
 	m.talkTarget = npc.Name
-	m.talkIntent = intent
+	m.talkIntent = parsed.Intent
 	m.statusMsg = fmt.Sprintf("Talk mode: %s [%s]", npc.Name, m.activeTalkIntent())
 	m.statusExpiry = time.Now().Add(3 * time.Second)
 	return m, nil
@@ -105,7 +138,7 @@ Examples:
 func (m NarrativeModel) nearbyNPCOverlayText() string {
 	npcs, err := engine.NearbyNPCs(m.narrator.DB(), m.narrator.Story().ID, m.narrator.Turn(), 6)
 	if err != nil || len(npcs) == 0 {
-		return "No nearby NPCs stand out right now.\n\nUsage:\n  /talk <npc>\n  /talk <npc> promise\n  /talk off"
+		return "No nearby NPCs stand out right now.\n\nUsage:\n  /talk <npc>\n  /talk <npc> promise\n  /talk <npc> ask <question>\n  /talk off"
 	}
 
 	var lines []string
@@ -125,14 +158,16 @@ func (m NarrativeModel) nearbyNPCOverlayText() string {
 	lines = append(lines, "Examples:")
 	lines = append(lines, "  /talk "+npcs[0].Name)
 	lines = append(lines, "  /talk "+npcs[0].Name+" promise")
+	lines = append(lines, "  /talk "+npcs[0].Name+" ask What did you see?")
 	lines = append(lines, "  /talk off")
 	return strings.Join(lines, "\n")
 }
 
-func (m NarrativeModel) parseTalkTargetAndIntent(args []string) (string, string) {
+func (m NarrativeModel) parseTalkCommand(args []string) parsedTalkCommand {
+	parsed := parsedTalkCommand{Intent: "ask"}
 	intent := "ask"
 	if len(args) == 0 {
-		return "", intent
+		return parsed
 	}
 
 	npcs, _ := engine.NearbyNPCs(m.narrator.DB(), m.narrator.Story().ID, m.narrator.Turn(), 8)
@@ -168,17 +203,27 @@ func (m NarrativeModel) parseTalkTargetAndIntent(args []string) (string, string)
 			candidate := strings.ToLower(strings.TrimSpace(remaining[0]))
 			if talkIntentSet[candidate] {
 				intent = candidate
+				remaining = remaining[1:]
 			}
 		}
-		return bestMatch, intent
+		return parsedTalkCommand{
+			Target:  bestMatch,
+			Intent:  intent,
+			Message: strings.TrimSpace(strings.Join(remaining, " ")),
+		}
 	}
 
 	last := strings.ToLower(strings.TrimSpace(args[len(args)-1]))
 	if talkIntentSet[last] && len(args) > 1 {
-		intent = last
-		return strings.Join(args[:len(args)-1], " "), intent
+		return parsedTalkCommand{
+			Target: strings.Join(args[:len(args)-1], " "),
+			Intent: last,
+		}
 	}
-	return strings.Join(args, " "), intent
+	return parsedTalkCommand{
+		Target: strings.Join(args, " "),
+		Intent: intent,
+	}
 }
 
 func relationshipAxesSummary(raw string) string {

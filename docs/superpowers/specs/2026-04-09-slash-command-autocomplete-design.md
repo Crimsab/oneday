@@ -11,6 +11,9 @@ Make slash commands easier to discover and faster to use in the narrative TUI, w
 - Support two-step `/talk` completion:
   - first nearby NPC suggestions
   - then intent suggestions
+- Support `/talk` one-shot messages in the same command.
+- Add single-line free-input history on `Up` / `Down`.
+- Add a fast talk-mode close shortcut on `Ctrl+Space`.
 - Keep normal enter-to-send behavior when the user is not explicitly accepting a suggestion.
 - Treat the last crafting choice as a local exit action, in addition to text-based exit detection.
 
@@ -32,10 +35,10 @@ This keeps the feature useful now and leaves room for a future explicit scene-pr
 
 - Hidden unless input begins with `/`.
 - Filter suggestions as the user types.
-- `Up` / `Down` move the highlighted suggestion.
 - `Tab` accepts the highlighted suggestion.
-- `Enter` accepts the suggestion only when the dropdown is actively highlighting an item; otherwise it keeps the existing send behavior.
 - `Esc` closes the suggestion dropdown without clearing the textarea.
+- The suggestion UI stays lightweight and unbordered to avoid terminal wrap artifacts.
+- `Up` / `Down` are reserved for free-input history.
 
 ### Talk flow
 
@@ -44,6 +47,15 @@ This keeps the feature useful now and leaves room for a future explicit scene-pr
 - Accepting `/talk` inserts `/talk ` and immediately opens nearby NPC suggestions.
 - Accepting an NPC inserts `/talk <NPC> ` and immediately opens intent suggestions.
 - Accepting an intent inserts `/talk <NPC> <intent>`.
+- `/talk <NPC> [intent] <message...>` sends a one-shot line immediately and does not enable persistent talk mode.
+- `Ctrl+Space` closes persistent talk mode instantly.
+
+### Free-input history
+
+- Applies to the main gameplay free-input textarea.
+- Stores both slash commands and normal player text.
+- `Up` / `Down` browse history when the current textarea content is single-line.
+- Returning past the newest history item restores the current draft.
 
 ### Crafting flow
 
@@ -60,6 +72,8 @@ This keeps the feature useful now and leaves room for a future explicit scene-pr
 
 - Suggestion filtering for slash commands.
 - `/talk` NPC and intent suggestion transitions.
+- `/talk` one-shot parsing.
+- Free-input history recall and draft restore.
 - Accepting a suggestion updates the textarea as expected.
 - Crafting last-choice exit closes locally without sending another crafting request.
 

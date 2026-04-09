@@ -116,6 +116,9 @@ type NarrativeModel struct {
 	choiceHelp              map[int]string
 	talkTarget              string
 	talkIntent              string
+	inputHistory            []string
+	inputHistoryCursor      int
+	inputHistoryDraft       string
 
 	// Combat sub-view
 	combatView *CombatModel
@@ -146,20 +149,21 @@ func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) Narrative
 	vp := viewport.New(80, 20)
 
 	return NarrativeModel{
-		narrator:         narrator,
-		viewport:         vp,
-		typewriter:       components.NewTypewriter(typewriterSpeed),
-		statusBar:        components.NewStatusBar(),
-		choices:          components.NewChoiceList(),
-		slashSuggestions: components.NewSuggestionList(),
-		overlay:          components.NewOverlay(),
-		achievementPopup: components.NewAchievementPopup(),
-		input:            ta,
-		history:          &strings.Builder{},
-		streamRaw:        &strings.Builder{},
-		inputFocus:       false, // start on choice list
-		currentMood:      "neutral",
-		choiceHelp:       map[int]string{},
+		narrator:           narrator,
+		viewport:           vp,
+		typewriter:         components.NewTypewriter(typewriterSpeed),
+		statusBar:          components.NewStatusBar(),
+		choices:            components.NewChoiceList(),
+		slashSuggestions:   components.NewSuggestionList(),
+		overlay:            components.NewOverlay(),
+		achievementPopup:   components.NewAchievementPopup(),
+		input:              ta,
+		history:            &strings.Builder{},
+		streamRaw:          &strings.Builder{},
+		inputFocus:         false, // start on choice list
+		currentMood:        "neutral",
+		choiceHelp:         map[int]string{},
+		inputHistoryCursor: -1,
 	}
 }
 
@@ -419,6 +423,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		})
 
 	case components.SuggestionAcceptedMsg:
+		m.resetInputHistoryNavigation()
 		m.input.SetValue(msg.Item.Value)
 		m.input.Focus()
 		m.inputFocus = true
@@ -479,7 +484,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.historyBrowser = &updated
 			return m, cmd
 		}
-		return m, nil
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
 
 	case tea.KeyMsg:
 		// If achievement popup is visible, route key events to it first.
@@ -556,6 +563,11 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 
 		if m.waiting {
 			switch msg.String() {
+			case "ctrl+@", "ctrl+space":
+				if m.inputFocus && m.talkModeActive() {
+					m.closeTalkMode("Talk mode closed")
+					return m, nil
+				}
 			case "tab":
 				m.inputFocus = !m.inputFocus
 				if m.inputFocus {
@@ -581,6 +593,12 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		case "h":
 			if !m.inputFocus {
 				return m.showHistory(nil)
+			}
+
+		case "ctrl+@", "ctrl+space":
+			if m.inputFocus && m.talkModeActive() {
+				m.closeTalkMode("Talk mode closed")
+				return m, nil
 			}
 
 		case "tab":
@@ -611,6 +629,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				if text == "" {
 					return m, nil
 				}
+				m.recordInputHistory(text)
 				m.input.Reset()
 				m.refreshSlashSuggestions()
 				if engine.IsCommand(text) {
@@ -637,12 +656,18 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.inputFocus && m.slashSuggestions.HasItems() {
+		if m.inputFocus && m.canNavigateInputHistory() {
 			switch msg.String() {
-			case "up", "down":
-				var cmd tea.Cmd
-				m.slashSuggestions, cmd = m.slashSuggestions.Update(msg)
-				return m, cmd
+			case "up":
+				if m.navigateInputHistory(-1) {
+					m.refreshSlashSuggestions()
+					return m, nil
+				}
+			case "down":
+				if m.navigateInputHistory(1) {
+					m.refreshSlashSuggestions()
+					return m, nil
+				}
 			}
 		}
 
@@ -651,6 +676,11 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			cmds = append(cmds, cmd)
+			switch msg.String() {
+			case "up", "down":
+			default:
+				m.resetInputHistoryNavigation()
+			}
 			m.refreshSlashSuggestions()
 		} else {
 			var cmd tea.Cmd
@@ -884,7 +914,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
   /craft               Open crafting station (AI-driven)
-  /talk [npc] [intent] Enter nearby-NPC talk mode
+  /talk [npc] [intent] Enter nearby-NPC talk mode or send a one-shot line
   /downtime [focus]    Request a quieter downtime beat
   /save [name]         Save your game
   /load                Load a saved game
@@ -894,6 +924,9 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 Keyboard Shortcuts:
   s / F5              Quick save snapshot
   h                   Open searchable history browser
+  Up / Down           Browse free-input history (single-line input)
+  Mouse wheel         Scroll the current scene
+  Ctrl+Space          Close talk mode instantly
   Esc                 Open session menu (resume, quick save, load, main menu)
   Space               Confirms the highlighted option in menus and pickers
   Left / Right        Focus metadata badges on the selected choice
@@ -908,6 +941,7 @@ Narrator examples:
 Talk mode:
   /talk Lyanna
   /talk Lyanna promise
+  /talk Lyanna ask What did you see at the docks?
   /talk off
 
 Downtime examples:
@@ -1296,10 +1330,14 @@ func (m NarrativeModel) doQuit() (NarrativeModel, tea.Cmd) {
 }
 
 func (m *NarrativeModel) sendAction(action string) tea.Cmd {
+	return m.sendRawAction(m.wrapPlayerAction(action))
+}
+
+func (m *NarrativeModel) sendRawAction(action string) tea.Cmd {
 	m.waiting = true
 	m.choices.SetChoices(nil) // clear choices while waiting for AI
 	narrator := m.narrator
-	action = m.wrapPlayerAction(action)
+	action = strings.TrimSpace(action)
 	return func() tea.Msg {
 		stream, err := narrator.StreamAction(context.Background(), action)
 		return narrativeStreamStartedMsg{stream: stream, err: err}
@@ -1724,7 +1762,7 @@ func (m NarrativeModel) View() string {
 	}
 
 	// Help line
-	help := theme.MutedText.Render("h history · tab toggle · 1-9 choose · ←/→ badge info · enter send · s quicksave · esc session")
+	help := theme.MutedText.Render("↑/↓ input history · wheel scroll scene · tab complete slash · ctrl+space close talk · s quicksave · esc session")
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)
