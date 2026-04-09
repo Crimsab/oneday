@@ -56,9 +56,9 @@ ai:
     timeout_seconds: 60
     # Optional dedicated repair/validator model for schema-fix passes.
     # Primary repair model plus ordered fallbacks.
-    repair_model: "grok-4.1-fast"
+    repair_model: "gemini-3.1-flash-lite-preview"
     repair_fallback_models:
-      - "gemini-3.1-flash-lite-preview"
+      - "grok-4.1-fast"
 
 # RAG settings
 rag:
