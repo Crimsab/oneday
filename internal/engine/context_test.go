@@ -3,6 +3,8 @@ package engine
 import (
 	"strings"
 	"testing"
+
+	"github.com/crimsab/oneday/internal/storage"
 )
 
 func TestBuildStateSummaryIncludesKnownFrontPressureAndHidesHiddenFronts(t *testing.T) {
@@ -46,5 +48,30 @@ func TestBuildStateSummaryIncludesKnownFrontPressureAndHidesHiddenFronts(t *test
 	}
 	if strings.Contains(summary, "High Court [control 80 critical]") {
 		t.Fatalf("summary leaked hidden front pressure:\n%s", summary)
+	}
+}
+
+func TestBuildStateSummaryIncludesActiveNemesisRoster(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+	npcs := []storage.NPC{
+		{
+			Name:        "Lyanna",
+			Role:        "broker",
+			NemesisJSON: `{"status":"active","escalation_tier":3,"threat_posture":"vengeful","rivalry_score":8}`,
+		},
+		{
+			Name:        "Brother Alden",
+			Role:        "healer",
+			NemesisJSON: `{}`,
+		},
+	}
+
+	summary := buildStateSummary(char, world, npcs, "")
+	if !strings.Contains(summary, "Known NPCs: 2 (Lyanna, Brother Alden)") {
+		t.Fatalf("summary missing npc roster:\n%s", summary)
+	}
+	if !strings.Contains(summary, "Active Nemeses: Lyanna(tier 3)") {
+		t.Fatalf("summary missing active nemesis line:\n%s", summary)
 	}
 }
