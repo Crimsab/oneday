@@ -520,6 +520,28 @@ Plans:
 - [x] Plan 22.3: Run a reusable cross-system QA matrix and triage/fix findings
 - [x] Plan 22.4: Harden release gates, docs, and operator workflow around rebuild/verify/ship
 
+### Phase 23: Active Systems UX and World-State Navigation
+
+**Goal:** Promote projects, investigations, fronts, and their fallout from codex-adjacent data into first-class player-facing TUI surfaces.
+**Requirements**: TBD
+**Depends on:** Phase 22
+**UI hint:** no
+**Status:** Planned (2026-04-09)
+
+### Success Criteria
+
+1. Players can open dedicated views for projects, investigations, and discovered fronts without relying on generic codex navigation alone.
+2. These views make progress, stakes, contradictions, pressure, rewards, and fallout easier to understand at a glance than the current dossier/codex fallback.
+3. Important system changes such as project breakthroughs, investigation shifts, and front escalation surface as readable player-facing callouts during live play.
+4. Navigation between codex, dossiers, and the new active-system views feels unified instead of fragmented into unrelated commands.
+
+### Plans
+
+- [ ] Plan 23.1: Build a dedicated project workspace for active, paused, and completed long-arc projects
+- [ ] Plan 23.2: Build a dedicated investigations workspace for cases, clues, suspects, contradictions, and leads
+- [ ] Plan 23.3: Build a front tracker for discovered fronts, regional pressure, and visible world fallout
+- [ ] Plan 23.4: Unify active-system navigation and add clearer live callouts for systemic state changes
+
 ---
 
 ## Requirements Coverage
