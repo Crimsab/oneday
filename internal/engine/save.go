@@ -472,11 +472,11 @@ func insertNPCRows(tx *sql.Tx, npcs []storage.NPC) error {
 		if _, err := tx.Exec(
 			`INSERT INTO npcs (
 				id, story_id, name, role, appearance, personality_json, private_thoughts,
-				relationship_json, notes_on_protagonist, desires, disposition, is_alive,
+				relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive,
 				first_appeared_turn, last_seen_turn, can_help, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			npc.ID, npc.StoryID, npc.Name, npc.Role, npc.Appearance, npc.PersonalityJSON,
-			npc.PrivateThoughts, npc.RelationshipJSON, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
+			npc.PrivateThoughts, npc.RelationshipJSON, npc.NemesisJSON, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
 			npc.IsAlive, npc.FirstAppearedTurn, npc.LastSeenTurn, npc.CanHelp,
 			npc.CreatedAt, npc.UpdatedAt,
 		); err != nil {

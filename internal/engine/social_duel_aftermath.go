@@ -30,6 +30,11 @@ func ApplySocialDuelAftermath(db *storage.DB, world *storage.WorldState, npc *st
 	changedWorld := false
 
 	if npc != nil {
+		beforeStatus := NemesisStatus("")
+		if existing := loadNemesisProfile(npc); existing != nil {
+			beforeStatus = existing.Status
+		}
+
 		dispDelta, relDelta := socialDuelRelationshipDelta(state, result)
 		if dispDelta != 0 || !relationshipAxesZero(relDelta) {
 			axes := loadRelationshipAxes(npc)
@@ -59,6 +64,16 @@ func ApplySocialDuelAftermath(db *storage.DB, world *storage.WorldState, npc *st
 		if thought != "" {
 			npc.PrivateThoughts = appendJSONStringUnique(npc.PrivateThoughts, thought)
 			changedNPC = true
+		}
+
+		if nemesis := RecordNemesisEvent(npc, socialDuelNemesisEvent(state, result, cue, currentTurn)); nemesis != nil {
+			changedNPC = true
+			switch {
+			case beforeStatus != NemesisStatusActive && nemesis.Status == NemesisStatusActive:
+				aftermath.Summary = append(aftermath.Summary, fmt.Sprintf("%s crosses the line from rival to nemesis.", npc.Name))
+			case nemesis.Status == NemesisStatusActive:
+				aftermath.Summary = append(aftermath.Summary, fmt.Sprintf("%s's rivalry escalates to tier %d.", npc.Name, nemesis.EscalationTier))
+			}
 		}
 	}
 
@@ -208,6 +223,41 @@ func socialDuelPrivateThought(npc *storage.NPC, state *SocialDuelState, result *
 	default:
 		return "They can make me yield without ever drawing steel."
 	}
+}
+
+func socialDuelNemesisEvent(state *SocialDuelState, result *SocialRoundResult, cue *SocialDuelCue, currentTurn int) NemesisEvent {
+	event := NemesisEvent{
+		Kind:    "social_duel",
+		Outcome: result.Outcome,
+		Detail:  firstNonEmpty(strings.TrimSpace(state.Objective), cueFieldValue(cue, func(c *SocialDuelCue) string { return c.Objective })),
+		Turn:    currentTurn,
+		Impact:  1,
+		Pattern: string(result.PlayerAction),
+	}
+
+	if result.FailForward != nil {
+		event.Kind = "political_fallout"
+		event.Impact = 3
+		event.Detail = firstNonEmpty(strings.TrimSpace(result.FailForward.Title), event.Detail)
+		return event
+	}
+
+	if result.Resolved && state.Winner == state.NPCName {
+		event.Impact = 2
+		return event
+	}
+
+	if result.Resolved && (result.PlayerAction == SocialActionPressure || result.PlayerAction == SocialActionExpose || result.PlayerAction == SocialActionEscalate) {
+		event.Kind = "humiliation"
+		event.Impact = 3
+		event.Scar = fmt.Sprintf("Publicly bent over %s", firstNonEmpty(strings.TrimSpace(state.Objective), "a high-stakes exchange"))
+		return event
+	}
+
+	if result.Resolved {
+		event.Impact = 2
+	}
+	return event
 }
 
 func socialDuelWorldReaction(state *SocialDuelState, result *SocialRoundResult, cue *SocialDuelCue, currentTurn int) *WorldReaction {
