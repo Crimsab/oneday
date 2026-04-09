@@ -13,6 +13,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/aifactory"
+	"github.com/crimsab/oneday/internal/buildinfo"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/storage"
@@ -83,7 +84,13 @@ func main() {
 	outputDir := flag.String("output-dir", "docs/benchmarks/runs", "Directory for benchmark reports")
 	brief := flag.String("brief", defaultBrief, "Story brief used for schema-repair runs")
 	timeout := flag.Duration("timeout", 120*time.Second, "Per-case timeout")
+	versionFlag := flag.Bool("version", false, "Print build information and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(buildinfo.Text("oneday-schema-benchmark"))
+		return
+	}
 
 	cfg, err := config.Load(*configPath)
 	if err != nil {
@@ -186,7 +193,7 @@ func main() {
 }`,
 		},
 		{
-			Name: "not_json",
+			Name:    "not_json",
 			Invalid: `I think the setting should be darker and more political, with steam priests and rail inspectors.`,
 		},
 	}

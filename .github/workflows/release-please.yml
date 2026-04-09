@@ -35,18 +35,27 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Compute build metadata
+        if: steps.release.outputs.release_created
+        run: |
+          echo "VERSION=${{ steps.release.outputs.tag_name }}" >> "$GITHUB_ENV"
+          echo "COMMIT=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$GITHUB_ENV"
+          echo "DIRTY=false" >> "$GITHUB_ENV"
+          echo "LDFLAGS=$(bash ./scripts/build-ldflags.sh)" >> "$GITHUB_ENV"
+
       - name: Build release artifacts
         if: steps.release.outputs.release_created
         run: |
           mkdir -p dist package release
 
-          GOOS=linux GOARCH=amd64 go build -o dist/oneday-linux-amd64 ./cmd/oneday
-          GOOS=linux GOARCH=amd64 go build -o dist/oneday-benchmark-linux-amd64 ./cmd/oneday-benchmark
-          GOOS=linux GOARCH=amd64 go build -o dist/oneday-ascii-benchmark-linux-amd64 ./cmd/oneday-ascii-benchmark
+          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-linux-amd64 ./cmd/oneday
+          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-benchmark-linux-amd64 ./cmd/oneday-benchmark
+          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-ascii-benchmark-linux-amd64 ./cmd/oneday-ascii-benchmark
 
-          GOOS=windows GOARCH=amd64 go build -o dist/oneday-windows-amd64.exe ./cmd/oneday
-          GOOS=windows GOARCH=amd64 go build -o dist/oneday-benchmark-windows-amd64.exe ./cmd/oneday-benchmark
-          GOOS=windows GOARCH=amd64 go build -o dist/oneday-ascii-benchmark-windows-amd64.exe ./cmd/oneday-ascii-benchmark
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-windows-amd64.exe ./cmd/oneday
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-benchmark-windows-amd64.exe ./cmd/oneday-benchmark
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-ascii-benchmark-windows-amd64.exe ./cmd/oneday-ascii-benchmark
 
           linux_dir="package/oneday-linux-amd64"
           mkdir -p "$linux_dir"

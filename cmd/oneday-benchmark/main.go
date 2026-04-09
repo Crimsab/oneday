@@ -17,6 +17,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/buildinfo"
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/storage"
 )
@@ -179,7 +180,13 @@ func main() {
 	outputDirFlag := flag.String("output-dir", firstNonEmpty(os.Getenv("ONEDAY_BENCH_OUTPUT_DIR"), "docs/benchmarks/runs"), "Directory for JSON and Markdown reports")
 	timeoutFlag := flag.Duration("timeout", 90*time.Second, "Per-request timeout")
 	modeFlag := flag.String("mode", string(modePrompt), "Benchmark mode: prompt, json_object, json_schema, all")
+	versionFlag := flag.Bool("version", false, "Print build information and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(buildinfo.Text("oneday-benchmark"))
+		return
+	}
 
 	if strings.TrimSpace(*apiKeyFlag) == "" {
 		fmt.Fprintln(os.Stderr, "missing API key: pass -api-key or export ONEDAY_BENCH_API_KEY / OPENROUTER_API_KEY")
