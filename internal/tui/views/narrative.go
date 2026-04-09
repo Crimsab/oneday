@@ -502,10 +502,10 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			}
 			// If on choices, let choice list handle it below
 
-		case "S", "f5":
-			if !m.inputFocus {
-				return m, m.doQuickSave()
-			}
+			case "s", "S", "f5":
+				if !m.inputFocus {
+					return m, m.doQuickSave()
+				}
 
 		case "esc":
 			m.sessionMenuVisible = true
@@ -732,7 +732,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /quit         (/q)   Save and quit to menu
 
 Keyboard Shortcuts:
-  S / F5              Quick save snapshot
+  s / F5              Quick save snapshot
   Esc                 Open session menu (resume, quick save, load, main menu)
   Space               Confirms the highlighted option in menus and pickers
   Left / Right        Focus metadata badges on the selected choice
@@ -1670,17 +1670,24 @@ func (m *NarrativeModel) applyInputCommandStyle() {
 	if m == nil {
 		return
 	}
-	style := theme.NormalText
+	textColor := theme.Text
+	promptColor := theme.Secondary
 	value := strings.TrimSpace(m.input.Value())
 	if strings.HasPrefix(value, "/") {
 		if cmd := engine.ParseCommand(value); cmd != nil && cmd.Name != "unknown" {
-			style = theme.SuccessText
+			textColor = theme.Success
+			promptColor = theme.Success
 		} else {
-			style = theme.DangerText
+			textColor = theme.Danger
+			promptColor = theme.Danger
 		}
 	}
-	m.input.FocusedStyle.Text = style
-	m.input.BlurredStyle.Text = style
+	m.input.FocusedStyle.Text = lipgloss.NewStyle().Foreground(textColor)
+	m.input.BlurredStyle.Text = lipgloss.NewStyle().Foreground(textColor)
+	m.input.FocusedStyle.CursorLine = m.input.FocusedStyle.CursorLine.Foreground(textColor)
+	m.input.BlurredStyle.CursorLine = m.input.BlurredStyle.CursorLine.Foreground(textColor)
+	m.input.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor).Bold(true)
+	m.input.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor)
 }
 
 func (m NarrativeModel) View() string {
