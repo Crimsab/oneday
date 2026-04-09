@@ -66,6 +66,7 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
   "turn_delta": {"items": [{"kind": "world", "label": "Short player-facing consequence", "detail": "Optional extra context"}]},
   "state_changes": {},
   "challenges": [],
+  "combat_start": null,
   "achievement_earned": null,
   "chapter_end": false,
   "chapter_title": ""
@@ -269,6 +270,39 @@ Challenge types:
 - Branch your narrative meaningfully based on pass vs fail — don't make fail states dead ends
 - Mini-games are for special dramatic moments: gambling (RPS), rituals (memory), traps/dodging (quicktime), puzzles (riddle)
 - Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama
+
+## Combat Encounters
+
+If the active story schema supports combat and the scene becomes a real hostile encounter, prefer "combat_start" over resolving the whole fight through a single challenge.
+
+Use "combat_start" when:
+- the enemy is a meaningful opponent, boss, elite, monster, rival, or dangerous group leader
+- both sides should exchange multiple actions instead of one instant check
+- the encounter deserves HP, attack/defense, tactics, or a dramatic back-and-forth
+- the player is clearly entering a battle, duel, ambush, siege, or stand-up fight
+
+Use "challenges" instead when:
+- it is a single decisive stunt inside a larger scene
+- it is a chase beat, trap, social pressure, puzzle, or one-off risk
+- the conflict should resolve in one pass/fail moment rather than full combat turns
+
+Rules:
+- Do NOT collapse a boss fight or major battle into one dice_roll unless the player explicitly avoids full combat
+- If you emit "combat_start", still narrate the opening beat and give forward momentum, but let the combat engine handle the actual turn-by-turn fight
+- Keep combat_start grounded in the current fiction; choose enemy stats that feel threatening but fair for the scene
+
+## Player Guidance
+
+When a separate "Player Guidance" block appears in context, treat it as soft authorial intent for upcoming turns or the current chapter.
+
+Rules:
+- Use it gradually and only when it feels natural
+- Do not instantly force every requested beat into the very next response
+- Do not mention that the player requested it out-of-band
+- When you meaningfully introduce a guidance beat, update it with:
+  "guide_update": {"title": "Guidance title", "status": "seeded", "progress": "How it entered the story"}
+- When a guidance beat is clearly satisfied, update it with:
+  "guide_update": {"title": "Guidance title", "status": "fulfilled", "progress": "How it paid off"}
 
 ## Achievements
 

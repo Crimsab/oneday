@@ -458,11 +458,11 @@ func insertWorldStateRow(tx *sql.Tx, world *storage.WorldState) error {
 		`INSERT INTO world_state (
 			id, story_id, current_location, known_locations_json,
 			global_events_json, faction_standings_json, story_hooks_json, world_reactions_json,
-			current_chapter, current_turn, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			player_guidance_json, current_chapter, current_turn, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		world.ID, world.StoryID, world.CurrentLocation, world.KnownLocationsJSON,
 		world.GlobalEventsJSON, world.FactionStandingsJSON, world.StoryHooksJSON,
-		world.WorldReactionsJSON, world.CurrentChapter, world.CurrentTurn, world.UpdatedAt,
+		world.WorldReactionsJSON, world.PlayerGuidanceJSON, world.CurrentChapter, world.CurrentTurn, world.UpdatedAt,
 	)
 	return err
 }

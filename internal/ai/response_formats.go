@@ -44,6 +44,11 @@ func NarratorMetaResponseFormat() *ResponseFormat {
 	return NewJSONSchemaResponseFormat("oneday_narrator_meta", narratorMetaSchema())
 }
 
+// GuideMetaResponseFormat is the schema for /guide soft-directive responses.
+func GuideMetaResponseFormat() *ResponseFormat {
+	return NewJSONSchemaResponseFormat("oneday_guide_meta", guideMetaSchema())
+}
+
 // CraftingResponseFormat is the schema for crafting evaluations.
 func CraftingResponseFormat() *ResponseFormat {
 	return NewJSONSchemaResponseFormat("oneday_crafting_response", craftingSchema())
@@ -160,6 +165,41 @@ func narratorMetaSchema() map[string]any {
 	}
 }
 
+func guideMetaSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"message"},
+		"properties": map[string]any{
+			"message": stringSchema(),
+			"guidance": map[string]any{
+				"type":  "array",
+				"items": guideDirectiveSchema(),
+			},
+		},
+	}
+}
+
+func guideDirectiveSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"kind", "title", "detail", "scope", "priority", "status"},
+		"properties": map[string]any{
+			"kind": map[string]any{
+				"type": "string",
+				"enum": []string{"boss_fight", "loot", "materials", "npc_scene", "setpiece", "mystery", "reward", "tone", "pacing", "custom"},
+			},
+			"title":    nonEmptyStringSchema(),
+			"detail":   nonEmptyStringSchema(),
+			"scope":    stringSchema(),
+			"priority": stringSchema(),
+			"status":   stringSchema(),
+			"progress": stringSchema(),
+		},
+	}
+}
+
 func craftingSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
@@ -229,7 +269,7 @@ func narrativeSchema() map[string]any {
 				"items": eventCalloutSchema(),
 			},
 			"turn_delta": nullableObjectSchema(turnDeltaSchema()),
-			"ascii_cue": nullableObjectSchema(asciiCueSchema()),
+			"ascii_cue":  nullableObjectSchema(asciiCueSchema()),
 			"state_changes": map[string]any{
 				"type":                 "object",
 				"additionalProperties": true,

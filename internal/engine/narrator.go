@@ -691,6 +691,15 @@ func (n *Narrator) ExecuteAsideQuestion(ctx context.Context, input string) (stri
 	return n.narratorCmd.ExecuteAside(ctx, input)
 }
 
+// ExecuteGuideCommand stores a soft future-facing directive without advancing
+// the story turn.
+func (n *Narrator) ExecuteGuideCommand(ctx context.Context, input string) (*GuideMetaResponse, error) {
+	if n.narratorCmd == nil {
+		n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, n.rag, n.session)
+	}
+	return n.narratorCmd.ExecuteGuide(ctx, input)
+}
+
 // GetChapterSummaries returns formatted chapter summaries for the /journal command.
 func (n *Narrator) GetChapterSummaries() (string, error) {
 	if n.chapters == nil {
