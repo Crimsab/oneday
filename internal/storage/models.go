@@ -66,6 +66,7 @@ type WorldState struct {
 	StoryHooksJSON       string    `json:"story_hooks_json"`
 	WorldReactionsJSON   string    `json:"world_reactions_json"`
 	PlayerGuidanceJSON   string    `json:"player_guidance_json"`
+	FrontsJSON           string    `json:"fronts_json"`
 	CurrentChapter       int       `json:"current_chapter"`
 	CurrentTurn          int       `json:"current_turn"`
 	UpdatedAt            time.Time `json:"updated_at"`
