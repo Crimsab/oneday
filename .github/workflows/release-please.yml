@@ -44,6 +44,10 @@ jobs:
           echo "DIRTY=false" >> "$GITHUB_ENV"
           echo "LDFLAGS=$(bash ./scripts/build-ldflags.sh)" >> "$GITHUB_ENV"
 
+      - name: Run release gate
+        if: steps.release.outputs.release_created
+        run: make release-check
+
       - name: Build release artifacts
         if: steps.release.outputs.release_created
         run: |

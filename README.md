@@ -38,6 +38,9 @@ $EDITOR config.yaml
 # Run tests
 go test ./...
 
+# Run the reusable verification sweep (tests + vet + QA matrix)
+make verify
+
 # Run the game
 go run ./cmd/oneday
 
@@ -46,6 +49,9 @@ make build
 
 # Check which build you are actually running
 ./oneday --version
+
+# Run the stricter pre-release gate from a clean worktree
+make release-check
 
 # Build the benchmark tool
 make build-bench
@@ -107,6 +113,15 @@ Workflow files:
 - `.github/workflows/build-release.yml` for CI and tag-based release builds
 - `.github/workflows/release-please.yml` for automated release PRs, tags, and release asset upload
 - `Makefile` for local `./oneday`, benchmark, and cross-platform builds
+- `docs/qa-matrix.md` plus `scripts/qa-matrix.sh` for the high-risk cross-system sweep
+
+Recommended local ship flow:
+
+1. `make release-check`
+2. verify `./oneday --version` matches the commit you intend to ship
+3. only then publish or upload artifacts
+
+CI now uses the same `make verify` gate before normal builds, and release automation runs `make release-check` before packaging release assets.
 
 ## License
 
