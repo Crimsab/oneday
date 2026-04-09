@@ -114,6 +114,14 @@ func (s SuggestionListModel) View() string {
 
 	lines := make([]string, 0, len(s.items)+1)
 	lines = append(lines, theme.MutedText.Render("Suggestions"))
+	separatorWidth := 24
+	if s.width > 0 && s.width-4 < separatorWidth {
+		separatorWidth = s.width - 4
+	}
+	if separatorWidth < 8 {
+		separatorWidth = 8
+	}
+	lines = append(lines, theme.MutedText.Render(strings.Repeat("─", separatorWidth)))
 	limit := len(s.items)
 	if limit > 6 {
 		limit = 6
@@ -145,13 +153,14 @@ func (s SuggestionListModel) View() string {
 		lines = append(lines, theme.MutedText.Render("  …"))
 	}
 
-	lines = append(lines, theme.MutedText.Render("Tab complete · Enter accept selected · Esc close"))
+	lines = append(lines, theme.MutedText.Render("Tab complete · type to filter · Esc close"))
 	content := strings.Join(lines, "\n")
 	if s.width <= 0 {
-		return theme.Border.Render(content)
+		return lipgloss.NewStyle().PaddingLeft(1).Render(content)
 	}
 
 	return lipgloss.NewStyle().
-		Width(s.width).
-		Render(theme.Border.Width(s.width).Render(content))
+		MaxWidth(s.width).
+		PaddingLeft(1).
+		Render(content)
 }
