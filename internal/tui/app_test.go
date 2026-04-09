@@ -25,6 +25,32 @@ func TestSelectEmbeddingProviderUsesFirstEmbeddingCapableProvider(t *testing.T) 
 	}
 }
 
+func TestSelectEmbeddingProviderHonorsExplicitProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.AI.Embedding.Provider = "openrouter"
+	cfg.AI.LiteLLM.Enabled = true
+	cfg.AI.OpenRouter.Enabled = true
+
+	spec, reason := selectEmbeddingProvider(cfg)
+	if reason != "" {
+		t.Fatalf("selectEmbeddingProvider returned unexpected reason: %s", reason)
+	}
+	if spec.Name != "openrouter" {
+		t.Fatalf("selectEmbeddingProvider picked %q, want openrouter", spec.Name)
+	}
+}
+
+func TestSelectEmbeddingProviderRejectsExplicitUnsupportedProvider(t *testing.T) {
+	cfg := config.Default()
+	cfg.AI.Embedding.Provider = "claude-code"
+	cfg.AI.ClaudeCode.Enabled = true
+
+	_, reason := selectEmbeddingProvider(cfg)
+	if reason == "" {
+		t.Fatal("selectEmbeddingProvider reason = empty, want unsupported-provider explanation")
+	}
+}
+
 func TestSelectEmbeddingProviderReportsMissingSupport(t *testing.T) {
 	cfg := config.Default()
 	cfg.AI.ClaudeCode.Enabled = true
