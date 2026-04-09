@@ -26,7 +26,7 @@ var slashCommandSpecs = []slashCommandSpec{
 	{Name: "stats", Hint: "Show character sheet", Aliases: []string{"s"}},
 	{Name: "map", Hint: "Show discovered world map", Aliases: []string{"m"}},
 	{Name: "journal", Hint: "Show chapter journal", Aliases: []string{"j"}},
-	{Name: "hooks", Hint: "Show hooks and world reactions"},
+	{Name: "fronts", Hint: "Open the fronts and fallout tracker", Aliases: []string{"hooks"}},
 	{Name: "btw", Hint: "Ask a contextual side question", TrailingSpace: true},
 	{Name: "guide", Hint: "Store soft future story guidance", TrailingSpace: true},
 	{Name: "achievements", Hint: "Show earned achievements", Aliases: []string{"a"}},

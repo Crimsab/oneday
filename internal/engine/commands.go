@@ -27,6 +27,8 @@ var CommandRegistry = map[string]string{
 	"j":              "journal",
 	"history":        "history",
 	"hooks":          "hooks",
+	"fronts":         "hooks",
+	"front":          "hooks",
 	"btw":            "btw",
 	"guide":          "guide",
 	"map":            "map",
