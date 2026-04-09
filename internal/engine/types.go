@@ -142,6 +142,7 @@ type NarrativeResponse struct {
 	OpenHooks            []StoryHook            `json:"open_hooks,omitempty"`
 	WorldReactions       []WorldReaction        `json:"world_reactions,omitempty"`
 	Challenges           []*ChallengeSpec       `json:"challenges,omitempty"`
+	SocialDuel           *SocialDuelCue         `json:"social_duel,omitempty"`
 	AchievementEarned    *AchievementData       `json:"achievement_earned,omitempty"`
 	ChapterEnd           bool                   `json:"chapter_end,omitempty"`
 	ChapterTitle         string                 `json:"chapter_title,omitempty"` // title for the ending chapter
@@ -195,6 +196,38 @@ type ChallengeSpec struct {
 	Sequence []string `json:"sequence,omitempty"`
 	// For quick-time
 	TimeLimit float64 `json:"time_limit,omitempty"` // seconds
+}
+
+// SocialDuelCueMode identifies how the AI wants the runtime to treat a social duel beat.
+type SocialDuelCueMode string
+
+const (
+	SocialDuelCueOffer    SocialDuelCueMode = "offer"
+	SocialDuelCueContinue SocialDuelCueMode = "continue"
+)
+
+// SocialDuelCue is AI-authored framing for a high-stakes dialogue scene.
+// The engine still owns rounds, rolls, composure, and outcomes.
+type SocialDuelCue struct {
+	Mode             SocialDuelCueMode    `json:"mode,omitempty"`
+	NPCName          string               `json:"npc_name,omitempty"`
+	Objective        string               `json:"objective,omitempty"`
+	NPCGoal          string               `json:"npc_goal,omitempty"`
+	Stakes           string               `json:"stakes,omitempty"`
+	Pressure         string               `json:"pressure,omitempty"`
+	Opening          string               `json:"opening,omitempty"`
+	ExchangeSummary  string               `json:"exchange_summary,omitempty"`
+	Leverage         []SocialDuelLeverage `json:"leverage,omitempty"`
+	SuggestedActions []SocialAction       `json:"suggested_actions,omitempty"`
+	FailForward      string               `json:"fail_forward,omitempty"`
+}
+
+// SocialDuelLeverage is a narrative leverage opportunity the AI can surface.
+type SocialDuelLeverage struct {
+	Key    string `json:"key,omitempty"`
+	Label  string `json:"label,omitempty"`
+	Detail string `json:"detail,omitempty"`
+	Kind   string `json:"kind,omitempty"`
 }
 
 // Modifier is a named bonus or penalty to a roll.

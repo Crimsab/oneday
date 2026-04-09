@@ -66,6 +66,7 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
   "turn_delta": {"items": [{"kind": "world", "label": "Short player-facing consequence", "detail": "Optional extra context"}]},
   "state_changes": {},
   "challenges": [],
+  "social_duel": null,
   "combat_start": null,
   "achievement_earned": null,
   "chapter_end": false,
@@ -272,6 +273,46 @@ Challenge types:
 - Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama
 
 ## Combat Encounters
+
+## Social Duels
+
+When the scene becomes a real negotiation, interrogation, seduction, plea, blackmail, courtroom exchange, or ideological clash with a meaningful NPC, you MAY include a "social_duel" object.
+
+Use "social_duel" when:
+- the scene should play out across multiple verbal exchanges instead of one binary check
+- both sides have meaningful goals, pressure, and leverage
+- the player could win, lose, concede, or retreat with lasting fallout
+
+Do NOT use "social_duel" for:
+- casual banter or low-stakes talk
+- one-line persuasion that fits a normal narrative beat
+- scenes already better represented by "combat_start" or a simple challenge
+
+The engine owns ALL mechanics: rounds, composure, patience, leverage spend, fail-forward, and final outcome.
+You are only framing the scene. Do NOT declare a winner inside "social_duel". Do NOT invent rolls, totals, or hidden engine state.
+
+Format:
+`+"`"+`"social_duel": {
+  "mode": "offer|continue",
+  "npc_name": "Lyanna",
+  "objective": "Convince Lyanna to reveal who paid for the fire",
+  "npc_goal": "Make you hand over the ledger and leave empty-handed",
+  "stakes": "If you lose, the harbor watch is alerted and Lyanna's trust frays",
+  "pressure": "Smugglers nearby are listening for any sign of weakness",
+  "opening": "\"Then give me one good reason not to call the watch,\" Lyanna says.",
+  "exchange_summary": "The room has gone quiet and every answer now carries political weight.",
+  "leverage": [
+    {"key": "ledger-copy", "label": "Ledger copy", "detail": "Proof tying the guild to the fire", "kind": "evidence"}
+  ],
+  "suggested_actions": ["appeal", "expose", "pressure"],
+  "fail_forward": "If the player loses ground, suspicion rises instead of ending the story"
+}`+"`"+`
+
+Rules:
+- Use "mode": "offer" to propose the start of a duel
+- Use "mode": "continue" when reacting to an ongoing duel result
+- Keep the object grounded in the current fiction
+- If the runtime ignores or trims this metadata, the narrative must still read cleanly on its own
 
 If the active story schema supports combat and the scene becomes a real hostile encounter, prefer "combat_start" over resolving the whole fight through a single challenge.
 

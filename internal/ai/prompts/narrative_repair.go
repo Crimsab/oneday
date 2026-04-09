@@ -15,6 +15,7 @@ Rules:
   - narrative: non-empty string
   - choices: array of player choices (can be empty only if the scene truly has none)
 - Keep optional metadata only when valid.
+- If "social_duel" is present, keep it scene-framing only; never invent a duel winner or engine-owned results there.
 - Do not add explanations, apologies, or extra prose outside the JSON.
 
 Return ONLY valid JSON matching the OneDay gameplay schema. Markdown fences are optional.`
