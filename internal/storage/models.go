@@ -67,6 +67,7 @@ type WorldState struct {
 	StoryHooksJSON         string    `json:"story_hooks_json"`
 	WorldReactionsJSON     string    `json:"world_reactions_json"`
 	InvestigationBoardJSON string    `json:"investigation_board_json"`
+	ProjectClocksJSON      string    `json:"project_clocks_json"`
 	PlayerGuidanceJSON     string    `json:"player_guidance_json"`
 	FrontsJSON             string    `json:"fronts_json"`
 	CurrentChapter         int       `json:"current_chapter"`
