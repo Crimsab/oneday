@@ -3,23 +3,28 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
 current_phase: 23
-status: planned
-last_updated: "2026-04-09T22:31:31+02:00"
+status: in_progress
+last_updated: "2026-04-09T22:40:34+02:00"
 progress:
   total_phases: 24
   completed_phases: 23
   total_plans: 75
-  completed_plans: 71
-  percent: 95
+  completed_plans: 72
+  percent: 96
 ---
 
 # Project State
 
 **Current Phase:** 23
-**Status:** Ready to execute
+**Status:** In Progress
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 23 execution started.
+  `23.1` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-01-SUMMARY.md`.
+  Delivered a dedicated projects workspace, rerouted `/projects` away from generic codex browsing,
+  and added focused browser/smoke coverage for project inspection flow.
 
 - 2026-04-09: Phase 23 added — Active Systems UX and World-State Navigation.
   Scope targets dedicated player-facing surfaces for projects, investigations, and fronts,
