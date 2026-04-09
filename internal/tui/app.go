@@ -414,6 +414,7 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 		a.router, a.db, story, char, world, session,
 		engine.DefaultContextConfig(),
 		a.cfg.AI.Generation,
+		a.cfg.AI.ASCIIArt,
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)
@@ -458,6 +459,7 @@ func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
 		a.router, a.db, story, char, world, session,
 		engine.DefaultContextConfig(),
 		a.cfg.AI.Generation,
+		a.cfg.AI.ASCIIArt,
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)
@@ -504,6 +506,7 @@ func (a *App) enterNarrativeViewResume(storyID string) (tea.Cmd, error) {
 		a.router, a.db, story, char, world, session,
 		engine.DefaultContextConfig(),
 		a.cfg.AI.Generation,
+		a.cfg.AI.ASCIIArt,
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)

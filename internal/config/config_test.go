@@ -33,6 +33,12 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.Generation.Temperature != 0.8 {
 		t.Errorf("Temperature = %f, want 0.8", cfg.AI.Generation.Temperature)
 	}
+	if !cfg.AI.ASCIIArt.Enabled {
+		t.Error("ASCIIArt.Enabled = false, want true by default")
+	}
+	if cfg.AI.ASCIIArt.Model != "ascii-ambient" {
+		t.Errorf("ASCIIArt.Model = %q, want %q", cfg.AI.ASCIIArt.Model, "ascii-ambient")
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {

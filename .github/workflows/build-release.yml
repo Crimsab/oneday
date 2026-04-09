@@ -66,6 +66,7 @@ jobs:
           mkdir -p dist
           go build -o "dist/oneday-${{ matrix.target.suffix }}${{ matrix.target.ext }}" ./cmd/oneday
           go build -o "dist/oneday-benchmark-${{ matrix.target.suffix }}${{ matrix.target.ext }}" ./cmd/oneday-benchmark
+          go build -o "dist/oneday-ascii-benchmark-${{ matrix.target.suffix }}${{ matrix.target.ext }}" ./cmd/oneday-ascii-benchmark
 
   release:
     name: Release
@@ -90,14 +91,17 @@ jobs:
 
           GOOS=linux GOARCH=amd64 go build -o dist/oneday-linux-amd64 ./cmd/oneday
           GOOS=linux GOARCH=amd64 go build -o dist/oneday-benchmark-linux-amd64 ./cmd/oneday-benchmark
+          GOOS=linux GOARCH=amd64 go build -o dist/oneday-ascii-benchmark-linux-amd64 ./cmd/oneday-ascii-benchmark
 
           GOOS=windows GOARCH=amd64 go build -o dist/oneday-windows-amd64.exe ./cmd/oneday
           GOOS=windows GOARCH=amd64 go build -o dist/oneday-benchmark-windows-amd64.exe ./cmd/oneday-benchmark
+          GOOS=windows GOARCH=amd64 go build -o dist/oneday-ascii-benchmark-windows-amd64.exe ./cmd/oneday-ascii-benchmark
 
           linux_dir="package/oneday-linux-amd64"
           mkdir -p "$linux_dir"
           cp dist/oneday-linux-amd64 "$linux_dir/oneday"
           cp dist/oneday-benchmark-linux-amd64 "$linux_dir/oneday-benchmark"
+          cp dist/oneday-ascii-benchmark-linux-amd64 "$linux_dir/oneday-ascii-benchmark"
           cp config.example.yaml "$linux_dir/config.example.yaml"
           tar -C package -czf release/oneday-linux-amd64.tar.gz oneday-linux-amd64
 
@@ -105,6 +109,7 @@ jobs:
           mkdir -p "$windows_dir"
           cp dist/oneday-windows-amd64.exe "$windows_dir/oneday.exe"
           cp dist/oneday-benchmark-windows-amd64.exe "$windows_dir/oneday-benchmark.exe"
+          cp dist/oneday-ascii-benchmark-windows-amd64.exe "$windows_dir/oneday-ascii-benchmark.exe"
           cp config.example.yaml "$windows_dir/config.example.yaml"
           cd package
           zip -r ../release/oneday-windows-amd64.zip oneday-windows-amd64

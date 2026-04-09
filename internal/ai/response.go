@@ -38,6 +38,14 @@ type EventCallout struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// ASCIIArtCue requests optional same-turn ambient ASCII art.
+type ASCIIArtCue struct {
+	Kind      string `json:"kind"`
+	Subject   string `json:"subject"`
+	Detail    string `json:"detail,omitempty"`
+	Placement string `json:"placement,omitempty"`
+}
+
 // NarrativeResponse is the structured JSON payload the AI embeds in its reply.
 // Fields mirror the game engine's NarrativeResponse in internal/engine/types.go
 // but are redeclared here so the ai package stays self-contained.
@@ -51,9 +59,16 @@ type NarrativeResponse struct {
 	DialogueBlocks    []DialogueBlock        `json:"dialogue_blocks,omitempty"`
 	EntitiesMentioned []EntityMention        `json:"entities_mentioned,omitempty"`
 	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
+	ASCIICue          *ASCIIArtCue           `json:"ascii_cue,omitempty"`
 	ASCIIArt          string                 `json:"ascii_art,omitempty"`
 	AchievementEarned *AchievementPayload    `json:"achievement_earned,omitempty"`
 	Challenge         string                 `json:"challenge,omitempty"`
+}
+
+// ASCIIArtGenerationResponse is the structured payload returned by the
+// dedicated ASCII-art generation prompt.
+type ASCIIArtGenerationResponse struct {
+	ASCIIArt string `json:"ascii_art"`
 }
 
 // NarrativeChoice is a single player-facing option embedded in a NarrativeResponse.
@@ -84,6 +99,22 @@ func ParseNarrativeJSON(text string) (*NarrativeResponse, error) {
 		return nil, err
 	}
 	return &nr, nil
+}
+
+// ParseASCIIArtJSON extracts a structured ASCII-art payload from an AI response.
+func ParseASCIIArtJSON(text string) (*ASCIIArtGenerationResponse, error) {
+	raw, err := ExtractJSONPayload(text)
+	if err != nil {
+		return nil, err
+	}
+	if raw == "" {
+		return nil, nil
+	}
+	var payload ASCIIArtGenerationResponse
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return nil, err
+	}
+	return &payload, nil
 }
 
 // ExtractNarrative returns the prose portion of an AI response, stripping any

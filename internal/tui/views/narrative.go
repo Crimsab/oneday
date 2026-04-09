@@ -35,6 +35,13 @@ type narrativeStreamChunkMsg struct {
 	chunk engine.NarrativeStreamChunk
 }
 
+type narrativeASCIIArtMsg struct {
+	sceneID int
+	art     string
+	model   string
+	err     error
+}
+
 // narratorMetaResponseMsg carries a /narrator command response.
 type narratorMetaResponseMsg struct {
 	message string
@@ -92,6 +99,8 @@ type NarrativeModel struct {
 	sessionMenuVisible bool
 	sessionMenuCursor  int
 	currentMood        string
+	sceneCounter       int
+	choiceHelp         map[int]string
 
 	// Combat sub-view
 	combatView *CombatModel
@@ -133,6 +142,7 @@ func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) Narrative
 		streamRaw:        &strings.Builder{},
 		inputFocus:       false, // start on choice list
 		currentMood:      "neutral",
+		choiceHelp:       map[int]string{},
 	}
 }
 
@@ -359,6 +369,28 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.sendAction(fmt.Sprintf("[Choice %d] %s", msg.ID, msg.Text))
+
+	case components.ChoiceInspectRequestedMsg:
+		if help := strings.TrimSpace(m.choiceHelp[msg.ID]); help != "" {
+			m.showOverlay("Choice Insight", help)
+			return m, nil
+		}
+		m.statusMsg = "No extra info for this choice."
+		m.statusExpiry = time.Now().Add(2 * time.Second)
+		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
+			return clearStatusMsg{}
+		})
+
+	case narrativeASCIIArtMsg:
+		if msg.err != nil || msg.sceneID != m.sceneCounter || strings.TrimSpace(msg.art) == "" {
+			return m, nil
+		}
+		rendered := components.RenderMarkdown("```text\n" + msg.art + "\n```")
+		m.history.WriteString(rendered + "\n")
+		m.typewriter.SetTextInstant(m.history.String())
+		m.viewport.SetContent(m.typewriter.View())
+		m.viewport.GotoBottom()
+		return m, nil
 
 	case components.OverlayDismissedMsg:
 		// Restore input focus after overlay closes
@@ -611,6 +643,7 @@ Keyboard Shortcuts:
   S / F5              Quick save snapshot
   Esc                 Open session menu (resume, quick save, load, main menu)
   Space               Confirms the highlighted option in menus and pickers
+  ?                   Explain the selected choice's related stats/metadata
 
 Narrator examples:
   /n Add a secret underground city
@@ -622,7 +655,16 @@ Challenges:
   Challenges appear automatically when the narrator proposes a test.
   Types: dice roll (d100), rock-paper-scissors, memory sequence,
          quick-time (press key in time), riddle, stat/skill/item checks.
-  The game engine resolves the outcome fairly — the AI then narrates the result.`
+  The game engine resolves the outcome fairly — the AI then narrates the result.
+
+Footer legend:
+  10.4s         total response time
+  ft 5.5s       time to first token
+  6016t         total tokens
+  4980p/1036c   prompt/completion tokens
+  r193          reasoning tokens
+  cache 900p    cached prompt tokens
+  99.7t/s       completion throughput`
 
 	m.showOverlay("Help", helpText)
 	return m, nil
@@ -1301,6 +1343,7 @@ func waitNarrativeStreamChunk(stream <-chan engine.NarrativeStreamChunk) tea.Cmd
 func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, streamed bool) tea.Cmd {
 	m.waiting = false
 	m.errMsg = ""
+	m.sceneCounter++
 
 	m.updateStatusBar()
 
@@ -1372,11 +1415,27 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 	if autosaveCmd := m.maybeAutosaveCmd(); autosaveCmd != nil {
 		cmds = append(cmds, autosaveCmd)
 	}
+	if asciiCmd := m.requestAmbientASCII(m.sceneCounter, m.narrator.Turn()-1, nr); asciiCmd != nil {
+		cmds = append(cmds, asciiCmd)
+	}
 
 	if len(cmds) == 0 {
 		return nil
 	}
 	return tea.Batch(cmds...)
+}
+
+func (m NarrativeModel) requestAmbientASCII(sceneID, turn int, nr *engine.NarrativeResponse) tea.Cmd {
+	if nr == nil || nr.ASCIICue == nil || strings.TrimSpace(nr.ASCIIArt) != "" || !m.narrator.ASCIIArtEnabled() {
+		return nil
+	}
+
+	snapshot := *nr
+	narrator := m.narrator
+	return func() tea.Msg {
+		art, model, err := narrator.GenerateAmbientASCII(context.Background(), turn, &snapshot)
+		return narrativeASCIIArtMsg{sceneID: sceneID, art: art, model: model, err: err}
+	}
 }
 
 func (m *NarrativeModel) renderStreamingNarrative() {

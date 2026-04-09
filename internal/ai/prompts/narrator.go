@@ -158,6 +158,9 @@ You MAY include extra renderer metadata when it improves clarity, but gameplay m
 - "event_callouts": compact event summaries worth surfacing apart from the prose
   Example:
   [{"kind":"location","title":"Old Harbor","detail":"New location discovered"}]
+- "ascii_cue": ask the runtime for optional ambient ASCII art when the scene would benefit from it
+  Example:
+  {"kind":"signage","subject":"Neon shrine entrance sign","detail":"flickering devotional slogan","placement":"scene_header"}
 
 ### Choice metadata
 
@@ -172,6 +175,24 @@ Example enriched choice:
 {"id":2,"text":"Confront the guard and talk your way through","intent":"social","risk":"medium","related_stats":["cha","wil"]}
 
 These metadata fields are optional guidance, not mandatory every turn.
+
+### Ambient ASCII art rules
+
+Use "ascii_cue" sparingly and only when a compact environmental visual would genuinely help the scene.
+
+Good uses:
+- first reveal of a major location
+- chapter opener / major scene transition
+- signage, terminals, maps, ritual circles, altars, iconic objects
+- skyline silhouettes or strong environmental framing
+
+Bad uses:
+- routine dialogue turns
+- ordinary action beats
+- every turn with choices
+- scenes that are already clear without an ASCII visual
+
+Do NOT emit full ASCII art unless specifically asked elsewhere. Use only the cue metadata here; the runtime may decide to generate the final art separately.
 
 ## Rules for Character Growth
 1. Attributes: suggest +1 only at natural narrative moments (heavy lifting → STR, casting spell → INT).

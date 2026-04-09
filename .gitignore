@@ -1,6 +1,9 @@
 # Binary
 /oneday
 /oneday.exe
+/oneday-benchmark
+/oneday-ascii-benchmark
+/build/
 
 # Data
 oneday_data/
