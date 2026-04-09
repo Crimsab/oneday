@@ -1,0 +1,63 @@
+{
+  "generated_at": "2026-04-09T06:26:24+02:00",
+  "brief": "Mondo steampunk in tono serio e tenebroso, città industriale decadente, culto del vapore, dialoghi tesi, prosa elegante ma non prolissa. Lingua italiana. Voglio una campagna lunga, politica, investigativa e pericolosa.",
+  "models": [
+    "qwen3.6-plus"
+  ],
+  "cases": [
+    {
+      "name": "missing_authoring_fields"
+    },
+    {
+      "name": "missing_world_rules_and_stats"
+    },
+    {
+      "name": "wrong_shapes"
+    },
+    {
+      "name": "not_json"
+    }
+  ],
+  "summaries": [
+    {
+      "model": "qwen3.6-plus",
+      "success_count": 1,
+      "case_count": 4,
+      "success_rate": 25,
+      "average_latency_ms": 0,
+      "average_latency_seconds": 0,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": false,
+          "duration_ms": 60406,
+          "duration_seconds": 60.406436068,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: Post \"http://lite.homelab.local/v1/chat/completions\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": false,
+          "duration_ms": 60026,
+          "duration_seconds": 60.026739202,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: Post \"http://lite.homelab.local/v1/chat/completions\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000138297,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": false,
+          "duration_ms": 60028,
+          "duration_seconds": 60.028097126,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: Post \"http://lite.homelab.local/v1/chat/completions\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+        }
+      ]
+    }
+  ]
+}
