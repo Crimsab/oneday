@@ -28,6 +28,7 @@ var slashCommandSpecs = []slashCommandSpec{
 	{Name: "journal", Hint: "Show chapter journal", Aliases: []string{"j"}},
 	{Name: "hooks", Hint: "Show hooks and world reactions"},
 	{Name: "btw", Hint: "Ask a contextual side question", TrailingSpace: true},
+	{Name: "guide", Hint: "Store soft future story guidance", TrailingSpace: true},
 	{Name: "achievements", Hint: "Show earned achievements", Aliases: []string{"a"}},
 	{Name: "narrator", Hint: "Speak to the game master", Aliases: []string{"n"}, TrailingSpace: true},
 	{Name: "craft", Hint: "Open the crafting station"},

@@ -107,5 +107,71 @@ World State: %s
 - Return plain text only, no JSON.
 - Keep it concise: usually 1-4 short paragraphs or a short list when useful.
 - Do not narrate a new scene or create new consequences.
-`, storyName, authoringSection, settingJSON, worldStateJSON, npcSection)
+	`, storyName, authoringSection, settingJSON, worldStateJSON, npcSection)
+}
+
+// GuideMetaSystem turns a soft authorial request into persistent future-facing
+// directives without advancing the story.
+func GuideMetaSystem(
+	storyName, language, writingStyle, promptDirectives,
+	settingJSON, worldStateJSON, npcsContext, activeGuidanceJSON string,
+) string {
+	npcSection := ""
+	if npcsContext != "" {
+		npcSection = fmt.Sprintf("\n## Known NPCs\n%s", npcsContext)
+	}
+
+	guidanceSection := ""
+	if activeGuidanceJSON != "" {
+		guidanceSection = fmt.Sprintf("\n## Existing Player Guidance\n%s", activeGuidanceJSON)
+	}
+
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
+	return fmt.Sprintf(`You are the Game Master for "%s", operating at a META level — outside the story narrative.
+%s
+
+The player is not taking an in-story action. They are giving future-facing creative guidance for the current chapter or upcoming turns.
+
+## Current Story Context
+Setting: %s
+
+World State: %s
+%s%s
+
+## Your Role
+- Interpret the player's free-text request into 1-4 soft directives for future story beats.
+- Keep the directives coherent with the story's tone, setting, and known NPCs.
+- These directives are not immediate events and are not promises of instant payoff.
+- Favor concrete, usable beats such as boss fights, loot drops, materials, NPC scenes, setpieces, mysteries, pacing adjustments, or rewards.
+
+## Response Format
+Always respond with ONLY valid JSON in this exact format.
+Do NOT add prose before or after the JSON object. Markdown code fences are optional.
+`+"```json"+`
+{
+  "message": "A short confirmation in 1-3 sentences. Confirm the request was understood and say it may surface later in a coherent way. Do not narrate new events happening right now.",
+  "guidance": [
+    {
+      "kind": "boss_fight|loot|materials|npc_scene|setpiece|mystery|reward|tone|pacing|custom",
+      "title": "Short directive title",
+      "detail": "What the narrator should try to seed or fulfill later",
+      "scope": "chapter|arc|soon",
+      "priority": "low|medium|high",
+      "status": "active",
+      "progress": ""
+    }
+  ]
+}
+`+"```"+`
+
+## Rules
+1. Do not advance the story or imply that a new scene has already started.
+2. Keep the message warm and concise. It should feel like a GM confirmation, not a narrated beat.
+3. Prefer 1-3 directives unless the player clearly asked for several distinct things.
+4. Use "status": "active" for newly created directives.
+5. If the player asks for something broad, break it into a few concrete guidance items the future narrator can actually use.
+6. If the player asks a pure question instead of guidance, answer it briefly in "message" and return an empty guidance array.
+7. Write the message in the configured story language above unless the player explicitly asks otherwise.
+`, storyName, authoringSection, settingJSON, worldStateJSON, npcSection, guidanceSection)
 }

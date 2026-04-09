@@ -366,8 +366,11 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.showOverlay(title, msg.message)
 			return m, nil
 		}
-		// Display narrator response styled distinctly (prefixed with [Game Master]).
-		rendered := components.RenderMarkdown("\n**[Game Master]** " + msg.message + "\n")
+		title := strings.TrimSpace(msg.title)
+		if title == "" {
+			title = "Game Master"
+		}
+		rendered := components.RenderMarkdown("\n**[" + title + "]** " + msg.message + "\n")
 		cmd := m.appendNarrativeSegment(rendered+"\n", false)
 		// Restore input focus (narrator command does not change choices).
 		m.inputFocus = true
@@ -761,6 +764,12 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 			return m, nil
 		}
 		return m.sendAsideQuestion(strings.Join(cmd.Args, " "))
+	case "guide":
+		if len(cmd.Args) == 0 {
+			m.errMsg = "Usage: /guide <future beat or chapter wish>"
+			return m, nil
+		}
+		return m.sendGuideCommand(strings.Join(cmd.Args, " "))
 	case "journal":
 		return m.showJournal()
 	case "history":
@@ -836,6 +845,20 @@ func (m NarrativeModel) sendAsideQuestion(input string) (NarrativeModel, tea.Cmd
 			message: resp,
 			overlay: true,
 		}
+	}
+}
+
+func (m NarrativeModel) sendGuideCommand(input string) (NarrativeModel, tea.Cmd) {
+	m.waiting = true
+	m.statusMsg = "Saving story guidance..."
+	m.statusExpiry = time.Now().Add(30 * time.Second)
+	narrator := m.narrator
+	return m, func() tea.Msg {
+		resp, err := narrator.ExecuteGuideCommand(context.Background(), input)
+		if err != nil {
+			return narratorMetaResponseMsg{err: err}
+		}
+		return narratorMetaResponseMsg{title: "Guide", message: resp.Message}
 	}
 }
 
@@ -918,6 +941,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /hooks               Show open hooks and world reactions
   h                   Open the story history browser
   /btw <question>     Ask the AI a quick contextual question without advancing the turn
+  /guide <request>    Store a soft future-facing chapter wish without advancing the turn
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
   /craft               Open crafting station (AI-driven)
@@ -944,6 +968,11 @@ Narrator examples:
   /n Make Lyanna secretly jealous
   /n What factions exist in this world?
   /n I want the next area to be a haunted forest
+
+Guide examples:
+  /guide In questo capitolo voglio una boss fight memorabile
+  /guide Fammi trovare materiali rari e almeno un reward forte
+  /guide Semina una scena tesa con Lyanna, ma falla arrivare quando ha senso
 
 Talk mode:
   /talk Lyanna

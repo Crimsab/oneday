@@ -741,6 +741,46 @@ func ApplyStateChanges(
 				storeStoryHooks(world, hooks)
 			}
 
+		case "guide_update":
+			guidance := loadPlayerGuidance(world)
+			updated := false
+			updates := make([]PlayerGuidance, 0, 1)
+			for _, guideMap := range toObjectMaps(val) {
+				title := strings.TrimSpace(stringValue(guideMap["title"]))
+				id := strings.TrimSpace(stringValue(guideMap["id"]))
+				kind := strings.TrimSpace(stringValue(guideMap["kind"]))
+				idx := findPlayerGuidanceIndex(guidance, id, kind, title)
+				if idx < 0 {
+					continue
+				}
+				update := PlayerGuidance{
+					ID:       id,
+					Kind:     kind,
+					Title:    guidance[idx].Title,
+					Status:   strings.TrimSpace(stringValue(guideMap["status"])),
+					Progress: strings.TrimSpace(stringValue(guideMap["progress"])),
+					Detail:   strings.TrimSpace(stringValue(guideMap["detail"])),
+				}
+				updates = append(updates, update)
+
+				desc := fmt.Sprintf("Guidance progressed: %s", guidance[idx].Title)
+				if strings.EqualFold(update.Status, "fulfilled") {
+					desc = fmt.Sprintf("Guidance fulfilled: %s", guidance[idx].Title)
+				} else if strings.EqualFold(update.Status, "seeded") {
+					desc = fmt.Sprintf("Guidance seeded: %s", guidance[idx].Title)
+				}
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       fmt.Sprintf("guidance.%s", guidance[idx].Title),
+					New:         update.Status,
+					Description: desc,
+				})
+				updated = true
+			}
+			if updated {
+				storePlayerGuidance(world, updatePlayerGuidance(guidance, updates, currentTurn))
+			}
+
 		case "world_reaction_add", "fail_forward":
 			reactions := loadWorldReactions(world)
 			updated := false
