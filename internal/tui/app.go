@@ -24,6 +24,7 @@ const (
 	ViewNewStory
 	ViewNarrative
 	ViewLoadStory
+	ViewAchievementArchive
 	ViewSaveLoad
 	ViewSettings
 )
@@ -38,12 +39,13 @@ type App struct {
 	height int
 
 	// Child view models
-	menu      views.MenuModel
-	newStory  *views.NewStoryModel
-	narrative *views.NarrativeModel
-	loadStory *views.LoadStoryModel
-	saveLoad  *views.SaveLoadModel
-	settings  *views.SettingsModel
+	menu               views.MenuModel
+	newStory           *views.NewStoryModel
+	narrative          *views.NarrativeModel
+	loadStory          *views.LoadStoryModel
+	achievementArchive *views.AchievementBrowserModel
+	saveLoad           *views.SaveLoadModel
+	settings           *views.SettingsModel
 }
 
 // New creates the app with all dependencies.
@@ -75,6 +77,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if a.loadStory != nil {
 			a.loadStory.SetSize(msg.Width, msg.Height)
+		}
+		if a.achievementArchive != nil {
+			a.achievementArchive.SetSize(msg.Width, msg.Height)
 		}
 		if a.saveLoad != nil {
 			a.saveLoad.SetSize(msg.Width, msg.Height)
@@ -112,6 +117,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case views.LoadStoryBackMsg:
 		// User pressed Esc in load story view — back to menu
 		a.view = ViewMenu
+		return a, nil
+
+	case views.AchievementBrowserBackMsg:
+		if a.view == ViewAchievementArchive {
+			a.view = ViewMenu
+		}
 		return a, nil
 
 	case views.StoryArchiveToggleMsg:
@@ -245,6 +256,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.loadStory = &m
 			a.view = ViewLoadStory
 			return a, nil
+		case views.ActionAchievementArchive:
+			archives, err := engine.BuildStoryArchiveSummaries(a.db)
+			if err != nil {
+				return a, nil
+			}
+			m := views.NewAchievementBrowserModel("Achievement Archive", archives, a.width, a.height)
+			a.achievementArchive = &m
+			a.view = ViewAchievementArchive
+			return a, nil
 		case views.ActionSettings:
 			m := views.NewSettingsModel(a.cfg)
 			m.SetSize(a.width, a.height)
@@ -289,6 +309,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 
+	case ViewAchievementArchive:
+		if a.achievementArchive != nil {
+			var cmd tea.Cmd
+			updated, cmd := a.achievementArchive.Update(msg)
+			a.achievementArchive = &updated
+			return a, cmd
+		}
+
 	case ViewSaveLoad:
 		if a.saveLoad != nil {
 			var cmd tea.Cmd
@@ -326,6 +354,11 @@ func (a App) View() string {
 	case ViewLoadStory:
 		if a.loadStory != nil {
 			return a.loadStory.View()
+		}
+		return a.menu.View()
+	case ViewAchievementArchive:
+		if a.achievementArchive != nil {
+			return a.achievementArchive.View()
 		}
 		return a.menu.View()
 	case ViewSaveLoad:

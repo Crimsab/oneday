@@ -84,8 +84,11 @@ type NarrativeModel struct {
 	typewriter              components.TypewriterModel
 	statusBar               components.StatusBarModel
 	choices                 components.ChoiceListModel
+	slashSuggestions        components.SuggestionListModel
 	overlay                 components.OverlayModel
 	historyBrowser          *historyBrowserModel
+	achievementBrowser      *AchievementBrowserModel
+	codexBrowser            *CodexBrowserModel
 	achievementPopup        components.AchievementPopupModel
 	input                   textarea.Model
 	history                 *strings.Builder // full narrative text accumulated so far
@@ -148,6 +151,7 @@ func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) Narrative
 		typewriter:       components.NewTypewriter(typewriterSpeed),
 		statusBar:        components.NewStatusBar(),
 		choices:          components.NewChoiceList(),
+		slashSuggestions: components.NewSuggestionList(),
 		overlay:          components.NewOverlay(),
 		achievementPopup: components.NewAchievementPopup(),
 		input:            ta,
@@ -280,6 +284,12 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		if m.historyBrowser != nil {
 			m.historyBrowser.SetSize(msg.Width, msg.Height)
 		}
+		if m.achievementBrowser != nil {
+			m.achievementBrowser.SetSize(msg.Width, msg.Height)
+		}
+		if m.codexBrowser != nil {
+			m.codexBrowser.SetSize(msg.Width, msg.Height)
+		}
 		m.relayout()
 		return m, nil
 
@@ -408,6 +418,17 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return clearStatusMsg{}
 		})
 
+	case components.SuggestionAcceptedMsg:
+		m.input.SetValue(msg.Item.Value)
+		m.input.Focus()
+		m.inputFocus = true
+		m.refreshSlashSuggestions()
+		return m, nil
+
+	case components.SuggestionDismissedMsg:
+		m.slashSuggestions.SetItems(nil)
+		return m, nil
+
 	case narrativeASCIIArtMsg:
 		if msg.err != nil || msg.sceneID != m.sceneCounter || strings.TrimSpace(msg.art) == "" {
 			return m, nil
@@ -427,6 +448,26 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseMsg:
+		if m.achievementBrowser != nil && m.achievementBrowser.Visible() {
+			updated, cmd := m.achievementBrowser.Update(msg)
+			if !updated.Visible() {
+				m.achievementBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.achievementBrowser = &updated
+			return m, cmd
+		}
+		if m.codexBrowser != nil && m.codexBrowser.Visible() {
+			updated, cmd := m.codexBrowser.Update(msg)
+			if !updated.Visible() {
+				m.codexBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.codexBrowser = &updated
+			return m, cmd
+		}
 		if m.historyBrowser != nil && m.historyBrowser.Visible() {
 			var cmd tea.Cmd
 			updated, cmd := m.historyBrowser.Update(msg)
@@ -445,6 +486,28 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		if m.achievementPopup.Visible() {
 			var cmd tea.Cmd
 			m.achievementPopup, cmd = m.achievementPopup.Update(msg)
+			return m, cmd
+		}
+
+		if m.achievementBrowser != nil && m.achievementBrowser.Visible() {
+			updated, cmd := m.achievementBrowser.Update(msg)
+			if !updated.Visible() {
+				m.achievementBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.achievementBrowser = &updated
+			return m, cmd
+		}
+
+		if m.codexBrowser != nil && m.codexBrowser.Visible() {
+			updated, cmd := m.codexBrowser.Update(msg)
+			if !updated.Visible() {
+				m.codexBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.codexBrowser = &updated
 			return m, cmd
 		}
 
@@ -521,22 +584,35 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			}
 
 		case "tab":
+			if m.inputFocus && m.slashSuggestions.HasItems() {
+				var cmd tea.Cmd
+				m.slashSuggestions, cmd = m.slashSuggestions.Update(msg)
+				return m, cmd
+			}
 			// Toggle between choice list and free input
 			m.inputFocus = !m.inputFocus
 			if m.inputFocus {
 				m.input.Focus()
+				m.refreshSlashSuggestions()
 			} else {
 				m.input.Blur()
+				m.slashSuggestions.SetItems(nil)
 			}
 			return m, nil
 
 		case "enter":
+			if m.inputFocus && m.slashSuggestions.HasItems() && m.slashSuggestions.Focused() {
+				var cmd tea.Cmd
+				m.slashSuggestions, cmd = m.slashSuggestions.Update(msg)
+				return m, cmd
+			}
 			if m.inputFocus {
 				text := strings.TrimSpace(m.input.Value())
 				if text == "" {
 					return m, nil
 				}
 				m.input.Reset()
+				m.refreshSlashSuggestions()
 				if engine.IsCommand(text) {
 					cmd := engine.ParseCommand(text)
 					return m.handleCommand(cmd)
@@ -551,9 +627,23 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			}
 
 		case "esc":
+			if m.inputFocus && m.slashSuggestions.HasItems() {
+				var cmd tea.Cmd
+				m.slashSuggestions, cmd = m.slashSuggestions.Update(msg)
+				return m, cmd
+			}
 			m.sessionMenuVisible = true
 			m.sessionMenuCursor = 0
 			return m, nil
+		}
+
+		if m.inputFocus && m.slashSuggestions.HasItems() {
+			switch msg.String() {
+			case "up", "down":
+				var cmd tea.Cmd
+				m.slashSuggestions, cmd = m.slashSuggestions.Update(msg)
+				return m, cmd
+			}
 		}
 
 		// Route key to active component
@@ -561,6 +651,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			cmds = append(cmds, cmd)
+			m.refreshSlashSuggestions()
 		} else {
 			var cmd tea.Cmd
 			m.choices, cmd = m.choices.Update(msg)
@@ -643,6 +734,10 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.showMap()
 	case "achievements":
 		return m.showAchievements()
+	case "characters":
+		return m.showCharacters()
+	case "codex":
+		return m.showCodex()
 	case "craft", "crafting":
 		return m.startCrafting()
 	case "talk":
@@ -732,8 +827,16 @@ func (m NarrativeModel) showMap() (NarrativeModel, tea.Cmd) {
 // showAchievements displays earned achievements overlay.
 func (m NarrativeModel) showAchievements() (NarrativeModel, tea.Cmd) {
 	storyID := m.narrator.Story().ID
-	achText := engine.FormatAchievementsView(m.narrator.DB(), storyID)
-	m.showOverlay("Achievements", achText)
+	archive, err := engine.BuildStoryArchiveSummary(m.narrator.DB(), storyID)
+	if err != nil {
+		m.errMsg = fmt.Sprintf("Achievements unavailable: %v", err)
+		return m, nil
+	}
+	browser := NewSingleStoryAchievementBrowser(*archive, m.width, m.height)
+	m.achievementBrowser = &browser
+	m.historyReturnInputFocus = m.inputFocus
+	m.inputFocus = false
+	m.input.Blur()
 	return m, nil
 }
 
@@ -770,7 +873,9 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 	helpText := `Available Commands:
 
   /inventory    (/i)   Show your inventory
-  /stats        (/s)   Show character sheet
+  /stats        (/s)   Open the protagonist dossier
+  /characters          Browse protagonist and NPC dossiers
+  /codex               Open the full story codex
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
   /hooks               Show open hooks and world reactions
@@ -1097,317 +1202,35 @@ func dispositionLabel(d int) string {
 	}
 }
 
-// showStats displays the full character sheet as an overlay.
+// showStats opens the protagonist dossier inside the codex browser.
 func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
-	char := m.narrator.Character()
-	story := m.narrator.Story()
-	var sb strings.Builder
+	return m.openCodexBrowser("Character Sheet", "people", engine.ProtagonistCodexEntryID())
+}
 
-	sb.WriteString("\n")
+func (m NarrativeModel) showCharacters() (NarrativeModel, tea.Cmd) {
+	return m.openCodexBrowser("Characters", "people", "")
+}
 
-	// Parse stats JSON.
-	var stats map[string]interface{}
-	if char.StatsJSON != "" {
-		_ = json.Unmarshal([]byte(char.StatsJSON), &stats)
-	}
+func (m NarrativeModel) showCodex() (NarrativeModel, tea.Cmd) {
+	return m.openCodexBrowser("Codex", "", "")
+}
 
-	// Parse stats schema for proper labels.
-	type statDefSimple struct {
-		Key   string
-		Label string
-	}
-	var vitalDefs []statDefSimple
-	var attrDefs []statDefSimple
-	var secDefs []statDefSimple
-
-	if story != nil && story.StatsSchemaJSON != "" {
-		var schema map[string]interface{}
-		if err := json.Unmarshal([]byte(story.StatsSchemaJSON), &schema); err == nil {
-			parseDefs := func(key string) []statDefSimple {
-				raw, ok := schema[key].([]interface{})
-				if !ok {
-					return nil
-				}
-				var defs []statDefSimple
-				for _, item := range raw {
-					if m2, ok := item.(map[string]interface{}); ok {
-						k, _ := m2["key"].(string)
-						l, _ := m2["label"].(string)
-						if k == "" {
-							continue
-						}
-						if l == "" {
-							l = strings.ToUpper(k)
-						}
-						defs = append(defs, statDefSimple{Key: k, Label: l})
-					}
-				}
-				return defs
-			}
-			vitalDefs = parseDefs("vitals")
-			attrDefs = parseDefs("attributes")
-			secDefs = parseDefs("secondary")
-		}
+func (m NarrativeModel) openCodexBrowser(title, initialCategory, initialEntryID string) (NarrativeModel, tea.Cmd) {
+	if m.narrator == nil || m.narrator.DB() == nil || m.narrator.Story() == nil {
+		m.errMsg = "Codex unavailable: no active story."
+		return m, nil
 	}
 
-	// Character name and background.
-	sb.WriteString(theme.Title.Render(char.Name) + "\n")
-	if char.Background != "" {
-		sb.WriteString(theme.MutedText.Render(char.Background) + "\n")
+	index, err := engine.BuildStoryCodexByID(m.narrator.DB(), m.narrator.Story().ID)
+	if err != nil {
+		m.errMsg = fmt.Sprintf("Codex unavailable: %v", err)
+		return m, nil
 	}
 
-	if stats != nil {
-		sb.WriteString("\n")
-
-		// Vitals with progress bars.
-		if vitalsMap, ok := stats["vitals"].(map[string]interface{}); ok && len(vitalsMap) > 0 {
-			sb.WriteString(theme.Title.Render("Vitals") + "\n")
-			// Use schema order if available, else sort keys.
-			vitalKeys := make([]string, 0, len(vitalDefs))
-			if len(vitalDefs) > 0 {
-				for _, def := range vitalDefs {
-					if _, exists := vitalsMap[def.Key]; exists {
-						vitalKeys = append(vitalKeys, def.Key)
-					}
-				}
-			}
-			if len(vitalKeys) == 0 {
-				for k := range vitalsMap {
-					vitalKeys = append(vitalKeys, k)
-				}
-				sort.Strings(vitalKeys)
-			}
-			// Build label map for lookup.
-			vitalLabelMap := map[string]string{}
-			for _, def := range vitalDefs {
-				vitalLabelMap[def.Key] = def.Label
-			}
-			for _, key := range vitalKeys {
-				vMap, ok := vitalsMap[key].(map[string]interface{})
-				if !ok {
-					continue
-				}
-				current := toInt(vMap["current"])
-				max := toInt(vMap["max"])
-				label := vitalLabelMap[key]
-				if label == "" {
-					label = strings.ToUpper(key)
-				}
-				bar := renderBar(current, max, 10)
-				sb.WriteString(fmt.Sprintf("  %-10s %s  %d/%d\n", label+":", bar, current, max))
-			}
-			sb.WriteString("\n")
-		}
-
-		// Attributes with schema labels, 3 per row.
-		if attrsMap, ok := stats["attributes"].(map[string]interface{}); ok && len(attrsMap) > 0 {
-			sb.WriteString(theme.Title.Render("Attributes") + "\n")
-			// Use schema order if available.
-			type attrEntry struct {
-				label string
-				val   int
-			}
-			var attrEntries []attrEntry
-			if len(attrDefs) > 0 {
-				for _, def := range attrDefs {
-					if v, ok := attrsMap[def.Key]; ok {
-						attrEntries = append(attrEntries, attrEntry{def.Label, toInt(v)})
-					}
-				}
-			} else {
-				keys := make([]string, 0, len(attrsMap))
-				for k := range attrsMap {
-					keys = append(keys, k)
-				}
-				sort.Strings(keys)
-				for _, k := range keys {
-					attrEntries = append(attrEntries, attrEntry{strings.ToUpper(k), toInt(attrsMap[k])})
-				}
-			}
-			// Display in rows of 3.
-			for i, entry := range attrEntries {
-				sb.WriteString(fmt.Sprintf("  %-14s %-3d", entry.label+":", entry.val))
-				if (i+1)%3 == 0 || i == len(attrEntries)-1 {
-					sb.WriteString("\n")
-				}
-			}
-			sb.WriteString("\n")
-		}
-
-		// Secondary stats with schema labels.
-		if secMap, ok := stats["secondary"].(map[string]interface{}); ok && len(secMap) > 0 {
-			sb.WriteString(theme.Title.Render("Secondary") + "\n")
-			secLabelMap := map[string]string{}
-			for _, def := range secDefs {
-				secLabelMap[def.Key] = def.Label
-			}
-			// Use schema order if available.
-			secKeys := make([]string, 0)
-			if len(secDefs) > 0 {
-				for _, def := range secDefs {
-					if _, ok := secMap[def.Key]; ok {
-						secKeys = append(secKeys, def.Key)
-					}
-				}
-			}
-			if len(secKeys) == 0 {
-				for k := range secMap {
-					secKeys = append(secKeys, k)
-				}
-				sort.Strings(secKeys)
-			}
-			for _, key := range secKeys {
-				val := toInt(secMap[key])
-				label := secLabelMap[key]
-				if label == "" {
-					label = strings.Title(strings.ReplaceAll(key, "_", " "))
-				}
-				sb.WriteString(fmt.Sprintf("  %-16s %d\n", label+":", val))
-			}
-			sb.WriteString("\n")
-		}
-	}
-
-	// Skills with level and XP bar.
-	sb.WriteString(theme.Title.Render("Skills") + "\n")
-	skillsRendered := false
-	// Merge skills from char.SkillsJSON and stats["skills"].
-	skillsMap := map[string]interface{}{}
-	if char.SkillsJSON != "" && char.SkillsJSON != "null" && char.SkillsJSON != "{}" {
-		_ = json.Unmarshal([]byte(char.SkillsJSON), &skillsMap)
-	}
-	if stats != nil {
-		if sm, ok := stats["skills"].(map[string]interface{}); ok {
-			for k, v := range sm {
-				skillsMap[k] = v
-			}
-		}
-	}
-	if len(skillsMap) > 0 {
-		skillKeys := make([]string, 0, len(skillsMap))
-		for k := range skillsMap {
-			skillKeys = append(skillKeys, k)
-		}
-		sort.Strings(skillKeys)
-		for _, name := range skillKeys {
-			val := skillsMap[name]
-			level := 1
-			xp := 0
-			if sm, ok := val.(map[string]interface{}); ok {
-				level = toInt(sm["level"])
-				if level < 1 {
-					level = 1
-				}
-				xp = toInt(sm["xp"])
-			}
-			threshold := level * 100
-			bar := renderBar(xp, threshold, 10)
-			sb.WriteString(fmt.Sprintf("  %-16s Lv.%-2d  %s  %d/%d XP\n",
-				name, level, bar, xp, threshold))
-		}
-		skillsRendered = true
-	}
-	if !skillsRendered {
-		sb.WriteString(theme.MutedText.Render("  (none yet — try new things to learn!)") + "\n")
-	}
-	sb.WriteString("\n")
-
-	// Traits — merged from char.TraitsJSON and stats["traits"], deduplicated.
-	sb.WriteString(theme.Title.Render("Traits") + "\n")
-	traitSet := map[string]bool{}
-	var traits []string
-	if char.TraitsJSON != "" && char.TraitsJSON != "null" {
-		var t []string
-		if err := json.Unmarshal([]byte(char.TraitsJSON), &t); err == nil {
-			for _, tr := range t {
-				if !traitSet[strings.ToLower(tr)] {
-					traitSet[strings.ToLower(tr)] = true
-					traits = append(traits, tr)
-				}
-			}
-		}
-	}
-	if stats != nil {
-		if t, ok := stats["traits"].([]interface{}); ok {
-			for _, tr := range t {
-				if s, ok := tr.(string); ok && !traitSet[strings.ToLower(s)] {
-					traitSet[strings.ToLower(s)] = true
-					traits = append(traits, s)
-				}
-			}
-		}
-	}
-	if len(traits) == 0 {
-		sb.WriteString(theme.MutedText.Render("  (none yet — your character is still forming)") + "\n")
-	} else {
-		sb.WriteString("  " + strings.Join(traits, ", ") + "\n")
-	}
-	sb.WriteString("\n")
-
-	// Titles.
-	sb.WriteString(theme.Title.Render("Titles") + "\n")
-	var titles []string
-	if stats != nil {
-		if t, ok := stats["titles"].([]interface{}); ok {
-			for _, ti := range t {
-				if s, ok := ti.(string); ok {
-					titles = append(titles, s)
-				}
-			}
-		}
-	}
-	if len(titles) == 0 {
-		sb.WriteString(theme.MutedText.Render("  (none yet — great deeds earn great titles)") + "\n")
-	} else {
-		sb.WriteString("  " + strings.Join(titles, ", ") + "\n")
-	}
-	sb.WriteString("\n")
-
-	// Deaths counter (if > 0).
-	if stats != nil {
-		if deaths := toInt(stats["deaths"]); deaths > 0 {
-			sb.WriteString(theme.DangerText.Render(fmt.Sprintf("  Deaths: %d", deaths)) + "\n")
-			sb.WriteString("\n")
-		}
-	}
-
-	// NPC Relationships — load from DB.
-	sb.WriteString(theme.Title.Render("Relationships") + "\n")
-	if m.narrator.DB() != nil && story != nil {
-		npcs, err := m.narrator.DB().ListNPCs(story.ID)
-		if err == nil && len(npcs) > 0 {
-			for _, npc := range npcs {
-				d := npc.Disposition
-				// Map disposition [-100, 100] to bar [0, 10].
-				barVal := (d + 100) * 10 / 200
-				if barVal < 0 {
-					barVal = 0
-				}
-				if barVal > 10 {
-					barVal = 10
-				}
-				bar := renderBar(barVal, 10, 10)
-				label := dispositionLabel(d)
-				sign := ""
-				if d > 0 {
-					sign = "+"
-				}
-				roleStr := ""
-				if npc.Role != "" {
-					roleStr = fmt.Sprintf(" (%s)", npc.Role)
-				}
-				sb.WriteString(fmt.Sprintf("  %-24s %s  %s (%s%d)\n",
-					npc.Name+roleStr, bar, label, sign, d))
-				sb.WriteString(theme.MutedText.Render("      " + relationshipAxesSummary(npc.RelationshipJSON)) + "\n")
-			}
-		} else {
-			sb.WriteString(theme.MutedText.Render("  (no one met yet)") + "\n")
-		}
-	} else {
-		sb.WriteString(theme.MutedText.Render("  (no one met yet)") + "\n")
-	}
-
-	m.showOverlay(fmt.Sprintf("Character: %s", char.Name), sb.String())
+	m.codexBrowser = NewCodexBrowserModel(title, index, m.width, m.height, initialCategory, initialEntryID)
+	m.historyReturnInputFocus = m.inputFocus
+	m.inputFocus = false
+	m.input.Blur()
 	return m, nil
 }
 
@@ -1773,6 +1596,9 @@ func (m *NarrativeModel) applyInputCommandStyle() {
 		if cmd := engine.ParseCommand(value); cmd != nil && cmd.Name != "unknown" {
 			textColor = theme.Success
 			promptColor = theme.Success
+		} else if m.slashSuggestions.HasItems() {
+			textColor = theme.Secondary
+			promptColor = theme.Secondary
 		} else {
 			textColor = theme.Danger
 			promptColor = theme.Danger
@@ -1820,6 +1646,14 @@ func (m NarrativeModel) View() string {
 
 	if m.historyBrowser != nil && m.historyBrowser.Visible() {
 		return m.historyBrowser.View()
+	}
+
+	if m.achievementBrowser != nil && m.achievementBrowser.Visible() {
+		return m.achievementBrowser.View()
+	}
+
+	if m.codexBrowser != nil && m.codexBrowser.Visible() {
+		return m.codexBrowser.View()
 	}
 
 	// If overlay is visible, render it full-screen.
@@ -1870,11 +1704,15 @@ func (m NarrativeModel) View() string {
 
 	// Input area
 	var inputView string
+	var slashSuggestionsView string
 	if !sceneReady {
 		inputView = theme.MutedText.Render("  [Enter/Space] Finish scene")
 	} else if m.inputFocus {
 		m.applyInputCommandStyle()
 		inputView = m.input.View()
+		if m.slashSuggestions.HasItems() {
+			slashSuggestionsView = m.slashSuggestions.View()
+		}
 	} else {
 		inputView = theme.MutedText.Render("  [TAB] Free input")
 	}
@@ -1900,6 +1738,7 @@ func (m NarrativeModel) View() string {
 		"",
 		choicesView,
 		inputView,
+		slashSuggestionsView,
 		statusLine,
 		help,
 		statusView,
@@ -2028,6 +1867,15 @@ func (m *NarrativeModel) SetSize(w, h int) {
 	m.height = h
 	m.overlay.SetSize(w, h)
 	m.achievementPopup.SetSize(w, h)
+	if m.historyBrowser != nil {
+		m.historyBrowser.SetSize(w, h)
+	}
+	if m.achievementBrowser != nil {
+		m.achievementBrowser.SetSize(w, h)
+	}
+	if m.codexBrowser != nil {
+		m.codexBrowser.SetSize(w, h)
+	}
 	m.relayout()
 }
 
@@ -2041,5 +1889,6 @@ func (m *NarrativeModel) relayout() {
 	m.viewport.Height = vpHeight
 	m.input.SetWidth(m.width - 4)
 	m.choices.SetWidth(m.width - 4)
+	m.slashSuggestions.SetWidth(m.width - 4)
 	m.statusBar.SetWidth(m.width)
 }

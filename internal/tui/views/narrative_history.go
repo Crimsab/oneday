@@ -24,7 +24,7 @@ const (
 )
 
 type historyBrowserModel struct {
-	title         string
+	title          string
 	storyName      string
 	width          int
 	height         int
@@ -66,14 +66,14 @@ func newHistoryBrowser(storyName string, messages []storage.ChatMessage, session
 	vp.MouseWheelDelta = 4
 
 	browser := &historyBrowserModel{
-		title:    "Story History",
+		title:     "Story History",
 		storyName: strings.TrimSpace(storyName),
-		visible:  true,
-		viewport: vp,
-		search:   search,
-		focus:    historyFocusTimeline,
-		groups:   buildHistoryGroups(messages, sessions),
-		expanded: make(map[string]bool),
+		visible:   true,
+		viewport:  vp,
+		search:    search,
+		focus:     historyFocusTimeline,
+		groups:    buildHistoryGroups(messages, sessions),
+		expanded:  make(map[string]bool),
 	}
 
 	for _, group := range browser.groups {
@@ -160,6 +160,7 @@ func (h historyBrowserModel) Update(msg tea.Msg) (historyBrowserModel, tea.Cmd) 
 		if h.isMouseInViewport(msg) {
 			var cmd tea.Cmd
 			h.viewport, cmd = h.viewport.Update(msg)
+			h.refreshViewport(true)
 			return h, cmd
 		}
 		return h, nil
@@ -180,7 +181,15 @@ func (h historyBrowserModel) Update(msg tea.Msg) (historyBrowserModel, tea.Cmd) 
 
 		if h.focus == historyFocusSearch {
 			switch msg.String() {
-			case "up", "down", "enter":
+			case "up":
+				h.blurSearch()
+				h.moveCursor(-1)
+				return h, nil
+			case "down":
+				h.blurSearch()
+				h.moveCursor(1)
+				return h, nil
+			case "enter":
 				h.blurSearch()
 				return h, nil
 			}
@@ -194,35 +203,35 @@ func (h historyBrowserModel) Update(msg tea.Msg) (historyBrowserModel, tea.Cmd) 
 		}
 
 		switch msg.String() {
-		case "j":
+		case "j", "down":
 			h.moveCursor(1)
 			return h, nil
-		case "k":
+		case "k", "up":
 			h.moveCursor(-1)
 			return h, nil
-		case "down":
-			h.viewport.LineDown(1)
+		case "left":
+			h.setCurrentExpanded(false)
 			return h, nil
-		case "up":
-			h.viewport.LineUp(1)
+		case "right":
+			h.setCurrentExpanded(true)
 			return h, nil
 		case "pgdown", "ctrl+f":
 			h.viewport.ViewDown()
+			h.refreshViewport(true)
 			return h, nil
 		case "pgup", "ctrl+b":
 			h.viewport.ViewUp()
+			h.refreshViewport(true)
 			return h, nil
 		case "g":
 			h.cursor = 0
-			h.syncViewportToCursor()
-			h.rebuildViewport()
+			h.refreshViewport(false)
 			return h, nil
 		case "G":
 			if len(h.filteredGroups) > 0 {
 				h.cursor = len(h.filteredGroups) - 1
 			}
-			h.syncViewportToCursor()
-			h.rebuildViewport()
+			h.refreshViewport(false)
 			return h, nil
 		case "enter", " ":
 			h.toggleCurrentGroup()
@@ -275,7 +284,7 @@ func (h historyBrowserModel) View() string {
 	}
 
 	separator := theme.MutedText.Render(strings.Repeat("─", historyMaxInt(1, h.viewport.Width)))
-	footer := theme.MutedText.Render("Mouse wheel scrolls only here · j/k sessions · ↑/↓ scroll · Enter toggle · Tab search · [/] collapse/expand · Esc close")
+	footer := theme.MutedText.Render("Mouse wheel scrolls only here · ↑/↓ or j/k select sessions · ←/→ fold · PgUp/PgDn scroll timeline · Tab search · Esc close")
 
 	searchRow := lipgloss.JoinHorizontal(lipgloss.Left, searchLabel, "  ", h.search.View())
 	inner := lipgloss.JoinVertical(lipgloss.Left,
@@ -312,7 +321,7 @@ func (h *historyBrowserModel) blurSearch() {
 func (h *historyBrowserModel) moveCursor(delta int) {
 	if len(h.filteredGroups) == 0 {
 		h.cursor = 0
-		h.rebuildViewport()
+		h.refreshViewport(false)
 		return
 	}
 	h.cursor += delta
@@ -322,8 +331,7 @@ func (h *historyBrowserModel) moveCursor(delta int) {
 	if h.cursor >= len(h.filteredGroups) {
 		h.cursor = len(h.filteredGroups) - 1
 	}
-	h.syncViewportToCursor()
-	h.rebuildViewport()
+	h.refreshViewport(false)
 }
 
 func (h *historyBrowserModel) toggleCurrentGroup() {
@@ -334,7 +342,19 @@ func (h *historyBrowserModel) toggleCurrentGroup() {
 	if strings.TrimSpace(h.search.Value()) == "" {
 		h.expanded[group.SessionID] = !h.expanded[group.SessionID]
 	}
-	h.rebuildViewport()
+	h.refreshViewport(false)
+}
+
+func (h *historyBrowserModel) setCurrentExpanded(expanded bool) {
+	if len(h.filteredGroups) == 0 || strings.TrimSpace(h.search.Value()) != "" {
+		return
+	}
+	group := h.filteredGroups[h.cursor]
+	if h.expanded[group.SessionID] == expanded {
+		return
+	}
+	h.expanded[group.SessionID] = expanded
+	h.refreshViewport(false)
 }
 
 func (h *historyBrowserModel) setAllExpanded(expanded bool) {
@@ -344,7 +364,7 @@ func (h *historyBrowserModel) setAllExpanded(expanded bool) {
 	for _, group := range h.groups {
 		h.expanded[group.SessionID] = expanded
 	}
-	h.rebuildViewport()
+	h.refreshViewport(false)
 }
 
 func (h *historyBrowserModel) isExpanded(group historySessionGroup) bool {
@@ -380,16 +400,25 @@ func (h *historyBrowserModel) applyFilter() {
 		h.cursor = len(h.filteredGroups) - 1
 	}
 
-	h.rebuildViewport()
+	h.refreshViewport(false)
 }
 
 func (h *historyBrowserModel) rebuildViewport() {
+	h.refreshViewport(false)
+}
+
+func (h *historyBrowserModel) refreshViewport(preserveScroll bool) {
 	if h == nil {
 		return
 	}
 	content, headerLines := h.renderViewportContent()
+	currentOffset := h.viewport.YOffset
 	h.headerLines = headerLines
 	h.viewport.SetContent(content)
+	if preserveScroll {
+		h.viewport.SetYOffset(currentOffset)
+		return
+	}
 	h.syncViewportToCursor()
 }
 
@@ -406,6 +435,22 @@ func (h *historyBrowserModel) syncViewportToCursor() {
 	if target > bottom {
 		h.viewport.SetYOffset(target - h.viewport.Height + 1)
 	}
+}
+
+func (h *historyBrowserModel) syncCursorToViewport() {
+	if h == nil || len(h.headerLines) == 0 {
+		h.cursor = 0
+		return
+	}
+	offset := h.viewport.YOffset
+	cursor := 0
+	for idx, line := range h.headerLines {
+		if line > offset {
+			break
+		}
+		cursor = idx
+	}
+	h.cursor = cursor
 }
 
 func (h *historyBrowserModel) renderViewportContent() (string, []int) {
@@ -481,6 +526,8 @@ func (m NarrativeModel) showHistory(args []string) (NarrativeModel, tea.Cmd) {
 	}
 
 	m.historyBrowser = newHistoryBrowser(m.narrator.Story().Name, msgs, sessions, query, m.width, m.height)
+	m.historyReturnInputFocus = m.inputFocus
+	m.inputFocus = false
 	m.input.Blur()
 	return m, nil
 }
