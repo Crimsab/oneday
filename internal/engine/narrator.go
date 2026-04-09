@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -479,6 +480,15 @@ func (n *Narrator) finalizeTurn(
 	n.lastUsage = resp.Usage
 	n.lastStreamed = streamed
 
+	charSnapshot := *n.character
+	worldSnapshot := *n.world
+	storySnapshot := *n.story
+	restoreState := func() {
+		*n.character = charSnapshot
+		*n.world = worldSnapshot
+		*n.story = storySnapshot
+	}
+
 	// Parse the structured response.
 	narrative, err := parseNarrativeFromAI(resp.Content)
 	if err != nil {
@@ -522,27 +532,14 @@ func (n *Narrator) finalizeTurn(
 			)
 		}
 
-		// Also apply world/setting-modifying keys that come through regular gameplay.
-		// This allows the AI to organically update factions, events, and locations mid-story.
-		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, n.db, n.story, n.world, n.rag)
+		// Apply narrator-managed world/setting changes in memory first so the
+		// canonical turn commit remains the source of truth for world state.
+		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, nil, n.story, n.world, nil)
 	}
 	narrative.TurnDelta = mergeTurnDelta(buildTurnDelta(appliedChanges), narrative.TurnDelta)
 	narrative.OpenHooks = activeStoryHooks(loadStoryHooks(n.world))
 	narrative.WorldReactions = visibleWorldReactions(loadWorldReactions(n.world))
 	normalizeNarrativeResponse(narrative)
-
-	// Process achievement_earned from AI: validate, check duplicates, persist to DB.
-	if narrative.AchievementEarned != nil {
-		if persisted := ValidateAndPersistAchievement(n.db, n.story.ID, narrative.AchievementEarned); persisted != nil {
-			narrative.PersistedAchievement = persisted
-			n.rememberAchievement(persisted)
-		}
-	}
-
-	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
-	if narrative.Narrative != "" {
-		_ = UpdateNPCLastSeen(n.db, n.story.ID, narrative.Narrative, prep.currentTurn)
-	}
 
 	// If AI specified a location (and state_changes didn't already update it), sync it.
 	if narrative.Location != "" && narrative.Location != n.world.CurrentLocation {
@@ -567,15 +564,7 @@ func (n *Narrator) finalizeTurn(
 		}
 	}
 
-	// Persist full character state (stats, traits, skills, inventory) to DB.
-	if err := n.db.UpdateCharacterFull(n.character); err != nil {
-		_ = err // non-fatal
-	}
-
 	n.world.CurrentTurn = prep.currentTurn + 1
-	if err := n.db.UpdateWorldState(n.world); err != nil {
-		_ = err // non-fatal
-	}
 
 	// Extract choice texts for the JSONL entry.
 	choiceTexts := make([]string, len(narrative.Choices))
@@ -615,16 +604,41 @@ func (n *Narrator) finalizeTurn(
 		AIUsage:    n.lastUsage,
 		AIStreamed: n.lastStreamed,
 	}
-	if err := n.session.AppendTurn(n.db, entry); err != nil {
-		// Non-fatal: log but don't fail the turn.
-		_ = err
+	if err := n.session.CommitTurn(n.db, n.character, n.world, entry); err != nil {
+		if IsMirrorSyncError(err) {
+			log.Printf("oneday: canonical turn %d committed but jsonl mirror failed: %v", prep.currentTurn, err)
+		} else {
+			restoreState()
+			return nil, fmt.Errorf("committing canonical turn %d: %w", prep.currentTurn, err)
+		}
+	}
+
+	if storySnapshot.SettingJSON != n.story.SettingJSON {
+		if err := n.db.UpdateStorySetting(n.story.ID, n.story.SettingJSON); err != nil {
+			log.Printf("oneday: story setting update failed for story %s after canonical turn %d: %v", n.story.ID, prep.currentTurn, err)
+		}
+	}
+
+	// Process achievement_earned from AI only after the canonical turn is committed.
+	if narrative.AchievementEarned != nil {
+		if persisted := ValidateAndPersistAchievement(n.db, n.story.ID, narrative.AchievementEarned); persisted != nil {
+			narrative.PersistedAchievement = persisted
+			n.rememberAchievement(persisted)
+		}
+	}
+
+	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
+	if narrative.Narrative != "" {
+		if err := UpdateNPCLastSeen(n.db, n.story.ID, narrative.Narrative, prep.currentTurn); err != nil {
+			log.Printf("oneday: npc last_seen update failed for story %s turn %d: %v", n.story.ID, prep.currentTurn, err)
+		}
 	}
 
 	// Async RAG summarization — fire-and-forget after turn is persisted.
 	// If summarization fails, the next trigger will pick up the gap.
 	if n.rag != nil {
 		storyID := n.story.ID
-		turn := prep.currentTurn
+		turn := n.world.CurrentTurn - 1
 		ragPipeline := n.rag
 		db := n.db
 		go func() {
