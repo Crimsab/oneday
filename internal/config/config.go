@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -127,8 +128,8 @@ func Default() Config {
 				Temperature:          0.8,
 				MaxTokens:            2048,
 				TimeoutSeconds:       60,
-				RepairModel:          "grok-4.1-fast",
-				RepairFallbackModels: []string{"gemini-3.1-flash-lite-preview"},
+				RepairModel:          "gemini-3.1-flash-lite-preview",
+				RepairFallbackModels: []string{"grok-4.1-fast"},
 			},
 		},
 		RAG: RAGConfig{

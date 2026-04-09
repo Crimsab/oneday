@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-04-09T06:27:59+02:00",
+  "brief": "Mondo steampunk in tono serio e tenebroso, città industriale decadente, culto del vapore, dialoghi tesi, prosa elegante ma non prolissa. Lingua italiana. Voglio una campagna lunga, politica, investigativa e pericolosa.",
+  "models": [
+    "qwen3.6-plus"
+  ],
+  "cases": [
+    {
+      "name": "missing_authoring_fields"
+    },
+    {
+      "name": "missing_world_rules_and_stats"
+    },
+    {
+      "name": "wrong_shapes"
+    },
+    {
+      "name": "not_json"
+    }
+  ],
+  "summaries": [
+    {
+      "model": "qwen3.6-plus",
+      "success_count": 4,
+      "case_count": 4,
+      "success_rate": 100,
+      "average_latency_ms": 54309.5,
+      "average_latency_seconds": 54.3095,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 63924,
+          "duration_seconds": 63.924442732,
+          "resolved_model": "qwen/qwen3.6-plus-04-02",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 67872,
+          "duration_seconds": 67.872488114,
+          "resolved_model": "qwen/qwen3.6-plus-04-02",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000149388,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": true,
+          "duration_ms": 85442,
+          "duration_seconds": 85.44219976,
+          "resolved_model": "qwen/qwen3.6-plus-04-02",
+          "story_name": "Cronache di Caligine",
+          "world_name": "Caligine"
+        }
+      ]
+    }
+  ]
+}

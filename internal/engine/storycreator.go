@@ -451,49 +451,44 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 		ResponseFormat: ai.StoryDefinitionResponseFormat(),
 	}
 
-	const maxRepairAttempts = 2
 	repairFormats := []*ai.ResponseFormat{
 		ai.StoryDefinitionResponseFormat(),
 		ai.NewJSONObjectResponseFormat(),
 	}
 
-	var lastErr error
-	for attempt := 0; attempt <= maxRepairAttempts; attempt++ {
-		start := time.Now()
-		resp, err := sc.router.Complete(ctx, req)
-		if err != nil {
-			return nil, err
-		}
+	start := time.Now()
+	resp, err := sc.router.Complete(ctx, req)
+	if err != nil {
+		return nil, err
+	}
 
-		sc.lastModel = resp.Model
-		sc.lastLatency = time.Since(start).Milliseconds()
+	sc.lastModel = resp.Model
+	sc.lastLatency = time.Since(start).Milliseconds()
 
-		def, parseErr := parseStoryDefinitionWithFallback(resp.Content, sc.initialBrief, sc.definition)
-		if parseErr == nil {
-			return def, nil
-		}
-		lastErr = parseErr
-		if attempt == maxRepairAttempts {
-			break
-		}
+	def, parseErr := parseStoryDefinitionWithFallback(resp.Content, sc.initialBrief, sc.definition)
+	if parseErr == nil {
+		return def, nil
+	}
 
-		previousDraftJSON := ""
-		if sc.definition != nil {
-			if data, err := json.MarshalIndent(sc.definition, "", "  "); err == nil {
-				previousDraftJSON = string(data)
-			}
+	lastErr := error(parseErr)
+	previousDraftJSON := ""
+	if sc.definition != nil {
+		if data, err := json.MarshalIndent(sc.definition, "", "  "); err == nil {
+			previousDraftJSON = string(data)
 		}
+	}
 
-		req = ai.Request{
+	for attempt := 0; attempt < len(repairFormats); attempt++ {
+		repairReq := ai.Request{
 			Messages: []ai.Message{
 				{Role: ai.RoleSystem, Content: prompts.StoryRepairSystemPrompt()},
-				{Role: ai.RoleUser, Content: prompts.StoryRepairUserPrompt(resp.Content, parseErr.Error(), sc.initialBrief, previousDraftJSON)},
+				{Role: ai.RoleUser, Content: prompts.StoryRepairUserPrompt(resp.Content, lastErr.Error(), sc.initialBrief, previousDraftJSON)},
 			},
 			Temperature:    0.2,
 			MaxTokens:      sc.genCfg.MaxTokens,
-			ResponseFormat: repairFormats[min(attempt, len(repairFormats)-1)],
+			ResponseFormat: repairFormats[attempt],
 		}
-		def, repairResp, repairErr := sc.runRepairModels(ctx, req)
+		def, repairResp, repairErr := sc.runRepairModels(ctx, repairReq)
 		if repairErr == nil {
 			sc.lastModel = repairResp.Model
 			sc.lastLatency += repairResp.LatencyMs
