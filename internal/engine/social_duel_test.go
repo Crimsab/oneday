@@ -165,3 +165,37 @@ func TestSocialDuelWithdrawEndsPlayableConcession(t *testing.T) {
 		t.Fatalf("fail forward detail = %q, want playable continuation", result.FailForward.Detail)
 	}
 }
+
+func TestSocialDuelChooseNPCActionUsesLeverageWhenPressed(t *testing.T) {
+	engine := NewSocialDuelEngine()
+	state := &SocialDuelState{
+		Status:       SocialDuelActive,
+		Round:        2,
+		Tempo:        3,
+		NPCComposure: 5,
+		NPCPatience:  1,
+		NPCLeverage: []SocialLeverage{
+			{Label: "Witness statement", Strength: 2},
+		},
+	}
+
+	action := engine.ChooseNPCAction(state)
+	if action != SocialActionExpose {
+		t.Fatalf("ChooseNPCAction = %q, want expose", action)
+	}
+}
+
+func TestSocialDuelChooseNPCActionConcedesWhenComposureBreaks(t *testing.T) {
+	engine := NewSocialDuelEngine()
+	state := &SocialDuelState{
+		Status:       SocialDuelActive,
+		Round:        4,
+		NPCComposure: 1,
+		NPCPatience:  2,
+	}
+
+	action := engine.ChooseNPCAction(state)
+	if action != SocialActionConcede {
+		t.Fatalf("ChooseNPCAction = %q, want concede", action)
+	}
+}

@@ -273,6 +273,52 @@ func (e *SocialDuelEngine) ResolveRound(state *SocialDuelState, char *storage.Ch
 	return result, nil
 }
 
+func (e *SocialDuelEngine) ChooseNPCAction(state *SocialDuelState) SocialAction {
+	if state == nil || state.Status != SocialDuelActive {
+		return SocialActionAppeal
+	}
+
+	if state.NPCComposure <= 2 {
+		return SocialActionConcede
+	}
+	if hasReadySocialLeverage(state.NPCLeverage) && (state.Tempo >= 2 || state.NPCPatience <= 1) {
+		return SocialActionExpose
+	}
+	if state.NPCPatience <= 1 {
+		if state.Tempo >= 1 {
+			return SocialActionPressure
+		}
+		return SocialActionAppeal
+	}
+	if state.Tempo <= -2 {
+		if state.Round >= 3 {
+			return SocialActionEscalate
+		}
+		return SocialActionPressure
+	}
+
+	switch state.NPCStance {
+	case SocialStanceBold:
+		if state.Round%3 == 0 {
+			return SocialActionEscalate
+		}
+		return SocialActionPressure
+	case SocialStanceGuarded:
+		if hasReadySocialLeverage(state.NPCLeverage) && state.Round >= 2 {
+			return SocialActionExpose
+		}
+		if state.Round%2 == 0 {
+			return SocialActionDeceive
+		}
+		return SocialActionAppeal
+	default:
+		if state.Round%2 == 0 {
+			return SocialActionPressure
+		}
+		return SocialActionAppeal
+	}
+}
+
 func normalizeSocialStance(stance SocialStance, fallback SocialStance) SocialStance {
 	switch stance {
 	case SocialStanceMeasured, SocialStanceBold, SocialStanceGuarded:
@@ -330,6 +376,15 @@ func consumeSocialLeverage(pool *[]SocialLeverage, action SocialAction) *SocialL
 		(*pool)[bestIdx].Spent = true
 	}
 	return &item
+}
+
+func hasReadySocialLeverage(items []SocialLeverage) bool {
+	for _, item := range items {
+		if !item.Spent {
+			return true
+		}
+	}
+	return false
 }
 
 func socialActionScore(state *SocialDuelState, char *storage.Character, npc *storage.NPC, action SocialAction, stance SocialStance, roll int, leverage *SocialLeverage, playerSide bool) int {
