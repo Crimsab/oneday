@@ -22,13 +22,13 @@ func TestRenderNarrativeMarkdownUsesCalloutsHighlightsAndDialogue(t *testing.T) 
 		},
 	})
 
-	if !strings.Contains(rendered, "**[LOCATION] Silver Vale**") {
+	if !strings.Contains(rendered, "> **[LOCATION] Silver Vale**") {
 		t.Fatalf("expected callout in rendered markdown, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "**Lyanna** studies the **Silver Vale**") {
+	if !strings.Contains(rendered, "**Lyanna** studies the **`Silver Vale`**") {
 		t.Fatalf("expected highlighted narrative text, got %q", rendered)
 	}
-	if !strings.Contains(rendered, "**Lyanna:** _\"We cannot stay in **Silver Vale**.\"_") {
+	if !strings.Contains(rendered, "> **Lyanna:** _\"We cannot stay in **`Silver Vale`**.\"_") {
 		t.Fatalf("expected speaker-styled dialogue block, got %q", rendered)
 	}
 }
@@ -40,5 +40,21 @@ func TestRenderNarrativeMarkdownFallsBackToPlainNarrative(t *testing.T) {
 
 	if rendered != "The corridor is silent." {
 		t.Fatalf("expected plain narrative fallback, got %q", rendered)
+	}
+}
+
+func TestRenderNarrativeMarkdownHighlightsLocationWithoutLocationCallout(t *testing.T) {
+	rendered := RenderNarrativeMarkdown(NarrativeInput{
+		Narrative: "You arrive at Silver Vale under a red sky.",
+		KnownEntities: []KnownEntity{
+			{Name: "Silver Vale", Kind: "location"},
+		},
+	})
+
+	if !strings.Contains(rendered, "**`Silver Vale`**") {
+		t.Fatalf("expected location highlight without explicit callout, got %q", rendered)
+	}
+	if strings.Contains(rendered, "[LOCATION]") {
+		t.Fatalf("did not expect synthetic location callout, got %q", rendered)
 	}
 }

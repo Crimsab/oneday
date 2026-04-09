@@ -162,3 +162,43 @@ func TestNonTickMessagesIgnored(t *testing.T) {
 		t.Error("non-tick message should return nil Cmd")
 	}
 }
+
+func TestVisibleRuneCountIgnoresANSISequences(t *testing.T) {
+	text := "\x1b[31mHello\x1b[0m world"
+	if got := visibleRuneCount(text); got != 11 {
+		t.Fatalf("visibleRuneCount() = %d, want 11", got)
+	}
+}
+
+func TestTypewriterViewDoesNotSplitANSISequences(t *testing.T) {
+	tw := NewTypewriter(80)
+	tw.SetText("\x1b[31mHi\x1b[0m!")
+
+	simulateTicks(&tw, 1)
+	if got := tw.View(); got != "\x1b[31mH" {
+		t.Fatalf("after 1 tick View = %q, want first styled rune without broken ANSI", got)
+	}
+
+	simulateTicks(&tw, 1)
+	if got := tw.View(); got != "\x1b[31mHi\x1b[0m" {
+		t.Fatalf("after 2 ticks View = %q, want styled word with reset sequence", got)
+	}
+
+	simulateTicks(&tw, 1)
+	if got := tw.View(); got != "\x1b[31mHi\x1b[0m!" {
+		t.Fatalf("after 3 ticks View = %q, want full string", got)
+	}
+}
+
+func TestSetTextInstantCountsVisibleRunesOnly(t *testing.T) {
+	tw := NewTypewriter(80)
+	text := "\x1b[32mReady\x1b[0m"
+	tw.SetTextInstant(text)
+
+	if tw.displayed != 5 {
+		t.Fatalf("displayed = %d, want visible rune count 5", tw.displayed)
+	}
+	if tw.View() != text {
+		t.Fatalf("View() = %q, want full ANSI text", tw.View())
+	}
+}

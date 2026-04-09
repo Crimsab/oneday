@@ -225,3 +225,39 @@ func TestExtractStoryJSONRejectsMissingLanguage(t *testing.T) {
 		t.Fatal("extractStoryJSON accepted a story without language")
 	}
 }
+
+func TestStoryCreatorRepairsInvalidStoryDefinitionBeforeFailing(t *testing.T) {
+	invalid := `{"name":"Broken draft","genre":"fantasy","tone":"dark"}`
+	creator, provider := newStoryCreatorForTest(t, invalid, validStoryDefinitionJSON)
+
+	resp, err := creator.SendMessage(context.Background(), "Dark fantasy with bells and salt.")
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+
+	if creator.Definition() == nil {
+		t.Fatal("Definition should be repaired and set")
+	}
+	if provider.callCount != 2 {
+		t.Fatalf("AI call count = %d, want 2 after repair retry", provider.callCount)
+	}
+	if !containsSubstring(resp, "World Draft") {
+		t.Fatalf("unexpected response after repair: %q", resp)
+	}
+}
+
+func TestStoryCreatorFailsAfterExhaustingRepairAttempts(t *testing.T) {
+	invalid := `{"name":"Broken draft","genre":"fantasy","tone":"dark"}`
+	creator, provider := newStoryCreatorForTest(t, invalid, invalid, invalid)
+
+	_, err := creator.SendMessage(context.Background(), "Dark fantasy with bells and salt.")
+	if err == nil {
+		t.Fatal("expected SendMessage to fail after exhausting repair attempts")
+	}
+	if provider.callCount != 3 {
+		t.Fatalf("AI call count = %d, want 3 including repair attempts", provider.callCount)
+	}
+	if !containsSubstring(err.Error(), "invalid story definition returned by AI") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

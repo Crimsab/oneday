@@ -170,6 +170,29 @@
 - [x] **TUI-24**: Choice-related stat badges are inspectable through a keyboard-first help flow so the player can understand referenced stats without leaving the narrative context blindly
 - [x] **TUI-25**: Local developer builds provide an explicit path to refresh the repo-root `./oneday` binary used for manual testing, not just temporary or release artifact builds
 
+## v1.4 Requirements
+
+### AI / Runtime Reliability
+
+- [x] **AI-10**: Structured story-bootstrap responses are validated locally and can be retried/repaired automatically before surfacing a hard failure to the player
+
+### Commands / History
+
+- [x] **CMD-05**: `/history` shows session interaction history and supports lightweight text search without leaving the current story flow
+
+### TUI Runtime UX
+
+- [x] **TUI-26**: Narrative playback is ANSI-safe, so styled streaming/typewriter text never leaks raw escape sequences during live rendering
+- [x] **TUI-27**: Choice/input affordances appear only after the visible scene playback is ready, preventing “future choices” from showing before the text finishes unfolding
+- [x] **TUI-28**: Choice navigation is decoupled from viewport scrolling, and mouse-wheel scrolling affects the narrative viewport without hijacking choice selection
+- [x] **TUI-29**: Trusted locations, world names, factions, NPCs, and similar entities render with stronger role-aware emphasis than plain generic bolding
+- [x] **TUI-30**: Dialogue lines and relationship/system event updates render as compact structured blocks that stay readable during dense scenes
+- [x] **TUI-31**: Active challenges and mini-games show a short confirmation/prelude before they begin
+- [x] **TUI-32**: Save/session feedback is visible and discoverable in the runtime UI, including an explicit quick-save confirmation
+- [x] **TUI-33**: Footer/status telemetry remains readable on narrower terminals without clipped highlighting or crowded one-line overflow
+- [x] **TUI-34**: Players can review current and past interactions through an in-story history/search overlay without losing the current scene
+- [x] **TUI-35**: Choice inspect/help can explain semantic badges and legacy/underspecified choices more usefully than a generic “no extra info” fallback
+
 ## v2 Requirements
 
 ### Plugin System
@@ -296,6 +319,18 @@
 | TUI-23 | Phase 10: Ambient ASCII Art and Model Benchmarking |
 | TUI-24 | Phase 10: Ambient ASCII Art and Model Benchmarking |
 | TUI-25 | Phase 10: Ambient ASCII Art and Model Benchmarking |
+| AI-10 | Phase 11: Runtime Reliability and History UX |
+| CMD-05 | Phase 11: Runtime Reliability and History UX |
+| TUI-26 | Phase 11: Runtime Reliability and History UX |
+| TUI-27 | Phase 11: Runtime Reliability and History UX |
+| TUI-28 | Phase 11: Runtime Reliability and History UX |
+| TUI-29 | Phase 11: Runtime Reliability and History UX |
+| TUI-30 | Phase 11: Runtime Reliability and History UX |
+| TUI-31 | Phase 11: Runtime Reliability and History UX |
+| TUI-32 | Phase 11: Runtime Reliability and History UX |
+| TUI-33 | Phase 11: Runtime Reliability and History UX |
+| TUI-34 | Phase 11: Runtime Reliability and History UX |
+| TUI-35 | Phase 11: Runtime Reliability and History UX |
 
 ---
-*Last updated: 2026-04-09 after completing Phase 10*
+*Last updated: 2026-04-09 after completing Phase 11*
