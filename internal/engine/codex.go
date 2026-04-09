@@ -115,8 +115,9 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	chapters, _ := db.ListChapters(story.ID)
 	achievements, _ := db.ListAchievements(story.ID)
 	messages, _ := db.GetRecentMessagesByStory(story.ID, 8)
+	fronts := knownFronts(loadFronts(world))
 
-	if entry := buildProtagonistCodexEntry(story, char, world, achievements, npcs); entry.Title != "" {
+	if entry := buildProtagonistCodexEntry(story, char, world, achievements, npcs, fronts); entry.Title != "" {
 		addEntry(entry)
 	}
 
@@ -125,11 +126,15 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	}
 
 	for _, loc := range parseKnownLocations(valueOrEmpty(world, func(w *storage.WorldState) string { return w.KnownLocationsJSON })) {
-		addEntry(buildLocationCodexEntry(loc, world))
+		addEntry(buildLocationCodexEntry(loc, world, fronts))
 	}
 
 	for _, faction := range parseFactionEntries(story.SettingJSON) {
 		addEntry(faction)
+	}
+
+	for _, front := range fronts {
+		addEntry(buildFrontCodexEntry(front))
 	}
 
 	hooks := activeStoryHooks(loadStoryHooks(world))
@@ -162,14 +167,15 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	addCategory("people", "People")
 	addCategory("places", "Places")
 	addCategory("factions", "Factions")
+	addCategory("fronts", "Fronts")
 	addCategory("mysteries", "Mysteries")
 	addCategory("threads", "Threads")
 
-	enrichCodexLinks(index, npcs, hooks, reactions, chapters, messages)
+	enrichCodexLinks(index, npcs, hooks, reactions, fronts, chapters, messages)
 	return index, nil
 }
 
-func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, world *storage.WorldState, achievements []storage.Achievement, npcs []storage.NPC) CodexEntry {
+func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, world *storage.WorldState, achievements []storage.Achievement, npcs []storage.NPC, fronts []Front) CodexEntry {
 	if story == nil || char == nil {
 		return CodexEntry{}
 	}
@@ -252,6 +258,18 @@ func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, w
 		entry.Sections = append(entry.Sections, CodexSection{Title: "Known People", Lines: lines})
 	}
 
+	if len(fronts) > 0 {
+		lines := make([]string, 0, len(fronts))
+		for _, front := range fronts {
+			lines = append(lines, formatKnownFrontSummary(front))
+			entry.Related = append(entry.Related, CodexLink{
+				EntryID: codexFrontEntryID(front.ID),
+				Label:   frontDisplayTitle(front),
+			})
+		}
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Known Fronts", Lines: lines})
+	}
+
 	return entry
 }
 
@@ -287,7 +305,7 @@ func buildNPCCodexEntry(npc *storage.NPC) CodexEntry {
 	return entry
 }
 
-func buildLocationCodexEntry(loc KnownLocation, world *storage.WorldState) CodexEntry {
+func buildLocationCodexEntry(loc KnownLocation, world *storage.WorldState, fronts []Front) CodexEntry {
 	if strings.TrimSpace(loc.Name) == "" {
 		return CodexEntry{}
 	}
@@ -306,7 +324,7 @@ func buildLocationCodexEntry(loc KnownLocation, world *storage.WorldState) Codex
 		lines = append(lines, "Current location.")
 	}
 
-	return CodexEntry{
+	entry := CodexEntry{
 		ID:       codexLocationEntryID(loc.Name),
 		Category: "places",
 		Title:    loc.Name,
@@ -314,6 +332,98 @@ func buildLocationCodexEntry(loc KnownLocation, world *storage.WorldState) Codex
 		Summary:  strings.TrimSpace(loc.Description),
 		Sections: []CodexSection{{Title: "Overview", Lines: lines}},
 	}
+	pressureLines := []string{}
+	for _, front := range fronts {
+		matched := false
+		for _, pressure := range normalizeFrontPressures(front.Pressures) {
+			if !strings.EqualFold(pressure.Region, loc.Name) && (loc.Region == "" || !strings.EqualFold(pressure.Region, loc.Region)) {
+				continue
+			}
+			pressureLines = append(pressureLines, frontDisplayTitle(front)+" - "+formatFrontPressureDisplay(pressure))
+			matched = true
+		}
+		if matched {
+			entry.Related = append(entry.Related, CodexLink{
+				EntryID: codexFrontEntryID(front.ID),
+				Label:   frontDisplayTitle(front),
+			})
+		}
+	}
+	if len(pressureLines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Pressure", Lines: pressureLines})
+	}
+	return entry
+}
+
+func buildFrontCodexEntry(front Front) CodexEntry {
+	title := frontDisplayTitle(front)
+	if title == "" {
+		return CodexEntry{}
+	}
+
+	faction := ""
+	if strings.EqualFold(front.Visibility, "known") {
+		faction = strings.TrimSpace(front.Faction)
+	}
+
+	subtitleParts := []string{}
+	if faction != "" {
+		subtitleParts = append(subtitleParts, faction)
+	}
+	if status := strings.TrimSpace(front.Status); status != "" {
+		subtitleParts = append(subtitleParts, strings.Title(strings.ToLower(status)))
+	}
+
+	summary := frontDisplayStakes(front)
+	if summary == "" && len(front.Pressures) > 0 {
+		summary = formatFrontPressureDisplay(normalizeFrontPressures(front.Pressures)[0])
+	}
+
+	entry := CodexEntry{
+		ID:       codexFrontEntryID(front.ID),
+		Category: "fronts",
+		Title:    title,
+		Subtitle: strings.Join(subtitleParts, " · "),
+		Summary:  summary,
+	}
+
+	overview := []string{}
+	if summary != "" {
+		overview = append(overview, summary)
+	}
+	if front.Segments > 0 {
+		overview = append(overview, fmt.Sprintf("Progress: %d/%d", front.Progress, front.Segments))
+	}
+	if faction != "" {
+		overview = append(overview, "Faction: "+faction)
+		entry.Related = append(entry.Related, CodexLink{
+			EntryID: codexFactionEntryID(faction),
+			Label:   faction,
+		})
+	}
+	if front.LastAdvancedTurn > 0 {
+		overview = append(overview, fmt.Sprintf("Last advanced on turn %d", front.LastAdvancedTurn))
+	}
+	if front.NextEscalationTurn > 0 && !strings.EqualFold(front.Status, "resolved") {
+		overview = append(overview, fmt.Sprintf("Next escalation on turn %d", front.NextEscalationTurn))
+	}
+	entry.Sections = append(entry.Sections, CodexSection{Title: "Overview", Lines: overview})
+
+	if pressures := normalizeFrontPressures(front.Pressures); len(pressures) > 0 {
+		lines := make([]string, 0, len(pressures))
+		for _, pressure := range pressures {
+			lines = append(lines, formatFrontPressureDisplay(pressure))
+			entry.Related = append(entry.Related, CodexLink{
+				EntryID: codexLocationEntryID(pressure.Region),
+				Label:   pressure.Region,
+			})
+		}
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Pressure", Lines: lines})
+	}
+	if resolution := strings.TrimSpace(front.Resolution); resolution != "" {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Outcome", Lines: []string{resolution}})
+	}
+	return entry
 }
 
 func parseFactionEntries(raw string) []CodexEntry {
@@ -445,7 +555,7 @@ func buildThreadEntryFromReaction(reaction WorldReaction) CodexEntry {
 	}
 }
 
-func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, reactions []WorldReaction, chapters []storage.Chapter, messages []storage.ChatMessage) {
+func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, reactions []WorldReaction, fronts []Front, chapters []storage.Chapter, messages []storage.ChatMessage) {
 	if index == nil {
 		return
 	}
@@ -475,6 +585,48 @@ func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, 
 						Lines: []string{strings.TrimSpace(message.Content)},
 					})
 					break
+				}
+			}
+			for _, front := range fronts {
+				for _, pressure := range normalizeFrontPressures(front.Pressures) {
+					if !strings.EqualFold(pressure.Region, entry.Title) {
+						continue
+					}
+					entry.Related = append(entry.Related, CodexLink{
+						EntryID: codexFrontEntryID(front.ID),
+						Label:   frontDisplayTitle(front),
+					})
+				}
+			}
+		case "factions":
+			for _, front := range fronts {
+				if !strings.EqualFold(front.Visibility, "known") || !strings.EqualFold(front.Faction, entry.Title) {
+					continue
+				}
+				entry.Related = append(entry.Related, CodexLink{
+					EntryID: codexFrontEntryID(front.ID),
+					Label:   frontDisplayTitle(front),
+				})
+			}
+		case "fronts":
+			for _, front := range fronts {
+				if !strings.EqualFold(codexFrontEntryID(front.ID), id) {
+					continue
+				}
+				if _, ok := index.Entries[codexThreadEntryID("hook", "front-hook:"+front.ID)]; ok {
+					entry.Related = append(entry.Related, CodexLink{
+						EntryID: codexThreadEntryID("hook", "front-hook:"+front.ID),
+						Label:   "Front thread",
+					})
+				}
+				for _, pressure := range normalizeFrontPressures(front.Pressures) {
+					reactionEntryID := codexThreadEntryID("reaction", "front-pressure:"+front.ID+":"+slugKey(pressure.Region)+":"+slugKey(pressure.Kind))
+					if _, ok := index.Entries[reactionEntryID]; ok {
+						entry.Related = append(entry.Related, CodexLink{
+							EntryID: reactionEntryID,
+							Label:   pressure.Region + " pressure",
+						})
+					}
 				}
 			}
 		}
@@ -512,6 +664,10 @@ func codexLocationEntryID(name string) string {
 
 func codexFactionEntryID(name string) string {
 	return "factions:" + strings.ToLower(strings.TrimSpace(name))
+}
+
+func codexFrontEntryID(id string) string {
+	return "fronts:" + strings.TrimSpace(id)
 }
 
 func codexMysteryEntryID(id string) string {
