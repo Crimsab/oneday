@@ -424,6 +424,7 @@ Plans:
 **Requirements**: TBD
 **Depends on:** Phase 17
 **UI hint:** no
+**Status:** Complete (2026-04-09)
 
 ### Success Criteria
 
@@ -433,10 +434,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 18.1: Define the social-duel state machine, action set, and engine-side resolution formulas on top of challenge and relationship systems
-- [ ] Plan 18.2: Add narrator/context contracts so the AI can frame stakes and consequences without bypassing engine authority
-- [ ] Plan 18.3: Build the duel UI/command flow between free narrative and full combat
-- [ ] Plan 18.4: Persist leverage, concessions, and aftermath into relationships, fronts, and world-reaction feeds
+- [x] Plan 18.1: Define the social-duel state machine, action set, and engine-side resolution formulas on top of challenge and relationship systems
+- [x] Plan 18.2: Add narrator/context contracts so the AI can frame stakes and consequences without bypassing engine authority
+- [x] Plan 18.3: Build the duel UI/command flow between free narrative and full combat
+- [x] Plan 18.4: Persist leverage, concessions, and aftermath into relationships, fronts, and world-reaction feeds
 
 ### Phase 19: Recurring Nemeses and Rival Escalation
 

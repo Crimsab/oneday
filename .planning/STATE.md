@@ -2,24 +2,34 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
-current_phase: 18
+current_phase: 19
 status: planning
-last_updated: "2026-04-09T21:08:00+02:00"
+last_updated: "2026-04-09T21:58:00+02:00"
 progress:
   total_phases: 22
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 67
-  completed_plans: 53
-  percent: 79.1
+  completed_plans: 57
+  percent: 85.1
 ---
 
 # Project State
 
-**Current Phase:** 18
+**Current Phase:** 19
 **Status:** Planning next milestone
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 18 execution completed.
+  Summaries written to `.planning/phases/18-social-duels-and-leverage-battles/18-01-SUMMARY.md`,
+  `.planning/phases/18-social-duels-and-leverage-battles/18-02-SUMMARY.md`,
+  `.planning/phases/18-social-duels-and-leverage-battles/18-03-SUMMARY.md`,
+  and `.planning/phases/18-social-duels-and-leverage-battles/18-04-SUMMARY.md`.
+  Verification saved in `.planning/phases/18-social-duels-and-leverage-battles/18-VERIFICATION.md`.
+  Delivered the canonical social-duel engine state machine, narrator/runtime duel framing contracts,
+  dedicated TUI duel flow with structured round handoff, and persistent aftermath into relationships,
+  world reactions, dossier notes, and front pressure.
 
 - 2026-04-09: Phase 17 execution completed.
   Summaries written to `.planning/phases/17-faction-fronts-and-regional-pressure/17-01-SUMMARY.md`,
