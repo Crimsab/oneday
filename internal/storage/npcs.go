@@ -12,13 +12,16 @@ func (db *DB) CreateNPC(npc *NPC) error {
 	if npc.RelationshipJSON == "" {
 		npc.RelationshipJSON = "{}"
 	}
+	if npc.NemesisJSON == "" {
+		npc.NemesisJSON = "{}"
+	}
 	_, err := db.conn.Exec(
 		`INSERT INTO npcs (id, story_id, name, role, appearance, personality_json, private_thoughts,
-         relationship_json, notes_on_protagonist, desires, disposition, is_alive, first_appeared_turn,
+         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive, first_appeared_turn,
          last_seen_turn, can_help, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		npc.ID, npc.StoryID, npc.Name, npc.Role, npc.Appearance, npc.PersonalityJSON,
-		npc.PrivateThoughts, npc.RelationshipJSON, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
+		npc.PrivateThoughts, npc.RelationshipJSON, npc.NemesisJSON, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
 		npc.IsAlive, npc.FirstAppearedTurn, npc.LastSeenTurn, npc.CanHelp,
 		npc.CreatedAt, npc.UpdatedAt,
 	)
@@ -33,12 +36,12 @@ func (db *DB) GetNPC(id string) (*NPC, error) {
 	npc := &NPC{}
 	err := db.conn.QueryRow(
 		`SELECT id, story_id, name, role, appearance, personality_json, private_thoughts,
-         relationship_json, notes_on_protagonist, desires, disposition, is_alive,
+         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive,
          first_appeared_turn, last_seen_turn, can_help, created_at, updated_at
          FROM npcs WHERE id = ?`, id,
 	).Scan(
 		&npc.ID, &npc.StoryID, &npc.Name, &npc.Role, &npc.Appearance, &npc.PersonalityJSON,
-		&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
+		&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NemesisJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
 		&npc.IsAlive, &npc.FirstAppearedTurn, &npc.LastSeenTurn, &npc.CanHelp,
 		&npc.CreatedAt, &npc.UpdatedAt,
 	)
@@ -54,12 +57,12 @@ func (db *DB) GetNPCByName(storyID, name string) (*NPC, error) {
 	npc := &NPC{}
 	err := db.conn.QueryRow(
 		`SELECT id, story_id, name, role, appearance, personality_json, private_thoughts,
-         relationship_json, notes_on_protagonist, desires, disposition, is_alive,
+         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive,
          first_appeared_turn, last_seen_turn, can_help, created_at, updated_at
          FROM npcs WHERE story_id = ? AND LOWER(name) = LOWER(?) AND is_alive = 1`, storyID, name,
 	).Scan(
 		&npc.ID, &npc.StoryID, &npc.Name, &npc.Role, &npc.Appearance, &npc.PersonalityJSON,
-		&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
+		&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NemesisJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
 		&npc.IsAlive, &npc.FirstAppearedTurn, &npc.LastSeenTurn, &npc.CanHelp,
 		&npc.CreatedAt, &npc.UpdatedAt,
 	)
@@ -76,7 +79,7 @@ func (db *DB) GetNPCByName(storyID, name string) (*NPC, error) {
 func (db *DB) ListNPCs(storyID string) ([]NPC, error) {
 	rows, err := db.conn.Query(
 		`SELECT id, story_id, name, role, appearance, personality_json, private_thoughts,
-         relationship_json, notes_on_protagonist, desires, disposition, is_alive,
+         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive,
          first_appeared_turn, last_seen_turn, can_help, created_at, updated_at
          FROM npcs WHERE story_id = ? ORDER BY first_appeared_turn ASC`, storyID,
 	)
@@ -90,7 +93,7 @@ func (db *DB) ListNPCs(storyID string) ([]NPC, error) {
 		var npc NPC
 		if err := rows.Scan(
 			&npc.ID, &npc.StoryID, &npc.Name, &npc.Role, &npc.Appearance, &npc.PersonalityJSON,
-			&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
+			&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NemesisJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
 			&npc.IsAlive, &npc.FirstAppearedTurn, &npc.LastSeenTurn, &npc.CanHelp,
 			&npc.CreatedAt, &npc.UpdatedAt,
 		); err != nil {
@@ -106,7 +109,7 @@ func (db *DB) ListRecentNPCs(storyID string, currentTurn, withinTurns int) ([]NP
 	threshold := currentTurn - withinTurns
 	rows, err := db.conn.Query(
 		`SELECT id, story_id, name, role, appearance, personality_json, private_thoughts,
-         relationship_json, notes_on_protagonist, desires, disposition, is_alive,
+         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive,
          first_appeared_turn, last_seen_turn, can_help, created_at, updated_at
          FROM npcs WHERE story_id = ? AND last_seen_turn >= ? AND is_alive = 1
          ORDER BY last_seen_turn DESC`, storyID, threshold,
@@ -121,7 +124,7 @@ func (db *DB) ListRecentNPCs(storyID string, currentTurn, withinTurns int) ([]NP
 		var npc NPC
 		if err := rows.Scan(
 			&npc.ID, &npc.StoryID, &npc.Name, &npc.Role, &npc.Appearance, &npc.PersonalityJSON,
-			&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
+			&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NemesisJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
 			&npc.IsAlive, &npc.FirstAppearedTurn, &npc.LastSeenTurn, &npc.CanHelp,
 			&npc.CreatedAt, &npc.UpdatedAt,
 		); err != nil {
@@ -137,11 +140,14 @@ func (db *DB) UpdateNPC(npc *NPC) error {
 	if npc.RelationshipJSON == "" {
 		npc.RelationshipJSON = "{}"
 	}
+	if npc.NemesisJSON == "" {
+		npc.NemesisJSON = "{}"
+	}
 	_, err := db.conn.Exec(
-		`UPDATE npcs SET personality_json = ?, private_thoughts = ?, relationship_json = ?,
+		`UPDATE npcs SET personality_json = ?, private_thoughts = ?, relationship_json = ?, nemesis_json = ?,
          notes_on_protagonist = ?, desires = ?, disposition = ?, is_alive = ?, can_help = ?, last_seen_turn = ?,
          updated_at = ? WHERE id = ?`,
-		npc.PersonalityJSON, npc.PrivateThoughts, npc.RelationshipJSON, npc.NotesOnProtagonist,
+		npc.PersonalityJSON, npc.PrivateThoughts, npc.RelationshipJSON, npc.NemesisJSON, npc.NotesOnProtagonist,
 		npc.Desires, npc.Disposition, npc.IsAlive, npc.CanHelp, npc.LastSeenTurn,
 		time.Now(), npc.ID,
 	)

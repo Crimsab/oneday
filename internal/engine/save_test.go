@@ -102,6 +102,7 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 		Role:              "watcher",
 		PersonalityJSON:   `{}`,
 		RelationshipJSON:  `{"trust":12,"fear":-3,"respect":8}`,
+		NemesisJSON:       `{"status":"active","rivalry_score":6,"escalation_tier":2,"threat_posture":"watching"}`,
 		Disposition:       1,
 		IsAlive:           true,
 		FirstAppearedTurn: 1,
@@ -295,6 +296,9 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 	}
 	if !strings.Contains(npcs[0].RelationshipJSON, `"trust":12`) {
 		t.Fatalf("restored npc relationship json = %s, want trust payload", npcs[0].RelationshipJSON)
+	}
+	if !strings.Contains(npcs[0].NemesisJSON, `"status":"active"`) {
+		t.Fatalf("restored npc nemesis json = %s, want active nemesis payload", npcs[0].NemesisJSON)
 	}
 
 	achievements, err := db.ListAchievements(story.ID)
