@@ -153,3 +153,27 @@ func TestFormatNPCForContextIncludesNemesisSignals(t *testing.T) {
 		t.Fatalf("context missing remembered patterns:\n%s", text)
 	}
 }
+
+func TestRecordNemesisEventCanReigniteResolvedNemesis(t *testing.T) {
+	npc := &storage.NPC{
+		Name:        "Lyanna",
+		NemesisJSON: `{"status":"resolved","rivalry_score":6,"escalation_tier":2,"threat_posture":"cold_truce","last_outcome":"The feud cooled for a while."}`,
+	}
+
+	profile := RecordNemesisEvent(npc, NemesisEvent{
+		Kind:    "betrayal",
+		Turn:    12,
+		Impact:  3,
+		Detail:  "Lyanna breaks the truce at the harbor court",
+		Pattern: "pressure",
+	})
+	if profile == nil {
+		t.Fatal("profile = nil after reignition event")
+	}
+	if profile.Status != NemesisStatusActive {
+		t.Fatalf("status = %q, want active after betrayal reignites the feud", profile.Status)
+	}
+	if !strings.Contains(npc.NemesisJSON, `"status":"active"`) {
+		t.Fatalf("nemesis_json = %s, want reactivated status", npc.NemesisJSON)
+	}
+}
