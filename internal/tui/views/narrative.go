@@ -88,6 +88,7 @@ type NarrativeModel struct {
 	overlay                 components.OverlayModel
 	historyBrowser          *historyBrowserModel
 	achievementBrowser      *AchievementBrowserModel
+	projectBrowser          *ProjectBrowserModel
 	codexBrowser            *CodexBrowserModel
 	achievementPopup        components.AchievementPopupModel
 	input                   textarea.Model
@@ -333,6 +334,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		if m.achievementBrowser != nil {
 			m.achievementBrowser.SetSize(msg.Width, msg.Height)
 		}
+		if m.projectBrowser != nil {
+			m.projectBrowser.SetSize(msg.Width, msg.Height)
+		}
 		if m.codexBrowser != nil {
 			m.codexBrowser.SetSize(msg.Width, msg.Height)
 		}
@@ -515,6 +519,16 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.achievementBrowser = &updated
 			return m, cmd
 		}
+		if m.projectBrowser != nil && m.projectBrowser.Visible() {
+			updated, cmd := m.projectBrowser.Update(msg)
+			if !updated.Visible() {
+				m.projectBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.projectBrowser = &updated
+			return m, cmd
+		}
 		if m.codexBrowser != nil && m.codexBrowser.Visible() {
 			updated, cmd := m.codexBrowser.Update(msg)
 			if !updated.Visible() {
@@ -556,6 +570,17 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				return m, nil
 			}
 			m.achievementBrowser = &updated
+			return m, cmd
+		}
+
+		if m.projectBrowser != nil && m.projectBrowser.Visible() {
+			updated, cmd := m.projectBrowser.Update(msg)
+			if !updated.Visible() {
+				m.projectBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.projectBrowser = &updated
 			return m, cmd
 		}
 
@@ -1346,7 +1371,17 @@ func (m NarrativeModel) showInvestigations() (NarrativeModel, tea.Cmd) {
 }
 
 func (m NarrativeModel) showProjects() (NarrativeModel, tea.Cmd) {
-	return m.openCodexBrowser("Projects", "projects", "")
+	if m.narrator == nil || m.narrator.Story() == nil {
+		m.errMsg = "Projects unavailable: no active story."
+		return m, nil
+	}
+
+	browser := NewProjectBrowserModel("Projects", engine.LoadProjectBoard(m.narrator.World()), m.width, m.height)
+	m.projectBrowser = &browser
+	m.historyReturnInputFocus = m.inputFocus
+	m.inputFocus = false
+	m.input.Blur()
+	return m, nil
 }
 
 func (m NarrativeModel) openCodexBrowser(title, initialCategory, initialEntryID string) (NarrativeModel, tea.Cmd) {
@@ -1822,6 +1857,10 @@ func (m NarrativeModel) View() string {
 		return m.achievementBrowser.View()
 	}
 
+	if m.projectBrowser != nil && m.projectBrowser.Visible() {
+		return m.projectBrowser.View()
+	}
+
 	if m.codexBrowser != nil && m.codexBrowser.Visible() {
 		return m.codexBrowser.View()
 	}
@@ -2042,6 +2081,9 @@ func (m *NarrativeModel) SetSize(w, h int) {
 	}
 	if m.achievementBrowser != nil {
 		m.achievementBrowser.SetSize(w, h)
+	}
+	if m.projectBrowser != nil {
+		m.projectBrowser.SetSize(w, h)
 	}
 	if m.codexBrowser != nil {
 		m.codexBrowser.SetSize(w, h)

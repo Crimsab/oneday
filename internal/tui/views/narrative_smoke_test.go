@@ -14,15 +14,16 @@ func TestNarrativeSlashCommandsOpenCodexBrowsers(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name         string
-		input        string
-		wantTitle    string
-		wantCategory string
-		wantEntries  bool
+		name              string
+		input             string
+		wantTitle         string
+		wantCategory      string
+		wantEntries       bool
+		wantProjectScreen bool
 	}{
 		{name: "codex", input: "/codex", wantTitle: "Codex"},
 		{name: "investigations", input: "/investigations", wantTitle: "Investigations", wantCategory: "investigations", wantEntries: true},
-		{name: "projects", input: "/projects", wantTitle: "Projects", wantCategory: "projects", wantEntries: true},
+		{name: "projects", input: "/projects", wantTitle: "Projects", wantProjectScreen: true},
 	}
 
 	for _, tc := range cases {
@@ -39,6 +40,18 @@ func TestNarrativeSlashCommandsOpenCodexBrowsers(t *testing.T) {
 			updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 			if cmd != nil {
 				t.Fatalf("Update(%s) returned unexpected cmd", tc.input)
+			}
+			if tc.wantProjectScreen {
+				if updated.projectBrowser == nil || !updated.projectBrowser.Visible() {
+					t.Fatalf("project browser not visible after %s", tc.input)
+				}
+				if updated.projectBrowser.title != tc.wantTitle {
+					t.Fatalf("project browser title = %q, want %q", updated.projectBrowser.title, tc.wantTitle)
+				}
+				if updated.codexBrowser != nil && updated.codexBrowser.Visible() {
+					t.Fatalf("codex browser should stay closed for %s", tc.input)
+				}
+				return
 			}
 			if updated.codexBrowser == nil || !updated.codexBrowser.Visible() {
 				t.Fatalf("codex browser not visible after %s", tc.input)
