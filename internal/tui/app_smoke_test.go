@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -149,6 +151,84 @@ func TestAppLoadSaveAndResumeRestoresStoryState(t *testing.T) {
 	}
 	if !strings.Contains(updated.View(), "The square is calm.") {
 		t.Fatalf("resume view missing restored narrative:\n%s", updated.View())
+	}
+}
+
+func TestAppLoadLegacySaveShowsPartialRollbackWarning(t *testing.T) {
+	t.Parallel()
+
+	fx := newAppSmokeFixture(t)
+	snap, err := engine.SaveGame(fx.db, fx.dataDir, fx.story, fx.char, fx.world, fx.session.SessionID(), "Legacy Slot")
+	if err != nil {
+		t.Fatalf("SaveGame: %v", err)
+	}
+
+	legacySnapshot := *snap
+	legacySnapshot.Story = nil
+	legacySnapshot.NPCs = nil
+	legacySnapshot.Achievements = nil
+	legacySnapshot.Chapters = nil
+	legacySnapshot.Sessions = nil
+	legacySnapshot.ChatMessages = nil
+	legacySnapshot.RAGChunks = nil
+	legacySnapshot.CombatLogs = nil
+	legacySnapshot.SessionFiles = nil
+
+	legacyBytes, err := json.Marshal(&legacySnapshot)
+	if err != nil {
+		t.Fatalf("json.Marshal legacy snapshot: %v", err)
+	}
+	legacyPath := filepath.Join(fx.dataDir, "stories", fx.story.ID, "saves", snap.ID+".json")
+	if err := os.WriteFile(legacyPath, legacyBytes, 0644); err != nil {
+		t.Fatalf("WriteFile legacy snapshot: %v", err)
+	}
+
+	mutatedChar := *fx.char
+	mutatedChar.Name = "Future Mara"
+	if err := fx.db.UpdateCharacterFull(&mutatedChar); err != nil {
+		t.Fatalf("UpdateCharacterFull: %v", err)
+	}
+
+	mutatedWorld := *fx.world
+	mutatedWorld.CurrentLocation = "Future Keep"
+	mutatedWorld.CurrentTurn = 77
+	if err := fx.db.UpdateWorldState(&mutatedWorld); err != nil {
+		t.Fatalf("UpdateWorldState: %v", err)
+	}
+
+	app := New(fx.cfg, fx.db, nil)
+	app.width = 120
+	app.height = 40
+
+	cmd, err := app.loadSaveAndResume(fx.story.ID, snap.ID)
+	if err != nil {
+		t.Fatalf("loadSaveAndResume legacy: %v", err)
+	}
+	if cmd == nil {
+		t.Fatal("loadSaveAndResume legacy returned nil cmd")
+	}
+
+	if !strings.Contains(app.View(), "Legacy save loaded: history rollback is partial") {
+		t.Fatalf("legacy warning missing from narrative view:\n%s", app.View())
+	}
+
+	restoredChar, err := fx.db.GetCharacterByStory(fx.story.ID)
+	if err != nil {
+		t.Fatalf("GetCharacterByStory: %v", err)
+	}
+	if restoredChar.Name != fx.char.Name {
+		t.Fatalf("restored legacy character name = %q, want %q", restoredChar.Name, fx.char.Name)
+	}
+
+	restoredWorld, err := fx.db.GetWorldState(fx.story.ID)
+	if err != nil {
+		t.Fatalf("GetWorldState: %v", err)
+	}
+	if restoredWorld.CurrentLocation != fx.world.CurrentLocation {
+		t.Fatalf("restored legacy location = %q, want %q", restoredWorld.CurrentLocation, fx.world.CurrentLocation)
+	}
+	if restoredWorld.CurrentTurn != fx.world.CurrentTurn {
+		t.Fatalf("restored legacy turn = %d, want %d", restoredWorld.CurrentTurn, fx.world.CurrentTurn)
 	}
 }
 
