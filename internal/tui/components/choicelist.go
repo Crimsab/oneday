@@ -16,6 +16,11 @@ type ChoiceSelectedMsg struct {
 	Text string
 }
 
+// ChoiceInspectRequestedMsg asks the parent view to explain the selected choice.
+type ChoiceInspectRequestedMsg struct {
+	ID int
+}
+
 // ChoiceItem is a choice displayed in the list.
 type ChoiceItem struct {
 	ID           int
@@ -82,6 +87,13 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 						ID:   selected.ID,
 						Text: selected.Text,
 					}
+				}
+			}
+		case "?":
+			if len(c.choices) > 0 {
+				selected := c.choices[c.cursor]
+				return c, func() tea.Msg {
+					return ChoiceInspectRequestedMsg{ID: selected.ID}
 				}
 			}
 		default:

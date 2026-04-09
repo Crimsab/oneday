@@ -44,6 +44,7 @@ type Narrator struct {
 	lastTTFT      int64
 	lastUsage     ai.Usage
 	lastStreamed  bool
+	asciiCfg      config.ASCIIArtConfig
 	dataDir       string
 	autosaveEvery int
 	rag           *rag.RAG         // optional — nil means RAG is disabled
@@ -62,6 +63,7 @@ func NewNarrator(
 	session *GameSession,
 	contextCfg ContextConfig,
 	genCfg config.GenerationConfig,
+	asciiCfg config.ASCIIArtConfig,
 	dataDir string,
 	autosaveEvery int,
 ) *Narrator {
@@ -78,6 +80,17 @@ func NewNarrator(
 	if genCfg.TimeoutSeconds == 0 {
 		genCfg.TimeoutSeconds = 60
 	}
+	if asciiCfg.Enabled {
+		if asciiCfg.Temperature == 0 {
+			asciiCfg.Temperature = 0.4
+		}
+		if asciiCfg.MaxTokens == 0 {
+			asciiCfg.MaxTokens = 400
+		}
+		if asciiCfg.TimeoutSeconds == 0 {
+			asciiCfg.TimeoutSeconds = 25
+		}
+	}
 	return &Narrator{
 		router:        router,
 		db:            db,
@@ -87,6 +100,7 @@ func NewNarrator(
 		session:       session,
 		contextCfg:    contextCfg,
 		genCfg:        genCfg,
+		asciiCfg:      asciiCfg,
 		dataDir:       dataDir,
 		autosaveEvery: autosaveEvery,
 	}
@@ -122,6 +136,9 @@ func (n *Narrator) LastUsage() ai.Usage { return n.lastUsage }
 
 // LastStreamed reports whether the last response used streaming.
 func (n *Narrator) LastStreamed() bool { return n.lastStreamed }
+
+// ASCIIArtEnabled reports whether ambient ASCII generation is enabled.
+func (n *Narrator) ASCIIArtEnabled() bool { return n.asciiCfg.Enabled }
 
 // Turn returns the current turn number.
 func (n *Narrator) Turn() int { return n.session.Turn() }
@@ -493,6 +510,7 @@ func (n *Narrator) finalizeTurn(
 			DialogueBlocks:    narrative.DialogueBlocks,
 			EntitiesMentioned: narrative.EntitiesMentioned,
 			EventCallouts:     narrative.EventCallouts,
+			ASCIICue:          narrative.ASCIICue,
 			ASCIIArt:          narrative.ASCIIArt,
 			StateChanges:      narrative.StateChanges,
 		},
@@ -635,6 +653,7 @@ func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation s
 		nr.DialogueBlocks = normalizeDialogueBlocks(meta.Output.DialogueBlocks)
 		nr.EntitiesMentioned = meta.Output.EntitiesMentioned
 		nr.EventCallouts = normalizeEventCallouts(meta.Output.EventCallouts)
+		nr.ASCIICue = normalizeASCIICue(meta.Output.ASCIICue)
 		nr.ASCIIArt = normalizeASCIIArt(meta.Output.ASCIIArt)
 	} else {
 		nr.Mood = firstNonEmpty(meta.Mood, nr.Mood)
@@ -654,6 +673,7 @@ func normalizeNarrativeResponse(nr *NarrativeResponse) {
 	nr.Choices = sanitizeChoices(nr.Choices)
 	nr.DialogueBlocks = normalizeDialogueBlocks(nr.DialogueBlocks)
 	nr.EventCallouts = normalizeEventCallouts(nr.EventCallouts)
+	nr.ASCIICue = normalizeASCIICue(nr.ASCIICue)
 	nr.ASCIIArt = normalizeASCIIArt(nr.ASCIIArt)
 }
 
@@ -696,6 +716,25 @@ func normalizeEventCallouts(callouts []EventCallout) []EventCallout {
 		})
 	}
 	return out
+}
+
+func normalizeASCIICue(cue *ASCIIArtCue) *ASCIIArtCue {
+	if cue == nil {
+		return nil
+	}
+	normalized := &ASCIIArtCue{
+		Kind:      strings.TrimSpace(cue.Kind),
+		Subject:   normalizeNarrativeText(cue.Subject),
+		Detail:    normalizeNarrativeText(cue.Detail),
+		Placement: strings.TrimSpace(cue.Placement),
+	}
+	if normalized.Subject == "" {
+		return nil
+	}
+	if normalized.Placement == "" {
+		normalized.Placement = "scene_header"
+	}
+	return normalized
 }
 
 func normalizeASCIIArt(text string) string {
@@ -754,4 +793,114 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// GenerateAmbientASCII uses the dedicated ASCII-art prompt/model for a single scene.
+// The generated art is also persisted back into the latest assistant-turn metadata
+// so resume/load can restore it later.
+func (n *Narrator) GenerateAmbientASCII(ctx context.Context, turn int, base *NarrativeResponse) (string, string, error) {
+	if !n.asciiCfg.Enabled || base == nil || base.ASCIICue == nil {
+		return "", "", nil
+	}
+
+	timeout := time.Duration(n.asciiCfg.TimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 25 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cue := normalizeASCIICue(base.ASCIICue)
+	if cue == nil {
+		return "", "", nil
+	}
+
+	req := ai.Request{
+		Messages: []ai.Message{
+			{Role: ai.RoleSystem, Content: prompts.ASCIIArtSystem()},
+			{Role: ai.RoleUser, Content: prompts.ASCIIArtUser(
+				n.story.Name,
+				firstNonEmpty(base.Location, n.world.CurrentLocation),
+				base.SceneType,
+				base.Mood,
+				base.Narrative,
+				cue.Kind,
+				cue.Subject,
+				cue.Detail,
+				cue.Placement,
+			)},
+		},
+		Model:          strings.TrimSpace(n.asciiCfg.Model),
+		Temperature:    n.asciiCfg.Temperature,
+		MaxTokens:      n.asciiCfg.MaxTokens,
+		ResponseFormat: ai.ASCIIArtResponseFormat(),
+	}
+
+	resp, err := n.router.Complete(ctx, req)
+	if err != nil {
+		return "", "", err
+	}
+
+	payload, err := ai.ParseASCIIArtJSON(resp.Content)
+	if err != nil {
+		return "", resp.Model, err
+	}
+	if payload == nil {
+		return "", resp.Model, nil
+	}
+
+	art := normalizeASCIIArt(payload.ASCIIArt)
+	if art == "" {
+		return "", resp.Model, nil
+	}
+
+	if err := n.persistAmbientASCII(turn, base, art, resp.Model); err != nil {
+		_ = err
+	}
+
+	return art, resp.Model, nil
+}
+
+func (n *Narrator) persistAmbientASCII(turn int, base *NarrativeResponse, art string, artModel string) error {
+	if turn < 0 || base == nil {
+		return nil
+	}
+
+	choiceTexts := make([]string, len(base.Choices))
+	for i, choice := range base.Choices {
+		choiceTexts[i] = choice.Text
+	}
+
+	output := &ChatOutput{
+		Narrative:         base.Narrative,
+		Choices:           choiceTexts,
+		ChoicesData:       base.Choices,
+		Mood:              base.Mood,
+		Location:          firstNonEmpty(base.Location, n.world.CurrentLocation),
+		SceneType:         base.SceneType,
+		DialogueBlocks:    base.DialogueBlocks,
+		EntitiesMentioned: base.EntitiesMentioned,
+		EventCallouts:     base.EventCallouts,
+		ASCIICue:          base.ASCIICue,
+		ASCIIArt:          art,
+		StateChanges:      base.StateChanges,
+	}
+
+	meta := map[string]any{
+		"model":      n.lastModel,
+		"latency_ms": n.lastLatency,
+		"mood":       base.Mood,
+		"location":   output.Location,
+		"choices":    choiceTexts,
+		"output":     output,
+	}
+	if strings.TrimSpace(artModel) != "" {
+		meta["ascii_model"] = artModel
+	}
+
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		return err
+	}
+	return n.db.UpdateAssistantMessageMetadata(n.story.ID, turn, string(metaJSON))
 }

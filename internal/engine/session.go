@@ -43,6 +43,7 @@ type ChatOutput struct {
 	DialogueBlocks    []DialogueBlock        `json:"dialogue_blocks,omitempty"`
 	EntitiesMentioned []EntityMention        `json:"entities_mentioned,omitempty"`
 	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
+	ASCIICue          *ASCIIArtCue           `json:"ascii_cue,omitempty"`
 	ASCIIArt          string                 `json:"ascii_art,omitempty"`
 	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
 }

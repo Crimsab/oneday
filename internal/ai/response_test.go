@@ -161,6 +161,7 @@ func TestParseNarrativeJSONStructuredRenderingMetadata(t *testing.T) {
   "dialogue_blocks": [{"speaker": "Lyanna", "role": "npc", "text": "Stay close."}],
   "entities_mentioned": [{"name": "Lyanna", "type": "npc"}, {"name": "Silver Vale", "type": "location"}],
   "event_callouts": [{"kind": "location", "title": "Silver Vale", "detail": "Location updated"}],
+  "ascii_cue": {"kind": "location", "subject": "Silver Vale gate", "detail": "Moonlit archway", "placement": "scene_header"},
   "choices": [{
     "id": 1,
     "text": "Follow Lyanna",
@@ -191,6 +192,9 @@ func TestParseNarrativeJSONStructuredRenderingMetadata(t *testing.T) {
 	if len(nr.EventCallouts) != 1 || nr.EventCallouts[0].Kind != "location" {
 		t.Fatalf("EventCallouts = %+v", nr.EventCallouts)
 	}
+	if nr.ASCIICue == nil || nr.ASCIICue.Kind != "location" || nr.ASCIICue.Subject != "Silver Vale gate" {
+		t.Fatalf("ASCIICue = %+v", nr.ASCIICue)
+	}
 	if len(nr.Choices) != 1 {
 		t.Fatalf("Choices len = %d, want 1", len(nr.Choices))
 	}
@@ -199,5 +203,20 @@ func TestParseNarrativeJSONStructuredRenderingMetadata(t *testing.T) {
 	}
 	if len(nr.Choices[0].RelatedStats) != 2 || nr.Choices[0].RelatedStats[0] != "perception" {
 		t.Fatalf("Choice related stats = %+v", nr.Choices[0].RelatedStats)
+	}
+}
+
+func TestParseASCIIArtJSON(t *testing.T) {
+	input := `{"ascii_art":" /\\\\\n<__>\n \\/ "}`
+
+	payload, err := ParseASCIIArtJSON(input)
+	if err != nil {
+		t.Fatalf("ParseASCIIArtJSON: %v", err)
+	}
+	if payload == nil {
+		t.Fatal("expected non-nil payload")
+	}
+	if payload.ASCIIArt == "" {
+		t.Fatal("expected ascii_art content")
 	}
 }

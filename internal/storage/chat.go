@@ -165,3 +165,23 @@ func (db *DB) CountSessionMessages(sessionID string) (int, error) {
 	}
 	return count, nil
 }
+
+// UpdateAssistantMessageMetadata replaces metadata_json for the latest assistant
+// message of a given story/turn pair.
+func (db *DB) UpdateAssistantMessageMetadata(storyID string, turn int, metadataJSON string) error {
+	_, err := db.conn.Exec(
+		`UPDATE chat_messages
+         SET metadata_json = ?
+         WHERE id = (
+           SELECT id FROM chat_messages
+           WHERE story_id = ? AND turn = ? AND role = 'assistant'
+           ORDER BY id DESC
+           LIMIT 1
+         )`,
+		metadataJSON, storyID, turn,
+	)
+	if err != nil {
+		return fmt.Errorf("updating assistant metadata for story %s turn %d: %w", storyID, turn, err)
+	}
+	return nil
+}

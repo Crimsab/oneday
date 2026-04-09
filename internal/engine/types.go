@@ -117,6 +117,14 @@ type EventCallout struct {
 	Detail string `json:"detail,omitempty"`
 }
 
+// ASCIIArtCue requests optional same-turn ambient ASCII art for a scene.
+type ASCIIArtCue struct {
+	Kind      string `json:"kind"`
+	Subject   string `json:"subject"`
+	Detail    string `json:"detail,omitempty"`
+	Placement string `json:"placement,omitempty"` // scene_header, inline
+}
+
 // NarrativeResponse is the standard AI response format during gameplay (AI-02).
 type NarrativeResponse struct {
 	Narrative            string                 `json:"narrative"`
@@ -128,6 +136,7 @@ type NarrativeResponse struct {
 	DialogueBlocks       []DialogueBlock        `json:"dialogue_blocks,omitempty"`
 	EntitiesMentioned    []EntityMention        `json:"entities_mentioned,omitempty"`
 	EventCallouts        []EventCallout         `json:"event_callouts,omitempty"`
+	ASCIICue             *ASCIIArtCue           `json:"ascii_cue,omitempty"`
 	ASCIIArt             string                 `json:"ascii_art,omitempty"`
 	Challenges           []*ChallengeSpec       `json:"challenges,omitempty"`
 	AchievementEarned    *AchievementData       `json:"achievement_earned,omitempty"`

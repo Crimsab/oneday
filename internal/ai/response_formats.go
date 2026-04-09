@@ -54,6 +54,11 @@ func CombatDefeatResponseFormat() *ResponseFormat {
 	return NewJSONSchemaResponseFormat("oneday_combat_defeat", combatDefeatSchema())
 }
 
+// ASCIIArtResponseFormat is the schema used for dedicated ambient ASCII-art generation.
+func ASCIIArtResponseFormat() *ResponseFormat {
+	return NewJSONSchemaResponseFormat("oneday_ascii_art", asciiArtGenerationSchema())
+}
+
 func storyDefinitionSchema() map[string]any {
 	return map[string]any{
 		"type":                 "object",
@@ -223,6 +228,7 @@ func narrativeSchema() map[string]any {
 				"type":  "array",
 				"items": eventCalloutSchema(),
 			},
+			"ascii_cue": nullableObjectSchema(asciiCueSchema()),
 			"state_changes": map[string]any{
 				"type":                 "object",
 				"additionalProperties": true,
@@ -259,6 +265,34 @@ func narrativeSchema() map[string]any {
 					"behavior":    stringSchema(),
 				},
 			}),
+			"ascii_art": stringSchema(),
+		},
+	}
+}
+
+func asciiCueSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"kind", "subject"},
+		"properties": map[string]any{
+			"kind": map[string]any{
+				"type": "string",
+				"enum": []string{"location", "chapter_opener", "signage", "terminal", "map", "ritual", "artifact", "skyline"},
+			},
+			"subject":   stringSchema(),
+			"detail":    stringSchema(),
+			"placement": stringSchema(),
+		},
+	}
+}
+
+func asciiArtGenerationSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"ascii_art"},
+		"properties": map[string]any{
 			"ascii_art": stringSchema(),
 		},
 	}

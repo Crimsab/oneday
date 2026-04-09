@@ -51,6 +51,14 @@ func (t *TypewriterModel) SetText(text string) tea.Cmd {
 	return t.tick()
 }
 
+// SetTextInstant replaces the current text and marks it as fully rendered.
+func (t *TypewriterModel) SetTextInstant(text string) {
+	t.fullText = text
+	t.displayed = len([]rune(text))
+	t.active = false
+	t.done = true
+}
+
 // AppendText adds text to the end (useful for streaming chunks).
 // Restarts ticking if the model was idle but not yet done.
 func (t *TypewriterModel) AppendText(text string) tea.Cmd {

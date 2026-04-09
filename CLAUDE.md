@@ -147,17 +147,23 @@ go vet ./...
 # Run the game
 go run ./cmd/oneday
 
-# Build main binary
-go build -o oneday ./cmd/oneday
+# Refresh the repo-root binary used by ./oneday
+go build -o ./oneday ./cmd/oneday
 
 # Build benchmark helper
-go build -o oneday-benchmark ./cmd/oneday-benchmark
+go build -o ./oneday-benchmark ./cmd/oneday-benchmark
+
+# Build ASCII benchmark helper
+go build -o ./oneday-ascii-benchmark ./cmd/oneday-ascii-benchmark
 
 # Cross-compile Linux amd64
-GOOS=linux GOARCH=amd64 go build -o oneday-linux-amd64 ./cmd/oneday
+GOOS=linux GOARCH=amd64 go build -o build/oneday-linux-amd64 ./cmd/oneday
 
 # Cross-compile Windows amd64
-GOOS=windows GOARCH=amd64 go build -o oneday-windows-amd64.exe ./cmd/oneday
+GOOS=windows GOARCH=amd64 go build -o build/oneday-windows-amd64.exe ./cmd/oneday
+
+# One-shot local workflow
+make all
 ```
 
 ## Configuration Model
@@ -179,6 +185,7 @@ Current defaults:
 - `litellm` enabled, base URL `http://lite.homelab.local/v1`, model `grok-4.1-fast`
 - `openrouter` disabled by default until a real API key is configured
 - `claude-code` disabled by default
+- `ai.ascii_art` can point at a dedicated ambient-ASCII model instead of reusing the main narrator
 
 RAG note:
 
