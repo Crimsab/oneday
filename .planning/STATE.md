@@ -2,24 +2,36 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
-current_phase: 21
-status: completed
+current_phase: 22
+status: planned
 last_updated: "2026-04-09T21:35:11+02:00"
 progress:
-  total_phases: 22
+  total_phases: 23
   completed_phases: 22
-  total_plans: 67
+  total_plans: 71
   completed_plans: 67
-  percent: 100.0
+  percent: 94
 ---
 
 # Project State
 
-**Current Phase:** 21
-**Status:** Phase execution complete
+**Current Phase:** 22
+**Status:** Ready to execute
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 22 added — QA, E2E Verification, and Release Hardening.
+  Scope targets build provenance, critical-path smoke coverage, reusable cross-system QA,
+  and safer release/operator workflow so stale binaries and integration regressions are easier to catch before shipping.
+
+- 2026-04-09: Phase 22 planning completed.
+  Plans written to `.planning/phases/22-qa-e2e-verification-and-release-hardening/22-01-PLAN.md`,
+  `.planning/phases/22-qa-e2e-verification-and-release-hardening/22-02-PLAN.md`,
+  `.planning/phases/22-qa-e2e-verification-and-release-hardening/22-03-PLAN.md`,
+  and `.planning/phases/22-qa-e2e-verification-and-release-hardening/22-04-PLAN.md`.
+  Planning prioritizes build identity first, then automated smoke coverage, then an explicit QA sweep,
+  and finally release-gate hardening so the phase can reduce both hidden regressions and operator confusion.
 
 - 2026-04-09: Phase 21 execution completed.
   Summaries written to `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-01-SUMMARY.md`,

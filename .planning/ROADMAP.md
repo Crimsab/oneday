@@ -498,6 +498,28 @@ Plans:
 - [x] Plan 21.2: Integrate downtime advancement with fronts, regional pressure, resource costs, and fail-forward consequences
 - [x] Plan 21.3: Surface project status and outcomes through dossiers, codex, and downtime interaction flows
 
+### Phase 22: QA, E2E Verification, and Release Hardening
+
+**Goal:** Prove the post-Phase-21 game is shippable by adding build provenance, critical-path smoke coverage, a reusable QA matrix, and stronger release gates.
+**Requirements**: TBD
+**Depends on:** Phase 21
+**UI hint:** no
+**Status:** Planned (2026-04-09)
+
+### Success Criteria
+
+1. Running binaries clearly expose build identity so developers can tell whether `./oneday` matches current source without relying on timestamps.
+2. Critical player flows have automated smoke coverage that passes locally and in CI without live-provider dependence.
+3. A reusable QA matrix exists for long-play and cross-system scenarios, and issues found during the sweep are fixed or explicitly triaged.
+4. Local and CI release flows both enforce the same rebuild and verification expectations before shipping artifacts.
+
+### Plans
+
+- [ ] Plan 22.1: Add build identity and runtime provenance for local and release binaries
+- [ ] Plan 22.2: Extend deterministic smoke coverage across critical player flows
+- [ ] Plan 22.3: Run a reusable cross-system QA matrix and triage/fix findings
+- [ ] Plan 22.4: Harden release gates, docs, and operator workflow around rebuild/verify/ship
+
 ---
 
 ## Requirements Coverage
