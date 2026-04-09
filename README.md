@@ -41,17 +41,23 @@ go test ./...
 # Run the game
 go run ./cmd/oneday
 
-# Build the main binary
-go build -o oneday ./cmd/oneday
+# Refresh the repo-root binary used by ./oneday
+go build -o ./oneday ./cmd/oneday
 
 # Build the benchmark tool
-go build -o oneday-benchmark ./cmd/oneday-benchmark
+go build -o ./oneday-benchmark ./cmd/oneday-benchmark
+
+# Build the ASCII benchmark tool
+go build -o ./oneday-ascii-benchmark ./cmd/oneday-ascii-benchmark
 
 # Linux amd64
-GOOS=linux GOARCH=amd64 go build -o oneday-linux-amd64 ./cmd/oneday
+GOOS=linux GOARCH=amd64 go build -o build/oneday-linux-amd64 ./cmd/oneday
 
 # Windows amd64
-GOOS=windows GOARCH=amd64 go build -o oneday-windows-amd64.exe ./cmd/oneday
+GOOS=windows GOARCH=amd64 go build -o build/oneday-windows-amd64.exe ./cmd/oneday
+
+# Or use the Makefile helper
+make all
 ```
 
 ## Configuration
@@ -74,6 +80,7 @@ Current default provider strategy:
 - primary: `litellm` via `http://lite.homelab.local/v1` with `grok-4.1-fast`
 - `openrouter` is available but disabled by default until you provide a real API key
 - final fallback: `claude-code` if enabled
+- optional ambient ASCII art uses `ai.ascii_art.*` and can target a different model from the main narrator
 
 RAG / embeddings note:
 
@@ -95,6 +102,7 @@ Workflow files:
 
 - `.github/workflows/build-release.yml` for CI and tag-based release builds
 - `.github/workflows/release-please.yml` for automated release PRs, tags, and release asset upload
+- `Makefile` for local `./oneday`, benchmark, and cross-platform builds
 
 ## License
 

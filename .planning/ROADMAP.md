@@ -1,8 +1,8 @@
 # Roadmap: OneDay
 
 **Milestone:** v1.0 — First Playable
-**Phases:** 9
-**Requirements:** 81 mapped
+**Phases:** 10
+**Requirements:** 88 mapped
 
 ---
 
@@ -218,7 +218,7 @@ Note for future planning:
 - [x] Plan 8.1: Define the rendering data contract and build the narrative semantic renderer foundation — speaker styling, entity highlighting, event callout pipeline, and strong fallback behavior
 - [x] Plan 8.2: Implement semantic choice rendering and integration polish — intent/risk metadata, dynamic stat badges, renderer verification, and narrative-view integration pass
 
-### Phase 9: Narrative UX and Input Polish
+## Phase 9: Narrative UX and Input Polish
 
 **Goal:** Tighten the live play experience around the narrative view: make dialogue and relationship updates readable, fix stale/duplicated choice behavior, improve resume/load/session UX, and add keyboard-first + telemetry polish without changing the core game loop.
 **Requirements**: AI-07, STOR-06, STOR-07, STOR-08, TUI-15, TUI-16, TUI-17, TUI-18, TUI-19, TUI-20, TUI-21, TUI-22
@@ -243,6 +243,30 @@ Plans:
 - [x] Plan 9.3: Improve keyboard/session UX, save/story management, and footer telemetry — Space/Enter parity, safer Esc flow, quick save, delete/archive flows, and cached-token/status metrics
 
 ---
+## Phase 10: Ambient ASCII Art and Model Benchmarking
+
+**Goal:** Add scene-aware ambient ASCII art as an optional same-turn enhancement, close the remaining narrative UX follow-ups, and benchmark dedicated ASCII-capable models so the feature can use the right model/cost profile instead of overloading the main narrator.
+**Requirements**: AI-08, AI-09, BENCH-01, BENCH-02, TUI-23, TUI-24, TUI-25
+**Depends on:** Phase 9
+**UI hint:** no
+**Status:** Complete (2026-04-09)
+
+### Success Criteria
+
+1. Narrative responses can request optional ambient ASCII art through structured cue metadata instead of embedding large art blobs directly in the main narrator payload.
+2. When a valid ASCII cue is present, the game can trigger a second, specialized AI call and render the resulting art into the same scene without advancing the story to a new turn.
+3. ASCII art appears only for curated ambient scenarios such as first location reveals, chapter openers, signage, terminals, ritual diagrams, maps, or iconic objects, and degrades cleanly when unavailable.
+4. Choice-related stat badges have an in-context keyboard inspect/help flow so the player can understand referenced stats without leaving the narrative view blindly.
+5. Local developer builds refresh the root `./oneday` binary in addition to cross-platform outputs, so testing `./oneday` from the repo root runs the latest code.
+6. The repository includes a dedicated ASCII-art benchmark with latency, throughput, cost, and OpenRouter model catalog metadata for the candidate models under evaluation.
+7. OneDay's LiteLLM/OpenRouter setup is aligned with the chosen narrator, fallback, embedding, and ASCII-art models so the default local config no longer drifts from the actual proxy capabilities.
+
+Plans:
+- [x] Plan 10.1: Introduce structured `ascii_cue` metadata, same-turn ambient ASCII generation, renderer integration, and scene-safe fallback behavior
+- [x] Plan 10.2: Close remaining narrative UX follow-ups — in-context stat inspect/help, clearer ASCII/telemetry docs, and a reliable local root-binary build flow
+- [x] Plan 10.3: Extend the benchmark suite for ASCII-art generation, evaluate the candidate models with cost/speed/context metrics, and align provider/proxy config with the selected defaults
+
+---
 
 ## Requirements Coverage
 
@@ -257,6 +281,7 @@ Plans:
 | 7 | 6 | ACH-01–ACH-04, TUI-08, TUI-09 |
 | 8 | 6 | AI-06, TUI-10–TUI-14 |
 | 9 | 12 | AI-07, STOR-06–STOR-08, TUI-15–TUI-22 |
-| **Total** | **81** | All mapped requirements through Phase 9 |
+| 10 | 7 | AI-08, AI-09, BENCH-01, BENCH-02, TUI-23–TUI-25 |
+| **Total** | **88** | All mapped requirements through Phase 10 |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.

@@ -152,6 +152,24 @@
 - [x] **TUI-21**: Footer/status UI keeps vitals within valid displayed ranges and presents clearer timing/token/cache/cost telemetry when available
 - [x] **TUI-22**: The TUI offers quick keyboard access for save/session management and exposes save/story cleanup actions from the relevant picker views
 
+## v1.3 Requirements
+
+### AI / Ambient ASCII
+
+- [x] **AI-08**: Narrative responses may include optional structured `ascii_cue` metadata describing when ambient ASCII art would improve a scene, without requiring the main narrator to emit the final art inline
+- [x] **AI-09**: The runtime can issue a dedicated same-turn ASCII-art generation call from a scene cue and attach the result to the current scene without advancing the story or breaking when the art request fails
+
+### Benchmarking / Model Selection
+
+- [x] **BENCH-01**: The repository includes a dedicated ASCII-art benchmark for OneDay scenes that records latency, completion time, throughput, cost, and OpenRouter model catalog metadata
+- [x] **BENCH-02**: Benchmark reports compare ASCII-art candidate models across multiple rankings such as quality, quality-per-cost, quality-per-latency, and practical runtime suitability
+
+### TUI Ambient UX
+
+- [x] **TUI-23**: Ambient ASCII art appears only for scene-appropriate moments and renders into the same scene block with graceful fallback when unavailable or out of bounds
+- [x] **TUI-24**: Choice-related stat badges are inspectable through a keyboard-first help flow so the player can understand referenced stats without leaving the narrative context blindly
+- [x] **TUI-25**: Local developer builds provide an explicit path to refresh the repo-root `./oneday` binary used for manual testing, not just temporary or release artifact builds
+
 ## v2 Requirements
 
 ### Plugin System
@@ -271,6 +289,13 @@
 | TUI-20 | Phase 9: Narrative UX and Input Polish |
 | TUI-21 | Phase 9: Narrative UX and Input Polish |
 | TUI-22 | Phase 9: Narrative UX and Input Polish |
+| AI-08 | Phase 10: Ambient ASCII Art and Model Benchmarking |
+| AI-09 | Phase 10: Ambient ASCII Art and Model Benchmarking |
+| BENCH-01 | Phase 10: Ambient ASCII Art and Model Benchmarking |
+| BENCH-02 | Phase 10: Ambient ASCII Art and Model Benchmarking |
+| TUI-23 | Phase 10: Ambient ASCII Art and Model Benchmarking |
+| TUI-24 | Phase 10: Ambient ASCII Art and Model Benchmarking |
+| TUI-25 | Phase 10: Ambient ASCII Art and Model Benchmarking |
 
 ---
-*Last updated: 2026-04-09 after adding Phase 9 requirements*
+*Last updated: 2026-04-09 after completing Phase 10*

@@ -39,6 +39,16 @@ ai:
     model: "text-embedding-3-small"
     # Uses the first available provider that supports embeddings
 
+  # Optional ambient ASCII-art generation for scene headers/signage/maps/etc.
+  ascii_art:
+    enabled: true
+    # Use the local LiteLLM alias when available; direct OpenRouter slugs also work
+    # if the fallback chain reaches the OpenRouter provider.
+    model: "ascii-ambient"
+    temperature: 0.4
+    max_tokens: 400
+    timeout_seconds: 25
+
   # Generation settings
   generation:
     temperature: 0.8

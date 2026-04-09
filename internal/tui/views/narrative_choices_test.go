@@ -22,7 +22,7 @@ func TestBuildChoiceItemsResolvesStorySchemaStatLabels(t *testing.T) {
 	}
 
 	story := &storage.Story{StatsSchemaJSON: string(schemaJSON)}
-	narrator := engine.NewNarrator(nil, nil, story, nil, nil, nil, engine.ContextConfig{}, config.GenerationConfig{}, "", 0)
+	narrator := engine.NewNarrator(nil, nil, story, nil, nil, nil, engine.ContextConfig{}, config.GenerationConfig{}, config.ASCIIArtConfig{}, "", 0)
 	model := &NarrativeModel{narrator: narrator}
 
 	items := model.buildChoiceItems([]engine.Choice{

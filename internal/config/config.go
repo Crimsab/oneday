@@ -22,6 +22,7 @@ type AIConfig struct {
 	LiteLLM          LiteLLMConfig    `yaml:"litellm"`
 	OpenRouter       OpenRouterConfig `yaml:"openrouter"`
 	Embedding        EmbeddingConfig  `yaml:"embedding"`
+	ASCIIArt         ASCIIArtConfig   `yaml:"ascii_art"`
 	Generation       GenerationConfig `yaml:"generation"`
 }
 
@@ -50,6 +51,15 @@ type OpenRouterConfig struct {
 // EmbeddingConfig for RAG embedding model.
 type EmbeddingConfig struct {
 	Model string `yaml:"model"`
+}
+
+// ASCIIArtConfig controls optional ambient ASCII-art generation.
+type ASCIIArtConfig struct {
+	Enabled        bool    `yaml:"enabled"`
+	Model          string  `yaml:"model"`
+	Temperature    float64 `yaml:"temperature"`
+	MaxTokens      int     `yaml:"max_tokens"`
+	TimeoutSeconds int     `yaml:"timeout_seconds"`
 }
 
 // GenerationConfig for AI text generation.
@@ -103,6 +113,13 @@ func Default() Config {
 			},
 			Embedding: EmbeddingConfig{
 				Model: "text-embedding-3-small",
+			},
+			ASCIIArt: ASCIIArtConfig{
+				Enabled:        true,
+				Model:          "ascii-ambient",
+				Temperature:    0.4,
+				MaxTokens:      400,
+				TimeoutSeconds: 25,
 			},
 			Generation: GenerationConfig{
 				Temperature:    0.8,
@@ -163,6 +180,14 @@ func (c *Config) Validate() error {
 	}
 	if c.AI.Generation.TimeoutSeconds <= 0 {
 		return fmt.Errorf("ai.generation.timeout_seconds must be positive")
+	}
+	if c.AI.ASCIIArt.Enabled {
+		if c.AI.ASCIIArt.MaxTokens <= 0 {
+			return fmt.Errorf("ai.ascii_art.max_tokens must be positive when ascii art is enabled")
+		}
+		if c.AI.ASCIIArt.TimeoutSeconds <= 0 {
+			return fmt.Errorf("ai.ascii_art.timeout_seconds must be positive when ascii art is enabled")
+		}
 	}
 	return nil
 }
