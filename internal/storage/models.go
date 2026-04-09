@@ -58,19 +58,20 @@ type NPC struct {
 
 // WorldState tracks the global state of a story.
 type WorldState struct {
-	ID                   string    `json:"id"`
-	StoryID              string    `json:"story_id"`
-	CurrentLocation      string    `json:"current_location"`
-	KnownLocationsJSON   string    `json:"known_locations_json"`
-	GlobalEventsJSON     string    `json:"global_events_json"`
-	FactionStandingsJSON string    `json:"faction_standings_json"`
-	StoryHooksJSON       string    `json:"story_hooks_json"`
-	WorldReactionsJSON   string    `json:"world_reactions_json"`
-	PlayerGuidanceJSON   string    `json:"player_guidance_json"`
-	FrontsJSON           string    `json:"fronts_json"`
-	CurrentChapter       int       `json:"current_chapter"`
-	CurrentTurn          int       `json:"current_turn"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	ID                     string    `json:"id"`
+	StoryID                string    `json:"story_id"`
+	CurrentLocation        string    `json:"current_location"`
+	KnownLocationsJSON     string    `json:"known_locations_json"`
+	GlobalEventsJSON       string    `json:"global_events_json"`
+	FactionStandingsJSON   string    `json:"faction_standings_json"`
+	StoryHooksJSON         string    `json:"story_hooks_json"`
+	WorldReactionsJSON     string    `json:"world_reactions_json"`
+	InvestigationBoardJSON string    `json:"investigation_board_json"`
+	PlayerGuidanceJSON     string    `json:"player_guidance_json"`
+	FrontsJSON             string    `json:"fronts_json"`
+	CurrentChapter         int       `json:"current_chapter"`
+	CurrentTurn            int       `json:"current_turn"`
+	UpdatedAt              time.Time `json:"updated_at"`
 }
 
 // Session represents a play session within a story.

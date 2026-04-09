@@ -115,6 +115,9 @@ func (db *DB) CreateWorldState(ws *WorldState) error {
 	if ws.WorldReactionsJSON == "" {
 		ws.WorldReactionsJSON = "[]"
 	}
+	if ws.InvestigationBoardJSON == "" {
+		ws.InvestigationBoardJSON = "{}"
+	}
 	if ws.PlayerGuidanceJSON == "" {
 		ws.PlayerGuidanceJSON = "[]"
 	}
@@ -124,11 +127,11 @@ func (db *DB) CreateWorldState(ws *WorldState) error {
 	_, err := db.conn.Exec(
 		`INSERT INTO world_state (id, story_id, current_location, known_locations_json,
          global_events_json, faction_standings_json, story_hooks_json, world_reactions_json,
-         player_guidance_json, fronts_json, current_chapter, current_turn, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         investigation_board_json, player_guidance_json, fronts_json, current_chapter, current_turn, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ws.ID, ws.StoryID, ws.CurrentLocation, ws.KnownLocationsJSON,
 		ws.GlobalEventsJSON, ws.FactionStandingsJSON, ws.StoryHooksJSON, ws.WorldReactionsJSON,
-		ws.PlayerGuidanceJSON, ws.FrontsJSON,
+		ws.InvestigationBoardJSON, ws.PlayerGuidanceJSON, ws.FrontsJSON,
 		ws.CurrentChapter, ws.CurrentTurn, ws.UpdatedAt,
 	)
 	if err != nil {
@@ -143,11 +146,11 @@ func (db *DB) GetWorldState(storyID string) (*WorldState, error) {
 	err := db.conn.QueryRow(
 		`SELECT id, story_id, current_location, known_locations_json,
          global_events_json, faction_standings_json, story_hooks_json, world_reactions_json,
-         player_guidance_json, fronts_json, current_chapter, current_turn, updated_at
+         investigation_board_json, player_guidance_json, fronts_json, current_chapter, current_turn, updated_at
          FROM world_state WHERE story_id = ?`, storyID,
 	).Scan(&ws.ID, &ws.StoryID, &ws.CurrentLocation, &ws.KnownLocationsJSON,
 		&ws.GlobalEventsJSON, &ws.FactionStandingsJSON, &ws.StoryHooksJSON, &ws.WorldReactionsJSON,
-		&ws.PlayerGuidanceJSON, &ws.FrontsJSON,
+		&ws.InvestigationBoardJSON, &ws.PlayerGuidanceJSON, &ws.FrontsJSON,
 		&ws.CurrentChapter, &ws.CurrentTurn, &ws.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("getting world state for story %s: %w", storyID, err)
@@ -218,6 +221,9 @@ func updateWorldStateExec(exec sqlExecer, ws *WorldState) error {
 	if ws.WorldReactionsJSON == "" {
 		ws.WorldReactionsJSON = "[]"
 	}
+	if ws.InvestigationBoardJSON == "" {
+		ws.InvestigationBoardJSON = "{}"
+	}
 	if ws.PlayerGuidanceJSON == "" {
 		ws.PlayerGuidanceJSON = "[]"
 	}
@@ -227,11 +233,11 @@ func updateWorldStateExec(exec sqlExecer, ws *WorldState) error {
 	_, err := exec.Exec(
 		`UPDATE world_state SET current_location = ?, known_locations_json = ?,
          global_events_json = ?, faction_standings_json = ?, story_hooks_json = ?,
-         world_reactions_json = ?, player_guidance_json = ?, fronts_json = ?, current_chapter = ?, current_turn = ?, updated_at = ?
+         world_reactions_json = ?, investigation_board_json = ?, player_guidance_json = ?, fronts_json = ?, current_chapter = ?, current_turn = ?, updated_at = ?
          WHERE id = ?`,
 		ws.CurrentLocation, ws.KnownLocationsJSON,
 		ws.GlobalEventsJSON, ws.FactionStandingsJSON, ws.StoryHooksJSON, ws.WorldReactionsJSON,
-		ws.PlayerGuidanceJSON, ws.FrontsJSON,
+		ws.InvestigationBoardJSON, ws.PlayerGuidanceJSON, ws.FrontsJSON,
 		ws.CurrentChapter, ws.CurrentTurn, time.Now(),
 		ws.ID,
 	)
