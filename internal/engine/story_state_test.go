@@ -335,3 +335,205 @@ func TestApplyStateChangesFailForwardAdvancesReferencedFront(t *testing.T) {
 		t.Fatalf("reactions = %+v, want fail-forward reaction plus derived front pressure reaction", reactions)
 	}
 }
+
+func TestApplyStateChangesNemesisResolutionCaptureLeavesContainmentFallout(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+
+	story := &storage.Story{
+		ID:          "story-nemesis-capture",
+		Name:        "Nemesis Capture Story",
+		SettingJSON: `{"factions":["Bell Choir"]}`,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	world := newTestWorld()
+	world.StoryID = story.ID
+	world.CurrentLocation = "Bell Quarter"
+	world.CurrentTurn = 9
+	storeFronts(world, []Front{
+		{
+			ID:           "front-bell",
+			Faction:      "Bell Choir",
+			Title:        "The Silent Bell Choir is seeding sleepers across the district",
+			PublicTitle:  "Whispers Around the Bell Tower",
+			PublicStakes: "Something ugly is taking hold around the tower.",
+			Visibility:   "known",
+			Segments:     6,
+			Progress:     4,
+			Pressures: []FrontPressure{
+				{Region: "Bell Quarter", Kind: "suspicion", Level: 40, UpdatedTurn: 9},
+			},
+		},
+	})
+
+	if err := db.CreateNPC(&storage.NPC{
+		ID:                "npc-lyanna",
+		StoryID:           story.ID,
+		Name:              "Lyanna",
+		Role:              "broker",
+		PersonalityJSON:   `{}`,
+		RelationshipJSON:  `{"fear":5,"respect":2}`,
+		NemesisJSON:       `{"status":"active","rivalry_score":8,"escalation_tier":3,"threat_posture":"vengeful","last_outcome":"Escaped the tribunal."}`,
+		Disposition:       -30,
+		IsAlive:           true,
+		FirstAppearedTurn: 2,
+		LastSeenTurn:      8,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("CreateNPC: %v", err)
+	}
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"nemesis_resolution": map[string]interface{}{
+			"name":     "Lyanna",
+			"outcome":  "capture",
+			"detail":   "The harbor watch drags Lyanna into an iron cell.",
+			"front_id": "front-bell",
+		},
+	}, char, world, db, story.ID, 10)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+	if len(applied) < 3 {
+		t.Fatalf("applied changes = %+v, want nemesis + world fallout entries", applied)
+	}
+
+	npc, err := db.GetNPCByName(story.ID, "Lyanna")
+	if err != nil || npc == nil {
+		t.Fatalf("GetNPCByName: %v", err)
+	}
+	profile := loadNemesisProfile(npc)
+	if profile == nil {
+		t.Fatal("expected persisted nemesis profile after capture")
+	}
+	if profile.Status != NemesisStatusResolved {
+		t.Fatalf("profile status = %q, want resolved", profile.Status)
+	}
+	if profile.ThreatPosture != "contained" {
+		t.Fatalf("profile threat_posture = %q, want contained", profile.ThreatPosture)
+	}
+	if !npc.IsAlive {
+		t.Fatal("captured nemesis should remain alive")
+	}
+
+	hooks := activeStoryHooks(loadStoryHooks(world))
+	if len(hooks) != 1 || !strings.Contains(hooks[0].Title, "Holding Lyanna") {
+		t.Fatalf("hooks = %+v, want holding hook", hooks)
+	}
+	reactions := visibleWorldReactions(loadWorldReactions(world))
+	if len(reactions) != 1 || reactions[0].Title != "Lyanna is in chains" {
+		t.Fatalf("reactions = %+v, want capture reaction", reactions)
+	}
+	fronts := loadFronts(world)
+	if len(fronts) != 1 || fronts[0].Status != "stalled" {
+		t.Fatalf("fronts = %+v, want stalled front", fronts)
+	}
+}
+
+func TestApplyStateChangesNemesisResolutionSuccessionKeepsArcMoving(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+
+	story := &storage.Story{
+		ID:          "story-nemesis-succession",
+		Name:        "Nemesis Succession Story",
+		SettingJSON: `{"factions":["Bell Choir"]}`,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	world := newTestWorld()
+	world.StoryID = story.ID
+	world.CurrentLocation = "Bell Quarter"
+	world.CurrentTurn = 11
+	storeFronts(world, []Front{
+		{
+			ID:           "front-bell",
+			Faction:      "Bell Choir",
+			Title:        "The Silent Bell Choir is seeding sleepers across the district",
+			PublicTitle:  "Whispers Around the Bell Tower",
+			PublicStakes: "Something ugly is taking hold around the tower.",
+			Visibility:   "known",
+			Segments:     6,
+			Progress:     3,
+			Pressures: []FrontPressure{
+				{Region: "Bell Quarter", Kind: "control", Level: 55, UpdatedTurn: 11},
+			},
+		},
+	})
+
+	if err := db.CreateNPC(&storage.NPC{
+		ID:                "npc-lyanna-succession",
+		StoryID:           story.ID,
+		Name:              "Lyanna",
+		Role:              "broker",
+		PersonalityJSON:   `{}`,
+		RelationshipJSON:  `{}`,
+		NemesisJSON:       `{"status":"active","rivalry_score":9,"escalation_tier":4,"threat_posture":"political","last_outcome":"Bell Choir fixers keep moving around Lyanna."}`,
+		Disposition:       -40,
+		IsAlive:           true,
+		FirstAppearedTurn: 2,
+		LastSeenTurn:      10,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("CreateNPC: %v", err)
+	}
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"nemesis_resolution": map[string]interface{}{
+			"name":      "Lyanna",
+			"outcome":   "succession",
+			"detail":    "Sable Jack picks up Lyanna's debts and grudges.",
+			"successor": "Sable Jack",
+			"front_id":  "front-bell",
+		},
+	}, char, world, db, story.ID, 12)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+	if len(applied) < 3 {
+		t.Fatalf("applied changes = %+v, want nemesis succession fallout", applied)
+	}
+
+	npc, err := db.GetNPCByName(story.ID, "Lyanna")
+	if err != nil || npc == nil {
+		t.Fatalf("GetNPCByName: %v", err)
+	}
+	profile := loadNemesisProfile(npc)
+	if profile == nil || profile.Status != NemesisStatusResolved {
+		t.Fatalf("profile = %+v, want resolved after succession", profile)
+	}
+	if profile.ThreatPosture != "succession" {
+		t.Fatalf("threat_posture = %q, want succession", profile.ThreatPosture)
+	}
+
+	hooks := activeStoryHooks(loadStoryHooks(world))
+	if len(hooks) != 1 || hooks[0].Title != "Sable Jack" {
+		t.Fatalf("hooks = %+v, want successor hook", hooks)
+	}
+	reactions := visibleWorldReactions(loadWorldReactions(world))
+	if len(reactions) != 1 || reactions[0].Title != "Sable Jack" {
+		t.Fatalf("reactions = %+v, want successor reaction", reactions)
+	}
+	fronts := loadFronts(world)
+	if len(fronts) != 1 {
+		t.Fatalf("fronts = %+v, want 1 front", fronts)
+	}
+	if fronts[0].Status != "active" || fronts[0].Progress != 4 {
+		t.Fatalf("front after succession = %+v, want active with progress advanced", fronts[0])
+	}
+}
