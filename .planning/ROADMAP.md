@@ -454,10 +454,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 19.1: Add nemesis profile/state and promotion rules tied to combat, social duels, fronts, and relationship history
-- [ ] Plan 19.2: Extend encounter generation and retrieval so active nemeses are reused with remembered patterns and stakes
-- [ ] Plan 19.3: Surface nemesis dossiers, last-seen state, and escalation traces without leaking hidden plans
-- [ ] Plan 19.4: Support multiple resolution paths such as escape, capture, truce, humiliation, alliance, or succession
+- [x] Plan 19.1: Add nemesis profile/state and promotion rules tied to combat, social duels, fronts, and relationship history
+- [x] Plan 19.2: Extend encounter generation and retrieval so active nemeses are reused with remembered patterns and stakes
+- [x] Plan 19.3: Surface nemesis dossiers, last-seen state, and escalation traces without leaking hidden plans
+- [x] Plan 19.4: Support multiple resolution paths such as escape, capture, truce, humiliation, alliance, or succession
 
 ### Phase 20: Investigation Board and Evidence Logic
 
