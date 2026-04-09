@@ -313,6 +313,10 @@ Rules:
 - Use "mode": "continue" when reacting to an ongoing duel result
 - Keep the object grounded in the current fiction
 - If the runtime ignores or trims this metadata, the narrative must still read cleanly on its own
+- When the player sends [Social Duel Result] followed by JSON, treat that JSON as authoritative engine output.
+  Narrate the immediate exchange truthfully from those results.
+  If resolved is false, continue the scene and emit social_duel with mode continue.
+  If resolved is true, move into aftermath and omit social_duel unless a brand-new duel begins later.
 
 If the active story schema supports combat and the scene becomes a real hostile encounter, prefer "combat_start" over resolving the whole fight through a single challenge.
 

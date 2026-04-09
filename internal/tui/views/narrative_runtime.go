@@ -102,6 +102,13 @@ func (m *NarrativeModel) activateDeferredSceneState() {
 		m.deferredChallenges = nil
 	}
 
+	if m.deferredSocialDuel != nil {
+		m.pendingSocialDuel = m.deferredSocialDuel
+		m.deferredSocialDuel = nil
+	} else {
+		m.pendingSocialDuel = nil
+	}
+
 	m.inputFocus = m.deferredInputFocus
 	if m.inputFocus {
 		m.input.Focus()
