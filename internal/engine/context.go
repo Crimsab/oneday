@@ -151,10 +151,17 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs 
 	}
 	if len(npcs) > 0 {
 		names := make([]string, len(npcs))
+		var nemeses []string
 		for i, npc := range npcs {
 			names[i] = npc.Name
+			if profile := loadNemesisProfile(&npc); profile != nil && profile.Status == NemesisStatusActive {
+				nemeses = append(nemeses, fmt.Sprintf("%s(tier %d)", npc.Name, profile.EscalationTier))
+			}
 		}
 		sb.WriteString(fmt.Sprintf("- Known NPCs: %d (%s)\n", len(npcs), strings.Join(names, ", ")))
+		if len(nemeses) > 0 {
+			sb.WriteString(fmt.Sprintf("- Active Nemeses: %s\n", strings.Join(nemeses, ", ")))
+		}
 	}
 	// World state: known locations.
 	if world.KnownLocationsJSON != "" && world.KnownLocationsJSON != "null" && world.KnownLocationsJSON != "[]" {

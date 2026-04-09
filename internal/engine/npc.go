@@ -189,6 +189,19 @@ func FormatNPCForContext(npc *storage.NPC) string {
 		fmt.Fprintf(&sb, "Relationship axes: trust=%d fear=%d debt=%d respect=%d intimacy=%d\n",
 			rel.Trust, rel.Fear, rel.Debt, rel.Respect, rel.Intimacy)
 	}
+	if profile := loadNemesisProfile(npc); profile != nil {
+		fmt.Fprintf(&sb, "Nemesis status: %s (tier %d, posture %s, score %d)\n",
+			profile.Status, profile.EscalationTier, firstNonEmpty(profile.ThreatPosture, "watching"), profile.RivalryScore)
+		if profile.Vow != "" {
+			fmt.Fprintf(&sb, "Nemesis vow: %s\n", profile.Vow)
+		}
+		if len(profile.VisibleScars) > 0 {
+			fmt.Fprintf(&sb, "Visible scars: %s\n", strings.Join(profile.VisibleScars, "; "))
+		}
+		if len(profile.RememberedPatterns) > 0 {
+			fmt.Fprintf(&sb, "Remembered player patterns: %s\n", strings.Join(profile.RememberedPatterns, ", "))
+		}
+	}
 
 	// Private thoughts
 	var thoughts []string
@@ -265,36 +278,107 @@ func UpdateNPCLastSeen(db *storage.DB, storyID string, narrativeText string, cur
 // NearbyNPCs returns the most relevant NPCs for the current scene.
 // It prefers NPCs seen in the last few turns, then falls back to the most recently seen roster.
 func NearbyNPCs(db *storage.DB, storyID string, currentTurn, limit int) ([]storage.NPC, error) {
+	return RelevantNPCs(db, storyID, currentTurn, 3, limit)
+}
+
+// RelevantNPCs returns a context-aware NPC roster for scene generation.
+// It keeps recently seen NPCs, but can reintroduce eligible active nemeses even
+// when they were not in the immediate last few turns.
+func RelevantNPCs(db *storage.DB, storyID string, currentTurn, recentWithin, limit int) ([]storage.NPC, error) {
 	if db == nil || storyID == "" {
 		return nil, nil
 	}
 	if limit <= 0 {
 		limit = 5
 	}
-
-	recent, err := db.ListRecentNPCs(storyID, currentTurn, 3)
-	if err == nil && len(recent) > 0 {
-		if len(recent) > limit {
-			return recent[:limit], nil
-		}
-		return recent, nil
+	if recentWithin <= 0 {
+		recentWithin = 3
 	}
 
+	recent, recentErr := db.ListRecentNPCs(storyID, currentTurn, recentWithin)
 	all, err := db.ListNPCs(storyID)
-	if err != nil || len(all) == 0 {
+	if err != nil {
+		if recentErr != nil {
+			return nil, err
+		}
+		all = append([]storage.NPC(nil), recent...)
+	}
+	if len(all) == 0 {
 		return nil, err
 	}
 
-	sort.SliceStable(all, func(i, j int) bool {
-		if all[i].LastSeenTurn == all[j].LastSeenTurn {
-			return all[i].FirstAppearedTurn > all[j].FirstAppearedTurn
-		}
-		return all[i].LastSeenTurn > all[j].LastSeenTurn
-	})
-	if len(all) > limit {
-		all = all[:limit]
+	roster := prioritizeRelevantNPCs(recent, all, currentTurn)
+	if len(roster) > limit {
+		roster = roster[:limit]
 	}
-	return all, nil
+	return roster, nil
+}
+
+func prioritizeRelevantNPCs(recent, all []storage.NPC, currentTurn int) []storage.NPC {
+	pool := make([]storage.NPC, 0, len(all))
+	seen := map[string]bool{}
+
+	for _, npc := range recent {
+		if seen[npc.ID] {
+			continue
+		}
+		seen[npc.ID] = true
+		pool = append(pool, npc)
+	}
+
+	for _, npc := range all {
+		if seen[npc.ID] {
+			continue
+		}
+		if profile := loadNemesisProfile(&npc); profile != nil && nemesisEligibleForReentry(profile, npc.LastSeenTurn, currentTurn) {
+			seen[npc.ID] = true
+			pool = append(pool, npc)
+		}
+	}
+
+	if len(pool) == 0 {
+		pool = append(pool, all...)
+	}
+
+	sort.SliceStable(pool, func(i, j int) bool {
+		left := npcEncounterPriority(pool[i], currentTurn)
+		right := npcEncounterPriority(pool[j], currentTurn)
+		if left == right {
+			if pool[i].LastSeenTurn == pool[j].LastSeenTurn {
+				return pool[i].FirstAppearedTurn > pool[j].FirstAppearedTurn
+			}
+			return pool[i].LastSeenTurn > pool[j].LastSeenTurn
+		}
+		return left > right
+	})
+	return pool
+}
+
+func npcEncounterPriority(npc storage.NPC, currentTurn int) int {
+	score := npc.LastSeenTurn
+	if profile := loadNemesisProfile(&npc); profile != nil {
+		switch profile.Status {
+		case NemesisStatusActive:
+			score += 200 + profile.EscalationTier*20 + profile.RivalryScore
+			if nemesisEligibleForReentry(profile, npc.LastSeenTurn, currentTurn) {
+				score += 50
+			}
+		case NemesisStatusRival:
+			score += 60 + profile.RivalryScore
+		}
+	}
+	return score
+}
+
+func nemesisEligibleForReentry(profile *NemesisProfile, lastSeenTurn, currentTurn int) bool {
+	if profile == nil || profile.Status != NemesisStatusActive {
+		return false
+	}
+	cooldown := maxInt(1, 5-profile.EscalationTier)
+	if strings.EqualFold(profile.ThreatPosture, "hunting") || strings.EqualFold(profile.ThreatPosture, "vengeful") {
+		cooldown = 1
+	}
+	return currentTurn-lastSeenTurn >= cooldown
 }
 
 // FormatNPCForPlayer returns a player-visible summary of an NPC.

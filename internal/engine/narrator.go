@@ -427,7 +427,7 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 	if lookback <= 0 {
 		lookback = 20
 	}
-	npcs, err := n.db.ListRecentNPCs(n.story.ID, currentTurn, lookback)
+	npcs, err := RelevantNPCs(n.db, n.story.ID, currentTurn, lookback, 8)
 	if err != nil {
 		npcs = nil // non-fatal: proceed without NPC context
 	}
