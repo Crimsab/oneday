@@ -108,3 +108,38 @@ func TestBuildStateSummaryIncludesOpenInvestigations(t *testing.T) {
 		t.Fatalf("summary leaked solved investigation into open digest:\n%s", summary)
 	}
 }
+
+func TestBuildStateSummaryIncludesProjectProgressAndCompletedFallout(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+	storeProjectBoard(world, ProjectBoard{
+		Projects: []ProjectClock{
+			{
+				ID:       "project-training",
+				Title:    "Train with Lyanna",
+				Kind:     "training",
+				Status:   "active",
+				Progress: 2,
+				Segments: 4,
+			},
+			{
+				ID:            "project-safehouse",
+				Title:         "Restore the Lantern Loft",
+				Kind:          "base",
+				Status:        "completed",
+				Progress:      4,
+				Segments:      4,
+				Outcome:       "You now have a safe place to disappear for a night.",
+				CompletedTurn: 9,
+			},
+		},
+	})
+
+	summary := buildStateSummary(char, world, nil, "")
+	if !strings.Contains(summary, "Projects: Train with Lyanna 2/4 [training]") {
+		t.Fatalf("summary missing active project digest:\n%s", summary)
+	}
+	if !strings.Contains(summary, "Completed Projects: Restore the Lantern Loft 4/4 [base] — You now have a safe place to disappear for a night.") {
+		t.Fatalf("summary missing completed project fallout:\n%s", summary)
+	}
+}

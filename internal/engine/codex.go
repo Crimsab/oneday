@@ -116,9 +116,10 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	achievements, _ := db.ListAchievements(story.ID)
 	messages, _ := db.GetRecentMessagesByStory(story.ID, 8)
 	fronts := knownFronts(loadFronts(world))
-	board := loadInvestigationBoard(world)
+	investigations := loadInvestigationBoard(world)
+	projects := loadProjectBoard(world)
 
-	if entry := buildProtagonistCodexEntry(story, char, world, achievements, npcs, fronts, board); entry.Title != "" {
+	if entry := buildProtagonistCodexEntry(story, char, world, achievements, npcs, fronts, investigations); entry.Title != "" {
 		addEntry(entry)
 	}
 
@@ -137,8 +138,11 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	for _, front := range fronts {
 		addEntry(buildFrontCodexEntry(front))
 	}
-	for _, invCase := range board.Cases {
+	for _, invCase := range investigations.Cases {
 		addEntry(buildInvestigationCodexEntry(invCase))
+	}
+	for _, project := range projects.Projects {
+		addEntry(buildProjectCodexEntry(project))
 	}
 
 	hooks := activeStoryHooks(loadStoryHooks(world))
@@ -175,8 +179,9 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	addCategory("mysteries", "Mysteries")
 	addCategory("threads", "Threads")
 	addCategory("investigations", "Investigations")
+	addCategory("projects", "Projects")
 
-	enrichCodexLinks(index, npcs, hooks, reactions, fronts, chapters, messages, board)
+	enrichCodexLinks(index, npcs, hooks, reactions, fronts, chapters, messages, investigations, projects)
 	return index, nil
 }
 
@@ -195,6 +200,7 @@ func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, w
 		Subtitle: "Protagonist",
 		Summary:  strings.TrimSpace(char.Background),
 	}
+	projectBoard := loadProjectBoard(world)
 
 	overview := []string{}
 	if char.Background != "" {
@@ -286,6 +292,20 @@ func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, w
 			entry.Related = append(entry.Related, CodexLink{
 				EntryID: codexInvestigationEntryID(invCase.ID),
 				Label:   invCase.Title,
+			})
+		}
+	}
+	if activeProjects, completedProjects := buildProtagonistProjectLines(projectBoard); len(activeProjects) > 0 || len(completedProjects) > 0 {
+		if len(activeProjects) > 0 {
+			entry.Sections = append(entry.Sections, CodexSection{Title: "Active Projects", Lines: activeProjects})
+		}
+		if len(completedProjects) > 0 {
+			entry.Sections = append(entry.Sections, CodexSection{Title: "Completed Projects", Lines: completedProjects})
+		}
+		for _, project := range projectBoard.Projects {
+			entry.Related = append(entry.Related, CodexLink{
+				EntryID: codexProjectEntryID(project.ID),
+				Label:   project.Title,
 			})
 		}
 	}
@@ -624,7 +644,7 @@ func buildThreadEntryFromReaction(reaction WorldReaction) CodexEntry {
 	}
 }
 
-func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, reactions []WorldReaction, fronts []Front, chapters []storage.Chapter, messages []storage.ChatMessage, board InvestigationBoard) {
+func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, reactions []WorldReaction, fronts []Front, chapters []storage.Chapter, messages []storage.ChatMessage, board InvestigationBoard, projects ProjectBoard) {
 	if index == nil {
 		return
 	}
@@ -757,6 +777,17 @@ func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, 
 				entry.Related = append(entry.Related, CodexLink{
 					EntryID: codexInvestigationEntryID(invCase.ID),
 					Label:   invCase.Title,
+				})
+			}
+		}
+		if entry.Category != "projects" {
+			for _, project := range projects.Projects {
+				if !projectTouchesCodexEntry(project, id, entry) {
+					continue
+				}
+				entry.Related = append(entry.Related, CodexLink{
+					EntryID: codexProjectEntryID(project.ID),
+					Label:   project.Title,
 				})
 			}
 		}

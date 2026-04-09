@@ -836,6 +836,8 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.showCodex()
 	case "investigations":
 		return m.showInvestigations()
+	case "projects":
+		return m.showProjects()
 	case "craft", "crafting":
 		return m.startCrafting()
 	case "talk":
@@ -989,6 +991,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /characters          Browse protagonist and NPC dossiers
   /codex               Open the full story codex
   /investigations      Open the investigation board inside the codex
+  /projects            Browse downtime projects and their outcomes
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
   /hooks               Show open hooks and world reactions
@@ -1340,6 +1343,10 @@ func (m NarrativeModel) showCodex() (NarrativeModel, tea.Cmd) {
 
 func (m NarrativeModel) showInvestigations() (NarrativeModel, tea.Cmd) {
 	return m.openCodexBrowser("Investigations", "investigations", "")
+}
+
+func (m NarrativeModel) showProjects() (NarrativeModel, tea.Cmd) {
+	return m.openCodexBrowser("Projects", "projects", "")
 }
 
 func (m NarrativeModel) openCodexBrowser(title, initialCategory, initialEntryID string) (NarrativeModel, tea.Cmd) {

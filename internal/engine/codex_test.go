@@ -409,6 +409,185 @@ func TestBuildStoryCodexSurfacesInvestigationCasesWithoutHiddenTruthLeaks(t *tes
 	}
 }
 
+func TestBuildStoryCodexSurfacesProjectsAndBacklinks(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+
+	story := &storage.Story{
+		ID:          "story-codex-projects",
+		Name:        "Codex Projects Story",
+		SettingJSON: `{"factions":["Bell Choir"]}`,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	if err := db.CreateCharacter(char); err != nil {
+		t.Fatalf("CreateCharacter: %v", err)
+	}
+
+	npc := &storage.NPC{
+		ID:                 "npc-lyanna-project-codex",
+		StoryID:            story.ID,
+		Name:               "Lyanna",
+		Role:               "duelist",
+		RelationshipJSON:   `{}`,
+		PrivateThoughts:    `[]`,
+		NotesOnProtagonist: `[]`,
+		NemesisJSON:        `{}`,
+		IsAlive:            true,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if err := db.CreateNPC(npc); err != nil {
+		t.Fatalf("CreateNPC: %v", err)
+	}
+
+	world := &storage.WorldState{
+		ID:              "world-codex-projects",
+		StoryID:         story.ID,
+		CurrentLocation: "Bell Quarter",
+		KnownLocationsJSON: `[
+			{"name":"Bell Quarter","description":"A district of bells and narrow alleys.","discovered_turn":1}
+		]`,
+		CurrentChapter: 2,
+		CurrentTurn:    9,
+		UpdatedAt:      now,
+	}
+	storeFronts(world, []Front{
+		{
+			ID:           "front-bell-projects",
+			Faction:      "Bell Choir",
+			Title:        "The Silent Bell Choir is seeding sleepers across the district",
+			PublicTitle:  "Whispers Around the Bell Tower",
+			PublicStakes: "Something ugly is taking hold around the tower.",
+			Visibility:   "known",
+			Segments:     6,
+			Progress:     4,
+		},
+	})
+	storeProjectBoard(world, ProjectBoard{
+		Projects: []ProjectClock{
+			{
+				ID:       "project-training",
+				Title:    "Train with Lyanna",
+				Kind:     "training",
+				Status:   "active",
+				Progress: 2,
+				Segments: 4,
+				Owner:    "Lyanna",
+				Location: "Bell Quarter",
+				Summary:  "Your sparring finally starts to look deliberate.",
+				Stakes:   "Earn Lyanna's respect before the Bell Choir moves.",
+				Rewards: []ProjectReward{
+					{Kind: "skill", Label: "Blade Forms"},
+				},
+				Links: []ProjectLink{
+					{Kind: "npc", Label: "Lyanna"},
+					{Kind: "front", RefID: "front-bell-projects", Label: "Whispers Around the Bell Tower"},
+				},
+			},
+			{
+				ID:            "project-safehouse",
+				Title:         "Restore the Lantern Loft",
+				Kind:          "base",
+				Status:        "completed",
+				Progress:      4,
+				Segments:      4,
+				Location:      "Bell Quarter",
+				Outcome:       "You now have a safe place to disappear for a night.",
+				CompletedTurn: 8,
+				Rewards: []ProjectReward{
+					{Kind: "title", Label: "Lantern Loft Keeper"},
+				},
+				Links: []ProjectLink{
+					{Kind: "place", Label: "Bell Quarter"},
+				},
+			},
+		},
+	})
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatalf("CreateWorldState: %v", err)
+	}
+
+	index, err := BuildStoryCodex(db, story, char, world)
+	if err != nil {
+		t.Fatalf("BuildStoryCodex: %v", err)
+	}
+
+	projectIDs := index.CategoryEntries["projects"]
+	if len(projectIDs) != 2 {
+		t.Fatalf("project category entries = %v, want 2 project entries", projectIDs)
+	}
+
+	activeEntry, ok := index.Entry(codexProjectEntryID("project-training"))
+	if !ok {
+		t.Fatalf("missing active project entry")
+	}
+	activeSections := strings.Join(flattenCodexSections(activeEntry.Sections), "\n")
+	if !strings.Contains(activeSections, "Progress: 2/4") {
+		t.Fatalf("active project missing progress section:\n%s", activeSections)
+	}
+	if !strings.Contains(activeSections, "Skill: Blade Forms") {
+		t.Fatalf("active project missing reward summary:\n%s", activeSections)
+	}
+	if !hasCodexLink(activeEntry.Related, codexNPCEntryID("Lyanna")) {
+		t.Fatalf("active project missing npc link: %+v", activeEntry.Related)
+	}
+	if !hasCodexLink(activeEntry.Related, codexFrontEntryID("front-bell-projects")) {
+		t.Fatalf("active project missing front link: %+v", activeEntry.Related)
+	}
+
+	completedEntry, ok := index.Entry(codexProjectEntryID("project-safehouse"))
+	if !ok {
+		t.Fatalf("missing completed project entry")
+	}
+	completedSections := strings.Join(flattenCodexSections(completedEntry.Sections), "\n")
+	if !strings.Contains(completedSections, "Outcome") || !strings.Contains(completedSections, "safe place to disappear") {
+		t.Fatalf("completed project missing durable outcome:\n%s", completedSections)
+	}
+
+	protagonist, ok := index.Entry(ProtagonistCodexEntryID())
+	if !ok {
+		t.Fatalf("missing protagonist entry")
+	}
+	protagonistSections := strings.Join(flattenCodexSections(protagonist.Sections), "\n")
+	if !strings.Contains(protagonistSections, "Train with Lyanna 2/4 · training") {
+		t.Fatalf("protagonist entry missing active project summary:\n%s", protagonistSections)
+	}
+	if !strings.Contains(protagonistSections, "Restore the Lantern Loft 4/4 · base · You now have a safe place to disappear for a night.") {
+		t.Fatalf("protagonist entry missing completed project summary:\n%s", protagonistSections)
+	}
+
+	npcEntry, ok := index.Entry(codexNPCEntryID("Lyanna"))
+	if !ok {
+		t.Fatalf("missing npc entry")
+	}
+	if !hasCodexLink(npcEntry.Related, codexProjectEntryID("project-training")) {
+		t.Fatalf("npc entry missing project backlink: %+v", npcEntry.Related)
+	}
+
+	frontEntry, ok := index.Entry(codexFrontEntryID("front-bell-projects"))
+	if !ok {
+		t.Fatalf("missing front entry")
+	}
+	if !hasCodexLink(frontEntry.Related, codexProjectEntryID("project-training")) {
+		t.Fatalf("front entry missing project backlink: %+v", frontEntry.Related)
+	}
+
+	locationEntry, ok := index.Entry(codexLocationEntryID("Bell Quarter"))
+	if !ok {
+		t.Fatalf("missing location entry")
+	}
+	if !hasCodexLink(locationEntry.Related, codexProjectEntryID("project-safehouse")) {
+		t.Fatalf("location entry missing project backlink: %+v", locationEntry.Related)
+	}
+}
+
 func flattenCodexSections(sections []CodexSection) []string {
 	lines := make([]string, 0, len(sections)*2)
 	for _, section := range sections {

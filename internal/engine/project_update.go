@@ -7,7 +7,7 @@ import (
 	"github.com/crimsab/oneday/internal/storage"
 )
 
-func ApplyProjectUpdate(stats map[string]interface{}, world *storage.WorldState, raw map[string]interface{}, currentTurn int) []StateChange {
+func ApplyProjectUpdate(char *storage.Character, stats map[string]interface{}, inventory *[]interface{}, world *storage.WorldState, db *storage.DB, storyID string, raw map[string]interface{}, currentTurn int) []StateChange {
 	if world == nil || len(raw) == 0 {
 		return nil
 	}
@@ -18,6 +18,7 @@ func ApplyProjectUpdate(stats map[string]interface{}, world *storage.WorldState,
 		return nil
 	}
 	project := &board.Projects[projectIdx]
+	wasCompleted := strings.EqualFold(project.Status, "completed") || project.CompletedTurn > 0
 	action := strings.ToLower(strings.TrimSpace(stringValue(raw["action"])))
 	if action == "" {
 		action = "advance"
@@ -86,6 +87,9 @@ func ApplyProjectUpdate(stats map[string]interface{}, world *storage.WorldState,
 			New:         reaction.Title,
 			Description: fmt.Sprintf("World reacts: %s", reaction.Title),
 		})
+	}
+	if strings.EqualFold(project.Status, "completed") && !wasCompleted {
+		changes = append(changes, applyProjectCompletionRewards(char, stats, inventory, world, db, storyID, project, currentTurn)...)
 	}
 
 	storeProjectBoard(world, board)

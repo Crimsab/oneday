@@ -641,7 +641,7 @@ func ApplyStateChanges(
 
 		case "project_update":
 			for _, updateMap := range toObjectMaps(val) {
-				applied = append(applied, ApplyProjectUpdate(stats, world, updateMap, currentTurn)...)
+				applied = append(applied, ApplyProjectUpdate(char, stats, &invItems, world, db, storyID, updateMap, currentTurn)...)
 			}
 
 		case "hook_add":
@@ -894,6 +894,12 @@ func ApplyStateChanges(
 		return applied, fmt.Errorf("marshaling updated character stats: %w", err)
 	}
 	char.StatsJSON = string(statsBytes)
+	if traits, err := json.Marshal(toStringSlice(stats["traits"])); err == nil {
+		char.TraitsJSON = string(traits)
+	}
+	if skills, err := json.Marshal(toSkillsMap(stats["skills"])); err == nil {
+		char.SkillsJSON = string(skills)
+	}
 
 	// Marshal the inventory items back to char.InventoryJSON (separate column).
 	invBytes, err := json.Marshal(invItems)
