@@ -897,6 +897,12 @@ func buildTurnDelta(changes []StateChange) *TurnDelta {
 			}
 		case strings.HasPrefix(change.Field, "npc.") || strings.HasPrefix(change.Field, "relationship."):
 			kind = "relationship"
+		case strings.HasPrefix(change.Field, "front.") || strings.HasPrefix(change.Field, "front_pressure."):
+			kind = "front"
+		case strings.HasPrefix(change.Field, "project."):
+			kind = "project"
+		case strings.HasPrefix(change.Field, "investigation."):
+			kind = "investigation"
 		case strings.HasPrefix(change.Field, "hook."):
 			kind = "hook"
 		case strings.HasPrefix(change.Field, "reaction."):

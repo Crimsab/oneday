@@ -65,7 +65,93 @@ func renderTurnDeltaMarkdown(delta *engine.TurnDelta) string {
 	if len(lines) == 1 {
 		return ""
 	}
+	if inspect := turnDeltaNavigationMarkdown(delta); inspect != "" {
+		lines = append(lines, "", inspect)
+	}
 	return strings.Join(lines, "\n")
+}
+
+type turnDeltaSystemTargets struct {
+	fronts         bool
+	projects       bool
+	investigations bool
+}
+
+func turnDeltaNavigationMarkdown(delta *engine.TurnDelta) string {
+	targets := turnDeltaTargets(delta)
+	if !targets.fronts && !targets.projects && !targets.investigations {
+		return ""
+	}
+
+	commands := make([]string, 0, 4)
+	if targets.fronts {
+		commands = append(commands, "`/fronts`")
+	}
+	if targets.projects {
+		commands = append(commands, "`/projects`")
+	}
+	if targets.investigations {
+		commands = append(commands, "`/investigations`")
+	}
+	commands = append(commands, "`/codex`")
+	return "> Inspect now: " + strings.Join(commands, " · ")
+}
+
+func turnDeltaStatusCallout(delta *engine.TurnDelta) string {
+	targets := turnDeltaTargets(delta)
+	switch {
+	case targets.fronts && targets.projects && targets.investigations:
+		return "Active systems changed. Press F, P, or I to inspect them."
+	case targets.fronts && targets.projects:
+		return "Front pressure and project state changed. Press F or P to inspect."
+	case targets.fronts && targets.investigations:
+		return "Front pressure and investigations shifted. Press F or I to inspect."
+	case targets.projects && targets.investigations:
+		return "Projects and investigations updated. Press P or I to inspect."
+	case targets.fronts:
+		return "Front pressure shifted. Press F or use /fronts."
+	case targets.projects:
+		return "Project board updated. Press P or use /projects."
+	case targets.investigations:
+		return "Investigation board updated. Press I or use /investigations."
+	default:
+		return ""
+	}
+}
+
+func turnDeltaTargets(delta *engine.TurnDelta) turnDeltaSystemTargets {
+	targets := turnDeltaSystemTargets{}
+	if delta == nil {
+		return targets
+	}
+	for _, item := range delta.Items {
+		text := strings.ToLower(strings.TrimSpace(item.Kind + " " + item.Label + " " + item.Detail))
+		switch {
+		case item.Kind == "front",
+			item.Kind == "reaction",
+			strings.Contains(text, "front"),
+			strings.Contains(text, "pressure"),
+			strings.Contains(text, "fallout"):
+			targets.fronts = true
+		}
+		switch {
+		case item.Kind == "project",
+			strings.Contains(text, "project"),
+			strings.Contains(text, "downtime"):
+			targets.projects = true
+		}
+		switch {
+		case item.Kind == "investigation",
+			strings.Contains(text, "investigation"),
+			strings.Contains(text, "clue "),
+			strings.Contains(text, "suspect "),
+			strings.Contains(text, "contradiction "),
+			strings.Contains(text, "lead "),
+			strings.Contains(text, "theory "):
+			targets.investigations = true
+		}
+	}
+	return targets
 }
 
 func (m *NarrativeModel) collectKnownEntities(nr *engine.NarrativeResponse) []rendering.KnownEntity {

@@ -3,23 +3,35 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
 current_phase: 23
-status: in_progress
-last_updated: "2026-04-09T22:52:33+02:00"
+status: completed
+last_updated: "2026-04-09T22:57:11+02:00"
 progress:
   total_phases: 24
-  completed_phases: 23
+  completed_phases: 24
   total_plans: 75
-  completed_plans: 74
-  percent: 99
+  completed_plans: 75
+  percent: 100
 ---
 
 # Project State
 
 **Current Phase:** 23
-**Status:** In Progress
+**Status:** Completed
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: `23.4` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-04-SUMMARY.md`.
+  Added active-system jump shortcuts (`P / I / F / C`), codex/browser navigation hints,
+  turn-delta navigation prompts, and live status callouts so system changes point players toward the right workspace immediately.
+
+- 2026-04-09: Phase 23 execution completed.
+  Summaries written to `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-01-SUMMARY.md`,
+  `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-02-SUMMARY.md`,
+  `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-03-SUMMARY.md`,
+  and `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-04-SUMMARY.md`.
+  Verification saved in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-VERIFICATION.md`.
+  Delivered dedicated project, investigation, and fronts/fallout workspaces plus integrated navigation and turn-level callouts across the active-system layer.
 
 - 2026-04-09: `23.3` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-03-SUMMARY.md`.
   Delivered a dedicated fronts-and-fallout tracker, rerouted `/hooks` into that workspace,

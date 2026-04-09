@@ -526,7 +526,7 @@ Plans:
 **Requirements**: TBD
 **Depends on:** Phase 22
 **UI hint:** no
-**Status:** In Progress (2026-04-09)
+**Status:** Complete (2026-04-09)
 
 ### Success Criteria
 
@@ -540,7 +540,7 @@ Plans:
 - [x] Plan 23.1: Build a dedicated project workspace for active, paused, and completed long-arc projects
 - [x] Plan 23.2: Build a dedicated investigations workspace for cases, clues, suspects, contradictions, and leads
 - [x] Plan 23.3: Build a front tracker for discovered fronts, regional pressure, and visible world fallout
-- [ ] Plan 23.4: Unify active-system navigation and add clearer live callouts for systemic state changes
+- [x] Plan 23.4: Unify active-system navigation and add clearer live callouts for systemic state changes
 
 ---
 
