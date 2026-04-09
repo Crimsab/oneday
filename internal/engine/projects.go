@@ -44,6 +44,11 @@ type ProjectBoard struct {
 	Projects []ProjectClock `json:"projects,omitempty"`
 }
 
+// LoadProjectBoard returns the normalized canonical project board for a world state.
+func LoadProjectBoard(world *storage.WorldState) ProjectBoard {
+	return loadProjectBoard(world)
+}
+
 func loadProjectBoard(world *storage.WorldState) ProjectBoard {
 	if world == nil || strings.TrimSpace(world.ProjectClocksJSON) == "" || strings.TrimSpace(world.ProjectClocksJSON) == "{}" {
 		return ProjectBoard{}
