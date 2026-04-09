@@ -196,6 +196,28 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs 
 		}
 		sb.WriteString(fmt.Sprintf("- World Reactions: %s\n", strings.Join(parts, " | ")))
 	}
+	if board := loadInvestigationBoard(world); len(board.Cases) > 0 {
+		parts := make([]string, 0, len(board.Cases))
+		for _, invCase := range board.Cases {
+			if strings.EqualFold(invCase.Status, "solved") {
+				continue
+			}
+			line := invCase.Title
+			if len(invCase.Clues) > 0 {
+				line += fmt.Sprintf(" [clues:%d]", len(invCase.Clues))
+			}
+			if len(invCase.Contradictions) > 0 {
+				line += fmt.Sprintf(" [contradictions:%d]", len(invCase.Contradictions))
+			}
+			if len(invCase.Theories) > 0 {
+				line += fmt.Sprintf(" [theories:%d]", len(invCase.Theories))
+			}
+			parts = append(parts, line)
+		}
+		if len(parts) > 0 {
+			sb.WriteString(fmt.Sprintf("- Investigations: %s\n", strings.Join(parts, " | ")))
+		}
+	}
 	if fronts := knownFronts(loadFronts(world)); len(fronts) > 0 {
 		parts := make([]string, 0, len(fronts))
 		for _, front := range fronts {
