@@ -121,6 +121,148 @@ func TestBuildStoryCodexShowsVisibleFrontsWithoutLeakingHiddenState(t *testing.T
 	}
 }
 
+func TestBuildStoryCodexSurfacesNemesisTrailWithoutLeakingPrivateVow(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+
+	story := &storage.Story{
+		ID:          "story-codex-nemesis",
+		Name:        "Codex Nemesis Story",
+		SettingJSON: `{"factions":["Bell Choir"]}`,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	if err := db.CreateCharacter(char); err != nil {
+		t.Fatalf("CreateCharacter: %v", err)
+	}
+
+	npc := &storage.NPC{
+		ID:                 "npc-lyanna",
+		StoryID:            story.ID,
+		Name:               "Lyanna",
+		Role:               "broker",
+		Appearance:         "An immaculate broker with a split lip and cold eyes.",
+		RelationshipJSON:   `{"fear":18,"respect":12}`,
+		NemesisJSON:        `{"status":"active","rivalry_score":8,"escalation_tier":3,"threat_posture":"political","vow":"Lyanna swears this rivalry is not finished in the senate cellars.","last_outcome":"Escaped through Bell Quarter after the tribunal turned ugly.","last_seen_turn":8,"visible_scars":["Split lip from the Bell Quarter tribunal"],"event_history":[{"kind":"humiliation","turn":5,"detail":"Publicly outmaneuvered at Bell Quarter."},{"kind":"political_fallout","turn":8,"detail":"Bell Choir fixers started whispering through the ward."}]}`,
+		PrivateThoughts:    `[]`,
+		NotesOnProtagonist: `[]`,
+		IsAlive:            true,
+		FirstAppearedTurn:  2,
+		LastSeenTurn:       8,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if err := db.CreateNPC(npc); err != nil {
+		t.Fatalf("CreateNPC: %v", err)
+	}
+
+	world := &storage.WorldState{
+		ID:              "world-codex-nemesis",
+		StoryID:         story.ID,
+		CurrentLocation: "Bell Quarter",
+		KnownLocationsJSON: `[
+			{"name":"Bell Quarter","description":"A district of bells and narrow alleys.","discovered_turn":1},
+			{"name":"Harbor Ward","region":"Bell Quarter","description":"Warehouses and watchfires.","discovered_turn":2}
+		]`,
+		CurrentChapter: 2,
+		CurrentTurn:    9,
+		UpdatedAt:      now,
+	}
+	storeFronts(world, []Front{
+		{
+			ID:           "front-bell",
+			Faction:      "Bell Choir",
+			Title:        "The Silent Bell Choir is seeding sleepers across the district",
+			PublicTitle:  "Whispers Around the Bell Tower",
+			PublicStakes: "Something ugly is taking hold around the tower.",
+			Visibility:   "known",
+			Segments:     6,
+			Progress:     4,
+			Pressures: []FrontPressure{
+				{Region: "Bell Quarter", Kind: "suspicion", Level: 50, UpdatedTurn: 9},
+			},
+		},
+	})
+	storeWorldReactions(world, []WorldReaction{
+		{
+			ID:          "reaction-lyanna",
+			Kind:        "rumor",
+			Title:       "Lyanna's name is back on every tongue",
+			Detail:      "Lyanna is leaning on Bell Quarter notaries again.",
+			SourceTurn:  8,
+			CreatedTurn: 9,
+		},
+	})
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatalf("CreateWorldState: %v", err)
+	}
+
+	index, err := BuildStoryCodex(db, story, char, world)
+	if err != nil {
+		t.Fatalf("BuildStoryCodex: %v", err)
+	}
+
+	entry, ok := index.Entry(codexNPCEntryID("Lyanna"))
+	if !ok {
+		t.Fatalf("missing Lyanna codex entry")
+	}
+	joined := strings.Join(flattenCodexSections(entry.Sections), "\n")
+	if !strings.Contains(joined, "Status: Active nemesis") {
+		t.Fatalf("nemesis entry missing status:\n%s", joined)
+	}
+	if !strings.Contains(joined, "Suspected agenda: Pressure through allies, rumor, or institutions seems likely.") {
+		t.Fatalf("nemesis entry missing player-safe agenda:\n%s", joined)
+	}
+	if !strings.Contains(joined, "Visible scars: Split lip from the Bell Quarter tribunal") {
+		t.Fatalf("nemesis entry missing scars:\n%s", joined)
+	}
+	if !strings.Contains(joined, "Turn 8: Political Fallout — Bell Choir fixers started whispering through the ward.") {
+		t.Fatalf("nemesis entry missing escalation trace:\n%s", joined)
+	}
+	if strings.Contains(joined, "swears this rivalry is not finished") {
+		t.Fatalf("nemesis entry leaked private vow:\n%s", joined)
+	}
+	if !hasCodexLink(entry.Related, codexFrontEntryID("front-bell")) {
+		t.Fatalf("nemesis entry missing front link: %+v", entry.Related)
+	}
+	if !hasCodexLink(entry.Related, codexLocationEntryID("Bell Quarter")) {
+		t.Fatalf("nemesis entry missing location link: %+v", entry.Related)
+	}
+	if !hasCodexLink(entry.Related, codexThreadEntryID("reaction", "reaction-lyanna")) {
+		t.Fatalf("nemesis entry missing reaction link: %+v", entry.Related)
+	}
+
+	frontEntry, ok := index.Entry(codexFrontEntryID("front-bell"))
+	if !ok {
+		t.Fatalf("missing front entry")
+	}
+	if !hasCodexLink(frontEntry.Related, codexNPCEntryID("Lyanna")) {
+		t.Fatalf("front entry missing nemesis back-link: %+v", frontEntry.Related)
+	}
+
+	locationEntry, ok := index.Entry(codexLocationEntryID("Bell Quarter"))
+	if !ok {
+		t.Fatalf("missing location entry")
+	}
+	if !hasCodexLink(locationEntry.Related, codexNPCEntryID("Lyanna")) {
+		t.Fatalf("location entry missing nemesis back-link: %+v", locationEntry.Related)
+	}
+
+	protagonist, ok := index.Entry(ProtagonistCodexEntryID())
+	if !ok {
+		t.Fatalf("missing protagonist entry")
+	}
+	if !strings.Contains(strings.Join(flattenCodexSections(protagonist.Sections), "\n"), "Lyanna — Active nemesis · Tier 3") {
+		t.Fatalf("protagonist entry missing nemesis overview")
+	}
+}
+
 func flattenCodexSections(sections []CodexSection) []string {
 	lines := make([]string, 0, len(sections)*2)
 	for _, section := range sections {
@@ -128,4 +270,13 @@ func flattenCodexSections(sections []CodexSection) []string {
 		lines = append(lines, section.Lines...)
 	}
 	return lines
+}
+
+func hasCodexLink(links []CodexLink, entryID string) bool {
+	for _, link := range links {
+		if link.EntryID == entryID {
+			return true
+		}
+	}
+	return false
 }
