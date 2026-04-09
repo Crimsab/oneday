@@ -43,15 +43,18 @@ type CraftingModel struct {
 	input      textarea.Model
 
 	// State
-	history          *strings.Builder
-	inventory        string // rendered inventory sidebar
-	inputFocus       bool
-	waiting          bool
-	errMsg           string
-	lastCrafted      string // name of last crafted item (if any)
-	lastMissing      []string
-	lastAlternatives []string
-	exitChoiceID     int
+	history            *strings.Builder
+	inventory          string // rendered inventory sidebar
+	inputFocus         bool
+	waiting            bool
+	errMsg             string
+	lastCrafted        string // name of last crafted item (if any)
+	lastMissing        []string
+	lastAlternatives   []string
+	exitChoiceID       int
+	inputHistory       []string
+	inputHistoryCursor int
+	inputHistoryDraft  string
 }
 
 // NewCraftingModel creates a crafting view.
@@ -82,16 +85,17 @@ func NewCraftingModel(crafting *engine.CraftingEngine, narrator *engine.Narrator
 	tw := components.NewTypewriter(80)
 
 	m := CraftingModel{
-		crafting:   crafting,
-		narrator:   narrator,
-		width:      width,
-		height:     height,
-		chatView:   chatVP,
-		typewriter: tw,
-		choices:    choices,
-		input:      input,
-		history:    &strings.Builder{},
-		inputFocus: true,
+		crafting:           crafting,
+		narrator:           narrator,
+		width:              width,
+		height:             height,
+		chatView:           chatVP,
+		typewriter:         tw,
+		choices:            choices,
+		input:              input,
+		history:            &strings.Builder{},
+		inputFocus:         true,
+		inputHistoryCursor: -1,
 	}
 
 	// Build initial inventory sidebar.
@@ -226,6 +230,18 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 		}
 
 		switch msg.String() {
+		case "up":
+			if m.inputFocus && m.canNavigateInputHistory() {
+				if m.navigateInputHistory(-1) {
+					return m, nil
+				}
+			}
+		case "down":
+			if m.inputFocus && m.canNavigateInputHistory() {
+				if m.navigateInputHistory(1) {
+					return m, nil
+				}
+			}
 		case "tab":
 			m.inputFocus = !m.inputFocus
 			if m.inputFocus {
@@ -243,6 +259,7 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 				}
 				// Append player message to history.
 				m.history.WriteString("> " + action + "\n\n")
+				m.recordInputHistory(action)
 				m.input.Reset()
 				m.waiting = true
 				m.errMsg = ""
@@ -265,6 +282,11 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 			var cmd tea.Cmd
 			m.input, cmd = m.input.Update(msg)
 			cmds = append(cmds, cmd)
+			switch msg.String() {
+			case "up", "down":
+			default:
+				m.resetInputHistoryNavigation()
+			}
 		} else {
 			var cmd tea.Cmd
 			m.choices, cmd = m.choices.Update(msg)
