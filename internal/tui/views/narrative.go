@@ -297,6 +297,15 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.inSocialDuel = false
 			m.socialDuelView = nil
 			m.pendingSocialDuel = nil
+			aftermath := engine.ApplySocialDuelAftermath(
+				m.narrator.DB(),
+				m.narrator.World(),
+				m.socialDuelNPC,
+				duelMsg.State,
+				duelMsg.Round,
+				duelMsg.Cue,
+				m.narrator.Turn(),
+			)
 
 			if duelMsg.State != nil && duelMsg.State.Status == engine.SocialDuelActive {
 				m.activeSocialDuel = duelMsg.State
@@ -305,9 +314,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			}
 
 			var cmds []tea.Cmd
-			histCmd := m.appendNarrativeSegment(renderSocialDuelRoundNote(duelMsg), false)
+			histCmd := m.appendNarrativeSegment(renderSocialDuelRoundNote(duelMsg, aftermath), false)
 			cmds = append(cmds, histCmd)
-			cmds = append(cmds, m.sendRawAction(buildSocialDuelResultInput(duelMsg)))
+			cmds = append(cmds, m.sendRawAction(buildSocialDuelResultInput(duelMsg, aftermath)))
 			return m, tea.Batch(cmds...)
 		}
 		return m, cmd
