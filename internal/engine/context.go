@@ -189,6 +189,13 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs 
 		}
 		sb.WriteString(fmt.Sprintf("- World Reactions: %s\n", strings.Join(parts, " | ")))
 	}
+	if fronts := knownFronts(loadFronts(world)); len(fronts) > 0 {
+		parts := make([]string, 0, len(fronts))
+		for _, front := range fronts {
+			parts = append(parts, formatKnownFrontSummary(front))
+		}
+		sb.WriteString(fmt.Sprintf("- Active Fronts: %s\n", strings.Join(parts, " | ")))
+	}
 	// Previous chapter summary for narrative continuity.
 	if lastChapterSummary != "" {
 		sb.WriteString(fmt.Sprintf("- Previous Chapter Summary: %s\n", lastChapterSummary))
