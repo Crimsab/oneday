@@ -435,7 +435,14 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		return m, nil
 
 	case narrativeASCIIArtMsg:
-		if msg.err != nil || msg.sceneID != m.sceneCounter || strings.TrimSpace(msg.art) == "" {
+		if msg.sceneID != m.sceneCounter {
+			return m, nil
+		}
+		if msg.err != nil {
+			m.SetStatusMsg("ASCII art unavailable for this scene")
+			return m, nil
+		}
+		if strings.TrimSpace(msg.art) == "" {
 			return m, nil
 		}
 		rendered := components.RenderMarkdown("```text\n" + msg.art + "\n```")

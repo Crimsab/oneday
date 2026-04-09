@@ -985,7 +985,18 @@ func (n *Narrator) GenerateAmbientASCII(ctx context.Context, turn int, base *Nar
 
 	resp, err := n.router.Complete(ctx, req)
 	if err != nil {
-		return "", "", err
+		configuredModel := strings.TrimSpace(req.Model)
+		if configuredModel != "" {
+			fallbackReq := req
+			fallbackReq.Model = ""
+			resp, err = n.router.Complete(ctx, fallbackReq)
+		}
+		if err != nil {
+			if configuredModel != "" {
+				return "", "", fmt.Errorf("ascii art generation failed for %q and provider default: %w", configuredModel, err)
+			}
+			return "", "", err
+		}
 	}
 
 	payload, err := ai.ParseASCIIArtJSON(resp.Content)
