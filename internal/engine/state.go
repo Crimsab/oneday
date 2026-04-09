@@ -639,6 +639,11 @@ func ApplyStateChanges(
 				applied = append(applied, ApplyInvestigationUpdate(world, updateMap, currentTurn)...)
 			}
 
+		case "project_update":
+			for _, updateMap := range toObjectMaps(val) {
+				applied = append(applied, ApplyProjectUpdate(stats, world, updateMap, currentTurn)...)
+			}
+
 		case "hook_add":
 			hooks := loadStoryHooks(world)
 			updated := false
