@@ -474,9 +474,9 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 20.1: Define canonical investigation entities and link types for clues, suspects, claims, contradictions, and threads
-- [ ] Plan 20.2: Add engine-side normalization/validation for AI-proposed evidence updates and theory movement
-- [ ] Plan 20.3: Build board/codex integration and filtering so mysteries can be explored without flattening them into checklist quests
+- [x] Plan 20.1: Define canonical investigation entities and link types for clues, suspects, claims, contradictions, and threads
+- [x] Plan 20.2: Add engine-side normalization/validation for AI-proposed evidence updates and theory movement
+- [x] Plan 20.3: Build board/codex integration and filtering so mysteries can be explored without flattening them into checklist quests
 
 ### Phase 21: Downtime Projects and Long-Arc Progress Clocks
 
