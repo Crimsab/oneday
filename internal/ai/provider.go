@@ -25,6 +25,8 @@ type Request struct {
 	Temperature    float64         `json:"temperature,omitempty"`
 	MaxTokens      int             `json:"max_tokens,omitempty"`
 	ResponseFormat *ResponseFormat `json:"response_format,omitempty"`
+	Plugins        []Plugin        `json:"plugins,omitempty"`
+	Provider       *ProviderConfig `json:"provider,omitempty"`
 }
 
 // Response holds the result of an AI completion.
@@ -50,6 +52,16 @@ type JSONSchemaConfig struct {
 	Name   string         `json:"name"`
 	Strict bool           `json:"strict,omitempty"`
 	Schema map[string]any `json:"schema"`
+}
+
+// Plugin is an OpenRouter-compatible plugin entry.
+type Plugin struct {
+	ID string `json:"id"`
+}
+
+// ProviderConfig carries OpenRouter-compatible provider routing hints.
+type ProviderConfig struct {
+	RequireParameters bool `json:"require_parameters,omitempty"`
 }
 
 // Provider is the interface that all AI providers must implement.

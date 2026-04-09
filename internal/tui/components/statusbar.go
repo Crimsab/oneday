@@ -60,11 +60,17 @@ func (s StatusBarModel) View() string {
 		return ""
 	}
 
+	barBG := lipgloss.Color("#2A2A2A")
+	if s.hasMoodBG {
+		barBG = s.moodBG
+	}
+	baseTextStyle := lipgloss.NewStyle().Background(barBG)
+
 	// Left side: vitals
 	var vitals string
 	for i, v := range s.data.Vitals {
 		if i > 0 {
-			vitals += "  "
+			vitals += baseTextStyle.Render("  ")
 		}
 		current := v.Current
 		if v.Max > 0 && current > v.Max {
@@ -77,14 +83,14 @@ func (s StatusBarModel) View() string {
 		if v.Max > 0 {
 			pct := float64(current) / float64(v.Max)
 			if pct <= 0.25 {
-				style = theme.DangerText
+				style = baseTextStyle.Copy().Foreground(theme.Danger)
 			} else if pct <= 0.5 {
-				style = lipgloss.NewStyle().Foreground(theme.Accent)
+				style = baseTextStyle.Copy().Foreground(theme.Accent)
 			} else {
-				style = theme.NormalText
+				style = baseTextStyle.Copy().Foreground(theme.Text)
 			}
 		} else {
-			style = theme.NormalText
+			style = baseTextStyle.Copy().Foreground(theme.Text)
 		}
 		vitals += style.Render(fmt.Sprintf("%s: %d/%d", v.Label, current, v.Max))
 	}
@@ -119,13 +125,14 @@ func (s StatusBarModel) View() string {
 		if s.data.CostUSD > 0 {
 			parts = append(parts, fmt.Sprintf("$%.5f", s.data.CostUSD))
 		}
-		aiInfo = theme.MutedText.Render(joinStatusParts(parts))
+		aiInfo = baseTextStyle.Copy().Foreground(theme.Muted).Render(joinStatusParts(parts))
 	}
 
-	barStyle := theme.StatusBar.Width(s.width)
-	if s.hasMoodBG {
-		barStyle = barStyle.Background(s.moodBG)
-	}
+	barStyle := lipgloss.NewStyle().
+		Foreground(theme.Text).
+		Background(barBG).
+		Padding(0, 1).
+		Width(s.width)
 
 	if aiInfo == "" {
 		return barStyle.Render(vitals)
@@ -141,7 +148,7 @@ func (s StatusBarModel) View() string {
 	if gap < 1 {
 		gap = 1
 	}
-	spacer := lipgloss.NewStyle().Width(gap).Render("")
+	spacer := baseTextStyle.Copy().Width(gap).Render("")
 	bar := lipgloss.JoinHorizontal(lipgloss.Top, vitals, spacer, aiInfo)
 	return barStyle.Render(bar)
 }

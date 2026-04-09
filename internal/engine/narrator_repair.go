@@ -14,6 +14,7 @@ func (n *Narrator) repairNarrativeResponse(ctx context.Context, invalidOutput st
 			{Role: ai.RoleSystem, Content: prompts.NarrativeRepairSystemPrompt()},
 			{Role: ai.RoleUser, Content: prompts.NarrativeRepairUserPrompt(invalidOutput, parseErr.Error())},
 		},
+		Model:          n.genCfg.RepairModel,
 		Temperature:    0.1,
 		MaxTokens:      n.genCfg.MaxTokens,
 		ResponseFormat: ai.NarrativeResponseFormat(),

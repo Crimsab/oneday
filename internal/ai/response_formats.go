@@ -69,12 +69,12 @@ func storyDefinitionSchema() map[string]any {
 			"setting", "stats_schema",
 		},
 		"properties": map[string]any{
-			"name":              stringSchema(),
-			"description":       stringSchema(),
-			"genre":             stringSchema(),
-			"tone":              stringSchema(),
-			"language":          stringSchema(),
-			"writing_style":     stringSchema(),
+			"name":              nonEmptyStringSchema(),
+			"description":       nonEmptyStringSchema(),
+			"genre":             nonEmptyStringSchema(),
+			"tone":              nonEmptyStringSchema(),
+			"language":          nonEmptyStringSchema(),
+			"writing_style":     nonEmptyStringSchema(),
 			"prompt_directives": stringSchema(),
 			"setting": map[string]any{
 				"type":                 "object",
@@ -84,16 +84,16 @@ func storyDefinitionSchema() map[string]any {
 					"society", "rules", "factions", "cultures", "dangers",
 				},
 				"properties": map[string]any{
-					"world_name":       stringSchema(),
-					"era":              stringSchema(),
-					"geography":        stringSchema(),
-					"magic_system":     stringSchema(),
-					"technology_level": stringSchema(),
-					"society":          stringSchema(),
-					"rules":            stringArraySchema(),
-					"factions":         stringArraySchema(),
-					"cultures":         stringArraySchema(),
-					"dangers":          stringArraySchema(),
+					"world_name":       nonEmptyStringSchema(),
+					"era":              nonEmptyStringSchema(),
+					"geography":        nonEmptyStringSchema(),
+					"magic_system":     nonEmptyStringSchema(),
+					"technology_level": nonEmptyStringSchema(),
+					"society":          nonEmptyStringSchema(),
+					"rules":            nonEmptyStringArraySchema(1),
+					"factions":         nonEmptyStringArraySchema(1),
+					"cultures":         nonEmptyStringArraySchema(1),
+					"dangers":          nonEmptyStringArraySchema(1),
 					"tone_guidelines":  stringSchema(),
 				},
 			},
@@ -102,15 +102,15 @@ func storyDefinitionSchema() map[string]any {
 				"additionalProperties": false,
 				"required":             []string{"vitals", "attributes", "secondary", "has_combat"},
 				"properties": map[string]any{
-					"vitals":     statDefArraySchema(),
-					"attributes": statDefArraySchema(),
-					"secondary":  statDefArraySchema(),
+					"vitals":     statDefArraySchema(1),
+					"attributes": statDefArraySchema(1),
+					"secondary":  statDefArraySchema(0),
 					"currency": map[string]any{
 						"type":                 "object",
 						"additionalProperties": false,
 						"required":             []string{"name", "starting"},
 						"properties": map[string]any{
-							"name":     stringSchema(),
+							"name":     nonEmptyStringSchema(),
 							"starting": integerSchema(),
 						},
 					},
@@ -403,30 +403,47 @@ func modifierSchema() map[string]any {
 	}
 }
 
-func statDefArraySchema() map[string]any {
-	return map[string]any{
-		"type": "array",
+func statDefArraySchema(minItems int) map[string]any {
+	schema := map[string]any{
+		"type":     "array",
+		"minItems": minItems,
 		"items": map[string]any{
 			"type":                 "object",
 			"additionalProperties": false,
 			"required":             []string{"key", "label"},
 			"properties": map[string]any{
-				"key":      stringSchema(),
-				"label":    stringSchema(),
+				"key":      nonEmptyStringSchema(),
+				"label":    nonEmptyStringSchema(),
 				"starting": integerSchema(),
 			},
 		},
 	}
+	return schema
 }
 
 func stringSchema() map[string]any {
 	return map[string]any{"type": "string"}
 }
 
+func nonEmptyStringSchema() map[string]any {
+	return map[string]any{
+		"type":      "string",
+		"minLength": 1,
+	}
+}
+
 func stringArraySchema() map[string]any {
 	return map[string]any{
 		"type":  "array",
 		"items": stringSchema(),
+	}
+}
+
+func nonEmptyStringArraySchema(minItems int) map[string]any {
+	return map[string]any{
+		"type":     "array",
+		"minItems": minItems,
+		"items":    nonEmptyStringSchema(),
 	}
 }
 
