@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"log"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -361,9 +362,9 @@ func (a *App) buildRAG(storyID string) *rag.RAG {
 		return nil
 	}
 
-	// Use LiteLLM as the embedding provider (same base URL, /v1/embeddings endpoint).
-	liteCfg := a.cfg.AI.LiteLLM
-	if !liteCfg.Enabled || liteCfg.BaseURL == "" {
+	spec, reason := selectEmbeddingProvider(a.cfg)
+	if reason != "" {
+		log.Printf("oneday: RAG disabled for story %s: %s", storyID, reason)
 		return nil
 	}
 
@@ -373,9 +374,9 @@ func (a *App) buildRAG(storyID string) *rag.RAG {
 	}
 
 	embProvider := providers.NewOpenAICompat(providers.OpenAICompatConfig{
-		Name:         "litellm-embed",
-		BaseURL:      liteCfg.BaseURL,
-		APIKey:       liteCfg.APIKey,
+		Name:         spec.Name,
+		BaseURL:      spec.BaseURL,
+		APIKey:       spec.APIKey,
 		DefaultModel: a.cfg.AI.Embedding.Model,
 		Timeout:      timeout,
 	})
@@ -388,19 +389,22 @@ func (a *App) buildRAG(storyID string) *rag.RAG {
 
 // loadSaveAndResume restores state from a save and resumes the narrative view.
 func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
-	char, world, err := engine.LoadGame(a.db, saveID)
+	// Close existing session before opening new one.
+	if a.narrative != nil {
+		a.narrative.CloseSession()
+	}
+
+	loadResult, err := engine.LoadGame(a.db, a.cfg.DataDir, saveID)
 	if err != nil {
 		return nil, fmt.Errorf("loading save: %w", err)
 	}
 
+	char := loadResult.Character
+	world := loadResult.World
+
 	story, err := a.db.GetStory(storyID)
 	if err != nil {
 		return nil, fmt.Errorf("loading story: %w", err)
-	}
-
-	// Close existing session before opening new one.
-	if a.narrative != nil {
-		a.narrative.CloseSession()
 	}
 
 	session, err := engine.NewGameSession(a.db, storyID, a.cfg.DataDir)
@@ -423,10 +427,43 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 	m.SetSize(a.width, a.height)
 	a.narrative = &m
 	a.view = ViewNarrative
+	if loadResult.Legacy {
+		a.narrative.SetStatusMsg("Legacy save loaded: history rollback is partial")
+	}
 
 	// Save was restored — resume from where we left off without re-triggering
 	// the first-turn AI prompt.
 	return a.narrative.ResumeNarration(), nil
+}
+
+type embeddingProviderSpec struct {
+	Name    string
+	BaseURL string
+	APIKey  string
+}
+
+func selectEmbeddingProvider(cfg config.Config) (embeddingProviderSpec, string) {
+	for _, name := range cfg.EnabledProviders() {
+		switch name {
+		case "litellm":
+			if cfg.AI.LiteLLM.BaseURL != "" {
+				return embeddingProviderSpec{
+					Name:    "litellm-embed",
+					BaseURL: cfg.AI.LiteLLM.BaseURL,
+					APIKey:  cfg.AI.LiteLLM.APIKey,
+				}, ""
+			}
+		case "openrouter":
+			if cfg.AI.OpenRouter.BaseURL != "" {
+				return embeddingProviderSpec{
+					Name:    "openrouter",
+					BaseURL: cfg.AI.OpenRouter.BaseURL,
+					APIKey:  cfg.AI.OpenRouter.APIKey,
+				}, ""
+			}
+		}
+	}
+	return embeddingProviderSpec{}, "no embedding-capable provider is enabled"
 }
 
 // enterNarrativeView loads story data, creates a narrator, and starts narration.

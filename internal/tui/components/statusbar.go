@@ -125,14 +125,22 @@ func (s StatusBarModel) View() string {
 		if s.data.CostUSD > 0 {
 			parts = append(parts, fmt.Sprintf("$%.5f", s.data.CostUSD))
 		}
-		aiInfo = baseTextStyle.Copy().Foreground(theme.Muted).Render(joinStatusParts(parts))
+		aiText := joinStatusParts(parts)
+		aiInfo = baseTextStyle.Copy().Foreground(theme.Muted).Render(aiText)
 	}
 
 	barStyle := lipgloss.NewStyle().
 		Foreground(theme.Text).
 		Background(barBG).
 		Padding(0, 1).
+		Border(lipgloss.NormalBorder(), true, false, false, false).
+		BorderForeground(theme.Secondary).
 		Width(s.width)
+
+	contentWidth := s.width - 2 // account for horizontal padding
+	if contentWidth < 1 {
+		contentWidth = 1
+	}
 
 	if aiInfo == "" {
 		return barStyle.Render(vitals)
@@ -140,11 +148,57 @@ func (s StatusBarModel) View() string {
 
 	leftWidth := lipgloss.Width(vitals)
 	rightWidth := lipgloss.Width(aiInfo)
-	if leftWidth+rightWidth+2 > s.width || s.width < 72 {
-		return barStyle.Render(vitals + "\n" + aiInfo)
+	availableRight := contentWidth - leftWidth - 2
+	if availableRight <= 0 {
+		return barStyle.Render(vitals)
+	}
+	if rightWidth > availableRight {
+		aiInfo = baseTextStyle.Copy().Foreground(theme.Muted).Render(truncateStatusText(joinStatusParts([]string{
+			compactModelName(s.data.Model),
+			formatDurationSeconds(s.data.Latency),
+			func() string {
+				if s.data.Streamed && s.data.TimeToFirstToken > 0 {
+					return "ft " + formatDurationSeconds(s.data.TimeToFirstToken)
+				}
+				return ""
+			}(),
+			func() string {
+				if s.data.TotalTokens > 0 {
+					tokenPart := fmt.Sprintf("%dt", s.data.TotalTokens)
+					if s.data.CompletionTokens > 0 || s.data.PromptTokens > 0 {
+						tokenPart = fmt.Sprintf("%dt (%dp/%dc", s.data.TotalTokens, s.data.PromptTokens, s.data.CompletionTokens)
+						if s.data.ReasoningTokens > 0 {
+							tokenPart += fmt.Sprintf(", r%d", s.data.ReasoningTokens)
+						}
+						tokenPart += ")"
+					}
+					return tokenPart
+				}
+				return ""
+			}(),
+			func() string {
+				if s.data.CachedPromptTokens > 0 {
+					return fmt.Sprintf("cache %dp", s.data.CachedPromptTokens)
+				}
+				return ""
+			}(),
+			func() string {
+				if rate := throughputTokensPerSecond(s.data.CompletionTokens, s.data.Latency); rate > 0 {
+					return fmt.Sprintf("%.1ft/s", rate)
+				}
+				return ""
+			}(),
+			func() string {
+				if s.data.CostUSD > 0 {
+					return fmt.Sprintf("$%.5f", s.data.CostUSD)
+				}
+				return ""
+			}(),
+		}), availableRight))
+		rightWidth = lipgloss.Width(aiInfo)
 	}
 
-	gap := s.width - leftWidth - rightWidth - 2 // 2 for padding
+	gap := contentWidth - leftWidth - rightWidth
 	if gap < 1 {
 		gap = 1
 	}
@@ -184,6 +238,20 @@ func joinStatusParts(parts []string) string {
 		filtered = append(filtered, part)
 	}
 	return strings.Join(filtered, " · ")
+}
+
+func truncateStatusText(text string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	runes := []rune(strings.TrimSpace(text))
+	if len(runes) <= maxWidth {
+		return string(runes)
+	}
+	if maxWidth <= 1 {
+		return string(runes[:maxWidth])
+	}
+	return string(runes[:maxWidth-1]) + "…"
 }
 
 // SetMoodColor sets the background color tint for the status bar based on narrative mood.

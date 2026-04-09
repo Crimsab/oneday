@@ -85,6 +85,7 @@ type NarrativeModel struct {
 	statusBar          components.StatusBarModel
 	choices            components.ChoiceListModel
 	overlay            components.OverlayModel
+	historyBrowser     *historyBrowserModel
 	achievementPopup   components.AchievementPopupModel
 	input              textarea.Model
 	history            *strings.Builder // full narrative text accumulated so far
@@ -187,10 +188,20 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		case CombatEndMsg:
 			m.inCombat = false
 			m.combatView = nil
+			var cmds []tea.Cmd
+			if endMsg.PersistErr != nil {
+				m.statusMsg = "Combat summary not saved"
+				m.statusExpiry = time.Now().Add(3 * time.Second)
+				cmds = append(cmds, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+					return clearStatusMsg{}
+				}))
+			}
 			// Append combat summary to narrative history.
 			summary := components.RenderMarkdown("\n---\n**[Riepilogo Combattimento]** " + endMsg.Summary + "\n---\n")
-			cmd := m.appendNarrativeSegment(summary, false)
-			return m, cmd
+			if cmd := m.appendNarrativeSegment(summary, false); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return m, tea.Batch(cmds...)
 		default:
 			updated, cmd := m.combatView.Update(msg)
 			m.combatView = &updated
@@ -263,6 +274,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.overlay.SetSize(msg.Width, msg.Height)
+		if m.historyBrowser != nil {
+			m.historyBrowser.SetSize(msg.Width, msg.Height)
+		}
 		m.relayout()
 		return m, nil
 
@@ -409,11 +423,49 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 		return m, nil
 
-		case tea.KeyMsg:
+	case tea.MouseMsg:
+		if m.historyBrowser != nil && m.historyBrowser.Visible() {
+			var cmd tea.Cmd
+			updated, cmd := m.historyBrowser.Update(msg)
+			if !updated.Visible() {
+				m.historyBrowser = nil
+				if m.choices.HasChoices() {
+					m.inputFocus = false
+					m.input.Blur()
+				} else {
+					m.inputFocus = true
+					m.input.Focus()
+				}
+				return m, nil
+			}
+			m.historyBrowser = &updated
+			return m, cmd
+		}
+		return m, nil
+
+	case tea.KeyMsg:
 		// If achievement popup is visible, route key events to it first.
 		if m.achievementPopup.Visible() {
 			var cmd tea.Cmd
 			m.achievementPopup, cmd = m.achievementPopup.Update(msg)
+			return m, cmd
+		}
+
+		if m.historyBrowser != nil && m.historyBrowser.Visible() {
+			var cmd tea.Cmd
+			updated, cmd := m.historyBrowser.Update(msg)
+			if !updated.Visible() {
+				m.historyBrowser = nil
+				if m.choices.HasChoices() {
+					m.inputFocus = false
+					m.input.Blur()
+				} else {
+					m.inputFocus = true
+					m.input.Focus()
+				}
+				return m, nil
+			}
+			m.historyBrowser = &updated
 			return m, cmd
 		}
 
@@ -549,6 +601,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				}
 			}
 		}
+	}
+	if _, ok := msg.(tea.MouseMsg); ok {
+		shouldUpdateViewport = false
 	}
 	if shouldUpdateViewport {
 		var vpCmd tea.Cmd
@@ -721,18 +776,19 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /stats        (/s)   Show character sheet
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
-  h                   Show session history
+  h                   Open the story history browser
   /btw <question>     Ask the AI a quick contextual question without advancing the turn
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
   /craft               Open crafting station (AI-driven)
   /save [name]         Save your game
   /load                Load a saved game
-  /help         (/h)   Show this help
+  /help                Show this help
   /quit         (/q)   Save and quit to menu
 
 Keyboard Shortcuts:
   s / F5              Quick save snapshot
+  h                   Open searchable history browser
   Esc                 Open session menu (resume, quick save, load, main menu)
   Space               Confirms the highlighted option in menus and pickers
   Left / Right        Focus metadata badges on the selected choice
@@ -1625,7 +1681,20 @@ func (m *NarrativeModel) updateStatusBar() {
 
 	var vitals []components.Vital
 	if vitalsMap, ok := stats["vitals"].(map[string]interface{}); ok {
-		for key, val := range vitalsMap {
+		keys := make([]string, 0, len(vitalsMap))
+		for key := range vitalsMap {
+			keys = append(keys, key)
+		}
+		sort.Slice(keys, func(i, j int) bool {
+			leftRank := statusVitalRank(keys[i])
+			rightRank := statusVitalRank(keys[j])
+			if leftRank == rightRank {
+				return keys[i] < keys[j]
+			}
+			return leftRank < rightRank
+		})
+		for _, key := range keys {
+			val := vitalsMap[key]
 			if vMap, ok := val.(map[string]interface{}); ok {
 				current := toInt(vMap["current"])
 				max := toInt(vMap["max"])
@@ -1651,6 +1720,21 @@ func (m *NarrativeModel) updateStatusBar() {
 		CostUSD:            m.narrator.LastUsage().CostUSD,
 		Streamed:           m.narrator.LastStreamed(),
 	})
+}
+
+func statusVitalRank(key string) int {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "energy":
+		return 0
+	case "hp", "health":
+		return 1
+	case "stamina":
+		return 2
+	case "mana":
+		return 3
+	default:
+		return 10
+	}
 }
 
 // toInt safely converts interface{} to int (handles float64 from JSON).
@@ -1722,6 +1806,10 @@ func (m NarrativeModel) View() string {
 		return m.challengePreludeView()
 	}
 
+	if m.historyBrowser != nil && m.historyBrowser.Visible() {
+		return m.historyBrowser.View()
+	}
+
 	// If overlay is visible, render it full-screen.
 	if m.overlay.Visible() {
 		return m.overlay.View()
@@ -1783,7 +1871,7 @@ func (m NarrativeModel) View() string {
 	}
 
 	// Help line
-	help := theme.MutedText.Render("h history · tab toggle · 1-9 choose · ←/→ badge info · enter send · S quicksave · /history · esc session")
+		help := theme.MutedText.Render("h history · tab toggle · 1-9 choose · ←/→ badge info · enter send · s quicksave · esc session")
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)

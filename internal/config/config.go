@@ -64,10 +64,11 @@ type ASCIIArtConfig struct {
 
 // GenerationConfig for AI text generation.
 type GenerationConfig struct {
-	Temperature    float64 `yaml:"temperature"`
-	MaxTokens      int     `yaml:"max_tokens"`
-	TimeoutSeconds int     `yaml:"timeout_seconds"`
-	RepairModel    string  `yaml:"repair_model"`
+	Temperature          float64  `yaml:"temperature"`
+	MaxTokens            int      `yaml:"max_tokens"`
+	TimeoutSeconds       int      `yaml:"timeout_seconds"`
+	RepairModel          string   `yaml:"repair_model"`
+	RepairFallbackModels []string `yaml:"repair_fallback_models"`
 }
 
 // RAGConfig for retrieval-augmented generation.
@@ -123,9 +124,11 @@ func Default() Config {
 				TimeoutSeconds: 25,
 			},
 			Generation: GenerationConfig{
-				Temperature:    0.8,
-				MaxTokens:      2048,
-				TimeoutSeconds: 60,
+				Temperature:          0.8,
+				MaxTokens:            2048,
+				TimeoutSeconds:       60,
+				RepairModel:          "grok-4.1-fast",
+				RepairFallbackModels: []string{"gemini-3.1-flash-lite-preview"},
 			},
 		},
 		RAG: RAGConfig{
@@ -213,4 +216,27 @@ func (c *Config) EnabledProviders() []string {
 		}
 	}
 	return enabled
+}
+
+// RepairModelCandidates returns the ordered list of models to try for repair
+// passes, with duplicates and blanks removed.
+func (g GenerationConfig) RepairModelCandidates() []string {
+	seen := map[string]bool{}
+	var out []string
+
+	appendModel := func(model string) {
+		model = strings.TrimSpace(model)
+		if model == "" || seen[model] {
+			return
+		}
+		seen[model] = true
+		out = append(out, model)
+	}
+
+	appendModel(g.RepairModel)
+	for _, model := range g.RepairFallbackModels {
+		appendModel(model)
+	}
+
+	return out
 }

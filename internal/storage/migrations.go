@@ -26,6 +26,7 @@ func (db *DB) migrate() error {
 		{6, migrationV6},
 		{7, migrationV7},
 		{8, migrationV8},
+		{9, migrationV9},
 	}
 
 	for _, m := range migrations {
@@ -238,4 +239,30 @@ ALTER TABLE stories ADD COLUMN prompt_directives TEXT NOT NULL DEFAULT '';
 const migrationV8 = `
 -- Add story archive flag for management workflows.
 ALTER TABLE stories ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;
+`
+
+const migrationV9 = `
+-- Expand chat message types so narrator meta turns and combat summaries persist canonically.
+ALTER TABLE chat_messages RENAME TO chat_messages_old;
+
+CREATE TABLE chat_messages (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	turn INTEGER NOT NULL DEFAULT 0,
+	role TEXT NOT NULL CHECK(role IN ('user', 'assistant', 'system', 'narrator')),
+	content TEXT NOT NULL,
+	message_type TEXT NOT NULL DEFAULT 'narrative' CHECK(message_type IN ('narrative', 'combat', 'crafting', 'dialogue', 'narrator', 'combat_summary')),
+	metadata_json TEXT NOT NULL DEFAULT '{}',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO chat_messages (id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at)
+SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at
+FROM chat_messages_old;
+
+DROP TABLE chat_messages_old;
+
+CREATE INDEX idx_chat_messages_session ON chat_messages(session_id);
+CREATE INDEX idx_chat_messages_story ON chat_messages(story_id);
 `
