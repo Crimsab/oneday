@@ -3,23 +3,32 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 current_phase: 14
-status: planned
-last_updated: "2026-04-09T11:45:00Z"
+status: completed
+last_updated: "2026-04-09T06:58:19.617Z"
 progress:
-  total_phases: 14
-  completed_phases: 13
+  total_phases: 15
+  completed_phases: 15
   total_plans: 41
-  completed_plans: 38
-  percent: 93
+  completed_plans: 41
+  percent: 100
 ---
 
 # Project State
 
 **Current Phase:** 14
-**Status:** Ready to plan
+**Status:** Milestone complete
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 14 execution completed.
+  Summaries written to `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-01-SUMMARY.md`,
+  `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-02-SUMMARY.md`,
+  and `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-03-SUMMARY.md`.
+  Verification saved in `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-VERIFICATION.md`.
+  Delivered a home-surface achievement archive, story-scoped achievement browsing in and out of runs,
+  protagonist/NPC dossiers through `/stats` and `/characters`, a canonical drill-down codex via `/codex`,
+  and dialogue rendering fixes for duplicated prose plus single-quoted speech fallback.
 
 - 2026-04-09: Phase 13 execution completed.
   Summaries written to `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-01-SUMMARY.md`,

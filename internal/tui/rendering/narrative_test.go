@@ -58,3 +58,39 @@ func TestRenderNarrativeMarkdownHighlightsLocationWithoutLocationCallout(t *test
 		t.Fatalf("did not expect synthetic location callout, got %q", rendered)
 	}
 }
+
+func TestRenderNarrativeMarkdownStripsQuotedNarrativeWhenDialogueBlocksExist(t *testing.T) {
+	rendered := RenderNarrativeMarkdown(NarrativeInput{
+		Narrative: "Lyanna narrows her eyes. Lyanna says, 'We cannot stay in Silver Vale.'",
+		DialogueBlocks: []engine.DialogueBlock{
+			{Speaker: "Lyanna", Role: "npc", Text: "We cannot stay in Silver Vale."},
+		},
+		KnownEntities: []KnownEntity{
+			{Name: "Lyanna", Kind: "npc"},
+			{Name: "Silver Vale", Kind: "location"},
+		},
+	})
+
+	if strings.Contains(rendered, "'We cannot stay in Silver Vale.'") {
+		t.Fatalf("expected duplicate single-quoted prose to be removed, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "> **Lyanna:** _\"We cannot stay in **`Silver Vale`**.\"_") {
+		t.Fatalf("expected structured dialogue block to remain, got %q", rendered)
+	}
+}
+
+func TestRenderNarrativeMarkdownPromotesSingleQuotedDialogueWithoutBlocks(t *testing.T) {
+	rendered := RenderNarrativeMarkdown(NarrativeInput{
+		Narrative: "Lyanna says, 'Stay close.' The corridor is silent.",
+		KnownEntities: []KnownEntity{
+			{Name: "Lyanna", Kind: "npc"},
+		},
+	})
+
+	if !strings.Contains(rendered, "> **Lyanna:** _\"Stay close.\"_") {
+		t.Fatalf("expected single-quoted dialogue to become a dialogue block, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "The corridor is silent.") {
+		t.Fatalf("expected surrounding narration to remain, got %q", rendered)
+	}
+}

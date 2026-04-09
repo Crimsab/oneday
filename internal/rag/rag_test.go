@@ -263,6 +263,51 @@ func TestVectorStoreCountAndLastTurn(t *testing.T) {
 	}
 }
 
+func TestVectorStoreInvalidatesCacheOnInsert(t *testing.T) {
+	db := openTestDB(t)
+	vs := NewVectorStore(db)
+	ctx := context.Background()
+	storyID := "story-cache"
+
+	if err := vs.Insert(ctx, &Chunk{
+		StoryID:   storyID,
+		Text:      "older chunk",
+		ChunkType: "summary",
+		TurnStart: 1,
+		TurnEnd:   5,
+		Embedding: vec(1, 0, 0),
+	}); err != nil {
+		t.Fatalf("insert first chunk: %v", err)
+	}
+
+	results, err := vs.Search(ctx, storyID, vec(1, 0, 0), 1)
+	if err != nil {
+		t.Fatalf("first search: %v", err)
+	}
+	if len(results) != 1 || results[0].Chunk.Text != "older chunk" {
+		t.Fatalf("unexpected first result: %+v", results)
+	}
+
+	if err := vs.Insert(ctx, &Chunk{
+		StoryID:   storyID,
+		Text:      "new hot chunk",
+		ChunkType: "summary",
+		TurnStart: 6,
+		TurnEnd:   10,
+		Embedding: vec(0, 1, 0),
+	}); err != nil {
+		t.Fatalf("insert second chunk: %v", err)
+	}
+
+	results, err = vs.Search(ctx, storyID, vec(0, 1, 0), 1)
+	if err != nil {
+		t.Fatalf("second search: %v", err)
+	}
+	if len(results) != 1 || results[0].Chunk.Text != "new hot chunk" {
+		t.Fatalf("cache did not refresh after insert: %+v", results)
+	}
+}
+
 // --- Summarizer tests ---
 
 func TestSummarizerShouldSummarize(t *testing.T) {
@@ -293,6 +338,49 @@ func TestSummarizerShouldSummarize(t *testing.T) {
 	should, _ = s.ShouldSummarize(ctx, 25)
 	if !should {
 		t.Errorf("gap 10 after stored summary: should be true")
+	}
+}
+
+func TestSummarizerPendingWindow(t *testing.T) {
+	db := openTestDB(t)
+	vs := NewVectorStore(db)
+	embedder := NewEmbedder(&mockEmbedder{vec: vec(0.1, 0.2)}, "mock", 2)
+	s := NewSummarizer(embedder, vs, &mockAI{text: "summary"}, "story-window", 10)
+	ctx := context.Background()
+
+	start, end, should, err := s.PendingWindow(ctx, 9)
+	if err != nil {
+		t.Fatalf("PendingWindow turn 9: %v", err)
+	}
+	if should || start != 0 || end != 0 {
+		t.Fatalf("unexpected pending window at turn 9: start=%d end=%d should=%v", start, end, should)
+	}
+
+	start, end, should, err = s.PendingWindow(ctx, 10)
+	if err != nil {
+		t.Fatalf("PendingWindow turn 10: %v", err)
+	}
+	if !should || start != 1 || end != 10 {
+		t.Fatalf("unexpected pending window at turn 10: start=%d end=%d should=%v", start, end, should)
+	}
+
+	if err := vs.Insert(ctx, &Chunk{
+		StoryID:   "story-window",
+		Text:      "existing summary",
+		ChunkType: "summary",
+		TurnStart: 1,
+		TurnEnd:   15,
+		Embedding: vec(0.1, 0.2),
+	}); err != nil {
+		t.Fatalf("insert existing summary: %v", err)
+	}
+
+	start, end, should, err = s.PendingWindow(ctx, 25)
+	if err != nil {
+		t.Fatalf("PendingWindow turn 25: %v", err)
+	}
+	if !should || start != 16 || end != 25 {
+		t.Fatalf("unexpected pending window after summary: start=%d end=%d should=%v", start, end, should)
 	}
 }
 
