@@ -46,6 +46,12 @@ type openAIChatRequest struct {
 	ResponseFormat *ai.ResponseFormat `json:"response_format,omitempty"`
 	Plugins        []ai.Plugin        `json:"plugins,omitempty"`
 	Provider       *ai.ProviderConfig `json:"provider,omitempty"`
+	Stream         bool               `json:"stream,omitempty"`
+	StreamOptions  *streamOptions     `json:"stream_options,omitempty"`
+}
+
+type streamOptions struct {
+	IncludeUsage bool `json:"include_usage,omitempty"`
 }
 
 // openAIChatResponse is the response from /v1/chat/completions.
@@ -119,33 +125,12 @@ func (o *OpenAICompat) Name() string {
 // Complete sends a chat completion request to the OpenAI-compatible endpoint.
 func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Response, error) {
 	start := time.Now()
-
-	model := req.Model
-	if model == "" {
-		model = o.defaultModel
-	}
-
-	responseFormat := o.selectResponseFormat(ctx, model, req.ResponseFormat)
-	body := openAIChatRequest{
-		Model:          model,
-		Messages:       req.Messages,
-		Temperature:    req.Temperature,
-		MaxTokens:      req.MaxTokens,
-		ResponseFormat: responseFormat,
-		Plugins:        req.Plugins,
-		Provider:       req.Provider,
-	}
-	o.applyStructuredJSONGuards(&body)
+	body := o.buildChatRequest(ctx, req, false)
 	content, resolvedModel, usage, err := o.completeOnce(ctx, body)
 	if err != nil {
 		httpErr, ok := err.(*openAICompatHTTPError)
-		if responseFormat != nil && ok && shouldRetryWithoutResponseFormat(httpErr) {
-			content, resolvedModel, usage, err = o.completeOnce(ctx, openAIChatRequest{
-				Model:       model,
-				Messages:    req.Messages,
-				Temperature: req.Temperature,
-				MaxTokens:   req.MaxTokens,
-			})
+		if body.ResponseFormat != nil && ok && shouldRetryWithoutResponseFormat(httpErr) {
+			content, resolvedModel, usage, err = o.completeOnce(ctx, withoutResponseFormat(body))
 		}
 		if err != nil {
 			return ai.Response{}, fmt.Errorf("HTTP request to %s: %w", o.name, err)
@@ -284,50 +269,20 @@ func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.E
 // Stream implements ai.StreamProvider using Server-Sent Events (SSE).
 // It calls /v1/chat/completions with stream:true and parses the event stream.
 func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
-	model := req.Model
-	if model == "" {
-		model = o.defaultModel
-	}
-
-	body := map[string]interface{}{
-		"model":       model,
-		"messages":    req.Messages,
-		"temperature": req.Temperature,
-		"max_tokens":  req.MaxTokens,
-		"stream":      true,
-		"stream_options": map[string]bool{
-			"include_usage": true,
-		},
-	}
-	if responseFormat := o.selectResponseFormat(ctx, model, req.ResponseFormat); responseFormat != nil {
-		body["response_format"] = responseFormat
-	}
-	if req.Provider != nil {
-		body["provider"] = req.Provider
-	}
-
-	jsonBody, err := json.Marshal(body)
+	body := o.buildChatRequest(ctx, req, true)
+	resp, err := o.openStream(ctx, body)
 	if err != nil {
-		return nil, fmt.Errorf("marshaling stream request: %w", err)
-	}
-
-	url := o.baseURL + "/chat/completions"
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
-	if err != nil {
-		return nil, fmt.Errorf("creating stream request: %w", err)
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	if o.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
-	}
-
-	resp, err := o.client.Do(httpReq)
-	if err != nil {
-		return nil, fmt.Errorf("HTTP stream request to %s: %w", o.name, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
-		return nil, fmt.Errorf("%s stream returned status %d", o.name, resp.StatusCode)
+		httpErr, ok := err.(*openAICompatHTTPError)
+		if body.ResponseFormat != nil && ok && shouldRetryWithoutResponseFormat(httpErr) {
+			resp, err = o.openStream(ctx, withoutResponseFormat(body))
+		}
+		if err != nil {
+			httpErr, ok := err.(*openAICompatHTTPError)
+			if ok && shouldFallbackStreamToComplete(httpErr) {
+				return o.completeAsStream(ctx, req)
+			}
+			return nil, fmt.Errorf("HTTP stream request to %s: %w", o.name, err)
+		}
 	}
 
 	ch := make(chan ai.StreamChunk, 32)
@@ -381,6 +336,96 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 		ch <- ai.StreamChunk{Done: true}
 	}()
 
+	return ch, nil
+}
+
+func (o *OpenAICompat) buildChatRequest(ctx context.Context, req ai.Request, stream bool) openAIChatRequest {
+	model := req.Model
+	if model == "" {
+		model = o.defaultModel
+	}
+
+	body := openAIChatRequest{
+		Model:          model,
+		Messages:       req.Messages,
+		Temperature:    req.Temperature,
+		MaxTokens:      req.MaxTokens,
+		ResponseFormat: o.selectResponseFormat(ctx, model, req.ResponseFormat),
+		Plugins:        req.Plugins,
+		Provider:       req.Provider,
+	}
+	if stream {
+		body.Stream = true
+		body.StreamOptions = &streamOptions{IncludeUsage: true}
+	}
+	o.applyStructuredJSONGuards(&body)
+	return body
+}
+
+func withoutResponseFormat(body openAIChatRequest) openAIChatRequest {
+	body.ResponseFormat = nil
+	body.Plugins = nil
+	body.Provider = nil
+	return body
+}
+
+func (o *OpenAICompat) openStream(ctx context.Context, body openAIChatRequest) (*http.Response, error) {
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling stream request: %w", err)
+	}
+
+	url := o.baseURL + "/chat/completions"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("creating stream request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if o.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
+
+	resp, err := o.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("reading error response from %s: %w", o.name, readErr)
+		}
+		return nil, &openAICompatHTTPError{
+			StatusCode: resp.StatusCode,
+			Body:       strings.TrimSpace(string(respBody)),
+		}
+	}
+
+	return resp, nil
+}
+
+func (o *OpenAICompat) completeAsStream(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
+	resp, err := o.Complete(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	ch := make(chan ai.StreamChunk, 3)
+	go func() {
+		defer close(ch)
+		if resp.Content != "" {
+			ch <- ai.StreamChunk{
+				Content: resp.Content,
+				Model:   resp.Model,
+				Usage:   resp.Usage,
+			}
+		}
+		ch <- ai.StreamChunk{
+			Model: resp.Model,
+			Usage: resp.Usage,
+			Done:  true,
+		}
+	}()
 	return ch, nil
 }
 
@@ -541,6 +586,34 @@ func shouldRetryWithoutResponseFormat(err *openAICompatHTTPError) bool {
 		"unsupported",
 		"not supported",
 		"invalid schema",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(body, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldFallbackStreamToComplete(err *openAICompatHTTPError) bool {
+	if err == nil {
+		return false
+	}
+	if err.StatusCode != http.StatusBadRequest &&
+		err.StatusCode != http.StatusNotImplemented &&
+		err.StatusCode != http.StatusMethodNotAllowed &&
+		err.StatusCode != http.StatusServiceUnavailable {
+		return false
+	}
+
+	body := strings.ToLower(err.Body)
+	keywords := []string{
+		"stream",
+		"streaming",
+		"event stream",
+		"not implemented",
+		"not supported",
+		"unsupported",
 	}
 	for _, keyword := range keywords {
 		if strings.Contains(body, keyword) {

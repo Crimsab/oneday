@@ -282,6 +282,10 @@ func TestOpenAICompatStream(t *testing.T) {
 	chunks := []string{"Hello", ", ", "world", "!"}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if r.URL.Path != "/chat/completions" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
@@ -291,8 +295,17 @@ func TestOpenAICompatStream(t *testing.T) {
 		if body["stream"] != true {
 			t.Errorf("stream = %v, want true", body["stream"])
 		}
-		if _, ok := body["plugins"]; ok {
-			t.Errorf("plugins should not be auto-injected for streaming requests")
+		plugins, ok := body["plugins"].([]any)
+		if !ok || len(plugins) == 0 {
+			t.Errorf("plugins missing from streaming request body")
+		}
+		plugin, ok := plugins[0].(map[string]any)
+		if !ok || plugin["id"] != "response-healing" {
+			t.Errorf("expected response-healing plugin in stream request, got %#v", body["plugins"])
+		}
+		provider, ok := body["provider"].(map[string]any)
+		if !ok || provider["require_parameters"] != true {
+			t.Errorf("provider.require_parameters missing or false in stream request: %#v", body["provider"])
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -307,13 +320,14 @@ func TestOpenAICompatStream(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAICompat(OpenAICompatConfig{
-		Name:    "sse-provider",
+		Name:    "litellm",
 		BaseURL: server.URL,
 		Timeout: 5 * time.Second,
 	})
 
 	ch, err := provider.Stream(context.Background(), ai.Request{
-		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+		Messages:       []ai.Message{{Role: "user", Content: "hi"}},
+		ResponseFormat: ai.NarrativeResponseFormat(),
 	})
 	if err != nil {
 		t.Fatalf("Stream: %v", err)
@@ -337,6 +351,135 @@ func TestOpenAICompatStream(t *testing.T) {
 	}
 	if !gotDone {
 		t.Error("expected Done chunk")
+	}
+}
+
+func TestOpenAICompatStreamRetriesWithoutUnsupportedResponseFormat(t *testing.T) {
+	var calls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		calls++
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+
+		_, hasResponseFormat := body["response_format"]
+		if calls == 1 {
+			if !hasResponseFormat {
+				t.Fatalf("expected first stream request to carry response_format")
+			}
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"message":"response_format json_schema not supported"}}`))
+			return
+		}
+
+		if hasResponseFormat {
+			t.Fatalf("expected retry stream request without response_format")
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		fmt.Fprint(w, sseEvent(`{"narrative":"fallback ok","choices":[{"id":1,"text":"Continue"}]}`))
+		flusher.Flush()
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "litellm",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	ch, err := provider.Stream(context.Background(), ai.Request{
+		Messages:       []ai.Message{{Role: "user", Content: "hello"}},
+		ResponseFormat: ai.NarrativeResponseFormat(),
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var got strings.Builder
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("chunk error: %v", chunk.Error)
+		}
+		got.WriteString(chunk.Content)
+	}
+	if !strings.Contains(got.String(), "fallback ok") {
+		t.Fatalf("unexpected fallback stream content: %q", got.String())
+	}
+	if calls != 2 {
+		t.Fatalf("calls = %d, want 2", calls)
+	}
+}
+
+func TestOpenAICompatStreamFallsBackToCompleteWhenStreamingUnsupported(t *testing.T) {
+	var streamCalls int
+	var completeCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["stream"] == true {
+			streamCalls++
+			w.WriteHeader(http.StatusNotImplemented)
+			_, _ = w.Write([]byte(`{"error":{"message":"streaming not supported for this route"}}`))
+			return
+		}
+
+		completeCalls++
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": `{"narrative":"complete fallback","choices":[{"id":1,"text":"Continue"}]}`}},
+			},
+			"model": "test-model",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "litellm",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	ch, err := provider.Stream(context.Background(), ai.Request{
+		Messages:       []ai.Message{{Role: "user", Content: "hello"}},
+		ResponseFormat: ai.NarrativeResponseFormat(),
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var chunks []ai.StreamChunk
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("chunk error: %v", chunk.Error)
+		}
+		chunks = append(chunks, chunk)
+	}
+	if streamCalls != 1 {
+		t.Fatalf("streamCalls = %d, want 1", streamCalls)
+	}
+	if completeCalls != 1 {
+		t.Fatalf("completeCalls = %d, want 1", completeCalls)
+	}
+	if len(chunks) < 2 || !strings.Contains(chunks[0].Content, "complete fallback") || !chunks[len(chunks)-1].Done {
+		t.Fatalf("unexpected fallback chunks: %#v", chunks)
 	}
 }
 
