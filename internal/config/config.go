@@ -51,7 +51,8 @@ type OpenRouterConfig struct {
 
 // EmbeddingConfig for RAG embedding model.
 type EmbeddingConfig struct {
-	Model string `yaml:"model"`
+	Model    string `yaml:"model"`
+	Provider string `yaml:"provider"`
 }
 
 // ASCIIArtConfig controls optional ambient ASCII-art generation.
@@ -115,7 +116,8 @@ func Default() Config {
 				DefaultModel: "google/gemini-2.5-flash-lite",
 			},
 			Embedding: EmbeddingConfig{
-				Model: "text-embedding-3-small",
+				Model:    "text-embedding-3-small",
+				Provider: "auto",
 			},
 			ASCIIArt: ASCIIArtConfig{
 				Enabled:        true,
@@ -193,6 +195,11 @@ func (c *Config) Validate() error {
 		if c.AI.ASCIIArt.TimeoutSeconds <= 0 {
 			return fmt.Errorf("ai.ascii_art.timeout_seconds must be positive when ascii art is enabled")
 		}
+	}
+	switch c.AI.Embedding.Provider {
+	case "", "auto", "litellm", "openrouter":
+	default:
+		return fmt.Errorf("ai.embedding.provider must be one of: auto, litellm, openrouter")
 	}
 	return nil
 }

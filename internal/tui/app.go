@@ -471,33 +471,75 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 }
 
 type embeddingProviderSpec struct {
-	Name    string
-	BaseURL string
-	APIKey  string
+	Name               string
+	BaseURL            string
+	APIKey             string
+	SupportsEmbeddings bool
 }
 
 func selectEmbeddingProvider(cfg config.Config) (embeddingProviderSpec, string) {
-	for _, name := range cfg.EnabledProviders() {
-		switch name {
-		case "litellm":
-			if cfg.AI.LiteLLM.BaseURL != "" {
-				return embeddingProviderSpec{
-					Name:    "litellm-embed",
-					BaseURL: cfg.AI.LiteLLM.BaseURL,
-					APIKey:  cfg.AI.LiteLLM.APIKey,
-				}, ""
-			}
-		case "openrouter":
-			if cfg.AI.OpenRouter.BaseURL != "" {
-				return embeddingProviderSpec{
-					Name:    "openrouter",
-					BaseURL: cfg.AI.OpenRouter.BaseURL,
-					APIKey:  cfg.AI.OpenRouter.APIKey,
-				}, ""
-			}
+	requested := cfg.AI.Embedding.Provider
+	if requested == "" {
+		requested = "auto"
+	}
+
+	if requested != "auto" {
+		spec, reason := embeddingProviderSpecForName(cfg, requested)
+		if reason != "" {
+			return embeddingProviderSpec{}, reason
 		}
+		if !spec.SupportsEmbeddings {
+			return embeddingProviderSpec{}, fmt.Sprintf("embedding provider %q does not support embeddings", requested)
+		}
+		if spec.BaseURL == "" {
+			return embeddingProviderSpec{}, fmt.Sprintf("embedding provider %q has no base_url configured", requested)
+		}
+		return spec, ""
+	}
+
+	for _, name := range cfg.EnabledProviders() {
+		spec, reason := embeddingProviderSpecForName(cfg, name)
+		if reason != "" || !spec.SupportsEmbeddings || spec.BaseURL == "" {
+			continue
+		}
+		return spec, ""
 	}
 	return embeddingProviderSpec{}, "no embedding-capable provider is enabled"
+}
+
+func embeddingProviderSpecForName(cfg config.Config, name string) (embeddingProviderSpec, string) {
+	switch name {
+	case "litellm":
+		if !cfg.AI.LiteLLM.Enabled {
+			return embeddingProviderSpec{}, `embedding provider "litellm" is disabled`
+		}
+		return embeddingProviderSpec{
+			Name:               "litellm-embed",
+			BaseURL:            cfg.AI.LiteLLM.BaseURL,
+			APIKey:             cfg.AI.LiteLLM.APIKey,
+			SupportsEmbeddings: true,
+		}, ""
+	case "openrouter":
+		if !cfg.AI.OpenRouter.Enabled {
+			return embeddingProviderSpec{}, `embedding provider "openrouter" is disabled`
+		}
+		return embeddingProviderSpec{
+			Name:               "openrouter",
+			BaseURL:            cfg.AI.OpenRouter.BaseURL,
+			APIKey:             cfg.AI.OpenRouter.APIKey,
+			SupportsEmbeddings: true,
+		}, ""
+	case "claude-code":
+		if !cfg.AI.ClaudeCode.Enabled {
+			return embeddingProviderSpec{}, `embedding provider "claude-code" is disabled`
+		}
+		return embeddingProviderSpec{
+			Name:               "claude-code",
+			SupportsEmbeddings: false,
+		}, ""
+	default:
+		return embeddingProviderSpec{}, fmt.Sprintf("unknown embedding provider %q", name)
+	}
 }
 
 // enterNarrativeView loads story data, creates a narrator, and starts narration.

@@ -39,6 +39,9 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.ASCIIArt.Model != "ascii-ambient" {
 		t.Errorf("ASCIIArt.Model = %q, want %q", cfg.AI.ASCIIArt.Model, "ascii-ambient")
 	}
+	if cfg.AI.Embedding.Provider != "auto" {
+		t.Errorf("Embedding.Provider = %q, want auto", cfg.AI.Embedding.Provider)
+	}
 }
 
 func TestLoadMissingFile(t *testing.T) {
@@ -112,6 +115,16 @@ func TestValidateEmptyPriority(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Error("expected validation error for empty priority chain")
+	}
+}
+
+func TestValidateInvalidEmbeddingProvider(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Embedding.Provider = "claude-code"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid embedding provider")
 	}
 }
 
