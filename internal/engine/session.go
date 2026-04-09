@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -23,7 +24,10 @@ type ChatEntry struct {
 	Output      *ChatOutput `json:"output,omitempty"`
 	AIModel     string      `json:"ai_model,omitempty"`
 	AILatency   int64       `json:"ai_latency_ms,omitempty"`
-	MessageType string      `json:"message_type,omitempty"` // "narrative", "combat", "crafting", "dialogue", "narrator"
+	AITTFT      int64       `json:"ai_ttft_ms,omitempty"`
+	AIUsage     ai.Usage    `json:"ai_usage,omitempty"`
+	AIStreamed  bool        `json:"ai_streamed,omitempty"`
+	MessageType string      `json:"message_type,omitempty"` // "narrative", "combat", "crafting", "dialogue", "narrator", "combat_summary"
 }
 
 // ChatInput represents the player's input for a turn.
@@ -168,74 +172,22 @@ func (gs *GameSession) CloseSubSession(subSessionID string) error {
 // The entry's Turn field is set automatically from the internal counter.
 func (gs *GameSession) AppendTurn(db *storage.DB, entry ChatEntry) error {
 	entry.Turn = gs.turn
-	if entry.Timestamp.IsZero() {
-		entry.Timestamp = time.Now()
-	}
-
-	// 1. Write to JSONL file.
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("marshaling chat entry: %w", err)
-	}
-	if _, err := gs.jsonlFile.Write(append(data, '\n')); err != nil {
-		return fmt.Errorf("writing to jsonl: %w", err)
-	}
-
-	// Determine message type (default to "narrative").
-	msgType := entry.MessageType
-	if msgType == "" {
-		msgType = "narrative"
-	}
-
-	// 2. Persist to DB — split into user and assistant messages.
-	now := entry.Timestamp
-	if entry.Input != nil {
-		userMsg := &storage.ChatMessage{
-			SessionID:    gs.session.ID,
-			StoryID:      gs.storyID,
-			Turn:         gs.turn,
-			Role:         "user",
-			Content:      entry.Input.Text,
-			MessageType:  msgType,
-			MetadataJSON: "{}",
-			CreatedAt:    now,
-		}
-		if err := db.AppendChatMessage(userMsg); err != nil {
-			return fmt.Errorf("saving user message to db: %w", err)
-		}
-	}
-
-	if entry.Output != nil {
-		// Build metadata JSON for the assistant message.
-		meta := map[string]interface{}{
-			"model":      entry.AIModel,
-			"latency_ms": entry.AILatency,
-			"mood":       entry.Output.Mood,
-			"location":   entry.Output.Location,
-			"choices":    entry.Output.Choices,
-			"output":     entry.Output,
-		}
-		metaJSON, err := json.Marshal(meta)
-		if err != nil {
-			metaJSON = []byte("{}")
-		}
-		assistantMsg := &storage.ChatMessage{
-			SessionID:    gs.session.ID,
-			StoryID:      gs.storyID,
-			Turn:         gs.turn,
-			Role:         "assistant",
-			Content:      entry.Output.Narrative,
-			MessageType:  msgType,
-			MetadataJSON: string(metaJSON),
-			CreatedAt:    now,
-		}
-		if err := db.AppendChatMessage(assistantMsg); err != nil {
-			return fmt.Errorf("saving assistant message to db: %w", err)
-		}
+	if err := gs.appendEntry(db, entry); err != nil {
+		return err
 	}
 
 	gs.turn++
 	return nil
+}
+
+// AppendHistoryEntry writes an auxiliary canonical entry to the main history
+// without advancing the story turn counter. Use this for things like narrator
+// meta turns or combat summaries that belong to the current turn.
+func (gs *GameSession) AppendHistoryEntry(db *storage.DB, entry ChatEntry) error {
+	if entry.Turn < 0 {
+		entry.Turn = gs.turn
+	}
+	return gs.appendEntry(db, entry)
 }
 
 // Close flushes and closes the JSONL file, all sub-session files, and marks the session as ended in DB.
@@ -286,6 +238,75 @@ func (gs *GameSession) SetTurn(turn int) {
 	if turn > 0 {
 		gs.turn = turn
 	}
+}
+
+func (gs *GameSession) appendEntry(db *storage.DB, entry ChatEntry) error {
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now()
+	}
+
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshaling chat entry: %w", err)
+	}
+	if _, err := gs.jsonlFile.Write(append(data, '\n')); err != nil {
+		return fmt.Errorf("writing to jsonl: %w", err)
+	}
+
+	msgType := entry.MessageType
+	if msgType == "" {
+		msgType = "narrative"
+	}
+
+	now := entry.Timestamp
+	if entry.Input != nil {
+		userMsg := &storage.ChatMessage{
+			SessionID:    gs.session.ID,
+			StoryID:      gs.storyID,
+			Turn:         entry.Turn,
+			Role:         "user",
+			Content:      entry.Input.Text,
+			MessageType:  msgType,
+			MetadataJSON: "{}",
+			CreatedAt:    now,
+		}
+		if err := db.AppendChatMessage(userMsg); err != nil {
+			return fmt.Errorf("saving user message to db: %w", err)
+		}
+	}
+
+	if entry.Output != nil {
+		meta := map[string]interface{}{
+			"model":                  entry.AIModel,
+			"latency_ms":             entry.AILatency,
+			"time_to_first_token_ms": entry.AITTFT,
+			"usage":                  entry.AIUsage,
+			"streamed":               entry.AIStreamed,
+			"mood":                   entry.Output.Mood,
+			"location":               entry.Output.Location,
+			"choices":                entry.Output.Choices,
+			"output":                 entry.Output,
+		}
+		metaJSON, err := json.Marshal(meta)
+		if err != nil {
+			metaJSON = []byte("{}")
+		}
+		assistantMsg := &storage.ChatMessage{
+			SessionID:    gs.session.ID,
+			StoryID:      gs.storyID,
+			Turn:         entry.Turn,
+			Role:         "assistant",
+			Content:      entry.Output.Narrative,
+			MessageType:  msgType,
+			MetadataJSON: string(metaJSON),
+			CreatedAt:    now,
+		}
+		if err := db.AppendChatMessage(assistantMsg); err != nil {
+			return fmt.Errorf("saving assistant message to db: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // countJSONLLines counts non-empty lines in a file.

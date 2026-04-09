@@ -16,7 +16,34 @@ type SaveSnapshot struct {
 	CharacterJSON  string    `json:"character_json"`
 	WorldStateJSON string    `json:"world_state_json"`
 	SessionID      string    `json:"session_id"`
+	Story          *Story    `json:"story,omitempty"`
+	NPCs           []NPC     `json:"npcs,omitempty"`
+	Achievements   []Achievement `json:"achievements,omitempty"`
+	Chapters       []Chapter `json:"chapters,omitempty"`
+	Sessions       []Session `json:"sessions,omitempty"`
+	ChatMessages   []ChatMessage `json:"chat_messages,omitempty"`
+	RAGChunks      []RAGChunkSnapshot `json:"rag_chunks,omitempty"`
+	CombatLogs     []CombatLog `json:"combat_logs,omitempty"`
+	SessionFiles   map[string]string `json:"session_files,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
+}
+
+// RAGChunkSnapshot is a JSON-serializable copy of a persisted RAG chunk.
+type RAGChunkSnapshot struct {
+	ID        int64     `json:"id"`
+	StoryID   string    `json:"story_id"`
+	Text      string    `json:"text"`
+	ChunkType string    `json:"chunk_type"`
+	TurnStart int       `json:"turn_start"`
+	TurnEnd   int       `json:"turn_end"`
+	Embedding []byte    `json:"embedding"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// HasFullRollbackState reports whether the snapshot contains the richer
+// canonical state needed for a true rollback instead of just char/world data.
+func (s *SaveSnapshot) HasFullRollbackState() bool {
+	return s != nil && s.Story != nil
 }
 
 // CreateSave inserts a new save snapshot into the DB.

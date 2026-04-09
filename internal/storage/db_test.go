@@ -180,6 +180,37 @@ func TestChatMessageRoleConstraint(t *testing.T) {
 	}
 }
 
+func TestChatMessageMessageTypeConstraint(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	db.Conn().Exec(`INSERT INTO stories (id, name) VALUES ('s1', 'Test')`)
+	db.Conn().Exec(`INSERT INTO sessions (id, story_id) VALUES ('sess1', 's1')`)
+
+	validTypes := []string{"narrative", "combat", "crafting", "dialogue", "narrator", "combat_summary"}
+	for _, messageType := range validTypes {
+		if _, err := db.Conn().Exec(
+			`INSERT INTO chat_messages (session_id, story_id, role, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+			"sess1", "s1", "assistant", "Hello", messageType,
+		); err != nil {
+			t.Fatalf("valid message_type %q insert: %v", messageType, err)
+		}
+	}
+
+	if _, err := db.Conn().Exec(
+		`INSERT INTO chat_messages (session_id, story_id, role, content, message_type) VALUES (?, ?, ?, ?, ?)`,
+		"sess1", "s1", "assistant", "Hello", "unsupported_type",
+	); err == nil {
+		t.Error("expected CHECK constraint error for invalid message_type, got nil")
+	}
+}
+
 func TestOpenCreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "sub", "dir", "test.db")

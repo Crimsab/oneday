@@ -1,0 +1,23 @@
+package engine
+
+import "testing"
+
+func TestParseCommandRecognizesCraftAliases(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "/craft", want: "craft"},
+		{input: "/crafting", want: "craft"},
+	}
+
+	for _, tc := range tests {
+		cmd := ParseCommand(tc.input)
+		if cmd == nil {
+			t.Fatalf("ParseCommand(%q) returned nil", tc.input)
+		}
+		if cmd.Name != tc.want {
+			t.Fatalf("ParseCommand(%q).Name = %q, want %q", tc.input, cmd.Name, tc.want)
+		}
+	}
+}
