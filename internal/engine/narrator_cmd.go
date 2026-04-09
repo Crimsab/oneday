@@ -119,6 +119,43 @@ func (nc *NarratorCommand) Execute(ctx context.Context, input string) (*Narrator
 	return metaResp, nil
 }
 
+// ExecuteAside answers a quick contextual question without mutating state or
+// logging a new in-world interaction.
+func (nc *NarratorCommand) ExecuteAside(ctx context.Context, input string) (string, error) {
+	if strings.TrimSpace(input) == "" {
+		return "Ask anything about the current story and I'll answer without advancing the scene.", nil
+	}
+
+	npcsContext := nc.buildNPCContext(ctx)
+	worldStateJSON := fmt.Sprintf(`{"location":"%s","chapter":%d,"turn":%d}`,
+		nc.world.CurrentLocation, nc.world.CurrentChapter, nc.world.CurrentTurn)
+
+	systemPrompt := prompts.NarratorAsideSystem(
+		nc.story.Name,
+		nc.story.Language,
+		nc.story.WritingStyle,
+		nc.story.PromptDirectives,
+		nc.story.SettingJSON,
+		worldStateJSON,
+		npcsContext,
+	)
+
+	req := ai.Request{
+		Messages: []ai.Message{
+			{Role: ai.RoleSystem, Content: systemPrompt},
+			{Role: ai.RoleUser, Content: input},
+		},
+		Temperature: 0.4,
+		MaxTokens:   512,
+	}
+
+	resp, err := nc.router.Complete(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("narrator aside AI call: %w", err)
+	}
+	return strings.TrimSpace(resp.Content), nil
+}
+
 // applyNarratorStateChanges applies the extended state changes from a /narrator response.
 // These extend the normal ApplyStateChanges with story/world mutation operations.
 func (nc *NarratorCommand) applyNarratorStateChanges(ctx context.Context, changes map[string]interface{}) error {

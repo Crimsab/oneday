@@ -67,6 +67,7 @@ type GenerationConfig struct {
 	Temperature    float64 `yaml:"temperature"`
 	MaxTokens      int     `yaml:"max_tokens"`
 	TimeoutSeconds int     `yaml:"timeout_seconds"`
+	RepairModel    string  `yaml:"repair_model"`
 }
 
 // RAGConfig for retrieval-augmented generation.

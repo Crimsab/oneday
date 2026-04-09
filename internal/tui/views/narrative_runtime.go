@@ -70,6 +70,7 @@ func (m *NarrativeModel) flushQueuedNarrative() tea.Cmd {
 		m.history.WriteString(next.text)
 	}
 
+	m.activateDeferredSceneState()
 	m.viewport.SetContent(m.visibleNarrativeContent())
 	m.viewport.GotoBottom()
 	return nil
@@ -81,6 +82,32 @@ func (m *NarrativeModel) completePendingNarrative() tea.Cmd {
 		m.pendingNarrative = ""
 	}
 	return m.flushQueuedNarrative()
+}
+
+func (m *NarrativeModel) activateDeferredSceneState() {
+	if len(m.deferredChoiceItems) > 0 {
+		m.choices.SetChoices(m.deferredChoiceItems)
+		m.choiceHelp = m.deferredChoiceHelp
+	} else {
+		m.choices.SetChoices(nil)
+		m.choiceHelp = map[int]string{}
+	}
+	m.deferredChoiceItems = nil
+	m.deferredChoiceHelp = nil
+
+	if len(m.deferredChallenges) > 0 {
+		m.pendingChallenges = m.deferredChallenges
+		m.deferredChallenges = nil
+	} else {
+		m.deferredChallenges = nil
+	}
+
+	m.inputFocus = m.deferredInputFocus
+	if m.inputFocus {
+		m.input.Focus()
+	} else {
+		m.input.Blur()
+	}
 }
 
 func (m *NarrativeModel) skipCurrentPlayback() tea.Cmd {

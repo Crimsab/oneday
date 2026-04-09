@@ -54,6 +54,9 @@ ai:
     temperature: 0.8
     max_tokens: 2048
     timeout_seconds: 60
+    # Optional dedicated repair/validator model for schema-fix passes.
+    # Leave empty to reuse the main provider/model path.
+    repair_model: ""
 
 # RAG settings
 rag:

@@ -152,6 +152,8 @@ You MAY include extra renderer metadata when it improves clarity, but gameplay m
 - "dialogue_blocks": structured dialogue entries for speaker-aware rendering
   Example:
   [{"speaker":"Lyanna","role":"npc","text":"Keep your voice down."}]
+- Whenever a named speaker says something directly, prefer putting that speech in dialogue_blocks as well as or instead of burying it inside narrative prose.
+- Keep direct speech as speaker-attributed dialogue, ideally in quoted form, so the UI can render it distinctly.
 - "entities_mentioned": important known entities explicitly referenced in this turn
   Example:
   [{"name":"Lyanna","type":"npc"},{"name":"Old Harbor","type":"location"}]

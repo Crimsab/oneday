@@ -227,7 +227,7 @@ func TestExtractStoryJSONRejectsMissingLanguage(t *testing.T) {
 }
 
 func TestStoryCreatorRepairsInvalidStoryDefinitionBeforeFailing(t *testing.T) {
-	invalid := `{"name":"Broken draft","genre":"fantasy","tone":"dark"}`
+	invalid := `not json at all`
 	creator, provider := newStoryCreatorForTest(t, invalid, validStoryDefinitionJSON)
 
 	resp, err := creator.SendMessage(context.Background(), "Dark fantasy with bells and salt.")
@@ -246,8 +246,278 @@ func TestStoryCreatorRepairsInvalidStoryDefinitionBeforeFailing(t *testing.T) {
 	}
 }
 
+func TestStoryCreatorRepairsMissingAuthoringFieldsViaSecondPass(t *testing.T) {
+	partial := `{
+	  "name": "Le Ciminiere di Nerofumo",
+	  "description": "Una capitale di ottone e fuliggine sospesa tra culto e repressione.",
+	  "setting": {
+	    "world_name": "Nerofumo",
+	    "era": "Secolo delle Caldaie",
+	    "geography": "Canali tossici e quartieri-fabbrica",
+	    "magic_system": "Liturgie del vapore",
+	    "technology_level": "Macchine a pressione e automi rituali",
+	    "society": "Gilde industriali, clero del vapore e polizia segreta",
+	    "rules": ["Il vapore consacrato alimenta la città", "Ogni inquisizione lascia un marchio"],
+	    "factions": ["Conclave delle Caldaie", "Ispettorato Fuliggine"],
+	    "cultures": ["Operai dei canali", "Nobiltà delle turbine"],
+	    "dangers": ["Blackout rituali", "Sparizioni nelle condotte", "Sommosse di automi"]
+	  },
+	  "stats_schema": {
+	    "vitals": [{"key":"hp","label":"Salute","starting":10}],
+	    "attributes": [{"key":"wit","label":"Acume","starting":3}],
+	    "secondary": [{"key":"rep","label":"Reputazione","starting":0}],
+	    "currency": {"name":"Corone di Carbone","starting":8},
+	    "has_combat": true
+	  }
+	}`
+
+	creator, provider := newStoryCreatorForTest(t, partial, validStoryDefinitionJSON)
+
+	_, err := creator.SendMessage(context.Background(), "Mondo steampunk in tono serio e tenebroso, lingua italiana, prosa elegante ma non prolissa.")
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if provider.callCount != 2 {
+		t.Fatalf("AI call count = %d, want 2 because repair pass should complete missing authoring fields", provider.callCount)
+	}
+	if creator.Definition() == nil {
+		t.Fatal("Definition should be available")
+	}
+	if creator.Definition().Tone == "" || creator.Definition().Language == "" || creator.Definition().WritingStyle == "" {
+		t.Fatal("Repair pass should return authoring fields")
+	}
+}
+
+func TestStoryCreatorCoercesObjectShapedStatsSchema(t *testing.T) {
+	partial := `{
+	  "name": "Le Ciminiere di Nerofumo",
+	  "description": "Una capitale di ottone e fuliggine sospesa tra culto e repressione.",
+	  "genre": "steampunk investigativo",
+	  "tone": "serio e tenebroso",
+	  "language": "italiano",
+	  "writing_style": "prosa elegante ma non prolissa",
+	  "prompt_directives": "keep dialogue sharp",
+	  "setting": {
+	    "world_name": "Nerofumo",
+	    "era": "Secolo delle Caldaie",
+	    "geography": "Canali tossici e quartieri-fabbrica",
+	    "magic_system": "Liturgie del vapore",
+	    "technology_level": "Macchine a pressione e automi rituali",
+	    "society": "Gilde industriali, clero del vapore e polizia segreta",
+	    "rules": ["Il vapore consacrato alimenta la città", "Ogni inquisizione lascia un marchio"],
+	    "factions": ["Conclave delle Caldaie", "Ispettorato Fuliggine"],
+	    "cultures": ["Operai dei canali", "Nobiltà delle turbine"],
+	    "dangers": ["Blackout rituali", "Sparizioni nelle condotte", "Sommosse di automi"]
+	  },
+	  "stats_schema": {
+	    "vitals": {
+	      "hp": {"label":"Salute","starting":10},
+	      "steam": {"label":"Pressione","starting":8}
+	    },
+	    "attributes": {
+	      "wit": {"label":"Acume","starting":3}
+	    },
+	    "secondary": {
+	      "rep": {"label":"Reputazione","starting":0}
+	    },
+	    "currency": "Corone di Carbone",
+	    "has_combat": true
+	  }
+	}`
+
+	creator, provider := newStoryCreatorForTest(t, partial)
+	_, err := creator.SendMessage(context.Background(), "Mondo steampunk in tono serio e tenebroso, lingua italiana.")
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if provider.callCount != 1 {
+		t.Fatalf("AI call count = %d, want 1", provider.callCount)
+	}
+	if creator.Definition() == nil {
+		t.Fatal("Definition should be available")
+	}
+	if len(creator.Definition().StatsSchema.Vitals) != 2 {
+		t.Fatalf("vitals len = %d, want 2 after object coercion", len(creator.Definition().StatsSchema.Vitals))
+	}
+	if creator.Definition().StatsSchema.Currency == nil {
+		t.Fatal("Currency should be coerced from string")
+	}
+}
+
+func TestStoryCreatorCoercesCurrencyArray(t *testing.T) {
+	partial := `{
+	  "name": "Le Ciminiere di Nerofumo",
+	  "description": "Una capitale di ottone e fuliggine sospesa tra culto e repressione.",
+	  "genre": "steampunk investigativo",
+	  "tone": "serio e tenebroso",
+	  "language": "italiano",
+	  "writing_style": "prosa elegante ma non prolissa",
+	  "prompt_directives": "keep dialogue sharp",
+	  "setting": {
+	    "world_name": "Nerofumo",
+	    "era": "Secolo delle Caldaie",
+	    "geography": "Canali tossici e quartieri-fabbrica",
+	    "magic_system": "Liturgie del vapore",
+	    "technology_level": "Macchine a pressione e automi rituali",
+	    "society": "Gilde industriali, clero del vapore e polizia segreta",
+	    "rules": ["Il vapore consacrato alimenta la città"],
+	    "factions": ["Conclave delle Caldaie"],
+	    "cultures": ["Operai dei canali"],
+	    "dangers": ["Blackout rituali"]
+	  },
+	  "stats_schema": {
+	    "vitals": [{"key":"hp","label":"Salute","starting":10}],
+	    "attributes": [{"key":"wit","label":"Acume","starting":3}],
+	    "secondary": [],
+	    "currency": [{"name":"Corone di Carbone","starting":8}],
+	    "has_combat": true
+	  }
+	}`
+
+	creator, _ := newStoryCreatorForTest(t, partial)
+	_, err := creator.SendMessage(context.Background(), "Mondo steampunk in tono serio e tenebroso, lingua italiana.")
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if creator.Definition() == nil || creator.Definition().StatsSchema.Currency == nil {
+		t.Fatal("Currency should be coerced from array")
+	}
+	if creator.Definition().StatsSchema.Currency.Name != "Corone di Carbone" {
+		t.Fatalf("Currency.Name = %q, want Corone di Carbone", creator.Definition().StatsSchema.Currency.Name)
+	}
+}
+
+func TestStoryCreatorCoercesSettingObjectLists(t *testing.T) {
+	partial := `{
+	  "name": "Le Ciminiere di Nerofumo",
+	  "description": "Una capitale di ottone e fuliggine sospesa tra culto e repressione.",
+	  "genre": "steampunk investigativo",
+	  "tone": "serio e tenebroso",
+	  "language": "italiano",
+	  "writing_style": "prosa elegante ma non prolissa",
+	  "prompt_directives": "keep dialogue sharp",
+	  "setting": {
+	    "world_name": "Nerofumo",
+	    "era": "Secolo delle Caldaie",
+	    "geography": "Canali tossici e quartieri-fabbrica",
+	    "magic_system": "Liturgie del vapore",
+	    "technology_level": "Macchine a pressione e automi rituali",
+	    "society": "Gilde industriali, clero del vapore e polizia segreta",
+	    "rules": {"r1":"Il vapore consacrato alimenta la città"},
+	    "factions": {"Conclave delle Caldaie":{"description":"oligarchi del vapore"}},
+	    "cultures": {"Operai dei canali":"resistenti e superstiziosi"},
+	    "dangers": {"Blackout rituali":"aprono varchi e panico"}
+	  },
+	  "stats_schema": {
+	    "vitals": [{"key":"hp","label":"Salute","starting":10}],
+	    "attributes": [{"key":"wit","label":"Acume","starting":3}],
+	    "secondary": [],
+	    "currency": {"name":"Corone di Carbone","starting":8},
+	    "has_combat": true
+	  }
+	}`
+
+	creator, _ := newStoryCreatorForTest(t, partial)
+	_, err := creator.SendMessage(context.Background(), "Mondo steampunk in tono serio e tenebroso, lingua italiana.")
+	if err != nil {
+		t.Fatalf("SendMessage: %v", err)
+	}
+	if len(creator.Definition().Setting.Factions) != 1 || creator.Definition().Setting.Factions[0] != "Conclave delle Caldaie" {
+		t.Fatalf("Factions = %#v, want coerced faction name", creator.Definition().Setting.Factions)
+	}
+	if len(creator.Definition().Setting.Cultures) != 1 || creator.Definition().Setting.Cultures[0] != "resistenti e superstiziosi" {
+		t.Fatalf("Cultures = %#v, want value-based coercion", creator.Definition().Setting.Cultures)
+	}
+}
+
+func TestExtractStoryJSONRejectsBlankStatDefinitions(t *testing.T) {
+	raw := `{
+	  "name": "Ombre nel Vapore",
+	  "description": "Una città di ottone, culto e nebbia.",
+	  "genre": "steampunk",
+	  "tone": "serio",
+	  "language": "it",
+	  "writing_style": "prosa tesa e concisa",
+	  "prompt_directives": "",
+	  "setting": {
+	    "world_name": "Brumafum",
+	    "era": "Età delle Caldaie",
+	    "geography": "Ponti sospesi e canali tossici",
+	    "magic_system": "vapore rituale",
+	    "technology_level": "steampunk avanzato",
+	    "society": "clero, gilde e operai",
+	    "rules": ["Il vapore ha un prezzo"],
+	    "factions": ["Culto del Vapore"],
+	    "cultures": ["Operai della nebbia"],
+	    "dangers": ["esplosioni di caldaia"]
+	  },
+	  "stats_schema": {
+	    "vitals": [{"key":"","label":"","starting":10}],
+	    "attributes": [{"key":"wit","label":"Acume","starting":3}],
+	    "secondary": [{"key":"rep","label":"Reputazione","starting":0}],
+	    "currency": {"name":"Ingranaggi","starting":5},
+	    "has_combat": true
+	  }
+	}`
+
+	if def := extractStoryJSON(raw); def != nil {
+		t.Fatal("extractStoryJSON accepted blank stat definitions")
+	}
+}
+
+func TestStoryCreatorRevisionFallsBackToPreviousDraftFields(t *testing.T) {
+	revision := `{
+	  "name": "Le Campane di Vespera",
+	  "description": "Una citta in rovina affacciata sul sale.",
+	  "genre": "fantasy oscuro",
+	  "setting": {
+	    "world_name": "Vespera",
+	    "era": "Eta delle Maree Spezzate",
+	    "geography": "Laguna nera e saline in rovina",
+	    "magic_system": "Campane sommerse che chiedono sacrifici",
+	    "technology_level": "Rinascimento decadente",
+	    "society": "Casate mercantili, culti e scavatori",
+	    "rules": ["La magia chiede sempre un prezzo", "Le maree portano voci e debiti", "Le campane non mentono mai", "Il sale conserva e corrompe"],
+	    "factions": ["Casata Valcerra", "Custodi delle Campane"],
+	    "cultures": ["Scavatori di laguna", "Mercanti del sale"],
+	    "dangers": ["Nebbie senzienti", "Predoni delle saline", "Sovraccarichi rituali"]
+	  },
+	  "stats_schema": {
+	    "vitals": [{"key":"hp","label":"Salute","starting":10}],
+	    "attributes": [{"key":"agi","label":"Agilita","starting":3},{"key":"wit","label":"Acume","starting":3}],
+	    "secondary": [{"key":"rep","label":"Reputazione","starting":0}],
+	    "currency": {"name":"Corone","starting":5},
+	    "has_combat": true
+	  }
+	}`
+
+	creator, provider := newStoryCreatorForTest(t, validStoryDefinitionJSON, revision)
+
+	if _, err := creator.SendMessage(context.Background(), "Italian dark fantasy with dangerous bells and dry dialogue."); err != nil {
+		t.Fatalf("initial SendMessage: %v", err)
+	}
+	if _, err := creator.SendMessage(context.Background(), "Make the world rules a bit harsher."); err != nil {
+		t.Fatalf("revision SendMessage: %v", err)
+	}
+	if provider.callCount != 2 {
+		t.Fatalf("AI call count = %d, want 2", provider.callCount)
+	}
+	if creator.Definition() == nil {
+		t.Fatal("Definition should still be present after revision")
+	}
+	if creator.Definition().Tone == "" {
+		t.Fatal("Tone should fall back from previous draft on revision")
+	}
+	if creator.Definition().Language == "" {
+		t.Fatal("Language should fall back from previous draft on revision")
+	}
+	if creator.Definition().WritingStyle == "" {
+		t.Fatal("WritingStyle should fall back from previous draft on revision")
+	}
+}
+
 func TestStoryCreatorFailsAfterExhaustingRepairAttempts(t *testing.T) {
-	invalid := `{"name":"Broken draft","genre":"fantasy","tone":"dark"}`
+	invalid := `not json at all`
 	creator, provider := newStoryCreatorForTest(t, invalid, invalid, invalid)
 
 	_, err := creator.SendMessage(context.Background(), "Dark fantasy with bells and salt.")

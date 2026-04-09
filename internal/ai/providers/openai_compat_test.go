@@ -122,6 +122,18 @@ func TestOpenAICompatCompletePassesResponseFormat(t *testing.T) {
 		if rf["type"] != "json_schema" {
 			t.Fatalf("response_format.type = %v, want json_schema", rf["type"])
 		}
+		plugins, ok := body["plugins"].([]any)
+		if !ok || len(plugins) == 0 {
+			t.Fatalf("plugins missing from request body")
+		}
+		plugin, ok := plugins[0].(map[string]any)
+		if !ok || plugin["id"] != "response-healing" {
+			t.Fatalf("expected response-healing plugin, got %#v", plugins)
+		}
+		provider, ok := body["provider"].(map[string]any)
+		if !ok || provider["require_parameters"] != true {
+			t.Fatalf("provider.require_parameters missing or false: %#v", body["provider"])
+		}
 
 		resp := map[string]any{
 			"choices": []map[string]any{
@@ -134,7 +146,7 @@ func TestOpenAICompatCompletePassesResponseFormat(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAICompat(OpenAICompatConfig{
-		Name:         "test-provider",
+		Name:         "litellm",
 		BaseURL:      server.URL,
 		DefaultModel: "test-model",
 		Timeout:      5 * time.Second,
@@ -143,6 +155,58 @@ func TestOpenAICompatCompletePassesResponseFormat(t *testing.T) {
 	_, err := provider.Complete(context.Background(), ai.Request{
 		Messages:       []ai.Message{{Role: "user", Content: "hello"}},
 		ResponseFormat: ai.NarrativeResponseFormat(),
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+}
+
+func TestOpenAICompatCompletePreservesExplicitPluginConfig(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+
+		plugins, ok := body["plugins"].([]any)
+		if !ok || len(plugins) != 1 {
+			t.Fatalf("plugins = %#v, want one explicit plugin preserved", body["plugins"])
+		}
+		plugin := plugins[0].(map[string]any)
+		if plugin["id"] != "response-healing" {
+			t.Fatalf("plugin id = %v, want response-healing", plugin["id"])
+		}
+		provider := body["provider"].(map[string]any)
+		if provider["require_parameters"] != true {
+			t.Fatalf("provider.require_parameters = %v, want true", provider["require_parameters"])
+		}
+
+		resp := map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]string{"content": `{"narrative":"ok","choices":[{"id":1,"text":"Continue"}]}`}},
+			},
+			"model": "test-model",
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "litellm",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	_, err := provider.Complete(context.Background(), ai.Request{
+		Messages:       []ai.Message{{Role: "user", Content: "hello"}},
+		ResponseFormat: ai.NarrativeResponseFormat(),
+		Plugins:        []ai.Plugin{{ID: "response-healing"}},
+		Provider:       &ai.ProviderConfig{RequireParameters: false},
 	})
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
@@ -226,6 +290,9 @@ func TestOpenAICompatStream(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(&body)
 		if body["stream"] != true {
 			t.Errorf("stream = %v, want true", body["stream"])
+		}
+		if _, ok := body["plugins"]; ok {
+			t.Errorf("plugins should not be auto-injected for streaming requests")
 		}
 
 		w.Header().Set("Content-Type", "text/event-stream")

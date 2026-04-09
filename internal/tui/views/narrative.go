@@ -44,8 +44,10 @@ type narrativeASCIIArtMsg struct {
 
 // narratorMetaResponseMsg carries a /narrator command response.
 type narratorMetaResponseMsg struct {
+	title   string
 	message string
 	err     error
+	overlay bool
 }
 
 // clearStatusMsg is sent to clear the temporary status message.
@@ -88,6 +90,10 @@ type NarrativeModel struct {
 	history            *strings.Builder // full narrative text accumulated so far
 	pendingNarrative   string
 	queuedNarrative    []queuedNarrativeSegment
+	deferredChoiceItems []components.ChoiceItem
+	deferredChoiceHelp  map[int]string
+	deferredInputFocus  bool
+	deferredChallenges  []*engine.ChallengeSpec
 	streamRaw          *strings.Builder // raw streamed JSON chunks for the current turn
 	streaming          bool
 	streamCh           <-chan engine.NarrativeStreamChunk
@@ -321,6 +327,14 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, nil
 		}
 		m.errMsg = ""
+		if msg.overlay {
+			title := strings.TrimSpace(msg.title)
+			if title == "" {
+				title = "Aside"
+			}
+			m.showOverlay(title, msg.message)
+			return m, nil
+		}
 		// Display narrator response styled distinctly (prefixed with [Game Master]).
 		rendered := components.RenderMarkdown("\n**[Game Master]** " + msg.message + "\n")
 		cmd := m.appendNarrativeSegment(rendered+"\n", false)
@@ -395,7 +409,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyMsg:
+		case tea.KeyMsg:
 		// If achievement popup is visible, route key events to it first.
 		if m.achievementPopup.Visible() {
 			var cmd tea.Cmd
@@ -426,22 +440,46 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, nil
 		}
 
-		if m.pendingChallenge != nil {
-			switch msg.String() {
-			case "enter", " ":
-				return m, m.beginPendingChallenge()
+			if m.pendingChallenge != nil {
+				switch msg.String() {
+				case "enter", " ":
+					return m, m.beginPendingChallenge()
+				}
+				return m, nil
 			}
-			return m, nil
-		}
 
-		if m.waiting {
-			return m, nil
-		}
+			if m.waiting {
+				switch msg.String() {
+				case "tab":
+					m.inputFocus = !m.inputFocus
+					if m.inputFocus {
+						m.input.Focus()
+					} else {
+						m.input.Blur()
+					}
+					return m, nil
+				case "esc":
+					m.sessionMenuVisible = true
+					m.sessionMenuCursor = 0
+					return m, nil
+				}
+				if m.inputFocus && msg.String() != "enter" {
+					var cmd tea.Cmd
+					m.input, cmd = m.input.Update(msg)
+					return m, cmd
+				}
+				return m, nil
+			}
 
-		switch msg.String() {
-		case "tab":
-			// Toggle between choice list and free input
-			m.inputFocus = !m.inputFocus
+			switch msg.String() {
+			case "h":
+				if !m.inputFocus {
+					return m.showHistory(nil)
+				}
+
+			case "tab":
+				// Toggle between choice list and free input
+				m.inputFocus = !m.inputFocus
 			if m.inputFocus {
 				m.input.Focus()
 			} else {
@@ -543,6 +581,12 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		}
 		input := strings.Join(cmd.Args, " ")
 		return m.sendNarratorCommand(input)
+	case "btw":
+		if len(cmd.Args) == 0 {
+			m.errMsg = "Usage: /btw <quick question about the current story>"
+			return m, nil
+		}
+		return m.sendAsideQuestion(strings.Join(cmd.Args, " "))
 	case "journal":
 		return m.showJournal()
 	case "history":
@@ -554,8 +598,14 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 	case "craft", "crafting":
 		return m.startCrafting()
 	default:
-		if len(cmd.Args) > 0 {
-			m.errMsg = fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", cmd.Args[0])
+		name := strings.TrimSpace(cmd.Name)
+		if name == "" || name == "unknown" {
+			if len(cmd.Args) > 0 {
+				name = strings.TrimSpace(cmd.Args[0])
+			}
+		}
+		if name != "" && name != "unknown" {
+			m.errMsg = fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", name)
 		} else {
 			m.errMsg = "Unknown command. Type /help for available commands."
 		}
@@ -583,7 +633,25 @@ func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.C
 		if err != nil {
 			return narratorMetaResponseMsg{err: err}
 		}
-		return narratorMetaResponseMsg{message: resp.Message}
+		return narratorMetaResponseMsg{title: "Game Master", message: resp.Message}
+	}
+}
+
+func (m NarrativeModel) sendAsideQuestion(input string) (NarrativeModel, tea.Cmd) {
+	m.waiting = true
+	m.statusMsg = "Asking a quick aside..."
+	m.statusExpiry = time.Now().Add(30 * time.Second)
+	narrator := m.narrator
+	return m, func() tea.Msg {
+		resp, err := narrator.ExecuteAsideQuestion(context.Background(), input)
+		if err != nil {
+			return narratorMetaResponseMsg{err: err}
+		}
+		return narratorMetaResponseMsg{
+			title:   "By The Way",
+			message: resp,
+			overlay: true,
+		}
 	}
 }
 
@@ -654,6 +722,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
   /history [q]        Show session history (optional filter)
+  /btw <question>     Ask the AI a quick contextual question without advancing the turn
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
   /craft               Open crafting station (AI-driven)
@@ -681,14 +750,18 @@ Challenges:
          quick-time (press key in time), riddle, stat/skill/item checks.
   The game engine resolves the outcome fairly — the AI then narrates the result.
 
-Footer legend:
+	Footer legend:
   10.4s         total response time
   ft 5.5s       time to first token
   6016t         total tokens
   4980p/1036c   prompt/completion tokens
   r193          reasoning tokens
   cache 900p    cached prompt tokens
-  99.7t/s       completion throughput`
+  99.7t/s       completion throughput
+
+Quick aside:
+  /btw Who exactly is Dee Podale Suprema?
+  /btw Remind me what this faction wants`
 
 	m.showOverlay("Help", helpText)
 	return m, nil
@@ -1376,26 +1449,43 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 		m.statusBar.SetMoodColor(theme.GetMoodPalette(nr.Mood).StatusBarBG)
 	}
 
-	m.choices.SetMood(m.currentMood)
-	m.choices.SetChoices(m.buildChoiceItems(nr.Choices))
-
 	rendered := m.renderNarrativeResponse(nr)
 	if strings.TrimSpace(rendered) == "" {
 		rendered = components.RenderMarkdown(nr.Narrative)
 	}
 	m.streamRaw.Reset()
-
-	var cmds []tea.Cmd
-	if cmd := m.appendNarrativeSegment(rendered+"\n", !streamed); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
-
-	if len(nr.Choices) > 0 {
+	choiceItems, choiceHelp := m.buildChoicePresentation(nr.Choices)
+	animateScene := !streamed && strings.TrimSpace(rendered) != ""
+	m.choices.SetMood(m.currentMood)
+	if animateScene {
+		m.deferredChoiceItems = choiceItems
+		m.deferredChoiceHelp = choiceHelp
+		m.deferredInputFocus = len(nr.Choices) == 0
+		m.deferredChallenges = nr.Challenges
+		m.choices.SetChoices(nil)
+		m.choiceHelp = map[int]string{}
+		m.pendingChallenges = nil
+		m.pendingChallenge = nil
 		m.inputFocus = false
 		m.input.Blur()
 	} else {
-		m.inputFocus = true
-		m.input.Focus()
+		m.deferredChoiceItems = nil
+		m.deferredChoiceHelp = nil
+		m.deferredChallenges = nil
+		m.choiceHelp = choiceHelp
+		m.choices.SetChoices(choiceItems)
+		if len(nr.Choices) > 0 {
+			m.inputFocus = false
+			m.input.Blur()
+		} else {
+			m.inputFocus = true
+			m.input.Focus()
+		}
+	}
+
+	var cmds []tea.Cmd
+	if cmd := m.appendNarrativeSegment(rendered+"\n", animateScene); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 
 	if nr.CombatStart != nil {
@@ -1409,7 +1499,7 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 		m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
 	}
 
-	if len(nr.Challenges) > 0 {
+	if !animateScene && len(nr.Challenges) > 0 {
 		m.pendingChallenges = nr.Challenges
 		if nextCmd := m.startNextChallenge(); nextCmd != nil {
 			cmds = append(cmds, nextCmd)
@@ -1576,6 +1666,23 @@ func toInt(v interface{}) int {
 	return 0
 }
 
+func (m *NarrativeModel) applyInputCommandStyle() {
+	if m == nil {
+		return
+	}
+	style := theme.NormalText
+	value := strings.TrimSpace(m.input.Value())
+	if strings.HasPrefix(value, "/") {
+		if cmd := engine.ParseCommand(value); cmd != nil && cmd.Name != "unknown" {
+			style = theme.SuccessText
+		} else {
+			style = theme.DangerText
+		}
+	}
+	m.input.FocusedStyle.Text = style
+	m.input.BlurredStyle.Text = style
+}
+
 func (m NarrativeModel) View() string {
 	// Delegate to combat sub-view when in combat.
 	if m.inCombat && m.combatView != nil {
@@ -1644,6 +1751,7 @@ func (m NarrativeModel) View() string {
 	if !sceneReady {
 		inputView = theme.MutedText.Render("  [Enter/Space] Finish scene")
 	} else if m.inputFocus {
+		m.applyInputCommandStyle()
 		inputView = m.input.View()
 	} else {
 		inputView = theme.MutedText.Render("  [TAB] Free input")
@@ -1656,7 +1764,7 @@ func (m NarrativeModel) View() string {
 	}
 
 	// Help line
-	help := theme.MutedText.Render("tab toggle · 1-9 choose · ←/→ badge info · enter send · S quicksave · /history · esc session")
+	help := theme.MutedText.Render("h history · tab toggle · 1-9 choose · ←/→ badge info · enter send · S quicksave · /history · esc session")
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)

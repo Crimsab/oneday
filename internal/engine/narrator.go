@@ -584,6 +584,15 @@ func (n *Narrator) ExecuteNarratorCommand(ctx context.Context, input string) (*N
 	return n.narratorCmd.Execute(ctx, input)
 }
 
+// ExecuteAsideQuestion asks a contextual out-of-band question without advancing
+// the story turn or mutating state.
+func (n *Narrator) ExecuteAsideQuestion(ctx context.Context, input string) (string, error) {
+	if n.narratorCmd == nil {
+		n.narratorCmd = NewNarratorCommand(n.router, n.db, n.story, n.character, n.world, n.rag, n.session.SessionID())
+	}
+	return n.narratorCmd.ExecuteAside(ctx, input)
+}
+
 // GetChapterSummaries returns formatted chapter summaries for the /journal command.
 func (n *Narrator) GetChapterSummaries() (string, error) {
 	if n.chapters == nil {
