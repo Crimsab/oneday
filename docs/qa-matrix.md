@@ -7,7 +7,7 @@ High-risk release and regression checklist for OneDay. The goal is to keep mixed
 Run the focused sweep with:
 
 ```bash
-./scripts/qa-matrix.sh --automated-only
+make verify
 ```
 
 The full script also rebuilds `./oneday`, prints `./oneday --version`, and then prints the manual checklist:

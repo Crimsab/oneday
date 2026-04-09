@@ -26,11 +26,8 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Run tests
-        run: go test ./...
-
-      - name: Run vet
-        run: go vet ./...
+      - name: Run verification gate
+        run: make verify
 
   build:
     name: Build ${{ matrix.target.goos }}-${{ matrix.target.goarch }}

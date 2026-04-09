@@ -4,13 +4,24 @@ ASCII_BENCH=oneday-ascii-benchmark
 BUILD_DIR=build
 LDFLAGS=$(shell bash ./scripts/build-ldflags.sh)
 
-.PHONY: test vet build build-bench build-ascii-bench build-cross all
+.PHONY: test vet verify qa-matrix qa-matrix-auto release-check build build-bench build-ascii-bench build-cross all
 
 test:
 	go test ./...
 
 vet:
 	go vet ./...
+
+verify: test vet qa-matrix-auto
+
+qa-matrix:
+	./scripts/qa-matrix.sh
+
+qa-matrix-auto:
+	./scripts/qa-matrix.sh --automated-only
+
+release-check:
+	./scripts/release-gate.sh
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o ./$(APP) ./cmd/oneday
@@ -26,4 +37,4 @@ build-cross:
 	GOOS=linux GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/oneday-linux-amd64 ./cmd/oneday
 	GOOS=windows GOARCH=amd64 go build -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/oneday-windows-amd64.exe ./cmd/oneday
 
-all: test vet build build-bench build-ascii-bench build-cross
+all: verify build build-bench build-ascii-bench build-cross
