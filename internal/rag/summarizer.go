@@ -37,7 +37,7 @@ func NewSummarizer(embedder *Embedder, store *VectorStore, aiCompleter AIComplet
 
 // PendingWindow returns the next unsummarized turn window if summarization is due.
 func (s *Summarizer) PendingWindow(ctx context.Context, currentTurn int) (int, int, bool, error) {
-	if s.interval <= 0 || currentTurn <= 0 {
+	if s.interval <= 0 || currentTurn < 0 {
 		return 0, 0, false, nil
 	}
 
