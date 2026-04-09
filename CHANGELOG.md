@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/Crimsab/oneday/compare/v1.2.0...v1.3.0) (2026-04-09)
+
+
+### Features
+
+* **ai:** complete phase 10 ambient ascii benchmarking ([accba8d](https://github.com/Crimsab/oneday/commit/accba8dc4a25becc3029d012d1b35c755706df69))
+
 ## [1.2.0](https://github.com/Crimsab/oneday/compare/v1.1.0...v1.2.0) (2026-04-08)
 
 
