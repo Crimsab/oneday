@@ -14,15 +14,16 @@ func TestNarrativeSlashCommandsOpenCodexBrowsers(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
-		name              string
-		input             string
-		wantTitle         string
-		wantCategory      string
-		wantEntries       bool
-		wantProjectScreen bool
+		name                    string
+		input                   string
+		wantTitle               string
+		wantCategory            string
+		wantEntries             bool
+		wantProjectScreen       bool
+		wantInvestigationScreen bool
 	}{
 		{name: "codex", input: "/codex", wantTitle: "Codex"},
-		{name: "investigations", input: "/investigations", wantTitle: "Investigations", wantCategory: "investigations", wantEntries: true},
+		{name: "investigations", input: "/investigations", wantTitle: "Investigations", wantInvestigationScreen: true},
 		{name: "projects", input: "/projects", wantTitle: "Projects", wantProjectScreen: true},
 	}
 
@@ -47,6 +48,18 @@ func TestNarrativeSlashCommandsOpenCodexBrowsers(t *testing.T) {
 				}
 				if updated.projectBrowser.title != tc.wantTitle {
 					t.Fatalf("project browser title = %q, want %q", updated.projectBrowser.title, tc.wantTitle)
+				}
+				if updated.codexBrowser != nil && updated.codexBrowser.Visible() {
+					t.Fatalf("codex browser should stay closed for %s", tc.input)
+				}
+				return
+			}
+			if tc.wantInvestigationScreen {
+				if updated.investigationBrowser == nil || !updated.investigationBrowser.Visible() {
+					t.Fatalf("investigation browser not visible after %s", tc.input)
+				}
+				if updated.investigationBrowser.title != tc.wantTitle {
+					t.Fatalf("investigation browser title = %q, want %q", updated.investigationBrowser.title, tc.wantTitle)
 				}
 				if updated.codexBrowser != nil && updated.codexBrowser.Visible() {
 					t.Fatalf("codex browser should stay closed for %s", tc.input)

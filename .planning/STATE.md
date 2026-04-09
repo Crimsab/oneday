@@ -4,13 +4,13 @@ milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
 current_phase: 23
 status: in_progress
-last_updated: "2026-04-09T22:40:34+02:00"
+last_updated: "2026-04-09T22:43:02+02:00"
 progress:
   total_phases: 24
   completed_phases: 23
   total_plans: 75
-  completed_plans: 72
-  percent: 96
+  completed_plans: 73
+  percent: 97
 ---
 
 # Project State
@@ -25,6 +25,10 @@ progress:
   `23.1` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-01-SUMMARY.md`.
   Delivered a dedicated projects workspace, rerouted `/projects` away from generic codex browsing,
   and added focused browser/smoke coverage for project inspection flow.
+
+- 2026-04-09: `23.2` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-02-SUMMARY.md`.
+  Delivered a dedicated investigations workspace, rerouted `/investigations` away from generic codex browsing,
+  and preserved hidden-truth safety while making clues, suspects, contradictions, leads, and theories easier to inspect.
 
 - 2026-04-09: Phase 23 added — Active Systems UX and World-State Navigation.
   Scope targets dedicated player-facing surfaces for projects, investigations, and fronts,

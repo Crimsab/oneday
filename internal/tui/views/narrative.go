@@ -88,6 +88,7 @@ type NarrativeModel struct {
 	overlay                 components.OverlayModel
 	historyBrowser          *historyBrowserModel
 	achievementBrowser      *AchievementBrowserModel
+	investigationBrowser    *InvestigationBrowserModel
 	projectBrowser          *ProjectBrowserModel
 	codexBrowser            *CodexBrowserModel
 	achievementPopup        components.AchievementPopupModel
@@ -334,6 +335,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		if m.achievementBrowser != nil {
 			m.achievementBrowser.SetSize(msg.Width, msg.Height)
 		}
+		if m.investigationBrowser != nil {
+			m.investigationBrowser.SetSize(msg.Width, msg.Height)
+		}
 		if m.projectBrowser != nil {
 			m.projectBrowser.SetSize(msg.Width, msg.Height)
 		}
@@ -519,6 +523,16 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.achievementBrowser = &updated
 			return m, cmd
 		}
+		if m.investigationBrowser != nil && m.investigationBrowser.Visible() {
+			updated, cmd := m.investigationBrowser.Update(msg)
+			if !updated.Visible() {
+				m.investigationBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.investigationBrowser = &updated
+			return m, cmd
+		}
 		if m.projectBrowser != nil && m.projectBrowser.Visible() {
 			updated, cmd := m.projectBrowser.Update(msg)
 			if !updated.Visible() {
@@ -570,6 +584,17 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				return m, nil
 			}
 			m.achievementBrowser = &updated
+			return m, cmd
+		}
+
+		if m.investigationBrowser != nil && m.investigationBrowser.Visible() {
+			updated, cmd := m.investigationBrowser.Update(msg)
+			if !updated.Visible() {
+				m.investigationBrowser = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.investigationBrowser = &updated
 			return m, cmd
 		}
 
@@ -1015,8 +1040,8 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /stats        (/s)   Open the protagonist dossier
   /characters          Browse protagonist and NPC dossiers
   /codex               Open the full story codex
-  /investigations      Open the investigation board inside the codex
-  /projects            Browse downtime projects and their outcomes
+  /investigations      Open the dedicated investigation workspace
+  /projects            Open the dedicated project workspace
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
   /hooks               Show open hooks and world reactions
@@ -1367,7 +1392,17 @@ func (m NarrativeModel) showCodex() (NarrativeModel, tea.Cmd) {
 }
 
 func (m NarrativeModel) showInvestigations() (NarrativeModel, tea.Cmd) {
-	return m.openCodexBrowser("Investigations", "investigations", "")
+	if m.narrator == nil || m.narrator.Story() == nil {
+		m.errMsg = "Investigations unavailable: no active story."
+		return m, nil
+	}
+
+	browser := NewInvestigationBrowserModel("Investigations", engine.LoadInvestigationBoard(m.narrator.World()), m.width, m.height)
+	m.investigationBrowser = &browser
+	m.historyReturnInputFocus = m.inputFocus
+	m.inputFocus = false
+	m.input.Blur()
+	return m, nil
 }
 
 func (m NarrativeModel) showProjects() (NarrativeModel, tea.Cmd) {
@@ -1857,6 +1892,10 @@ func (m NarrativeModel) View() string {
 		return m.achievementBrowser.View()
 	}
 
+	if m.investigationBrowser != nil && m.investigationBrowser.Visible() {
+		return m.investigationBrowser.View()
+	}
+
 	if m.projectBrowser != nil && m.projectBrowser.Visible() {
 		return m.projectBrowser.View()
 	}
@@ -2081,6 +2120,9 @@ func (m *NarrativeModel) SetSize(w, h int) {
 	}
 	if m.achievementBrowser != nil {
 		m.achievementBrowser.SetSize(w, h)
+	}
+	if m.investigationBrowser != nil {
+		m.investigationBrowser.SetSize(w, h)
 	}
 	if m.projectBrowser != nil {
 		m.projectBrowser.SetSize(w, h)
