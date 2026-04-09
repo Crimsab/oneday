@@ -73,8 +73,16 @@ func (m *NarrativeModel) closeTalkMode(status string) {
 }
 
 func (m NarrativeModel) showHooks() (NarrativeModel, tea.Cmd) {
-	trackerText := engine.FormatStoryTrackerView(m.narrator.World())
-	m.showOverlay("Tracker", trackerText)
+	if m.narrator == nil || m.narrator.Story() == nil {
+		m.errMsg = "Tracker unavailable: no active story."
+		return m, nil
+	}
+
+	tracker := NewFrontTrackerModel("Fronts & Fallout", engine.LoadFrontTrackerBoard(m.narrator.World()), m.width, m.height)
+	m.frontTracker = &tracker
+	m.historyReturnInputFocus = m.inputFocus
+	m.inputFocus = false
+	m.input.Blur()
 	return m, nil
 }
 

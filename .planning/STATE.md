@@ -4,13 +4,13 @@ milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
 current_phase: 23
 status: in_progress
-last_updated: "2026-04-09T22:43:02+02:00"
+last_updated: "2026-04-09T22:52:33+02:00"
 progress:
   total_phases: 24
   completed_phases: 23
   total_plans: 75
-  completed_plans: 73
-  percent: 97
+  completed_plans: 74
+  percent: 99
 ---
 
 # Project State
@@ -20,6 +20,10 @@ progress:
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: `23.3` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-03-SUMMARY.md`.
+  Delivered a dedicated fronts-and-fallout tracker, rerouted `/hooks` into that workspace,
+  added `/fronts` aliases, and surfaced pressure hotspots plus recent fallout without leaking hidden-front state.
 
 - 2026-04-09: Phase 23 execution started.
   `23.1` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-01-SUMMARY.md`.
