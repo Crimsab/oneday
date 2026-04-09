@@ -37,7 +37,9 @@ ai:
   # Embedding model (for RAG)
   embedding:
     model: "text-embedding-3-small"
-    # Uses the first available provider that supports embeddings
+    provider: "auto"
+    # Use "auto" to pick the first enabled embedding-capable provider in the
+    # priority chain, or force one of: litellm, openrouter
 
   # Optional ambient ASCII-art generation for scene headers/signage/maps/etc.
   ascii_art:
