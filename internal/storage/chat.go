@@ -1,10 +1,23 @@
 package storage
 
-import "fmt"
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+)
 
 // AppendChatMessage inserts a chat message into the DB.
 func (db *DB) AppendChatMessage(m *ChatMessage) error {
-	result, err := db.conn.Exec(
+	return appendChatMessageExec(db.conn, m)
+}
+
+// AppendChatMessageTx inserts a chat message into the DB inside an existing transaction.
+func (db *DB) AppendChatMessageTx(tx *sql.Tx, m *ChatMessage) error {
+	return appendChatMessageExec(tx, m)
+}
+
+func appendChatMessageExec(exec sqlExecer, m *ChatMessage) error {
+	result, err := exec.Exec(
 		`INSERT INTO chat_messages (session_id, story_id, turn, role, content, message_type, metadata_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		m.SessionID, m.StoryID, m.Turn, m.Role, m.Content, m.MessageType, m.MetadataJSON, m.CreatedAt,
@@ -18,6 +31,45 @@ func (db *DB) AppendChatMessage(m *ChatMessage) error {
 	}
 	m.ID = id
 	return nil
+}
+
+// GetStoryTurnCursor returns the next canonical turn number for a story.
+// It prefers the highest value between world_state.current_turn and the latest
+// committed assistant turn in canonical chat history, while ignoring meta-only
+// entries such as /narrator and combat summaries.
+func (db *DB) GetStoryTurnCursor(storyID string) (int, error) {
+	var worldTurn int
+	err := db.conn.QueryRow(
+		`SELECT current_turn FROM world_state WHERE story_id = ?`,
+		storyID,
+	).Scan(&worldTurn)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return 0, fmt.Errorf("loading world turn cursor for story %s: %w", storyID, err)
+		}
+		worldTurn = 0
+	}
+
+	var latestCommittedTurn sql.NullInt64
+	if err := db.conn.QueryRow(
+		`SELECT MAX(turn)
+         FROM chat_messages
+         WHERE story_id = ?
+           AND role = 'assistant'
+           AND message_type NOT IN ('narrator', 'combat_summary')`,
+		storyID,
+	).Scan(&latestCommittedTurn); err != nil {
+		return 0, fmt.Errorf("loading chat turn cursor for story %s: %w", storyID, err)
+	}
+
+	nextHistoryTurn := 0
+	if latestCommittedTurn.Valid {
+		nextHistoryTurn = int(latestCommittedTurn.Int64) + 1
+	}
+	if nextHistoryTurn > worldTurn {
+		return nextHistoryTurn, nil
+	}
+	return worldTurn, nil
 }
 
 // GetRecentMessages returns the last N messages for a session, ordered chronologically (ASC).

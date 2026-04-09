@@ -1,8 +1,10 @@
 # Roadmap: OneDay
 
-**Milestone:** v1.0 — First Playable
-**Phases:** 14
+**Milestone:** v1.1 — Reliability and Systemic World Depth
+**Phases:** 21
 **Requirements:** 99 mapped
+
+> Note: the original `v1.0` milestone was completed through Phase 14. Phases 15-21 define the next roadmap extension, with Phases 15-19 recommended as the first execution batch and Phases 20-21 intentionally deferred until the new systemic world-state layers stabilize.
 
 ---
 
@@ -353,6 +355,145 @@ Plans:
 - [x] Plan 14.2: Upgrade character inspection into protagonist and character dossiers
 - [x] Plan 14.3: Implement a descriptive codex, dialogue normalization, and multi-instance drill-down navigation
 
+### Phase 15: Canonical Turn Commit and Persistence Integrity
+
+**Goal:** Make turn application, persistence, and resume/load behavior canonically coherent so partial failures cannot desync world state, session turn numbering, or canonical history.
+**Requirements**: TBD
+**Depends on:** Phase 14
+**UI hint:** no
+**Status:** Complete (2026-04-09)
+
+### Success Criteria
+
+1. A turn either commits canonical state/history coherently or fails without advancing `session.turn`, `world.CurrentTurn`, or the canonical log.
+2. Critical persistence failures are surfaced and handled; narrator/session code no longer ignores write failures that can corrupt continuity.
+3. Resume/load after interrupted or partially failed writes reconstructs a deterministic canonical snapshot.
+
+### Plans
+
+- [x] Plan 15.1: Define a single canonical turn-commit contract and route narrator/session persistence through it
+- [x] Plan 15.2: Make DB-backed canonical persistence authoritative and treat JSONL as a derived mirror/log, not the source of truth
+- [x] Plan 15.3: Remove silent persistence-error swallowing and add degraded-mode/backfill behavior for non-canonical mirrors
+- [x] Plan 15.4: Add failure-injection and rollback/resume regressions for narrator, combat, crafting, and save/load paths
+
+### Phase 16: Streaming/Memory Reliability and Provider Capability Hardening
+
+**Goal:** Bring `Stream()` and `Complete()` to feature parity, fix RAG turn-window semantics, and make embedding selection deterministic and capability-aware.
+**Requirements**: TBD
+**Depends on:** Phase 15
+**UI hint:** no
+
+### Success Criteria
+
+1. Structured-output guards, retry/fallback behavior, and provider quirks are parity-matched between sync and streaming AI paths.
+2. RAG summarization includes the first committed turn correctly and never skips or duplicates summary windows across resume/rewind.
+3. Embedding provider selection obeys explicit config or first-capable probing with clear logs when embeddings are unavailable.
+
+### Plans
+
+- [ ] Plan 16.1: Unify OpenAI-compatible request building, structured-response guards, and retry/fallback logic across sync and streaming paths
+- [ ] Plan 16.2: Fix turn-index and summary-trigger math for committed turns, first-window handling, and rewind/resume safety
+- [ ] Plan 16.3: Make embedding-provider selection explicit and capability-aware, with deterministic fallback and diagnostics
+- [ ] Plan 16.4: Fold touched boot/resume wiring duplication into a single initialization path and extend provider/RAG regressions
+
+### Phase 17: Faction Fronts and Regional Pressure
+
+**Goal:** Introduce engine-owned faction fronts/clocks that drive world escalation, opportunities, and regional heat/reputation in a persistent, inspectable way.
+**Requirements**: TBD
+**Depends on:** Phase 16
+**UI hint:** no
+
+### Success Criteria
+
+1. Factions/fronts persist segmented progress, stakes, visibility, and regional pressure that can change over time.
+2. Turns, failures, narrator actions, and downtime can advance or reveal fronts through validated engine-side events.
+3. World reactions, codex, and journals surface discovered pressure and front outcomes without leaking hidden information.
+
+### Plans
+
+- [ ] Plan 17.1: Add canonical front/pressure state and engine events for advance, reveal, resolve, and consequence application
+- [ ] Plan 17.2: Fold local heat/reputation into fronts as regional pressure rather than a separate system
+- [ ] Plan 17.3: Integrate fronts with hook tracking, world reactions, fail-forward outcomes, and context-building
+- [ ] Plan 17.4: Surface known fronts and their fallout in codex/journal/dossiers with hidden-vs-known information rules
+
+### Phase 18: Social Duels and Leverage Battles
+
+**Goal:** Turn high-stakes negotiations, interrogations, seductions, tribunals, and stand-offs into a dedicated engine-resolved encounter type parallel to combat.
+**Requirements**: TBD
+**Depends on:** Phase 17
+**UI hint:** no
+
+### Success Criteria
+
+1. High-stakes dialogue can enter a social-duel flow with explicit objective, stance, leverage, and round state.
+2. Outcomes are resolved by the engine from stats, skills, relationship axes, leverage, and situational pressure; AI narrates but does not own the mechanics.
+3. Social failure resolves through fail-forward outcomes such as suspicion, debt, exposure, concessions, or heat rather than dead-end rejection.
+
+### Plans
+
+- [ ] Plan 18.1: Define the social-duel state machine, action set, and engine-side resolution formulas on top of challenge and relationship systems
+- [ ] Plan 18.2: Add narrator/context contracts so the AI can frame stakes and consequences without bypassing engine authority
+- [ ] Plan 18.3: Build the duel UI/command flow between free narrative and full combat
+- [ ] Plan 18.4: Persist leverage, concessions, and aftermath into relationships, fronts, and world-reaction feeds
+
+### Phase 19: Recurring Nemeses and Rival Escalation
+
+**Goal:** Promote surviving rivals into persistent nemeses that remember scars, humiliations, tactics, and alliances, and re-enter the story through world-state escalation rather than random repetition.
+**Requirements**: TBD
+**Depends on:** Phase 18
+**UI hint:** no
+
+### Success Criteria
+
+1. Eligible NPCs can be promoted into nemeses based on repeated conflict, escape, humiliation, political stakes, or major harms.
+2. Nemeses persist scars, vows, remembered player patterns, and escalation tier across saves/resume.
+3. Future encounters reintroduce nemeses coherently through fronts, world reactions, and codex/dossier state, with meaningful resolution paths beyond simple death.
+
+### Plans
+
+- [ ] Plan 19.1: Add nemesis profile/state and promotion rules tied to combat, social duels, fronts, and relationship history
+- [ ] Plan 19.2: Extend encounter generation and retrieval so active nemeses are reused with remembered patterns and stakes
+- [ ] Plan 19.3: Surface nemesis dossiers, last-seen state, and escalation traces without leaking hidden plans
+- [ ] Plan 19.4: Support multiple resolution paths such as escape, capture, truce, humiliation, alliance, or succession
+
+### Phase 20: Investigation Board and Evidence Logic
+
+**Goal:** Add a persistent investigation surface for mysteries, conspiracies, clues, suspects, contradictions, and theory-building without turning the game into a rigid quest log.
+**Requirements**: TBD
+**Depends on:** Phase 19
+**UI hint:** no
+
+### Success Criteria
+
+1. Clues, suspects, claims, contradictions, and active theories can be persisted and inspected as a structured investigation board.
+2. The engine can normalize AI-proposed evidence updates into canonical board entities and links.
+3. Investigation progress improves context quality and codex discoverability without exposing hidden truths prematurely.
+
+### Plans
+
+- [ ] Plan 20.1: Define canonical investigation entities and link types for clues, suspects, claims, contradictions, and threads
+- [ ] Plan 20.2: Add engine-side normalization/validation for AI-proposed evidence updates and theory movement
+- [ ] Plan 20.3: Build board/codex integration and filtering so mysteries can be explored without flattening them into checklist quests
+
+### Phase 21: Downtime Projects and Long-Arc Progress Clocks
+
+**Goal:** Upgrade lightweight downtime scenes into persistent player-owned projects such as training, rituals, crafting lines, relationship arcs, and safehouse/base improvements.
+**Requirements**: TBD
+**Depends on:** Phase 20
+**UI hint:** no
+
+### Success Criteria
+
+1. Players can start, advance, pause, and complete long-arc projects across multiple downtime opportunities.
+2. Project progress competes meaningfully with faction/front pressure so time spent improving oneself or one’s base has opportunity cost.
+3. Completed projects produce durable mechanical and narrative changes rather than one-off flavor scenes.
+
+### Plans
+
+- [ ] Plan 21.1: Add canonical project-clock state for training, rituals, crafting chains, relationships, and home/base improvements
+- [ ] Plan 21.2: Integrate downtime advancement with fronts, regional pressure, resource costs, and fail-forward consequences
+- [ ] Plan 21.3: Surface project status and outcomes through dossiers, codex, and downtime interaction flows
+
 ---
 
 ## Requirements Coverage
@@ -373,3 +514,4 @@ Plans:
 | **Total** | **99** | All mapped requirements through Phase 11 |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.
+Post-v1.0 expansion phases 16-21 are still roadmap/planning work and keep requirements `TBD` until detailed implementation begins.

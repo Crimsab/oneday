@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"fmt"
 	"time"
 )
@@ -167,7 +168,16 @@ func (db *DB) UpdateCharacterStats(c *Character) error {
 // inventory, and known recipes. Use this after any state change that may affect
 // traits, skills, or inventory (not just stats).
 func (db *DB) UpdateCharacterFull(c *Character) error {
-	_, err := db.conn.Exec(
+	return updateCharacterFullExec(db.conn, c)
+}
+
+// UpdateCharacterFullTx updates the mutable character fields inside an existing transaction.
+func (db *DB) UpdateCharacterFullTx(tx *sql.Tx, c *Character) error {
+	return updateCharacterFullExec(tx, c)
+}
+
+func updateCharacterFullExec(exec sqlExecer, c *Character) error {
+	_, err := exec.Exec(
 		`UPDATE characters SET stats_json = ?, traits_json = ?, skills_json = ?,
          inventory_json = ?, known_recipes_json = ?, updated_at = ? WHERE id = ?`,
 		c.StatsJSON, c.TraitsJSON, c.SkillsJSON,
@@ -181,6 +191,15 @@ func (db *DB) UpdateCharacterFull(c *Character) error {
 
 // UpdateWorldState updates the world state fields.
 func (db *DB) UpdateWorldState(ws *WorldState) error {
+	return updateWorldStateExec(db.conn, ws)
+}
+
+// UpdateWorldStateTx updates the world state inside an existing transaction.
+func (db *DB) UpdateWorldStateTx(tx *sql.Tx, ws *WorldState) error {
+	return updateWorldStateExec(tx, ws)
+}
+
+func updateWorldStateExec(exec sqlExecer, ws *WorldState) error {
 	if ws.KnownLocationsJSON == "" {
 		ws.KnownLocationsJSON = "[]"
 	}
@@ -199,7 +218,7 @@ func (db *DB) UpdateWorldState(ws *WorldState) error {
 	if ws.PlayerGuidanceJSON == "" {
 		ws.PlayerGuidanceJSON = "[]"
 	}
-	_, err := db.conn.Exec(
+	_, err := exec.Exec(
 		`UPDATE world_state SET current_location = ?, known_locations_json = ?,
          global_events_json = ?, faction_standings_json = ?, story_hooks_json = ?,
          world_reactions_json = ?, player_guidance_json = ?, current_chapter = ?, current_turn = ?, updated_at = ?

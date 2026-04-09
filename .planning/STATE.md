@@ -1,25 +1,88 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-current_phase: 14
-status: completed
-last_updated: "2026-04-09T06:58:19.617Z"
+milestone: v1.1
+milestone_name: reliability-and-systemic-world-depth
+current_phase: 16
+status: planning
+last_updated: "2026-04-09T19:58:33+02:00"
 progress:
-  total_phases: 15
-  completed_phases: 15
-  total_plans: 41
-  completed_plans: 41
-  percent: 100
+  total_phases: 22
+  completed_phases: 16
+  total_plans: 67
+  completed_plans: 45
+  percent: 72.7
 ---
 
 # Project State
 
-**Current Phase:** 14
-**Status:** Milestone complete
+**Current Phase:** 16
+**Status:** Planning next milestone
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 15 execution completed.
+  Summaries written to `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-01-SUMMARY.md`,
+  `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-02-SUMMARY.md`,
+  `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-03-SUMMARY.md`,
+  and `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-04-SUMMARY.md`.
+  Verification saved in `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-VERIFICATION.md`.
+  Delivered a DB-first canonical turn commit path for narrative turns, DB-based turn recovery instead of JSONL line counting,
+  degraded mirror-sync handling for JSONL failures, and focused regressions for stale mirrors, meta-only history, and canonical-vs-mirror failure behavior.
+
+- 2026-04-09: Phase 21 planning completed.
+  Plans written to `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-01-PLAN.md`,
+  `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-02-PLAN.md`,
+  and `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-03-PLAN.md`.
+  Planning keeps downtime project clocks systemic, pressure-aware, and tightly integrated with fronts and long-arc progression rather than as decorative scene flavor.
+
+- 2026-04-09: Phase 20 planning completed.
+  Plans written to `.planning/phases/20-investigation-board-and-evidence-logic/20-01-PLAN.md`,
+  `.planning/phases/20-investigation-board-and-evidence-logic/20-02-PLAN.md`,
+  and `.planning/phases/20-investigation-board-and-evidence-logic/20-03-PLAN.md`.
+  Planning treats mysteries as canonical evidence state linked into codex and existing world systems, while preserving uncertainty and hidden truths.
+
+- 2026-04-09: Phase 19 planning completed.
+  Plans written to `.planning/phases/19-recurring-nemeses-and-rival-escalation/19-01-PLAN.md`,
+  `.planning/phases/19-recurring-nemeses-and-rival-escalation/19-02-PLAN.md`,
+  `.planning/phases/19-recurring-nemeses-and-rival-escalation/19-03-PLAN.md`,
+  and `.planning/phases/19-recurring-nemeses-and-rival-escalation/19-04-PLAN.md`.
+  Planning promotes recurring rivals into canonical nemesis arcs with remembered history, dossier surfacing, paced re-entry, and multiple meaningful resolutions.
+
+- 2026-04-09: Phase 18 planning completed.
+  Plans written to `.planning/phases/18-social-duels-and-leverage-battles/18-01-PLAN.md`,
+  `.planning/phases/18-social-duels-and-leverage-battles/18-02-PLAN.md`,
+  `.planning/phases/18-social-duels-and-leverage-battles/18-03-PLAN.md`,
+  and `.planning/phases/18-social-duels-and-leverage-battles/18-04-PLAN.md`.
+  Planning frames high-stakes dialogue as an engine-resolved encounter type with leverage, aftermath, and fail-forward consequences instead of prose-only arbitration.
+
+- 2026-04-09: Phase 17 planning completed.
+  Plans written to `.planning/phases/17-faction-fronts-and-regional-pressure/17-01-PLAN.md`,
+  `.planning/phases/17-faction-fronts-and-regional-pressure/17-02-PLAN.md`,
+  `.planning/phases/17-faction-fronts-and-regional-pressure/17-03-PLAN.md`,
+  and `.planning/phases/17-faction-fronts-and-regional-pressure/17-04-PLAN.md`.
+  Planning folds local heat/reputation into faction fronts as regional pressure and wires those fronts into hooks, world reactions, codex, and continuity surfaces.
+
+- 2026-04-09: Phase 16 planning completed.
+  Plans written to `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-01-PLAN.md`,
+  `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-02-PLAN.md`,
+  `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-03-PLAN.md`,
+  and `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-04-PLAN.md`.
+  Planning groups sync/stream parity, RAG turn math, embedding-provider determinism, and touched boot-path cleanup into one reliability-hardening phase.
+
+- 2026-04-09: Phase 15 planning completed.
+  Plans written to `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-01-PLAN.md`,
+  `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-02-PLAN.md`,
+  `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-03-PLAN.md`,
+  and `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-04-PLAN.md`.
+  Planning treats SQLite-backed canonical history/state as authoritative, JSONL as a derived mirror,
+  and focuses the phase on atomic turn ownership, failure surfacing, deterministic recovery, and regression coverage.
+
+- 2026-04-09: Opened the next roadmap extension as milestone `v1.1 — Reliability and Systemic World Depth`.
+  Added Phases 15-21 to `.planning/ROADMAP.md` covering canonical turn integrity, streaming/RAG/provider hardening,
+  faction fronts with regional pressure, social duels, recurring nemeses, investigation boards, and downtime projects.
+  Recommended first execution batch: Phases 15-19. Investigation board and downtime projects are intentionally deferred
+  until the new systemic world-state layers stabilize.
 
 - 2026-04-09: Phase 14 execution completed.
   Summaries written to `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-01-SUMMARY.md`,

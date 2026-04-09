@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"strings"
 	"time"
@@ -418,7 +419,14 @@ func (ce *CombatEngine) WriteSummaryToMain() error {
 			Location:  ce.narrator.World().CurrentLocation,
 		},
 	}
-	return ce.session.AppendHistoryEntry(ce.narrator.db, entry)
+	if err := ce.session.AppendHistoryEntry(ce.narrator.db, entry); err != nil {
+		if IsMirrorSyncError(err) {
+			log.Printf("oneday: combat summary persisted canonically but jsonl mirror failed: %v", err)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // --- Helper functions ---
