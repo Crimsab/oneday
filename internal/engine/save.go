@@ -19,6 +19,7 @@ import (
 type LoadResult struct {
 	Character *storage.Character
 	World     *storage.WorldState
+	Save      *storage.SaveSnapshot
 	Legacy    bool
 }
 
@@ -32,6 +33,20 @@ func SaveGame(
 	world *storage.WorldState,
 	sessionID string,
 	saveName string,
+) (*storage.SaveSnapshot, error) {
+	return SaveGameWithMetadata(db, dataDir, story, char, world, sessionID, saveName, nil)
+}
+
+// SaveGameWithMetadata creates a full state snapshot and persists optional rewind metadata.
+func SaveGameWithMetadata(
+	db *storage.DB,
+	dataDir string,
+	story *storage.Story,
+	char *storage.Character,
+	world *storage.WorldState,
+	sessionID string,
+	saveName string,
+	meta *storage.SaveMetadata,
 ) (*storage.SaveSnapshot, error) {
 	if saveName == "" {
 		saveName = "save"
@@ -90,6 +105,12 @@ func SaveGame(
 	storyCopy := *story
 	saveID := uuid.New().String()
 	now := time.Now()
+	metaJSON := "{}"
+	if meta != nil {
+		if payload, err := json.Marshal(meta); err == nil {
+			metaJSON = string(payload)
+		}
+	}
 
 	snap := &storage.SaveSnapshot{
 		ID:             saveID,
@@ -101,6 +122,7 @@ func SaveGame(
 		CharacterJSON:  string(charJSON),
 		WorldStateJSON: string(worldJSON),
 		SessionID:      sessionID,
+		MetadataJSON:   metaJSON,
 		Story:          &storyCopy,
 		NPCs:           npcs,
 		Achievements:   achievements,
@@ -158,6 +180,7 @@ func LoadGame(
 	result := &LoadResult{
 		Character: &char,
 		World:     &world,
+		Save:      snap,
 		Legacy:    !snap.HasFullRollbackState(),
 	}
 
@@ -193,6 +216,18 @@ func Autosave(
 	world *storage.WorldState,
 	sessionID string,
 ) error {
+	return AutosaveWithMetadata(db, dataDir, story, char, world, sessionID, nil)
+}
+
+func AutosaveWithMetadata(
+	db *storage.DB,
+	dataDir string,
+	story *storage.Story,
+	char *storage.Character,
+	world *storage.WorldState,
+	sessionID string,
+	meta *storage.SaveMetadata,
+) error {
 	existing, err := db.GetAutosave(story.ID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		existing = nil
@@ -202,7 +237,7 @@ func Autosave(
 		_ = DeleteSave(db, dataDir, existing.ID)
 	}
 
-	_, err = SaveGame(db, dataDir, story, char, world, sessionID, "autosave")
+	_, err = SaveGameWithMetadata(db, dataDir, story, char, world, sessionID, "autosave", meta)
 	return err
 }
 
@@ -279,6 +314,9 @@ func loadSaveSnapshot(db *storage.DB, dataDir, saveID string) (*storage.SaveSnap
 	}
 	if diskSnap.SessionID == "" {
 		diskSnap.SessionID = snap.SessionID
+	}
+	if diskSnap.MetadataJSON == "" {
+		diskSnap.MetadataJSON = snap.MetadataJSON
 	}
 	if diskSnap.CreatedAt.IsZero() {
 		diskSnap.CreatedAt = snap.CreatedAt
@@ -419,11 +457,12 @@ func insertWorldStateRow(tx *sql.Tx, world *storage.WorldState) error {
 	_, err := tx.Exec(
 		`INSERT INTO world_state (
 			id, story_id, current_location, known_locations_json,
-			global_events_json, faction_standings_json, current_chapter, current_turn, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			global_events_json, faction_standings_json, story_hooks_json, world_reactions_json,
+			current_chapter, current_turn, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		world.ID, world.StoryID, world.CurrentLocation, world.KnownLocationsJSON,
-		world.GlobalEventsJSON, world.FactionStandingsJSON, world.CurrentChapter,
-		world.CurrentTurn, world.UpdatedAt,
+		world.GlobalEventsJSON, world.FactionStandingsJSON, world.StoryHooksJSON,
+		world.WorldReactionsJSON, world.CurrentChapter, world.CurrentTurn, world.UpdatedAt,
 	)
 	return err
 }
@@ -433,11 +472,11 @@ func insertNPCRows(tx *sql.Tx, npcs []storage.NPC) error {
 		if _, err := tx.Exec(
 			`INSERT INTO npcs (
 				id, story_id, name, role, appearance, personality_json, private_thoughts,
-				notes_on_protagonist, desires, disposition, is_alive, first_appeared_turn,
-				last_seen_turn, can_help, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				relationship_json, notes_on_protagonist, desires, disposition, is_alive,
+				first_appeared_turn, last_seen_turn, can_help, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			npc.ID, npc.StoryID, npc.Name, npc.Role, npc.Appearance, npc.PersonalityJSON,
-			npc.PrivateThoughts, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
+			npc.PrivateThoughts, npc.RelationshipJSON, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
 			npc.IsAlive, npc.FirstAppearedTurn, npc.LastSeenTurn, npc.CanHelp,
 			npc.CreatedAt, npc.UpdatedAt,
 		); err != nil {

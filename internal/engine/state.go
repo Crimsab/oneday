@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 )
@@ -567,6 +569,234 @@ func ApplyStateChanges(
 				Description: fmt.Sprintf("%s's desires updated", npcName),
 			})
 
+		case "npc_relationship":
+			if db == nil {
+				continue
+			}
+			for _, relMap := range toObjectMaps(val) {
+				npcName, _ := relMap["name"].(string)
+				if npcName == "" {
+					continue
+				}
+				npc, err := db.GetNPCByName(storyID, npcName)
+				if err != nil || npc == nil {
+					continue
+				}
+
+				axes := loadRelationshipAxes(npc)
+				changed := false
+				for _, axis := range []struct {
+					name string
+					ptr  *int
+				}{
+					{name: "trust", ptr: &axes.Trust},
+					{name: "fear", ptr: &axes.Fear},
+					{name: "debt", ptr: &axes.Debt},
+					{name: "respect", ptr: &axes.Respect},
+					{name: "intimacy", ptr: &axes.Intimacy},
+				} {
+					next, ok := applyRelationshipAxisUpdate(*axis.ptr, relMap[axis.name])
+					if !ok || next == *axis.ptr {
+						continue
+					}
+					oldVal := *axis.ptr
+					*axis.ptr = next
+					diff := next - oldVal
+					sign := "+"
+					if diff < 0 {
+						sign = ""
+					}
+					applied = append(applied, StateChange{
+						Target:      "world",
+						Field:       fmt.Sprintf("relationship.%s.%s", npcName, axis.name),
+						Old:         oldVal,
+						New:         next,
+						Description: fmt.Sprintf("%s %s: %s%d (now %d)", npcName, axis.name, sign, diff, next),
+					})
+					changed = true
+				}
+				if changed {
+					storeRelationshipAxes(npc, axes)
+					_ = db.UpdateNPC(npc)
+				}
+			}
+
+		case "hook_add":
+			hooks := loadStoryHooks(world)
+			updated := false
+			for _, hookMap := range toObjectMapsOrStrings(val, "title") {
+				title, _ := hookMap["title"].(string)
+				title = strings.TrimSpace(title)
+				if title == "" {
+					continue
+				}
+				hook := StoryHook{
+					ID:          strings.TrimSpace(stringValue(hookMap["id"])),
+					Kind:        strings.TrimSpace(stringValue(hookMap["kind"])),
+					Title:       title,
+					Detail:      strings.TrimSpace(stringValue(hookMap["detail"])),
+					Status:      firstNonEmpty(strings.TrimSpace(stringValue(hookMap["status"])), "active"),
+					NPCName:     strings.TrimSpace(stringValue(hookMap["npc"])),
+					TimerTurns:  int(toFloat(hookMap["timer_turns"])),
+					SourceTurn:  currentTurn,
+					UpdatedTurn: currentTurn,
+				}
+				idx := findStoryHookIndex(hooks, hook.ID, hook.Title)
+				if idx >= 0 {
+					if hook.Kind != "" {
+						hooks[idx].Kind = hook.Kind
+					}
+					if hook.Detail != "" {
+						hooks[idx].Detail = hook.Detail
+					}
+					if hook.NPCName != "" {
+						hooks[idx].NPCName = hook.NPCName
+					}
+					if hook.TimerTurns > 0 {
+						hooks[idx].TimerTurns = hook.TimerTurns
+					}
+					hooks[idx].Status = hook.Status
+					hooks[idx].UpdatedTurn = currentTurn
+					applied = append(applied, StateChange{
+						Target:      "world",
+						Field:       fmt.Sprintf("hook.%s", hook.Title),
+						New:         hook.Title,
+						Description: fmt.Sprintf("Hook updated: %s", hook.Title),
+					})
+				} else {
+					if hook.ID == "" {
+						hook.ID = uuid.NewString()
+					}
+					hooks = append(hooks, hook)
+					applied = append(applied, StateChange{
+						Target:      "world",
+						Field:       fmt.Sprintf("hook.%s", hook.Title),
+						New:         hook.Title,
+						Description: fmt.Sprintf("New hook: %s", hook.Title),
+					})
+				}
+				updated = true
+			}
+			if updated {
+				storeStoryHooks(world, hooks)
+			}
+
+		case "hook_update":
+			hooks := loadStoryHooks(world)
+			updated := false
+			for _, hookMap := range toObjectMaps(val) {
+				title := strings.TrimSpace(stringValue(hookMap["title"]))
+				idx := findStoryHookIndex(hooks, strings.TrimSpace(stringValue(hookMap["id"])), title)
+				if idx < 0 {
+					continue
+				}
+				if detail := strings.TrimSpace(stringValue(hookMap["detail"])); detail != "" {
+					hooks[idx].Detail = detail
+				}
+				if status := strings.TrimSpace(stringValue(hookMap["status"])); status != "" {
+					hooks[idx].Status = status
+				}
+				if npcName := strings.TrimSpace(stringValue(hookMap["npc"])); npcName != "" {
+					hooks[idx].NPCName = npcName
+				}
+				if timerTurns := int(toFloat(hookMap["timer_turns"])); timerTurns > 0 {
+					hooks[idx].TimerTurns = timerTurns
+				}
+				hooks[idx].UpdatedTurn = currentTurn
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       fmt.Sprintf("hook.%s", hooks[idx].Title),
+					New:         hooks[idx].Title,
+					Description: fmt.Sprintf("Hook progressed: %s", hooks[idx].Title),
+				})
+				updated = true
+			}
+			if updated {
+				storeStoryHooks(world, hooks)
+			}
+
+		case "hook_resolve":
+			hooks := loadStoryHooks(world)
+			updated := false
+			for _, hookMap := range toObjectMapsOrStrings(val, "title") {
+				title := strings.TrimSpace(stringValue(hookMap["title"]))
+				idx := findStoryHookIndex(hooks, strings.TrimSpace(stringValue(hookMap["id"])), title)
+				if idx < 0 {
+					continue
+				}
+				hooks[idx].Status = "resolved"
+				if resolution := strings.TrimSpace(stringValue(hookMap["detail"])); resolution != "" {
+					hooks[idx].Detail = resolution
+				}
+				hooks[idx].UpdatedTurn = currentTurn
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       fmt.Sprintf("hook.%s", hooks[idx].Title),
+					New:         hooks[idx].Title,
+					Description: fmt.Sprintf("Hook resolved: %s", hooks[idx].Title),
+				})
+				updated = true
+			}
+			if updated {
+				storeStoryHooks(world, hooks)
+			}
+
+		case "world_reaction_add", "fail_forward":
+			reactions := loadWorldReactions(world)
+			updated := false
+			defaultKind := "reaction"
+			if key == "fail_forward" {
+				defaultKind = "setback"
+			}
+			for _, reactionMap := range toObjectMapsOrStrings(val, "title") {
+				title := strings.TrimSpace(stringValue(reactionMap["title"]))
+				if title == "" {
+					continue
+				}
+				reaction := WorldReaction{
+					ID:          strings.TrimSpace(stringValue(reactionMap["id"])),
+					Kind:        firstNonEmpty(strings.TrimSpace(stringValue(reactionMap["kind"])), defaultKind),
+					Title:       title,
+					Detail:      strings.TrimSpace(stringValue(reactionMap["detail"])),
+					Status:      firstNonEmpty(strings.TrimSpace(stringValue(reactionMap["status"])), "active"),
+					SourceTurn:  currentTurn,
+					CreatedTurn: currentTurn,
+				}
+				idx := findWorldReactionIndex(reactions, reaction.ID, reaction.Title)
+				if idx >= 0 {
+					if reaction.Kind != "" {
+						reactions[idx].Kind = reaction.Kind
+					}
+					if reaction.Detail != "" {
+						reactions[idx].Detail = reaction.Detail
+					}
+					if reaction.Status != "" {
+						reactions[idx].Status = reaction.Status
+					}
+					applied = append(applied, StateChange{
+						Target:      "world",
+						Field:       fmt.Sprintf("reaction.%s", reaction.Title),
+						New:         reaction.Title,
+						Description: fmt.Sprintf("World reacts: %s", reaction.Title),
+					})
+				} else {
+					if reaction.ID == "" {
+						reaction.ID = uuid.NewString()
+					}
+					reactions = append(reactions, reaction)
+					applied = append(applied, StateChange{
+						Target:      "world",
+						Field:       fmt.Sprintf("reaction.%s", reaction.Title),
+						New:         reaction.Title,
+						Description: fmt.Sprintf("World reacts: %s", reaction.Title),
+					})
+				}
+				updated = true
+			}
+			if updated {
+				storeWorldReactions(world, reactions)
+			}
+
 		case "combat_start":
 			// AI signals combat should begin. Records the event; the TUI/narrator
 			// layer starts the actual CombatEngine when it sees NarrativeResponse.CombatStart.
@@ -616,6 +846,106 @@ func ApplyStateChanges(
 func toStringMap(val interface{}) (map[string]interface{}, bool) {
 	m, ok := val.(map[string]interface{})
 	return m, ok
+}
+
+func toObjectMaps(val interface{}) []map[string]interface{} {
+	if val == nil {
+		return nil
+	}
+	if item, ok := val.(map[string]interface{}); ok {
+		return []map[string]interface{}{item}
+	}
+	raw, ok := val.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(raw))
+	for _, item := range raw {
+		if decoded, ok := item.(map[string]interface{}); ok {
+			out = append(out, decoded)
+		}
+	}
+	return out
+}
+
+func toObjectMapsOrStrings(val interface{}, stringKey string) []map[string]interface{} {
+	switch v := val.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil
+		}
+		return []map[string]interface{}{{stringKey: v}}
+	case map[string]interface{}:
+		return []map[string]interface{}{v}
+	case []interface{}:
+		out := make([]map[string]interface{}, 0, len(v))
+		for _, item := range v {
+			switch typed := item.(type) {
+			case string:
+				if strings.TrimSpace(typed) == "" {
+					continue
+				}
+				out = append(out, map[string]interface{}{stringKey: typed})
+			case map[string]interface{}:
+				out = append(out, typed)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func stringValue(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
+func applyRelationshipAxisUpdate(current int, raw interface{}) (int, bool) {
+	switch v := raw.(type) {
+	case nil:
+		return current, false
+	case float64, int, int64, json.Number:
+		return clampRelationshipValue(int(toFloat(v))), true
+	case map[string]interface{}:
+		if changeVal, ok := v["change"]; ok {
+			return clampRelationshipValue(current + int(toFloat(changeVal))), true
+		}
+		if valueVal, ok := v["value"]; ok {
+			return clampRelationshipValue(int(toFloat(valueVal))), true
+		}
+	}
+	return current, false
+}
+
+func findStoryHookIndex(hooks []StoryHook, id, title string) int {
+	id = strings.TrimSpace(id)
+	title = strings.TrimSpace(title)
+	for i, hook := range hooks {
+		if id != "" && strings.EqualFold(hook.ID, id) {
+			return i
+		}
+		if title != "" && strings.EqualFold(hook.Title, title) {
+			return i
+		}
+	}
+	return -1
+}
+
+func findWorldReactionIndex(reactions []WorldReaction, id, title string) int {
+	id = strings.TrimSpace(id)
+	title = strings.TrimSpace(title)
+	for i, reaction := range reactions {
+		if id != "" && strings.EqualFold(reaction.ID, id) {
+			return i
+		}
+		if title != "" && strings.EqualFold(reaction.Title, title) {
+			return i
+		}
+	}
+	return -1
 }
 
 // toFloat converts a JSON numeric value (float64, int, etc.) to float64.

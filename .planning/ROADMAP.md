@@ -1,7 +1,7 @@
 # Roadmap: OneDay
 
 **Milestone:** v1.0 — First Playable
-**Phases:** 11
+**Phases:** 14
 **Requirements:** 99 mapped
 
 ---
@@ -310,6 +310,48 @@ Plans:
 - [x] Plan 12.1: Build true rollback snapshots and restore canonical story/session state
 - [x] Plan 12.2: Persist narrator-meta and combat-summary events in canonical history
 - [x] Plan 12.3: Fix `/craft` routing, autosave hygiene, embedding-provider fallback, and verification
+
+### Phase 13: Living world feedback, NPC conversations, and rewind UX
+
+**Goal:** Make the world easier to follow and more reactive without railroading the player: surface clear turn deltas, track unresolved hooks, deepen nearby NPC relationships and conversations, add world-reaction/fail-forward feedback, and support safer rewind exploration.
+**Requirements**: TBD
+**Depends on:** Phase 12
+**Status:** Complete (2026-04-09)
+**Plans:** 3/3 plans complete
+
+### Success Criteria
+
+1. After each turn, the player can see a structured “what changed” summary covering stat shifts, inventory changes, relationship movement, unlocked lore/hooks, and other meaningful consequences.
+2. The game maintains a lightweight hook tracker for promises, debts, mysteries, timers, and unresolved story threads, and uses it to improve continuity without forcing explicit chapter objectives.
+3. Nearby NPCs support a dedicated conversation flow with persistent multi-axis relationships (for example trust, fear, debt, respect, intimacy) instead of a single disposition number.
+4. Failures tend to resolve through fail-forward consequences such as injuries, complications, lost reputation, heat, rumors, or delays rather than dead stops, and those downstream reactions become visible through a world-reaction feed.
+5. Players can branch or rewind around pivotal moments more safely, and the phase also improves high-value interaction UX such as downtime scenes and practical crafting guidance.
+
+Plans:
+- [x] Plan 13.1: Add structured turn-delta summaries and a persistent hook tracker
+- [x] Plan 13.2: Build nearby NPC conversations, richer relationship axes, and world reaction/fail-forward systems
+- [x] Plan 13.3: Add branch-friendly rewind UX, downtime scenes, and practical crafting QoL
+
+### Phase 14: Story Hub, Achievement Archive, and Codex Dossiers
+
+**Goal:** Add browseable archives and knowledge surfaces so players can inspect story achievements, protagonist/NPC dossiers, and a descriptive codex from both the home surface and inside a run without flattening everything into static text overlays.
+**Requirements**: TBD
+**Depends on:** Phase 13
+**Plans:** 3 plans
+
+### Success Criteria
+
+1. From the home surface, the player can browse stories and inspect each story's unlocked achievements without loading into the live narrative session first.
+2. Story achievements are clearly story-scoped: the home/archive flow can browse all stories, while the in-story achievements view only shows the current story and supports opening a full description for a selected entry.
+3. The protagonist sheet evolves beyond a long plain-text overlay into an inspectable dossier that surfaces stats, traits, titles, relationships, and other relevant run data more clearly.
+4. A codex aggregates canonical story knowledge into descriptive entries for people, places, factions, mysteries, and active threads, while keeping hidden NPC-only information private.
+5. Codex navigation uses click-through drill-down or stacked inspector instances rather than accordion-only expansion, so linked entries can be explored without losing context.
+6. Narrative dialogue renders more reliably even when the prose contains direct speech in single quotes, and duplicated prose-vs-dialogue output is normalized into clearer speaker-aware presentation.
+
+Plans:
+- [ ] Plan 14.1: Build a home-surface story archive and structured achievement browser
+- [ ] Plan 14.2: Upgrade character inspection into protagonist and character dossiers
+- [ ] Plan 14.3: Implement a descriptive codex, dialogue normalization, and multi-instance drill-down navigation
 
 ---
 

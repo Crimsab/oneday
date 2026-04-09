@@ -130,6 +130,7 @@ type NarrativeResponse struct {
 	Narrative            string                 `json:"narrative"`
 	Choices              []Choice               `json:"choices"`
 	StateChanges         map[string]interface{} `json:"state_changes,omitempty"`
+	TurnDelta            *TurnDelta             `json:"turn_delta,omitempty"`
 	Mood                 string                 `json:"mood,omitempty"`
 	Location             string                 `json:"location,omitempty"`
 	SceneType            string                 `json:"scene_type,omitempty"`
@@ -138,6 +139,8 @@ type NarrativeResponse struct {
 	EventCallouts        []EventCallout         `json:"event_callouts,omitempty"`
 	ASCIICue             *ASCIIArtCue           `json:"ascii_cue,omitempty"`
 	ASCIIArt             string                 `json:"ascii_art,omitempty"`
+	OpenHooks            []StoryHook            `json:"open_hooks,omitempty"`
+	WorldReactions       []WorldReaction        `json:"world_reactions,omitempty"`
 	Challenges           []*ChallengeSpec       `json:"challenges,omitempty"`
 	AchievementEarned    *AchievementData       `json:"achievement_earned,omitempty"`
 	ChapterEnd           bool                   `json:"chapter_end,omitempty"`

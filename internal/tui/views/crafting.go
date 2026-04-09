@@ -2,7 +2,6 @@ package views
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -50,6 +49,8 @@ type CraftingModel struct {
 	waiting     bool
 	errMsg      string
 	lastCrafted string // name of last crafted item (if any)
+	lastMissing []string
+	lastAlternatives []string
 }
 
 // NewCraftingModel creates a crafting view.
@@ -162,6 +163,8 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 			return m, nil
 		}
 		resp := msg.response
+		m.lastMissing = append([]string(nil), resp.Missing...)
+		m.lastAlternatives = append([]string(nil), resp.Alternatives...)
 
 		// Append narrative to chat history.
 		rendered := components.RenderMarkdown(resp.Narrative)
@@ -174,6 +177,8 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 				resp.Item.Name, resp.Item.Description, resp.Item.Effect)
 			m.history.WriteString(components.RenderMarkdown(note))
 			// Refresh inventory sidebar since items changed.
+			m.inventory = m.buildInventorySidebar()
+		} else {
 			m.inventory = m.buildInventorySidebar()
 		}
 
@@ -202,10 +207,7 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 			return m, nil
 		}
 
-		// Check if this is an "exit" choice.
-		lowerText := strings.ToLower(msg.Text)
-		if strings.Contains(lowerText, "esci") || strings.Contains(lowerText, "leave") ||
-			strings.Contains(lowerText, "exit") || strings.Contains(lowerText, "lascia") {
+		if isCraftingExitChoice(msg.Text) {
 			_ = m.crafting.Close()
 			return m, func() tea.Msg {
 				return CraftingEndMsg{
@@ -402,30 +404,20 @@ func (m CraftingModel) buildInventorySidebar() string {
 	}
 
 	var sb strings.Builder
+	guidance := engine.GetCraftingGuidance(char)
 
-	// Parse inventory from StatsJSON.
-	var stats map[string]interface{}
-	if char.StatsJSON != "" {
-		_ = json.Unmarshal([]byte(char.StatsJSON), &stats)
+	if len(guidance.Materials) > 0 {
+		sb.WriteString(theme.MutedText.Render("Materiali:\n"))
+		for _, name := range guidance.Materials {
+			sb.WriteString(theme.NormalText.Render("  • "+name) + "\n")
+		}
+	} else {
+		sb.WriteString(theme.MutedText.Render("  (zaino vuoto)\n"))
 	}
 
-	// Backpack items.
-	if stats != nil {
-		inv, _ := stats["inventory"].(map[string]interface{})
-		if inv != nil {
-			backpack, _ := inv["backpack"].([]interface{})
-			if len(backpack) > 0 {
-				sb.WriteString(theme.MutedText.Render("Zaino:\n"))
-				for _, item := range backpack {
-					name := fmt.Sprintf("%v", item)
-					sb.WriteString(theme.NormalText.Render("  • "+name) + "\n")
-				}
-			} else {
-				sb.WriteString(theme.MutedText.Render("  (zaino vuoto)\n"))
-			}
-		} else {
-			sb.WriteString(theme.MutedText.Render("  (zaino vuoto)\n"))
-		}
+	if len(guidance.MaterialTags) > 0 {
+		sb.WriteString("\n" + theme.MutedText.Render("Tag materiali:\n"))
+		sb.WriteString(theme.NormalText.Render("  " + strings.Join(guidance.MaterialTags, " · ")) + "\n")
 	}
 
 	// Known recipes.
@@ -437,8 +429,56 @@ func (m CraftingModel) buildInventorySidebar() string {
 		}
 	}
 
+	if len(guidance.CraftableNow) > 0 {
+		sb.WriteString("\n" + theme.MutedText.Render("Puoi creare ora:\n"))
+		for _, recipe := range guidance.CraftableNow {
+			sb.WriteString(theme.SuccessText.Render("  ✓ "+recipe) + "\n")
+		}
+	}
+
+	if len(guidance.NearMisses) > 0 {
+		sb.WriteString("\n" + theme.MutedText.Render("A un pezzo di distanza:\n"))
+		for _, recipe := range guidance.NearMisses {
+			sb.WriteString(theme.NormalText.Render("  ~ "+recipe) + "\n")
+		}
+	}
+
+	if len(m.lastMissing) > 0 {
+		sb.WriteString("\n" + theme.MutedText.Render("Ti manca:\n"))
+		for _, item := range m.lastMissing {
+			sb.WriteString(theme.DangerText.Render("  - "+item) + "\n")
+		}
+	}
+
+	if len(m.lastAlternatives) > 0 {
+		sb.WriteString("\n" + theme.MutedText.Render("Prova invece:\n"))
+		for _, item := range m.lastAlternatives {
+			sb.WriteString(theme.NormalText.Render("  → "+item) + "\n")
+		}
+	}
+
 	if sb.Len() == 0 {
 		return theme.MutedText.Render("  (vuoto)")
 	}
 	return sb.String()
+}
+
+func isCraftingExitChoice(text string) bool {
+	lowerText := strings.ToLower(strings.TrimSpace(text))
+	if lowerText == "" {
+		return false
+	}
+
+	keywords := []string{
+		"esci", "usc", "lascia", "chiudi",
+		"leave", "exit", "close",
+		"indietro", "torna", "ritorna",
+		"back", "go back", "return",
+	}
+	for _, keyword := range keywords {
+		if strings.Contains(lowerText, keyword) {
+			return true
+		}
+	}
+	return false
 }

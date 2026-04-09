@@ -1,25 +1,59 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
+milestone: v1.0
 milestone_name: milestone
-current_phase: 12
-status: completed
-last_updated: "2026-04-09T10:35:00Z"
+current_phase: 14
+status: planned
+last_updated: "2026-04-09T11:45:00Z"
 progress:
-  total_phases: 12
-  completed_phases: 12
-  total_plans: 35
-  completed_plans: 35
-  percent: 100
+  total_phases: 14
+  completed_phases: 13
+  total_plans: 41
+  completed_plans: 38
+  percent: 93
 ---
 
 # Project State
 
-**Current Phase:** 12
-**Status:** Completed
+**Current Phase:** 14
+**Status:** Ready to plan
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 13 execution completed.
+  Summaries written to `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-01-SUMMARY.md`,
+  `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-02-SUMMARY.md`,
+  and `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-03-SUMMARY.md`.
+  Verification saved in `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-VERIFICATION.md`.
+  Delivered structured turn deltas, persistent hook/world-reaction tracking, richer NPC relationship axes,
+  nearby-NPC talk mode, branch-aware rewind save metadata, downtime scene requests, and crafting QoL guidance.
+
+- 2026-04-09: Phase 14 planning completed.
+  Plans written to `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-01-PLAN.md`,
+  `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-02-PLAN.md`,
+  and `.planning/phases/14-story-hub-achievement-archive-and-codex-dossiers/14-03-PLAN.md`.
+  Planning assumes "homepage" means the start/load-story surfaces, keeps rewind/map/ASCII
+  out of scope, and treats the ongoing Phase 13 NPC/hook rework as an upstream dependency
+  that Phase 14 consumes rather than redesigns.
+
+- 2026-04-09: Phase 14 added — Story Hub, Achievement Archive, and Codex Dossiers.
+  Scope targets a home-surface story archive, per-story achievement browsing, richer
+  protagonist/character dossiers, and a click-through codex built from canonical state.
+  The codex is explicitly planned as a drill-down inspector rather than an accordion-only UI.
+
+- 2026-04-09: Phase 13 planning completed.
+  Plans written to `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-01-PLAN.md`,
+  `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-02-PLAN.md`,
+  and `.planning/phases/13-living-world-feedback-npc-conversations-and-rewind-ux/13-03-PLAN.md`.
+  Planning keeps chapter micro-objectives out to avoid railroading and leaves
+  `compact mode` / `pin scene` excluded as low-value QoL.
+
+- 2026-04-09: Phase 13 added — Living world feedback, NPC conversations, and rewind UX.
+  Scope targets turn-delta summaries, hook tracking, richer nearby-NPC conversations and
+  relationship axes, fail-forward/world-reaction systems, rewind branches, downtime scenes,
+  and practical crafting guidance. Explicitly excludes chapter micro-objectives for now to
+  avoid railroading, and leaves `compact mode` / `pin scene` out as low-value QoL.
 
 - 2026-04-09: Phase 12 execution completed.
   Plans written to `.planning/phases/12-state-rollback-integrity-and-narrative-persistence/12-01-PLAN.md`,

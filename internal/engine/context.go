@@ -161,6 +161,27 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs 
 	if world.GlobalEventsJSON != "" && world.GlobalEventsJSON != "null" && world.GlobalEventsJSON != "[]" {
 		sb.WriteString(fmt.Sprintf("- Global Events: %s\n", world.GlobalEventsJSON))
 	}
+	if hooks := activeStoryHooks(loadStoryHooks(world)); len(hooks) > 0 {
+		parts := make([]string, 0, len(hooks))
+		for _, hook := range hooks {
+			line := hook.Title
+			if hook.TimerTurns > 0 {
+				line += fmt.Sprintf(" [timer:%d]", hook.TimerTurns)
+			}
+			if hook.NPCName != "" {
+				line += " {" + hook.NPCName + "}"
+			}
+			parts = append(parts, line)
+		}
+		sb.WriteString(fmt.Sprintf("- Open Hooks: %s\n", strings.Join(parts, " | ")))
+	}
+	if reactions := visibleWorldReactions(loadWorldReactions(world)); len(reactions) > 0 {
+		parts := make([]string, 0, len(reactions))
+		for _, reaction := range reactions {
+			parts = append(parts, reaction.Title)
+		}
+		sb.WriteString(fmt.Sprintf("- World Reactions: %s\n", strings.Join(parts, " | ")))
+	}
 	// Previous chapter summary for narrative continuity.
 	if lastChapterSummary != "" {
 		sb.WriteString(fmt.Sprintf("- Previous Chapter Summary: %s\n", lastChapterSummary))

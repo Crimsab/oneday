@@ -50,6 +50,8 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 		KnownLocationsJSON:   `["Village"]`,
 		GlobalEventsJSON:     `[]`,
 		FactionStandingsJSON: `{}`,
+		StoryHooksJSON:       `[{"id":"hook-1","kind":"mystery","title":"Who sold you out?","status":"active"}]`,
+		WorldReactionsJSON:   `[{"id":"react-1","kind":"rumor","title":"The guard remembers you","status":"active"}]`,
 		CurrentChapter:       1,
 		CurrentTurn:          1,
 		UpdatedAt:            baseTime,
@@ -98,6 +100,7 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 		Name:              "Old Guard",
 		Role:              "watcher",
 		PersonalityJSON:   `{}`,
+		RelationshipJSON:  `{"trust":12,"fear":-3,"respect":8}`,
 		Disposition:       1,
 		IsAlive:           true,
 		FirstAppearedTurn: 1,
@@ -268,6 +271,12 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 	if restoredWorld.CurrentLocation != "Village" || restoredWorld.CurrentTurn != 1 {
 		t.Fatalf("restored world = %s turn %d, want Village turn 1", restoredWorld.CurrentLocation, restoredWorld.CurrentTurn)
 	}
+	if !strings.Contains(restoredWorld.StoryHooksJSON, "Who sold you out?") {
+		t.Fatalf("restored hooks = %s, want original hook payload", restoredWorld.StoryHooksJSON)
+	}
+	if !strings.Contains(restoredWorld.WorldReactionsJSON, "The guard remembers you") {
+		t.Fatalf("restored world reactions = %s, want original reaction payload", restoredWorld.WorldReactionsJSON)
+	}
 
 	npcs, err := db.ListNPCs(story.ID)
 	if err != nil {
@@ -275,6 +284,9 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 	}
 	if len(npcs) != 1 || npcs[0].Name != "Old Guard" {
 		t.Fatalf("restored NPCs = %+v, want only Old Guard", npcs)
+	}
+	if !strings.Contains(npcs[0].RelationshipJSON, `"trust":12`) {
+		t.Fatalf("restored npc relationship json = %s, want trust payload", npcs[0].RelationshipJSON)
 	}
 
 	achievements, err := db.ListAchievements(story.ID)
@@ -397,6 +409,84 @@ func TestAutosaveRemovesReplacedSnapshotFile(t *testing.T) {
 	}
 	if _, err := os.Stat(firstPath); !os.IsNotExist(err) {
 		t.Fatalf("old autosave file still exists or unexpected error: %v", err)
+	}
+}
+
+func TestSaveGameWithMetadataPersistsRewindBranchContext(t *testing.T) {
+	db, dataDir := newSaveTestDB(t)
+	baseTime := time.Date(2026, time.April, 9, 13, 0, 0, 0, time.UTC)
+
+	story := &storage.Story{
+		ID:              "story-branch",
+		Name:            "Branch Tale",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		CreatedAt:       baseTime,
+		UpdatedAt:       baseTime,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := &storage.Character{
+		ID:               "char-branch",
+		StoryID:          story.ID,
+		Name:             "Mara",
+		StatsJSON:        `{"vitals":{"hp":{"current":10,"max":10}}}`,
+		TraitsJSON:       `[]`,
+		SkillsJSON:       `[]`,
+		InventoryJSON:    `[]`,
+		KnownRecipesJSON: `[]`,
+		CreatedAt:        baseTime,
+		UpdatedAt:        baseTime,
+	}
+	if err := db.CreateCharacter(char); err != nil {
+		t.Fatalf("CreateCharacter: %v", err)
+	}
+
+	world := &storage.WorldState{
+		ID:                   "world-branch",
+		StoryID:              story.ID,
+		CurrentLocation:      "Village",
+		KnownLocationsJSON:   `[]`,
+		GlobalEventsJSON:     `[]`,
+		FactionStandingsJSON: `{}`,
+		StoryHooksJSON:       `[]`,
+		WorldReactionsJSON:   `[]`,
+		CurrentChapter:       1,
+		CurrentTurn:          4,
+		UpdatedAt:            baseTime,
+	}
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatalf("CreateWorldState: %v", err)
+	}
+
+	meta := &storage.SaveMetadata{
+		Kind:               "manual",
+		LoadedFromSaveID:   "seed-save",
+		LoadedFromSaveName: "Crossroads",
+		BranchLabel:        "Rewind branch from Crossroads",
+		Notes:              []string{"alternate path"},
+	}
+
+	snap, err := SaveGameWithMetadata(db, dataDir, story, char, world, "sess-branch", "Branch Save", meta)
+	if err != nil {
+		t.Fatalf("SaveGameWithMetadata: %v", err)
+	}
+	if snap.MetadataJSON == "" || snap.MetadataJSON == "{}" {
+		t.Fatal("expected metadata json on snapshot")
+	}
+
+	loaded, err := db.GetSave(snap.ID)
+	if err != nil {
+		t.Fatalf("GetSave: %v", err)
+	}
+	parsed := loaded.Metadata()
+	if parsed == nil {
+		t.Fatal("expected parsed metadata from saved snapshot")
+	}
+	if parsed.LoadedFromSaveID != "seed-save" || parsed.BranchLabel != "Rewind branch from Crossroads" {
+		t.Fatalf("metadata = %+v, want rewind branch context", parsed)
 	}
 }
 

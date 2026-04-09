@@ -27,6 +27,8 @@ func (db *DB) migrate() error {
 		{7, migrationV7},
 		{8, migrationV8},
 		{9, migrationV9},
+		{10, migrationV10},
+		{11, migrationV11},
 	}
 
 	for _, m := range migrations {
@@ -265,4 +267,24 @@ DROP TABLE chat_messages_old;
 
 CREATE INDEX idx_chat_messages_session ON chat_messages(session_id);
 CREATE INDEX idx_chat_messages_story ON chat_messages(story_id);
+`
+
+const migrationV10 = `
+-- Composite indexes for the live-play hot path.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_session_turn_id
+	ON chat_messages(session_id, turn, id);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_story_turn_id
+	ON chat_messages(story_id, turn, id);
+CREATE INDEX IF NOT EXISTS idx_npcs_story_last_seen
+	ON npcs(story_id, last_seen_turn DESC);
+CREATE INDEX IF NOT EXISTS idx_achievements_story_name_ci
+	ON achievements(story_id, name COLLATE NOCASE);
+`
+
+const migrationV11 = `
+-- Richer social/world state and branch-aware save metadata.
+ALTER TABLE npcs ADD COLUMN relationship_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE world_state ADD COLUMN story_hooks_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE world_state ADD COLUMN world_reactions_json TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE saves ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';
 `
