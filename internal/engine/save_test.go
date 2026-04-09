@@ -52,6 +52,7 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 		FactionStandingsJSON: `{}`,
 		StoryHooksJSON:       `[{"id":"hook-1","kind":"mystery","title":"Who sold you out?","status":"active"}]`,
 		WorldReactionsJSON:   `[{"id":"react-1","kind":"rumor","title":"The guard remembers you","status":"active"}]`,
+		FrontsJSON:           `[{"id":"front-1","faction":"Old Guard","title":"The Old Guard is tightening checkpoints","public_title":"Checkpoints Tighten","public_stakes":"Travel is getting tense.","visibility":"known","segments":4,"progress":2}]`,
 		CurrentChapter:       1,
 		CurrentTurn:          1,
 		UpdatedAt:            baseTime,
@@ -173,6 +174,7 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 
 	world.CurrentLocation = "Castle"
 	world.CurrentTurn = 99
+	world.FrontsJSON = `[{"id":"front-future","faction":"Future Court","title":"The court owns the walls","visibility":"known","segments":4,"progress":4}]`
 	if err := db.UpdateWorldState(world); err != nil {
 		t.Fatalf("UpdateWorldState: %v", err)
 	}
@@ -276,6 +278,12 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 	}
 	if !strings.Contains(restoredWorld.WorldReactionsJSON, "The guard remembers you") {
 		t.Fatalf("restored world reactions = %s, want original reaction payload", restoredWorld.WorldReactionsJSON)
+	}
+	if !strings.Contains(restoredWorld.FrontsJSON, "Checkpoints Tighten") {
+		t.Fatalf("restored fronts = %s, want original front payload", restoredWorld.FrontsJSON)
+	}
+	if strings.Contains(restoredWorld.FrontsJSON, "Future Court") {
+		t.Fatalf("restored fronts leaked future front payload: %s", restoredWorld.FrontsJSON)
 	}
 
 	npcs, err := db.ListNPCs(story.ID)

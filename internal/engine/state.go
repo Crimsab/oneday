@@ -1060,6 +1060,10 @@ func ApplyNarratorStateChanges(
 
 	settingModified := false
 	worldModified := false
+	currentTurn := 0
+	if world != nil {
+		currentTurn = world.CurrentTurn
+	}
 
 	for key, val := range changes {
 		switch key {
@@ -1173,6 +1177,204 @@ func ApplyNarratorStateChanges(
 			standings[factionName] = standing
 			if fsb, err := json.Marshal(standings); err == nil {
 				world.FactionStandingsJSON = string(fsb)
+				worldModified = true
+			}
+
+		case "front_add":
+			fronts := loadFronts(world)
+			updated := false
+			for _, frontMap := range toObjectMapsOrStrings(val, "title") {
+				title := strings.TrimSpace(stringValue(frontMap["title"]))
+				if title == "" {
+					continue
+				}
+				front := Front{
+					ID:                 strings.TrimSpace(stringValue(frontMap["id"])),
+					Faction:            strings.TrimSpace(stringValue(frontMap["faction"])),
+					Title:              title,
+					PublicTitle:        strings.TrimSpace(stringValue(frontMap["public_title"])),
+					Stakes:             strings.TrimSpace(stringValue(frontMap["stakes"])),
+					PublicStakes:       strings.TrimSpace(stringValue(frontMap["public_stakes"])),
+					Status:             firstNonEmpty(strings.TrimSpace(stringValue(frontMap["status"])), "active"),
+					Visibility:         firstNonEmpty(strings.TrimSpace(stringValue(frontMap["visibility"])), "hidden"),
+					Segments:           int(toFloat(frontMap["segments"])),
+					Progress:           int(toFloat(frontMap["progress"])),
+					LastAdvancedTurn:   currentTurn,
+					NextEscalationTurn: int(toFloat(frontMap["next_escalation_turn"])),
+				}
+				if idx := findFrontIndex(fronts, front.ID, front.Title); idx >= 0 {
+					if front.Faction != "" {
+						fronts[idx].Faction = front.Faction
+					}
+					if front.PublicTitle != "" {
+						fronts[idx].PublicTitle = front.PublicTitle
+					}
+					if front.Stakes != "" {
+						fronts[idx].Stakes = front.Stakes
+					}
+					if front.PublicStakes != "" {
+						fronts[idx].PublicStakes = front.PublicStakes
+					}
+					if front.Status != "" {
+						fronts[idx].Status = front.Status
+					}
+					if front.Visibility != "" {
+						fronts[idx].Visibility = front.Visibility
+					}
+					if front.Segments > 0 {
+						fronts[idx].Segments = front.Segments
+					}
+					if front.Progress >= 0 {
+						fronts[idx].Progress = front.Progress
+					}
+					if front.NextEscalationTurn > 0 {
+						fronts[idx].NextEscalationTurn = front.NextEscalationTurn
+					}
+					fronts[idx].LastAdvancedTurn = currentTurn
+				} else {
+					fronts = append(fronts, front)
+				}
+				updated = true
+			}
+			if updated {
+				storeFronts(world, fronts)
+				worldModified = true
+			}
+
+		case "front_advance":
+			fronts := loadFronts(world)
+			updated := false
+			for _, frontMap := range toObjectMaps(val) {
+				idx := findFrontIndex(fronts, strings.TrimSpace(stringValue(frontMap["id"])), strings.TrimSpace(stringValue(frontMap["title"])))
+				if idx < 0 {
+					continue
+				}
+				delta := int(toFloat(frontMap["amount"]))
+				if delta == 0 {
+					delta = 1
+				}
+				fronts[idx].Progress += delta
+				fronts[idx].LastAdvancedTurn = currentTurn
+				if fronts[idx].Progress > fronts[idx].Segments {
+					fronts[idx].Progress = fronts[idx].Segments
+				}
+				if status := strings.TrimSpace(stringValue(frontMap["status"])); status != "" {
+					fronts[idx].Status = status
+				}
+				updated = true
+			}
+			if updated {
+				storeFronts(world, fronts)
+				worldModified = true
+			}
+
+		case "front_reveal":
+			fronts := loadFronts(world)
+			updated := false
+			for _, frontMap := range toObjectMaps(val) {
+				idx := findFrontIndex(fronts, strings.TrimSpace(stringValue(frontMap["id"])), strings.TrimSpace(stringValue(frontMap["title"])))
+				if idx < 0 {
+					continue
+				}
+				fronts[idx].Visibility = firstNonEmpty(strings.TrimSpace(stringValue(frontMap["visibility"])), "known")
+				if publicTitle := strings.TrimSpace(stringValue(frontMap["public_title"])); publicTitle != "" {
+					fronts[idx].PublicTitle = publicTitle
+				}
+				if publicStakes := strings.TrimSpace(stringValue(frontMap["public_stakes"])); publicStakes != "" {
+					fronts[idx].PublicStakes = publicStakes
+				}
+				updated = true
+			}
+			if updated {
+				storeFronts(world, fronts)
+				worldModified = true
+			}
+
+		case "front_stall":
+			fronts := loadFronts(world)
+			updated := false
+			for _, frontMap := range toObjectMaps(val) {
+				idx := findFrontIndex(fronts, strings.TrimSpace(stringValue(frontMap["id"])), strings.TrimSpace(stringValue(frontMap["title"])))
+				if idx < 0 {
+					continue
+				}
+				fronts[idx].Status = "stalled"
+				if nextTurn := int(toFloat(frontMap["next_escalation_turn"])); nextTurn > 0 {
+					fronts[idx].NextEscalationTurn = nextTurn
+				}
+				updated = true
+			}
+			if updated {
+				storeFronts(world, fronts)
+				worldModified = true
+			}
+
+		case "front_resolve":
+			fronts := loadFronts(world)
+			updated := false
+			for _, frontMap := range toObjectMaps(val) {
+				idx := findFrontIndex(fronts, strings.TrimSpace(stringValue(frontMap["id"])), strings.TrimSpace(stringValue(frontMap["title"])))
+				if idx < 0 {
+					continue
+				}
+				fronts[idx].Status = firstNonEmpty(strings.TrimSpace(stringValue(frontMap["status"])), "resolved")
+				fronts[idx].Resolution = firstNonEmpty(strings.TrimSpace(stringValue(frontMap["resolution"])), strings.TrimSpace(stringValue(frontMap["detail"])))
+				fronts[idx].Progress = fronts[idx].Segments
+				updated = true
+			}
+			if updated {
+				storeFronts(world, fronts)
+				worldModified = true
+			}
+
+		case "front_pressure":
+			fronts := loadFronts(world)
+			updated := false
+			for _, frontMap := range toObjectMaps(val) {
+				idx := findFrontIndex(fronts, strings.TrimSpace(stringValue(frontMap["id"])), strings.TrimSpace(stringValue(frontMap["title"])))
+				if idx < 0 {
+					continue
+				}
+				region := strings.TrimSpace(stringValue(frontMap["region"]))
+				kind := strings.TrimSpace(stringValue(frontMap["kind"]))
+				if region == "" || kind == "" {
+					continue
+				}
+				level := int(toFloat(frontMap["value"]))
+				if changeVal, ok := frontMap["change"]; ok {
+					level = -1
+					for i := range fronts[idx].Pressures {
+						if strings.EqualFold(fronts[idx].Pressures[i].Region, region) && strings.EqualFold(fronts[idx].Pressures[i].Kind, kind) {
+							level = fronts[idx].Pressures[i].Level + int(toFloat(changeVal))
+							break
+						}
+					}
+					if level < 0 {
+						level = int(toFloat(changeVal))
+					}
+				}
+				pressure := FrontPressure{
+					Region:      region,
+					Kind:        kind,
+					Level:       level,
+					Detail:      strings.TrimSpace(stringValue(frontMap["detail"])),
+					UpdatedTurn: currentTurn,
+				}
+				replaced := false
+				for i := range fronts[idx].Pressures {
+					if strings.EqualFold(fronts[idx].Pressures[i].Region, pressure.Region) && strings.EqualFold(fronts[idx].Pressures[i].Kind, pressure.Kind) {
+						fronts[idx].Pressures[i] = pressure
+						replaced = true
+						break
+					}
+				}
+				if !replaced {
+					fronts[idx].Pressures = append(fronts[idx].Pressures, pressure)
+				}
+				updated = true
+			}
+			if updated {
+				storeFronts(world, fronts)
 				worldModified = true
 			}
 

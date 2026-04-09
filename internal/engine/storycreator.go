@@ -779,6 +779,7 @@ func (sc *StoryCreator) persistStory(charName, charBackground string) error {
 		KnownLocationsJSON:   "[]",
 		GlobalEventsJSON:     "[]",
 		FactionStandingsJSON: "{}",
+		FrontsJSON:           "[]",
 		CurrentChapter:       1,
 		CurrentTurn:          0,
 		UpdatedAt:            now,
