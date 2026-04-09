@@ -75,3 +75,36 @@ func TestBuildStateSummaryIncludesActiveNemesisRoster(t *testing.T) {
 		t.Fatalf("summary missing active nemesis line:\n%s", summary)
 	}
 }
+
+func TestBuildStateSummaryIncludesOpenInvestigations(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+	storeInvestigationBoard(world, InvestigationBoard{
+		Cases: []InvestigationCase{
+			{
+				Title: "Who sold you out?",
+				Clues: []InvestigationClue{
+					{Label: "Ledger ash"},
+				},
+				Contradictions: []InvestigationContradiction{
+					{Label: "Two alibis overlap"},
+				},
+				Theories: []InvestigationTheory{
+					{Statement: "The guard captain was bribed"},
+				},
+			},
+			{
+				Title:  "Closed Case",
+				Status: "solved",
+			},
+		},
+	})
+
+	summary := buildStateSummary(char, world, nil, "")
+	if !strings.Contains(summary, "Investigations: Who sold you out? [clues:1] [contradictions:1] [theories:1]") {
+		t.Fatalf("summary missing investigation digest:\n%s", summary)
+	}
+	if strings.Contains(summary, "Closed Case") {
+		t.Fatalf("summary leaked solved investigation into open digest:\n%s", summary)
+	}
+}
