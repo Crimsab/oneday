@@ -52,6 +52,7 @@ type socialDuelResultPayload struct {
 	PlayerPatience  int                       `json:"player_patience"`
 	NPCPatience     int                       `json:"npc_patience"`
 	PlayerNote      string                    `json:"player_note,omitempty"`
+	Aftermath       []string                  `json:"aftermath,omitempty"`
 	FailForward     *engine.SocialFailForward `json:"fail_forward,omitempty"`
 }
 
@@ -486,7 +487,7 @@ func mergeSocialDuelCue(base, next *engine.SocialDuelCue, state *engine.SocialDu
 	return merged
 }
 
-func buildSocialDuelResultInput(msg socialDuelRoundResolvedMsg) string {
+func buildSocialDuelResultInput(msg socialDuelRoundResolvedMsg, aftermath *engine.SocialDuelAftermath) string {
 	if msg.State == nil || msg.Round == nil {
 		return "[Social Duel Result]"
 	}
@@ -519,6 +520,9 @@ func buildSocialDuelResultInput(msg socialDuelRoundResolvedMsg) string {
 		PlayerNote:      strings.TrimSpace(msg.PlayerNote),
 		FailForward:     msg.Round.FailForward,
 	}
+	if aftermath != nil {
+		payload.Aftermath = aftermath.Summary
+	}
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -527,7 +531,7 @@ func buildSocialDuelResultInput(msg socialDuelRoundResolvedMsg) string {
 	return "[Social Duel Result] " + string(raw)
 }
 
-func renderSocialDuelRoundNote(msg socialDuelRoundResolvedMsg) string {
+func renderSocialDuelRoundNote(msg socialDuelRoundResolvedMsg, aftermath *engine.SocialDuelAftermath) string {
 	if msg.State == nil || msg.Round == nil {
 		return components.RenderMarkdown("\n*[Social duel exchange resolved.]*\n")
 	}
@@ -547,6 +551,9 @@ func renderSocialDuelRoundNote(msg socialDuelRoundResolvedMsg) string {
 	}
 	if msg.Round.FailForward != nil {
 		lines = append(lines, fmt.Sprintf("%s: %s", msg.Round.FailForward.Title, msg.Round.FailForward.Detail))
+	}
+	if aftermath != nil {
+		lines = append(lines, aftermath.Summary...)
 	}
 	return components.RenderMarkdown("\n" + strings.Join(lines, "\n") + "\n")
 }
