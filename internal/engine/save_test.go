@@ -44,18 +44,19 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 	}
 
 	world := &storage.WorldState{
-		ID:                   "world-1",
-		StoryID:              story.ID,
-		CurrentLocation:      "Village",
-		KnownLocationsJSON:   `["Village"]`,
-		GlobalEventsJSON:     `[]`,
-		FactionStandingsJSON: `{}`,
-		StoryHooksJSON:       `[{"id":"hook-1","kind":"mystery","title":"Who sold you out?","status":"active"}]`,
-		WorldReactionsJSON:   `[{"id":"react-1","kind":"rumor","title":"The guard remembers you","status":"active"}]`,
-		FrontsJSON:           `[{"id":"front-1","faction":"Old Guard","title":"The Old Guard is tightening checkpoints","public_title":"Checkpoints Tighten","public_stakes":"Travel is getting tense.","visibility":"known","segments":4,"progress":2}]`,
-		CurrentChapter:       1,
-		CurrentTurn:          1,
-		UpdatedAt:            baseTime,
+		ID:                     "world-1",
+		StoryID:                story.ID,
+		CurrentLocation:        "Village",
+		KnownLocationsJSON:     `["Village"]`,
+		GlobalEventsJSON:       `[]`,
+		FactionStandingsJSON:   `{}`,
+		StoryHooksJSON:         `[{"id":"hook-1","kind":"mystery","title":"Who sold you out?","status":"active"}]`,
+		WorldReactionsJSON:     `[{"id":"react-1","kind":"rumor","title":"The guard remembers you","status":"active"}]`,
+		InvestigationBoardJSON: `{"cases":[{"id":"case-1","title":"Who sold you out?","status":"open","clues":[{"id":"clue-1","label":"A missing seal","status":"known"}],"hidden_truths":[{"id":"truth-1","label":"The guard captain was paid","status":"hidden"}]}]}`,
+		FrontsJSON:             `[{"id":"front-1","faction":"Old Guard","title":"The Old Guard is tightening checkpoints","public_title":"Checkpoints Tighten","public_stakes":"Travel is getting tense.","visibility":"known","segments":4,"progress":2}]`,
+		CurrentChapter:         1,
+		CurrentTurn:            1,
+		UpdatedAt:              baseTime,
 	}
 	if err := db.CreateWorldState(world); err != nil {
 		t.Fatalf("CreateWorldState: %v", err)
@@ -279,6 +280,12 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 	}
 	if !strings.Contains(restoredWorld.WorldReactionsJSON, "The guard remembers you") {
 		t.Fatalf("restored world reactions = %s, want original reaction payload", restoredWorld.WorldReactionsJSON)
+	}
+	if !strings.Contains(restoredWorld.InvestigationBoardJSON, "A missing seal") {
+		t.Fatalf("restored investigation board = %s, want original board payload", restoredWorld.InvestigationBoardJSON)
+	}
+	if !strings.Contains(restoredWorld.InvestigationBoardJSON, "The guard captain was paid") {
+		t.Fatalf("restored investigation board lost hidden truth payload: %s", restoredWorld.InvestigationBoardJSON)
 	}
 	if !strings.Contains(restoredWorld.FrontsJSON, "Checkpoints Tighten") {
 		t.Fatalf("restored fronts = %s, want original front payload", restoredWorld.FrontsJSON)
