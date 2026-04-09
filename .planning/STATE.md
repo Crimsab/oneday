@@ -2,24 +2,37 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
-current_phase: 22
-status: completed
+current_phase: 23
+status: planned
 last_updated: "2026-04-09T22:31:31+02:00"
 progress:
-  total_phases: 23
+  total_phases: 24
   completed_phases: 23
-  total_plans: 71
+  total_plans: 75
   completed_plans: 71
-  percent: 100
+  percent: 95
 ---
 
 # Project State
 
-**Current Phase:** 22
-**Status:** Complete
+**Current Phase:** 23
+**Status:** Ready to execute
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 23 added — Active Systems UX and World-State Navigation.
+  Scope targets dedicated player-facing surfaces for projects, investigations, and fronts,
+  plus better navigation and live fallout callouts so the systemic layers added in Phases 17-21
+  feel legible in play instead of living mostly behind codex browsing.
+
+- 2026-04-09: Phase 23 planning completed.
+  Plans written to `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-01-PLAN.md`,
+  `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-02-PLAN.md`,
+  `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-03-PLAN.md`,
+  and `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-04-PLAN.md`.
+  Planning breaks the work by player-facing surface first, then uses a final integration wave
+  to unify navigation and live world-state callouts across those systems.
 
 - 2026-04-09: Phase 22 execution completed.
   Summaries written to `.planning/phases/22-qa-e2e-verification-and-release-hardening/22-01-SUMMARY.md`,
