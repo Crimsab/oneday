@@ -92,6 +92,11 @@ type InvestigationBoard struct {
 	Cases []InvestigationCase `json:"cases,omitempty"`
 }
 
+// LoadInvestigationBoard returns the normalized canonical investigation board for a world state.
+func LoadInvestigationBoard(world *storage.WorldState) InvestigationBoard {
+	return loadInvestigationBoard(world)
+}
+
 func loadInvestigationBoard(world *storage.WorldState) InvestigationBoard {
 	if world == nil || strings.TrimSpace(world.InvestigationBoardJSON) == "" || strings.TrimSpace(world.InvestigationBoardJSON) == "{}" {
 		return InvestigationBoard{}
