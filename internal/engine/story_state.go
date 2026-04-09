@@ -367,6 +367,126 @@ func frontDisplayStakes(front Front) string {
 	return ""
 }
 
+func frontPressureSeverity(level int) string {
+	switch {
+	case level >= 75:
+		return "critical"
+	case level >= 50:
+		return "high"
+	case level >= 25:
+		return "rising"
+	default:
+		return "low"
+	}
+}
+
+func frontPressureEffects(pressure FrontPressure) []string {
+	level := pressure.Level
+	switch strings.ToLower(strings.TrimSpace(pressure.Kind)) {
+	case "suspicion", "heat", "notoriety":
+		switch {
+		case level >= 75:
+			return []string{"patrols tighten", "outsiders get stopped and priced harder"}
+		case level >= 50:
+			return []string{"guards question strangers", "locals stop volunteering help"}
+		case level >= 25:
+			return []string{"rumors spread", "guards ask sharper questions"}
+		default:
+			return []string{"a few eyes linger on strangers"}
+		}
+	case "hostility", "violence":
+		switch {
+		case level >= 75:
+			return []string{"ambushes become likely", "safe routes start closing"}
+		case level >= 50:
+			return []string{"threats turn open", "escorts and bribes get pricier"}
+		case level >= 25:
+			return []string{"tempers rise", "rough crowds gather faster"}
+		default:
+			return []string{"tension keeps building"}
+		}
+	case "fear":
+		switch {
+		case level >= 75:
+			return []string{"shops shutter early", "witnesses refuse to talk"}
+		case level >= 50:
+			return []string{"doors stay barred", "people hide useful information"}
+		case level >= 25:
+			return []string{"locals go quiet", "crowds thin out sooner"}
+		default:
+			return []string{"nerves are starting to show"}
+		}
+	case "influence", "control":
+		switch {
+		case level >= 75:
+			return []string{"permits and gates are controlled", "favored allies move freely"}
+		case level >= 50:
+			return []string{"inspectors and enforcers show up more", "access starts depending on favors"}
+		case level >= 25:
+			return []string{"the faction's presence is obvious", "small decisions begin tilting their way"}
+		default:
+			return []string{"their pull is starting to register"}
+		}
+	case "scarcity":
+		switch {
+		case level >= 75:
+			return []string{"basic supplies spike in price", "desperate deals become common"}
+		case level >= 50:
+			return []string{"merchants hold stock back", "repair and food costs climb"}
+		case level >= 25:
+			return []string{"queues get longer", "haggling turns harsher"}
+		default:
+			return []string{"small shortages begin to bite"}
+		}
+	default:
+		switch {
+		case level >= 75:
+			return []string{"the area bends around this pressure", "ordinary routines start failing"}
+		case level >= 50:
+			return []string{"daily routines become harder", "people adapt defensively"}
+		case level >= 25:
+			return []string{"the mood of the area shifts", "small obstacles accumulate"}
+		default:
+			return []string{"the region is starting to feel it"}
+		}
+	}
+}
+
+func formatFrontPressureDisplay(pressure FrontPressure) string {
+	line := fmt.Sprintf("%s [%s %d %s]", pressure.Region, pressure.Kind, pressure.Level, frontPressureSeverity(pressure.Level))
+	effects := frontPressureEffects(pressure)
+	if len(effects) > 0 {
+		line += " - " + strings.Join(effects, "; ")
+	}
+	if detail := strings.TrimSpace(pressure.Detail); detail != "" {
+		line += " | " + detail
+	}
+	return line
+}
+
+func formatKnownFrontSummary(front Front) string {
+	parts := []string{frontDisplayTitle(front)}
+	if strings.EqualFold(front.Visibility, "known") && strings.TrimSpace(front.Faction) != "" {
+		parts = append(parts, "{"+strings.TrimSpace(front.Faction)+"}")
+	}
+	if front.Segments > 0 {
+		parts = append(parts, fmt.Sprintf("%d/%d", front.Progress, front.Segments))
+	}
+	if status := strings.TrimSpace(front.Status); status != "" && !strings.EqualFold(status, "active") {
+		parts = append(parts, "["+status+"]")
+	}
+
+	line := strings.Join(parts, " ")
+	pressureParts := make([]string, 0, len(front.Pressures))
+	for _, pressure := range normalizeFrontPressures(front.Pressures) {
+		pressureParts = append(pressureParts, formatFrontPressureDisplay(pressure))
+	}
+	if len(pressureParts) > 0 {
+		line += " | pressure: " + strings.Join(pressureParts, " || ")
+	}
+	return line
+}
+
 func findFrontIndex(fronts []Front, id, title string) int {
 	id = strings.TrimSpace(id)
 	title = strings.TrimSpace(title)
@@ -614,11 +734,7 @@ func FormatStoryTrackerView(world *storage.WorldState) string {
 				sb.WriteString("  Stakes: " + stakes + "\n")
 			}
 			for _, pressure := range normalizeFrontPressures(front.Pressures) {
-				line := fmt.Sprintf("  Pressure: %s [%s %d]", pressure.Region, pressure.Kind, pressure.Level)
-				if pressure.Detail != "" {
-					line += " - " + pressure.Detail
-				}
-				sb.WriteString(line + "\n")
+				sb.WriteString("  Pressure: " + formatFrontPressureDisplay(pressure) + "\n")
 			}
 			if resolution := strings.TrimSpace(front.Resolution); resolution != "" && strings.EqualFold(front.Status, "resolved") {
 				sb.WriteString("  Outcome: " + resolution + "\n")
