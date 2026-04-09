@@ -9,6 +9,72 @@ import (
 	"github.com/crimsab/oneday/internal/engine"
 )
 
+type dialogueRecognizer struct {
+	re           *regexp.Regexp
+	textGroup    int
+	speakerGroup int
+}
+
+type dialogueMatch struct {
+	Start   int
+	End     int
+	Speaker string
+	Text    string
+}
+
+var dialogueSpeakerPattern = `(?:[A-Z][A-Za-z0-9_'\-]*(?:\s+[A-Z][A-Za-z0-9_'\-]*){0,4}|[Ll]ei|[Ll]ui|[Vv]oi|[Nn]oi|[Yy]ou|[Hh]e|[Ss]he|[Tt]hey)`
+
+var dialogueVerbPattern = strings.Join([]string{
+	`ask`, `asks`, `asked`,
+	`balbetta`, `balbetti`, `balbett[aò]`,
+	`bisbiglia`, `bisbigli[aò]`,
+	`call`, `calls`, `called`,
+	`dice`, `dicono`, `disse`,
+	`esclama`, `esclam[aò]`,
+	`grida`, `grid[aò]`,
+	`growl`, `growls`, `growled`,
+	`hiss`, `hisses`, `hissed`,
+	`mormora`, `mormor[aò]`,
+	`murmur`, `murmurs`, `murmured`,
+	`reply`, `replies`, `replied`,
+	`ride`, `ridendo`, `rise`,
+	`risponde`, `rispos[eo]`,
+	`said`, `say`, `says`,
+	`shout`, `shouts`, `shouted`,
+	`snap`, `snaps`, `snapped`,
+	`sussurra`, `sussurr[aò]`,
+	`tuba`,
+	`urla`, `url[aò]`,
+	`whisper`, `whispers`, `whispered`,
+	`yell`, `yells`, `yelled`,
+}, "|")
+
+var dialogueRecognizers = []dialogueRecognizer{
+	{
+		re:           regexp.MustCompile(`(?is)\b(` + dialogueSpeakerPattern + `)\s*:\s*["“'‘]([^"\n“”'‘’]{2,260})["”'’]`),
+		textGroup:    2,
+		speakerGroup: 1,
+	},
+	{
+		re:           regexp.MustCompile(`(?is)\b(` + dialogueSpeakerPattern + `)\b[^.!?\n]{0,80}?\b(?:` + dialogueVerbPattern + `)\b[^.!?\n]{0,80}?["“'‘]([^"\n“”'‘’]{2,260})["”'’]`),
+		textGroup:    2,
+		speakerGroup: 1,
+	},
+	{
+		re:           regexp.MustCompile(`(?is)["“'‘]([^"\n“”'‘’]{2,260})["”'’]\s*(?:,?\s*)?(?:` + dialogueVerbPattern + `)\b[^.!?\n]{0,80}?\b(` + dialogueSpeakerPattern + `)\b`),
+		textGroup:    1,
+		speakerGroup: 2,
+	},
+	{
+		re:           regexp.MustCompile(`(?is)["“'‘]([^"\n“”'‘’]{2,260})["”'’]\s*(?:,?\s*)?(?:` + dialogueVerbPattern + `)\b[^.!?\n]{0,80}`),
+		textGroup:    1,
+		speakerGroup: 0,
+	},
+}
+
+var strippedDialoguePrefixScaffoldRE = regexp.MustCompile(`(?is)(^|[,;]\s+|\n+)\b[^.!?\n]{0,50}?\b(?:` + dialogueVerbPattern + `)\b[^.!?\n]{0,40}?:\s*(?:''|""|“”|‘’)?`)
+var strippedDialogueSuffixScaffoldRE = regexp.MustCompile(`(?is)(^|[.!?]\s+|\n+|\s{2,})\b(?:` + dialogueVerbPattern + `)\b[^.!?\n]{0,40}?\b(?:` + dialogueSpeakerPattern + `)\b\s*,?\s*`)
+
 // RenderNarrativeMarkdown converts structured narrative input into markdown that
 // can be passed through the existing markdown renderer. It prefers trusted
 // structured metadata but always falls back to safe plain narrative text.
@@ -114,7 +180,7 @@ func renderDialogueBlocks(blocks []engine.DialogueBlock, entities []KnownEntity)
 			if speaker != "" {
 				rendered = append(rendered, fmt.Sprintf("> **%s:** _%s_", speaker, quoted))
 			} else {
-				rendered = append(rendered, text)
+				rendered = append(rendered, fmt.Sprintf("> _%s_", quoted))
 			}
 		}
 	}
@@ -133,61 +199,36 @@ func stripStructuredDialogueFromNarrative(narrative string, blocks []engine.Dial
 			cleaned = strings.ReplaceAll(cleaned, variant, "")
 		}
 	}
+	cleaned = cleanupStrippedDialogueScaffolds(cleaned)
 	return cleanupNarrativeSpacing(cleaned)
 }
 
 func extractDialogueBlocksFromNarrative(narrative string) (string, []engine.DialogueBlock) {
-	type extractor struct {
-		re *regexp.Regexp
-	}
-
-	extractors := []extractor{
-		{
-			re: regexp.MustCompile(`(?is)\b([A-Z][A-Za-z0-9 _'\-]{1,40})\s*:\s*["“'‘]([^"\n“”'‘’]{2,220})["”'’]`),
-		},
-		{
-			re: regexp.MustCompile(`(?is)\b([A-Z][A-Za-z0-9 _'\-]{1,40})\s+(?:says|said|asks|asked|whispers|whispered|murmurs|murmured|replies|replied|snaps|snapped|growls|growled|shouts|shouted|yells|yelled|hisses|hissed|calls|called)\s*[,:-]?\s*["“'‘]([^"\n“”'‘’]{2,220})["”'’]`),
-		},
-	}
-
-	cleaned := narrative
+	matches := collectDialogueMatches(narrative)
 	seen := map[string]bool{}
-	var blocks []engine.DialogueBlock
-
-	for _, extractor := range extractors {
-		matches := extractor.re.FindAllStringSubmatch(cleaned, -1)
-		if len(matches) == 0 {
+	blocks := make([]engine.DialogueBlock, 0, len(matches))
+	for _, match := range matches {
+		text := strings.TrimSpace(match.Text)
+		if text == "" {
 			continue
 		}
-
-		cleaned = extractor.re.ReplaceAllString(cleaned, "")
-		for _, match := range matches {
-			if len(match) < 3 {
-				continue
-			}
-			speaker := strings.TrimSpace(match[1])
-			text := strings.TrimSpace(match[2])
-			if speaker == "" || text == "" {
-				continue
-			}
-			key := strings.ToLower(speaker + "|" + normalizeDialogueKey(text))
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			role := "npc"
-			if strings.EqualFold(speaker, "you") {
-				role = "player"
-			}
-			blocks = append(blocks, engine.DialogueBlock{
-				Speaker: speaker,
-				Role:    role,
-				Text:    text,
-			})
+		speaker := normalizeDialogueSpeaker(match.Speaker)
+		key := strings.ToLower(speaker + "|" + normalizeDialogueKey(text))
+		if seen[key] {
+			continue
 		}
+		seen[key] = true
+		role := "npc"
+		if strings.EqualFold(speaker, "you") {
+			role = "player"
+		}
+		blocks = append(blocks, engine.DialogueBlock{
+			Speaker: speaker,
+			Role:    role,
+			Text:    text,
+		})
 	}
-
-	return cleanupNarrativeSpacing(cleaned), blocks
+	return cleanupNarrativeSpacing(removeDialogueMatches(narrative, matches)), blocks
 }
 
 func dialogueVariants(text string) []string {
@@ -237,6 +278,7 @@ func cleanupNarrativeSpacing(text string) string {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		line = strings.Join(strings.Fields(line), " ")
+		line = strings.TrimLeft(line, ",;:")
 		line = strings.ReplaceAll(line, " ,", ",")
 		line = strings.ReplaceAll(line, " .", ".")
 		line = strings.ReplaceAll(line, " !", "!")
@@ -249,6 +291,130 @@ func cleanupNarrativeSpacing(text string) string {
 		}
 	}
 	return strings.TrimSpace(strings.Join(cleanedLines, "\n\n"))
+}
+
+func collectDialogueMatches(narrative string) []dialogueMatch {
+	if strings.TrimSpace(narrative) == "" {
+		return nil
+	}
+
+	matches := make([]dialogueMatch, 0, 8)
+	for _, recognizer := range dialogueRecognizers {
+		indexes := recognizer.re.FindAllStringSubmatchIndex(narrative, -1)
+		for _, idx := range indexes {
+			if len(idx) < 2 {
+				continue
+			}
+			textStart := subgroupIndex(idx, recognizer.textGroup, 0)
+			textEnd := subgroupIndex(idx, recognizer.textGroup, 1)
+			if textStart < 0 || textEnd <= textStart {
+				continue
+			}
+			speaker := ""
+			if recognizer.speakerGroup > 0 {
+				speakerStart := subgroupIndex(idx, recognizer.speakerGroup, 0)
+				speakerEnd := subgroupIndex(idx, recognizer.speakerGroup, 1)
+				if speakerStart >= 0 && speakerEnd > speakerStart {
+					speaker = narrative[speakerStart:speakerEnd]
+				}
+			}
+			matches = append(matches, dialogueMatch{
+				Start:   idx[0],
+				End:     idx[1],
+				Speaker: strings.TrimSpace(speaker),
+				Text:    strings.TrimSpace(narrative[textStart:textEnd]),
+			})
+		}
+	}
+
+	if len(matches) == 0 {
+		return nil
+	}
+
+	sort.SliceStable(matches, func(i, j int) bool {
+		return matches[i].Start < matches[j].Start
+	})
+
+	filtered := make([]dialogueMatch, 0, len(matches))
+	lastEnd := -1
+	for _, match := range matches {
+		if match.Start < lastEnd {
+			continue
+		}
+		if strings.TrimSpace(match.Text) == "" {
+			continue
+		}
+		filtered = append(filtered, match)
+		lastEnd = match.End
+	}
+	return filtered
+}
+
+func subgroupIndex(indexes []int, group, edge int) int {
+	slot := group * 2
+	if slot+edge >= len(indexes) {
+		return -1
+	}
+	return indexes[slot+edge]
+}
+
+func removeDialogueMatches(narrative string, matches []dialogueMatch) string {
+	if len(matches) == 0 {
+		return narrative
+	}
+	var builder strings.Builder
+	last := 0
+	for _, match := range matches {
+		if match.Start < last {
+			continue
+		}
+		if match.Start > len(narrative) {
+			break
+		}
+		builder.WriteString(narrative[last:match.Start])
+		last = match.End
+	}
+	if last < len(narrative) {
+		builder.WriteString(narrative[last:])
+	}
+	return builder.String()
+}
+
+func normalizeDialogueSpeaker(speaker string) string {
+	speaker = strings.TrimSpace(speaker)
+	if speaker == "" {
+		return ""
+	}
+	switch strings.ToLower(speaker) {
+	case "lei":
+		return "Lei"
+	case "lui":
+		return "Lui"
+	case "voi":
+		return "Voi"
+	case "noi":
+		return "Noi"
+	case "he":
+		return "He"
+	case "she":
+		return "She"
+	case "they":
+		return "They"
+	case "you":
+		return "You"
+	default:
+		return speaker
+	}
+}
+
+func cleanupStrippedDialogueScaffolds(text string) string {
+	text = strings.ReplaceAll(text, "''", "")
+	text = strings.ReplaceAll(text, `""`, "")
+	text = strings.ReplaceAll(text, "“”", "")
+	text = strings.ReplaceAll(text, "‘’", "")
+	text = strippedDialoguePrefixScaffoldRE.ReplaceAllString(text, "$1")
+	text = strippedDialogueSuffixScaffoldRE.ReplaceAllString(text, "$1")
+	return text
 }
 
 func collectHighlightEntities(input NarrativeInput) []KnownEntity {

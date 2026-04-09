@@ -94,3 +94,63 @@ func TestRenderNarrativeMarkdownPromotesSingleQuotedDialogueWithoutBlocks(t *tes
 		t.Fatalf("expected surrounding narration to remain, got %q", rendered)
 	}
 }
+
+func TestRenderNarrativeMarkdownStripsSuffixSpeechScaffoldWithStructuredDialogue(t *testing.T) {
+	rendered := RenderNarrativeMarkdown(NarrativeInput{
+		Narrative: "ZUUUUM! Sfrecciate nel vicolo neon. 'Ammazza quel suola-nera schifosa, consorte mio!' urla lei, sparando laser-arcobaleno dalle unghie mentre il drone precipita.",
+		DialogueBlocks: []engine.DialogueBlock{
+			{Speaker: "Dee Podale Suprema", Role: "npc", Text: "Ammazza quel suola-nera schifosa, consorte mio!"},
+		},
+	})
+
+	if strings.Contains(rendered, "urla lei") {
+		t.Fatalf("expected speech scaffold to be stripped, got %q", rendered)
+	}
+	if strings.Contains(rendered, "'Ammazza quel suola-nera schifosa, consorte mio!'") {
+		t.Fatalf("expected quoted prose duplicate to be removed, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "sparando laser-arcobaleno dalle unghie") {
+		t.Fatalf("expected surrounding action prose to remain, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "> **Dee Podale Suprema:** _\"Ammazza quel suola-nera schifosa, consorte mio!\"_") {
+		t.Fatalf("expected structured dialogue block to remain, got %q", rendered)
+	}
+}
+
+func TestRenderNarrativeMarkdownPromotesQuoteBeforeVerbWithoutBlocks(t *testing.T) {
+	rendered := RenderNarrativeMarkdown(NarrativeInput{
+		Narrative: "Il blob arretra. 'Ammazza quel suola-nera schifosa, consorte mio!' urla lei, sparando laser-arcobaleno dalle unghie.",
+	})
+
+	if strings.Contains(rendered, "'Ammazza quel suola-nera schifosa, consorte mio!'") {
+		t.Fatalf("expected quoted prose to be promoted out of plain narrative, got %q", rendered)
+	}
+	if strings.Contains(rendered, "urla lei") {
+		t.Fatalf("expected verb scaffold to be removed with the extracted dialogue, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "> **Lei:** _\"Ammazza quel suola-nera schifosa, consorte mio!\"_") {
+		t.Fatalf("expected fallback dialogue rendering for quote-before-verb pattern, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "sparando laser-arcobaleno dalle unghie.") {
+		t.Fatalf("expected trailing prose to remain, got %q", rendered)
+	}
+}
+
+func TestRenderNarrativeMarkdownStripsPrefixSpeechScaffoldWithStructuredDialogue(t *testing.T) {
+	rendered := RenderNarrativeMarkdown(NarrativeInput{
+		Narrative: "La Dee Podale Suprema ti bacia l'arco plantare con unghie arcobaleno, ridendo isterica: 'Mio sposo guerriero, hai scatenato l'Apocalisse Podale!' Le Fosse tremano.",
+		DialogueBlocks: []engine.DialogueBlock{
+			{Speaker: "Dee Podale Suprema", Role: "npc", Text: "Mio sposo guerriero, hai scatenato l'Apocalisse Podale!"},
+		},
+	})
+
+	if strings.Contains(rendered, "ridendo isterica:") {
+		t.Fatalf("expected prefix speech scaffold to be stripped, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "Le Fosse tremano.") {
+		t.Fatalf("expected remaining narration to stay visible, got %q", rendered)
+	}
+	if !strings.Contains(rendered, "> **Dee Podale Suprema:** _\"Mio sposo guerriero, hai scatenato l'Apocalisse Podale!\"_") {
+		t.Fatalf("expected structured dialogue to render cleanly, got %q", rendered)
+	}
+}
