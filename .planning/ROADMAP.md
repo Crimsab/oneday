@@ -382,6 +382,7 @@ Plans:
 **Requirements**: TBD
 **Depends on:** Phase 15
 **UI hint:** no
+**Status:** Complete (2026-04-09)
 
 ### Success Criteria
 
@@ -391,10 +392,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 16.1: Unify OpenAI-compatible request building, structured-response guards, and retry/fallback logic across sync and streaming paths
-- [ ] Plan 16.2: Fix turn-index and summary-trigger math for committed turns, first-window handling, and rewind/resume safety
-- [ ] Plan 16.3: Make embedding-provider selection explicit and capability-aware, with deterministic fallback and diagnostics
-- [ ] Plan 16.4: Fold touched boot/resume wiring duplication into a single initialization path and extend provider/RAG regressions
+- [x] Plan 16.1: Unify OpenAI-compatible request building, structured-response guards, and retry/fallback logic across sync and streaming paths
+- [x] Plan 16.2: Fix turn-index and summary-trigger math for committed turns, first-window handling, and rewind/resume safety
+- [x] Plan 16.3: Make embedding-provider selection explicit and capability-aware, with deterministic fallback and diagnostics
+- [x] Plan 16.4: Fold touched boot/resume wiring duplication into a single initialization path and extend provider/RAG regressions
 
 ### Phase 17: Faction Fronts and Regional Pressure
 
@@ -514,4 +515,4 @@ Plans:
 | **Total** | **99** | All mapped requirements through Phase 11 |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.
-Post-v1.0 expansion phases 16-21 are still roadmap/planning work and keep requirements `TBD` until detailed implementation begins.
+Post-v1.0 expansion phases 17-21 are still roadmap/planning work and keep requirements `TBD` until detailed implementation begins.

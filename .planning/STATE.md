@@ -2,24 +2,33 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
-current_phase: 16
+current_phase: 17
 status: planning
-last_updated: "2026-04-09T19:58:33+02:00"
+last_updated: "2026-04-09T20:09:22+02:00"
 progress:
   total_phases: 22
-  completed_phases: 16
+  completed_phases: 17
   total_plans: 67
-  completed_plans: 45
-  percent: 72.7
+  completed_plans: 49
+  percent: 77.3
 ---
 
 # Project State
 
-**Current Phase:** 16
+**Current Phase:** 17
 **Status:** Planning next milestone
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 16 execution completed.
+  Summaries written to `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-01-SUMMARY.md`,
+  `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-02-SUMMARY.md`,
+  `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-03-SUMMARY.md`,
+  and `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-04-SUMMARY.md`.
+  Verification saved in `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-VERIFICATION.md`.
+  Delivered sync/stream structured-request parity, committed-turn RAG summary math, explicit embedding-provider selection,
+  and shared TUI boot/resume wiring so reliability fixes no longer drift between startup paths.
 
 - 2026-04-09: Phase 15 execution completed.
   Summaries written to `.planning/phases/15-canonical-turn-commit-and-persistence-integrity/15-01-SUMMARY.md`,
