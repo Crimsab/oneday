@@ -3,23 +3,31 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
 current_phase: 21
-status: executing
-last_updated: "2026-04-09T22:53:00+02:00"
+status: completed
+last_updated: "2026-04-09T21:35:11+02:00"
 progress:
   total_phases: 22
-  completed_phases: 21
+  completed_phases: 22
   total_plans: 67
-  completed_plans: 64
-  percent: 95.5
+  completed_plans: 67
+  percent: 100.0
 ---
 
 # Project State
 
 **Current Phase:** 21
-**Status:** Executing current phase
+**Status:** Phase execution complete
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 21 execution completed.
+  Summaries written to `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-01-SUMMARY.md`,
+  `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-02-SUMMARY.md`,
+  and `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-03-SUMMARY.md`.
+  Verification saved in `.planning/phases/21-downtime-projects-and-long-arc-progress-clocks/21-VERIFICATION.md`.
+  Delivered canonical downtime-project persistence, pressure-aware advancement with fail-forward costs,
+  and codex/context/UI surfacing for active and completed projects plus durable completion rewards and fallout.
 
 - 2026-04-09: Phase 20 execution completed.
   Summaries written to `.planning/phases/20-investigation-board-and-evidence-logic/20-01-SUMMARY.md`,
