@@ -2,24 +2,37 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-current_phase: 11
+current_phase: 12
 status: completed
-last_updated: "2026-04-09T05:05:00Z"
+last_updated: "2026-04-09T10:35:00Z"
 progress:
-  total_phases: 11
-  completed_phases: 11
-  total_plans: 32
-  completed_plans: 32
+  total_phases: 12
+  completed_phases: 12
+  total_plans: 35
+  completed_plans: 35
   percent: 100
 ---
 
 # Project State
 
-**Current Phase:** 11
+**Current Phase:** 12
 **Status:** Completed
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 12 execution completed.
+  Plans written to `.planning/phases/12-state-rollback-integrity-and-narrative-persistence/12-01-PLAN.md`,
+  `.planning/phases/12-state-rollback-integrity-and-narrative-persistence/12-02-PLAN.md`,
+  and `.planning/phases/12-state-rollback-integrity-and-narrative-persistence/12-03-PLAN.md`.
+  Verification saved in `.planning/phases/12-state-rollback-integrity-and-narrative-persistence/12-VERIFICATION.md`.
+  Delivered full rollback-aware save snapshots, canonical narrator/combat persistence,
+  `/craft` command routing, provider-decoupled embedding selection, autosave file cleanup,
+  and regression coverage for rollback and auxiliary-history behavior.
+
+- 2026-04-09: Phase 12 added — State rollback integrity and narrative persistence.
+  Scope covers full save rollback coherence, canonical narrator/combat persistence,
+  `/craft` command routing, provider-decoupled embeddings, and autosave file cleanup.
 
 - 2026-04-09: Phase 11 execution completed.
   Summaries written to `.planning/phases/11-runtime-reliability-and-history-ux/11-01-SUMMARY.md`,

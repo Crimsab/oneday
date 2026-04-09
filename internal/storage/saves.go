@@ -7,25 +7,25 @@ import (
 
 // SaveSnapshot represents a complete game state snapshot stored in the DB.
 type SaveSnapshot struct {
-	ID             string    `json:"id"`
-	StoryID        string    `json:"story_id"`
-	Name           string    `json:"name"`
-	Turn           int       `json:"turn"`
-	Chapter        int       `json:"chapter"`
-	Location       string    `json:"location"`
-	CharacterJSON  string    `json:"character_json"`
-	WorldStateJSON string    `json:"world_state_json"`
-	SessionID      string    `json:"session_id"`
-	Story          *Story    `json:"story,omitempty"`
-	NPCs           []NPC     `json:"npcs,omitempty"`
-	Achievements   []Achievement `json:"achievements,omitempty"`
-	Chapters       []Chapter `json:"chapters,omitempty"`
-	Sessions       []Session `json:"sessions,omitempty"`
-	ChatMessages   []ChatMessage `json:"chat_messages,omitempty"`
+	ID             string             `json:"id"`
+	StoryID        string             `json:"story_id"`
+	Name           string             `json:"name"`
+	Turn           int                `json:"turn"`
+	Chapter        int                `json:"chapter"`
+	Location       string             `json:"location"`
+	CharacterJSON  string             `json:"character_json"`
+	WorldStateJSON string             `json:"world_state_json"`
+	SessionID      string             `json:"session_id"`
+	Story          *Story             `json:"story,omitempty"`
+	NPCs           []NPC              `json:"npcs,omitempty"`
+	Achievements   []Achievement      `json:"achievements,omitempty"`
+	Chapters       []Chapter          `json:"chapters,omitempty"`
+	Sessions       []Session          `json:"sessions,omitempty"`
+	ChatMessages   []ChatMessage      `json:"chat_messages,omitempty"`
 	RAGChunks      []RAGChunkSnapshot `json:"rag_chunks,omitempty"`
-	CombatLogs     []CombatLog `json:"combat_logs,omitempty"`
-	SessionFiles   map[string]string `json:"session_files,omitempty"`
-	CreatedAt      time.Time `json:"created_at"`
+	CombatLogs     []CombatLog        `json:"combat_logs,omitempty"`
+	SessionFiles   map[string]string  `json:"session_files,omitempty"`
+	CreatedAt      time.Time          `json:"created_at"`
 }
 
 // RAGChunkSnapshot is a JSON-serializable copy of a persisted RAG chunk.
