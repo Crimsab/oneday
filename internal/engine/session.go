@@ -53,6 +53,7 @@ type ChatOutput struct {
 	ASCIIArt          string                 `json:"ascii_art,omitempty"`
 	OpenHooks         []StoryHook            `json:"open_hooks,omitempty"`
 	WorldReactions    []WorldReaction        `json:"world_reactions,omitempty"`
+	SocialDuel        *SocialDuelCue         `json:"social_duel,omitempty"`
 	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
 }
 

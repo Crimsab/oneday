@@ -278,6 +278,7 @@ func narrativeSchema() map[string]any {
 				"type":  "array",
 				"items": challengeSchema(),
 			},
+			"social_duel": nullableObjectSchema(socialDuelSchema()),
 			"achievement_earned": nullableObjectSchema(map[string]any{
 				"type":                 "object",
 				"additionalProperties": false,
@@ -365,6 +366,51 @@ func challengeSchema() map[string]any {
 			"answer":     stringSchema(),
 			"sequence":   stringArraySchema(),
 			"time_limit": numberSchema(),
+		},
+	}
+}
+
+func socialDuelSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"mode": map[string]any{
+				"type": "string",
+				"enum": []string{"offer", "continue"},
+			},
+			"npc_name":         stringSchema(),
+			"objective":        stringSchema(),
+			"npc_goal":         stringSchema(),
+			"stakes":           stringSchema(),
+			"pressure":         stringSchema(),
+			"opening":          stringSchema(),
+			"exchange_summary": stringSchema(),
+			"leverage": map[string]any{
+				"type":  "array",
+				"items": socialDuelLeverageSchema(),
+			},
+			"suggested_actions": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type": "string",
+					"enum": []string{"appeal", "pressure", "deceive", "concede", "expose", "withdraw", "escalate"},
+				},
+			},
+			"fail_forward": stringSchema(),
+		},
+	}
+}
+
+func socialDuelLeverageSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"key":    stringSchema(),
+			"label":  stringSchema(),
+			"detail": stringSchema(),
+			"kind":   stringSchema(),
 		},
 	}
 }
