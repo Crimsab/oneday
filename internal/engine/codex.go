@@ -116,8 +116,9 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	achievements, _ := db.ListAchievements(story.ID)
 	messages, _ := db.GetRecentMessagesByStory(story.ID, 8)
 	fronts := knownFronts(loadFronts(world))
+	board := loadInvestigationBoard(world)
 
-	if entry := buildProtagonistCodexEntry(story, char, world, achievements, npcs, fronts); entry.Title != "" {
+	if entry := buildProtagonistCodexEntry(story, char, world, achievements, npcs, fronts, board); entry.Title != "" {
 		addEntry(entry)
 	}
 
@@ -135,6 +136,9 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 
 	for _, front := range fronts {
 		addEntry(buildFrontCodexEntry(front))
+	}
+	for _, invCase := range board.Cases {
+		addEntry(buildInvestigationCodexEntry(invCase))
 	}
 
 	hooks := activeStoryHooks(loadStoryHooks(world))
@@ -170,12 +174,13 @@ func BuildStoryCodex(db *storage.DB, story *storage.Story, char *storage.Charact
 	addCategory("fronts", "Fronts")
 	addCategory("mysteries", "Mysteries")
 	addCategory("threads", "Threads")
+	addCategory("investigations", "Investigations")
 
-	enrichCodexLinks(index, npcs, hooks, reactions, fronts, chapters, messages)
+	enrichCodexLinks(index, npcs, hooks, reactions, fronts, chapters, messages, board)
 	return index, nil
 }
 
-func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, world *storage.WorldState, achievements []storage.Achievement, npcs []storage.NPC, fronts []Front) CodexEntry {
+func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, world *storage.WorldState, achievements []storage.Achievement, npcs []storage.NPC, fronts []Front, board InvestigationBoard) CodexEntry {
 	if story == nil || char == nil {
 		return CodexEntry{}
 	}
@@ -271,6 +276,18 @@ func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, w
 			})
 		}
 		entry.Sections = append(entry.Sections, CodexSection{Title: "Known Fronts", Lines: lines})
+	}
+	if lines := buildProtagonistInvestigationLines(board); len(lines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Open Investigations", Lines: lines})
+		for _, invCase := range board.Cases {
+			if strings.EqualFold(invCase.Status, "solved") {
+				continue
+			}
+			entry.Related = append(entry.Related, CodexLink{
+				EntryID: codexInvestigationEntryID(invCase.ID),
+				Label:   invCase.Title,
+			})
+		}
 	}
 
 	return entry
@@ -432,6 +449,52 @@ func buildFrontCodexEntry(front Front) CodexEntry {
 	return entry
 }
 
+func buildInvestigationCodexEntry(invCase InvestigationCase) CodexEntry {
+	if strings.TrimSpace(invCase.Title) == "" {
+		return CodexEntry{}
+	}
+
+	entry := CodexEntry{
+		ID:       codexInvestigationEntryID(invCase.ID),
+		Category: "investigations",
+		Title:    invCase.Title,
+		Subtitle: strings.Title(strings.ToLower(firstNonEmpty(invCase.Status, "open"))),
+		Summary:  strings.TrimSpace(invCase.Summary),
+	}
+
+	overview := []string{}
+	if invCase.Summary != "" {
+		overview = append(overview, invCase.Summary)
+	}
+	overview = append(overview, "Status: "+firstNonEmpty(invCase.Status, "open"))
+	if invCase.UpdatedTurn > 0 {
+		overview = append(overview, fmt.Sprintf("Updated on turn %d", invCase.UpdatedTurn))
+	}
+	entry.Sections = append(entry.Sections, CodexSection{Title: "Overview", Lines: compactLines(overview)})
+
+	if lines := formatInvestigationClueLines(invCase.Clues); len(lines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Clues", Lines: lines})
+	}
+	if lines := formatInvestigationSuspectLines(invCase.Suspects); len(lines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Suspects", Lines: lines})
+	}
+	if lines := formatInvestigationClaimLines(invCase.Claims); len(lines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Claims", Lines: lines})
+	}
+	if lines := formatInvestigationContradictionLines(invCase.Contradictions); len(lines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Contradictions", Lines: lines})
+	}
+	if lines := formatInvestigationLeadLines(invCase.Leads); len(lines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Leads", Lines: lines})
+	}
+	if lines := formatInvestigationTheoryLines(invCase.Theories); len(lines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Theories", Lines: lines})
+	}
+
+	entry.Related = append(entry.Related, investigationCaseCodexLinks(invCase)...)
+	return entry
+}
+
 func parseFactionEntries(raw string) []CodexEntry {
 	setting := parseLooseJSONMap(raw)
 	rawFactions, ok := setting["factions"].([]interface{})
@@ -561,7 +624,7 @@ func buildThreadEntryFromReaction(reaction WorldReaction) CodexEntry {
 	}
 }
 
-func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, reactions []WorldReaction, fronts []Front, chapters []storage.Chapter, messages []storage.ChatMessage) {
+func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, reactions []WorldReaction, fronts []Front, chapters []storage.Chapter, messages []storage.ChatMessage, board InvestigationBoard) {
 	if index == nil {
 		return
 	}
@@ -686,6 +749,17 @@ func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, 
 				}
 			}
 		}
+		if entry.Category != "investigations" {
+			for _, invCase := range board.Cases {
+				if !investigationCaseTouchesCodexEntry(invCase, id, entry) {
+					continue
+				}
+				entry.Related = append(entry.Related, CodexLink{
+					EntryID: codexInvestigationEntryID(invCase.ID),
+					Label:   invCase.Title,
+				})
+			}
+		}
 		index.Entries[id] = entry
 	}
 
@@ -732,6 +806,10 @@ func codexMysteryEntryID(id string) string {
 
 func codexThreadEntryID(kind, id string) string {
 	return "threads:" + strings.TrimSpace(kind) + ":" + strings.TrimSpace(id)
+}
+
+func codexInvestigationEntryID(id string) string {
+	return "investigations:" + strings.TrimSpace(id)
 }
 
 func parseLooseJSONMap(raw string) map[string]interface{} {
@@ -802,6 +880,200 @@ func formatStringSliceLines(items []string) []string {
 		}
 	}
 	return lines
+}
+
+func buildProtagonistInvestigationLines(board InvestigationBoard) []string {
+	lines := []string{}
+	for _, invCase := range board.Cases {
+		if strings.EqualFold(invCase.Status, "solved") {
+			continue
+		}
+		line := invCase.Title
+		if len(invCase.Clues) > 0 {
+			line += fmt.Sprintf(" · clues %d", len(invCase.Clues))
+		}
+		if len(invCase.Contradictions) > 0 {
+			line += fmt.Sprintf(" · contradictions %d", len(invCase.Contradictions))
+		}
+		if len(invCase.Theories) > 0 {
+			line += fmt.Sprintf(" · theories %d", len(invCase.Theories))
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func formatInvestigationClueLines(items []InvestigationClue) []string {
+	lines := []string{}
+	for _, item := range items {
+		line := item.Label
+		if item.Detail != "" {
+			line += " — " + item.Detail
+		}
+		if item.Status != "" && !strings.EqualFold(item.Status, "known") {
+			line += fmt.Sprintf(" [%s]", item.Status)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func formatInvestigationSuspectLines(items []InvestigationSuspect) []string {
+	lines := []string{}
+	for _, item := range items {
+		line := item.Name
+		if item.Detail != "" {
+			line += " — " + item.Detail
+		}
+		if item.Status != "" {
+			line += fmt.Sprintf(" [%s]", item.Status)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func formatInvestigationClaimLines(items []InvestigationClaim) []string {
+	lines := []string{}
+	for _, item := range items {
+		line := item.Statement
+		meta := []string{}
+		if item.Confidence != "" {
+			meta = append(meta, item.Confidence)
+		}
+		if item.Status != "" {
+			meta = append(meta, item.Status)
+		}
+		if len(meta) > 0 {
+			line += " [" + strings.Join(meta, ", ") + "]"
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func formatInvestigationContradictionLines(items []InvestigationContradiction) []string {
+	lines := []string{}
+	for _, item := range items {
+		line := item.Label
+		if item.Detail != "" {
+			line += " — " + item.Detail
+		}
+		if item.Status != "" {
+			line += fmt.Sprintf(" [%s]", item.Status)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func formatInvestigationLeadLines(items []InvestigationLead) []string {
+	lines := []string{}
+	for _, item := range items {
+		line := item.Title
+		if item.Detail != "" {
+			line += " — " + item.Detail
+		}
+		if item.Status != "" {
+			line += fmt.Sprintf(" [%s]", item.Status)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func formatInvestigationTheoryLines(items []InvestigationTheory) []string {
+	lines := []string{}
+	for _, item := range items {
+		line := item.Statement
+		meta := []string{}
+		if item.Confidence != "" {
+			meta = append(meta, item.Confidence)
+		}
+		if item.Status != "" {
+			meta = append(meta, item.Status)
+		}
+		if len(meta) > 0 {
+			line += " [" + strings.Join(meta, ", ") + "]"
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func investigationCaseCodexLinks(invCase InvestigationCase) []CodexLink {
+	links := []CodexLink{}
+	appendLinks := func(items []InvestigationLink) {
+		for _, link := range items {
+			if codexLink, ok := codexLinkFromInvestigationLink(link); ok {
+				links = append(links, codexLink)
+			}
+		}
+	}
+
+	appendLinks(invCase.Links)
+	for _, item := range invCase.Clues {
+		appendLinks(item.Links)
+	}
+	for _, item := range invCase.Suspects {
+		appendLinks(item.Links)
+	}
+	for _, item := range invCase.Claims {
+		appendLinks(item.Links)
+	}
+	for _, item := range invCase.Contradictions {
+		appendLinks(item.Links)
+	}
+	for _, item := range invCase.Leads {
+		appendLinks(item.Links)
+	}
+	for _, item := range invCase.Theories {
+		appendLinks(item.Links)
+	}
+	return appendUniqueLinks(links)
+}
+
+func codexLinkFromInvestigationLink(link InvestigationLink) (CodexLink, bool) {
+	kind := strings.ToLower(strings.TrimSpace(link.Kind))
+	refID := strings.TrimSpace(link.RefID)
+	label := strings.TrimSpace(link.Label)
+	if refID == "" && label == "" {
+		return CodexLink{}, false
+	}
+	switch {
+	case strings.Contains(refID, ":"):
+		return CodexLink{EntryID: refID, Label: firstNonEmpty(label, refID)}, true
+	case kind == "npc":
+		return CodexLink{EntryID: codexNPCEntryID(firstNonEmpty(label, refID)), Label: firstNonEmpty(label, refID)}, true
+	case kind == "place" || kind == "location":
+		return CodexLink{EntryID: codexLocationEntryID(firstNonEmpty(label, refID)), Label: firstNonEmpty(label, refID)}, true
+	case kind == "front":
+		return CodexLink{EntryID: codexFrontEntryID(firstNonEmpty(refID, label)), Label: firstNonEmpty(label, refID)}, true
+	case kind == "hook":
+		return CodexLink{EntryID: codexThreadEntryID("hook", refID), Label: firstNonEmpty(label, refID)}, true
+	case kind == "reaction":
+		return CodexLink{EntryID: codexThreadEntryID("reaction", refID), Label: firstNonEmpty(label, refID)}, true
+	case kind == "faction":
+		return CodexLink{EntryID: codexFactionEntryID(firstNonEmpty(label, refID)), Label: firstNonEmpty(label, refID)}, true
+	default:
+		return CodexLink{}, false
+	}
+}
+
+func investigationCaseTouchesCodexEntry(invCase InvestigationCase, entryID string, entry CodexEntry) bool {
+	for _, link := range investigationCaseCodexLinks(invCase) {
+		if strings.EqualFold(link.EntryID, entryID) {
+			return true
+		}
+	}
+	if entry.Category == "people" {
+		for _, suspect := range invCase.Suspects {
+			if strings.EqualFold(strings.TrimSpace(suspect.Name), strings.TrimSpace(entry.Title)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func buildProtagonistNemesisLines(npcs []storage.NPC) []string {
