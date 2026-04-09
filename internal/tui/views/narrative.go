@@ -88,6 +88,7 @@ type NarrativeModel struct {
 	overlay                 components.OverlayModel
 	historyBrowser          *historyBrowserModel
 	achievementBrowser      *AchievementBrowserModel
+	frontTracker            *FrontTrackerModel
 	investigationBrowser    *InvestigationBrowserModel
 	projectBrowser          *ProjectBrowserModel
 	codexBrowser            *CodexBrowserModel
@@ -335,6 +336,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		if m.achievementBrowser != nil {
 			m.achievementBrowser.SetSize(msg.Width, msg.Height)
 		}
+		if m.frontTracker != nil {
+			m.frontTracker.SetSize(msg.Width, msg.Height)
+		}
 		if m.investigationBrowser != nil {
 			m.investigationBrowser.SetSize(msg.Width, msg.Height)
 		}
@@ -523,6 +527,16 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.achievementBrowser = &updated
 			return m, cmd
 		}
+		if m.frontTracker != nil && m.frontTracker.Visible() {
+			updated, cmd := m.frontTracker.Update(msg)
+			if !updated.Visible() {
+				m.frontTracker = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.frontTracker = &updated
+			return m, cmd
+		}
 		if m.investigationBrowser != nil && m.investigationBrowser.Visible() {
 			updated, cmd := m.investigationBrowser.Update(msg)
 			if !updated.Visible() {
@@ -584,6 +598,17 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				return m, nil
 			}
 			m.achievementBrowser = &updated
+			return m, cmd
+		}
+
+		if m.frontTracker != nil && m.frontTracker.Visible() {
+			updated, cmd := m.frontTracker.Update(msg)
+			if !updated.Visible() {
+				m.frontTracker = nil
+				m.restoreInputFocusAfterHistory()
+				return m, nil
+			}
+			m.frontTracker = &updated
 			return m, cmd
 		}
 
@@ -1040,11 +1065,12 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /stats        (/s)   Open the protagonist dossier
   /characters          Browse protagonist and NPC dossiers
   /codex               Open the full story codex
+  /fronts              Open the fronts and fallout tracker
+  /hooks               Alias for /fronts
   /investigations      Open the dedicated investigation workspace
   /projects            Open the dedicated project workspace
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
-  /hooks               Show open hooks and world reactions
   h                   Open the story history browser
   /btw <question>     Ask the AI a quick contextual question without advancing the turn
   /guide <request>    Store a soft future-facing chapter wish without advancing the turn
@@ -1892,6 +1918,10 @@ func (m NarrativeModel) View() string {
 		return m.achievementBrowser.View()
 	}
 
+	if m.frontTracker != nil && m.frontTracker.Visible() {
+		return m.frontTracker.View()
+	}
+
 	if m.investigationBrowser != nil && m.investigationBrowser.Visible() {
 		return m.investigationBrowser.View()
 	}
@@ -2120,6 +2150,9 @@ func (m *NarrativeModel) SetSize(w, h int) {
 	}
 	if m.achievementBrowser != nil {
 		m.achievementBrowser.SetSize(w, h)
+	}
+	if m.frontTracker != nil {
+		m.frontTracker.SetSize(w, h)
 	}
 	if m.investigationBrowser != nil {
 		m.investigationBrowser.SetSize(w, h)
