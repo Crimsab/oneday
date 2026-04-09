@@ -2,24 +2,32 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
-current_phase: 20
+current_phase: 21
 status: executing
-last_updated: "2026-04-09T22:24:00+02:00"
+last_updated: "2026-04-09T22:53:00+02:00"
 progress:
   total_phases: 22
-  completed_phases: 20
+  completed_phases: 21
   total_plans: 67
-  completed_plans: 61
-  percent: 91.0
+  completed_plans: 64
+  percent: 95.5
 ---
 
 # Project State
 
-**Current Phase:** 20
+**Current Phase:** 21
 **Status:** Executing current phase
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 20 execution completed.
+  Summaries written to `.planning/phases/20-investigation-board-and-evidence-logic/20-01-SUMMARY.md`,
+  `.planning/phases/20-investigation-board-and-evidence-logic/20-02-SUMMARY.md`,
+  and `.planning/phases/20-investigation-board-and-evidence-logic/20-03-SUMMARY.md`.
+  Verification saved in `.planning/phases/20-investigation-board-and-evidence-logic/20-VERIFICATION.md`.
+  Delivered canonical investigation-board persistence, engine-normalized evidence/theory updates,
+  and codex-integrated investigation browsing with hidden-truth-safe surfaces.
 
 - 2026-04-09: Phase 19 execution completed.
   Summaries written to `.planning/phases/19-recurring-nemeses-and-rival-escalation/19-01-SUMMARY.md`,
