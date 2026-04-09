@@ -420,24 +420,28 @@ func (a *App) buildRAG(storyID string) *rag.RAG {
 	return rag.NewRAG(embedder, store, summarizer, storyID, a.cfg.RAG.TopK)
 }
 
-// loadSaveAndResume restores state from a save and resumes the narrative view.
-func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
-	// Close existing session before opening new one.
-	if a.narrative != nil {
-		a.narrative.CloseSession()
-	}
-
-	loadResult, err := engine.LoadGame(a.db, a.cfg.DataDir, saveID)
-	if err != nil {
-		return nil, fmt.Errorf("loading save: %w", err)
-	}
-
-	char := loadResult.Character
-	world := loadResult.World
-
+func (a *App) loadNarrativeState(storyID string) (*storage.Story, *storage.Character, *storage.WorldState, error) {
 	story, err := a.db.GetStory(storyID)
 	if err != nil {
-		return nil, fmt.Errorf("loading story: %w", err)
+		return nil, nil, nil, fmt.Errorf("loading story: %w", err)
+	}
+
+	char, err := a.db.GetCharacterByStory(storyID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("loading character: %w", err)
+	}
+
+	world, err := a.db.GetWorldState(storyID)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("loading world state: %w", err)
+	}
+
+	return story, char, world, nil
+}
+
+func (a *App) openNarrativeSession(storyID string, closeExisting bool) (*engine.GameSession, error) {
+	if closeExisting && a.narrative != nil {
+		a.narrative.CloseSession()
 	}
 
 	session, err := engine.NewGameSession(a.db, storyID, a.cfg.DataDir)
@@ -446,7 +450,17 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 	}
 
 	_ = a.db.UpdateStoryTimestamp(storyID)
+	return session, nil
+}
 
+func (a *App) mountNarrativeView(
+	story *storage.Story,
+	char *storage.Character,
+	world *storage.WorldState,
+	session *engine.GameSession,
+	save *storage.SaveSnapshot,
+	legacy bool,
+) {
 	narrator := engine.NewNarrator(
 		a.router, a.db, story, char, world, session,
 		engine.DefaultContextConfig(),
@@ -455,19 +469,64 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 		a.cfg.DataDir,
 		a.cfg.Game.AutosaveEvery,
 	)
-	narrator.SetRAG(a.buildRAG(storyID))
-	narrator.SetLoadedSaveContext(loadResult.Save)
-	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
-	m.SetSize(a.width, a.height)
-	a.narrative = &m
+	narrator.SetRAG(a.buildRAG(story.ID))
+	if save != nil {
+		narrator.SetLoadedSaveContext(save)
+	}
+
+	model := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
+	model.SetSize(a.width, a.height)
+	a.narrative = &model
 	a.view = ViewNarrative
-	if loadResult.Legacy {
+	if legacy {
 		a.narrative.SetStatusMsg("Legacy save loaded: history rollback is partial")
+	}
+}
+
+func (a *App) startNarrativeFlow(
+	story *storage.Story,
+	char *storage.Character,
+	world *storage.WorldState,
+	session *engine.GameSession,
+	save *storage.SaveSnapshot,
+	legacy bool,
+	resume bool,
+) (tea.Cmd, error) {
+	a.mountNarrativeView(story, char, world, session, save, legacy)
+	if resume {
+		return a.narrative.ResumeNarration(), nil
+	}
+	return a.narrative.StartNarration(), nil
+}
+
+// loadSaveAndResume restores state from a save and resumes the narrative view.
+func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
+	loadResult, err := engine.LoadGame(a.db, a.cfg.DataDir, saveID)
+	if err != nil {
+		return nil, fmt.Errorf("loading save: %w", err)
+	}
+
+	story, err := a.db.GetStory(storyID)
+	if err != nil {
+		return nil, fmt.Errorf("loading story: %w", err)
+	}
+
+	session, err := a.openNarrativeSession(storyID, true)
+	if err != nil {
+		return nil, err
 	}
 
 	// Save was restored — resume from where we left off without re-triggering
 	// the first-turn AI prompt.
-	return a.narrative.ResumeNarration(), nil
+	return a.startNarrativeFlow(
+		story,
+		loadResult.Character,
+		loadResult.World,
+		session,
+		loadResult.Save,
+		loadResult.Legacy,
+		true,
+	)
 }
 
 type embeddingProviderSpec struct {
@@ -545,91 +604,33 @@ func embeddingProviderSpecForName(cfg config.Config, name string) (embeddingProv
 // enterNarrativeView loads story data, creates a narrator, and starts narration.
 // Only use this for brand-new stories. For existing stories use enterNarrativeViewResume.
 func (a *App) enterNarrativeView(storyID string) (tea.Cmd, error) {
-	story, err := a.db.GetStory(storyID)
+	story, char, world, err := a.loadNarrativeState(storyID)
 	if err != nil {
-		return nil, fmt.Errorf("loading story: %w", err)
+		return nil, err
 	}
 
-	char, err := a.db.GetCharacterByStory(storyID)
+	session, err := a.openNarrativeSession(storyID, false)
 	if err != nil {
-		return nil, fmt.Errorf("loading character: %w", err)
+		return nil, err
 	}
 
-	world, err := a.db.GetWorldState(storyID)
-	if err != nil {
-		return nil, fmt.Errorf("loading world state: %w", err)
-	}
-
-	session, err := engine.NewGameSession(a.db, storyID, a.cfg.DataDir)
-	if err != nil {
-		return nil, fmt.Errorf("creating game session: %w", err)
-	}
-
-	// Update story timestamp to mark it as recently played.
-	_ = a.db.UpdateStoryTimestamp(storyID)
-
-	narrator := engine.NewNarrator(
-		a.router, a.db, story, char, world, session,
-		engine.DefaultContextConfig(),
-		a.cfg.AI.Generation,
-		a.cfg.AI.ASCIIArt,
-		a.cfg.DataDir,
-		a.cfg.Game.AutosaveEvery,
-	)
-	narrator.SetRAG(a.buildRAG(storyID))
-	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
-	m.SetSize(a.width, a.height)
-	a.narrative = &m
-	a.view = ViewNarrative
-
-	return a.narrative.StartNarration(), nil
+	return a.startNarrativeFlow(story, char, world, session, nil, false, false)
 }
 
 // enterNarrativeViewResume loads an existing story and resumes from the last
 // saved turn without sending a first-turn AI prompt.
 func (a *App) enterNarrativeViewResume(storyID string) (tea.Cmd, error) {
-	story, err := a.db.GetStory(storyID)
+	story, char, world, err := a.loadNarrativeState(storyID)
 	if err != nil {
-		return nil, fmt.Errorf("loading story: %w", err)
+		return nil, err
 	}
 
-	char, err := a.db.GetCharacterByStory(storyID)
+	session, err := a.openNarrativeSession(storyID, true)
 	if err != nil {
-		return nil, fmt.Errorf("loading character: %w", err)
+		return nil, err
 	}
-
-	world, err := a.db.GetWorldState(storyID)
-	if err != nil {
-		return nil, fmt.Errorf("loading world state: %w", err)
-	}
-
-	// Close existing session before opening a new one.
-	if a.narrative != nil {
-		a.narrative.CloseSession()
-	}
-
-	session, err := engine.NewGameSession(a.db, storyID, a.cfg.DataDir)
-	if err != nil {
-		return nil, fmt.Errorf("creating game session: %w", err)
-	}
-
-	_ = a.db.UpdateStoryTimestamp(storyID)
-
-	narrator := engine.NewNarrator(
-		a.router, a.db, story, char, world, session,
-		engine.DefaultContextConfig(),
-		a.cfg.AI.Generation,
-		a.cfg.AI.ASCIIArt,
-		a.cfg.DataDir,
-		a.cfg.Game.AutosaveEvery,
-	)
-	narrator.SetRAG(a.buildRAG(storyID))
-	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
-	m.SetSize(a.width, a.height)
-	a.narrative = &m
-	a.view = ViewNarrative
 
 	// Resume from last turn — world.CurrentTurn is set from DB, session turn
 	// will be synced inside ResumeNarration via SetTurn.
-	return a.narrative.ResumeNarration(), nil
+	return a.startNarrativeFlow(story, char, world, session, nil, false, true)
 }
