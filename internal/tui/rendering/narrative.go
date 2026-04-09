@@ -15,6 +15,7 @@ import (
 func RenderNarrativeMarkdown(input NarrativeInput) string {
 	parts := make([]string, 0, 4)
 	entities := collectHighlightEntities(input)
+	dialogueBlocks := input.DialogueBlocks
 
 	if art := renderASCIIArt(input.ASCIIArt); art != "" {
 		parts = append(parts, art)
@@ -25,11 +26,20 @@ func RenderNarrativeMarkdown(input NarrativeInput) string {
 	}
 
 	narrative := strings.TrimSpace(input.Narrative)
+	if len(dialogueBlocks) > 0 {
+		narrative = stripStructuredDialogueFromNarrative(narrative, dialogueBlocks)
+	} else {
+		var extracted []engine.DialogueBlock
+		narrative, extracted = extractDialogueBlocksFromNarrative(narrative)
+		if len(extracted) > 0 {
+			dialogueBlocks = extracted
+		}
+	}
 	if narrative != "" {
 		parts = append(parts, highlightEntities(narrative, entities))
 	}
 
-	if dialogue := renderDialogueBlocks(input.DialogueBlocks, entities, narrative); dialogue != "" {
+	if dialogue := renderDialogueBlocks(dialogueBlocks, entities); dialogue != "" {
 		parts = append(parts, dialogue)
 	}
 
@@ -65,19 +75,15 @@ func renderEventCallouts(callouts []engine.EventCallout) string {
 	return strings.Join(blocks, "\n\n")
 }
 
-func renderDialogueBlocks(blocks []engine.DialogueBlock, entities []KnownEntity, narrative string) string {
+func renderDialogueBlocks(blocks []engine.DialogueBlock, entities []KnownEntity) string {
 	if len(blocks) == 0 {
 		return ""
 	}
 
 	var rendered []string
-	narrativeLower := strings.ToLower(narrative)
 	for _, block := range blocks {
 		text := highlightEntities(strings.TrimSpace(block.Text), entities)
 		if text == "" {
-			continue
-		}
-		if narrativeLower != "" && strings.Contains(narrativeLower, strings.ToLower(strings.TrimSpace(block.Text))) {
 			continue
 		}
 		quoted := quoteDialogueText(text)
@@ -114,6 +120,135 @@ func renderDialogueBlocks(blocks []engine.DialogueBlock, entities []KnownEntity,
 	}
 
 	return strings.Join(rendered, "\n\n")
+}
+
+func stripStructuredDialogueFromNarrative(narrative string, blocks []engine.DialogueBlock) string {
+	cleaned := narrative
+	for _, block := range blocks {
+		text := dialogueBodyText(block.Text)
+		if text == "" {
+			continue
+		}
+		for _, variant := range dialogueVariants(text) {
+			cleaned = strings.ReplaceAll(cleaned, variant, "")
+		}
+	}
+	return cleanupNarrativeSpacing(cleaned)
+}
+
+func extractDialogueBlocksFromNarrative(narrative string) (string, []engine.DialogueBlock) {
+	type extractor struct {
+		re *regexp.Regexp
+	}
+
+	extractors := []extractor{
+		{
+			re: regexp.MustCompile(`(?is)\b([A-Z][A-Za-z0-9 _'\-]{1,40})\s*:\s*["“'‘]([^"\n“”'‘’]{2,220})["”'’]`),
+		},
+		{
+			re: regexp.MustCompile(`(?is)\b([A-Z][A-Za-z0-9 _'\-]{1,40})\s+(?:says|said|asks|asked|whispers|whispered|murmurs|murmured|replies|replied|snaps|snapped|growls|growled|shouts|shouted|yells|yelled|hisses|hissed|calls|called)\s*[,:-]?\s*["“'‘]([^"\n“”'‘’]{2,220})["”'’]`),
+		},
+	}
+
+	cleaned := narrative
+	seen := map[string]bool{}
+	var blocks []engine.DialogueBlock
+
+	for _, extractor := range extractors {
+		matches := extractor.re.FindAllStringSubmatch(cleaned, -1)
+		if len(matches) == 0 {
+			continue
+		}
+
+		cleaned = extractor.re.ReplaceAllString(cleaned, "")
+		for _, match := range matches {
+			if len(match) < 3 {
+				continue
+			}
+			speaker := strings.TrimSpace(match[1])
+			text := strings.TrimSpace(match[2])
+			if speaker == "" || text == "" {
+				continue
+			}
+			key := strings.ToLower(speaker + "|" + normalizeDialogueKey(text))
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			role := "npc"
+			if strings.EqualFold(speaker, "you") {
+				role = "player"
+			}
+			blocks = append(blocks, engine.DialogueBlock{
+				Speaker: speaker,
+				Role:    role,
+				Text:    text,
+			})
+		}
+	}
+
+	return cleanupNarrativeSpacing(cleaned), blocks
+}
+
+func dialogueVariants(text string) []string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	variants := []string{
+		text,
+		`"` + text + `"`,
+		"'" + text + "'",
+		"“" + text + "”",
+		"‘" + text + "’",
+	}
+	if strings.HasSuffix(text, ".") || strings.HasSuffix(text, "!") || strings.HasSuffix(text, "?") {
+		trimmed := strings.TrimRight(text, ".!?")
+		if trimmed != text {
+			variants = append(variants,
+				`"`+trimmed+`"`,
+				"'"+trimmed+"'",
+				"“"+trimmed+"”",
+				"‘"+trimmed+"’",
+			)
+		}
+	}
+	return variants
+}
+
+func dialogueBodyText(text string) string {
+	text = strings.TrimSpace(text)
+	text = strings.Trim(text, `"'“”‘’`)
+	return strings.TrimSpace(text)
+}
+
+func normalizeDialogueKey(text string) string {
+	text = dialogueBodyText(text)
+	text = strings.TrimSpace(text)
+	text = strings.ToLower(text)
+	text = strings.Join(strings.Fields(text), " ")
+	return text
+}
+
+func cleanupNarrativeSpacing(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	lines := strings.Split(text, "\n")
+	cleanedLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		line = strings.Join(strings.Fields(line), " ")
+		line = strings.ReplaceAll(line, " ,", ",")
+		line = strings.ReplaceAll(line, " .", ".")
+		line = strings.ReplaceAll(line, " !", "!")
+		line = strings.ReplaceAll(line, " ?", "?")
+		line = strings.ReplaceAll(line, " ;", ";")
+		line = strings.ReplaceAll(line, " :", ":")
+		line = strings.TrimSpace(line)
+		if line != "" {
+			cleanedLines = append(cleanedLines, line)
+		}
+	}
+	return strings.TrimSpace(strings.Join(cleanedLines, "\n\n"))
 }
 
 func collectHighlightEntities(input NarrativeInput) []KnownEntity {

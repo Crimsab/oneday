@@ -35,14 +35,27 @@ func NewSummarizer(embedder *Embedder, store *VectorStore, aiCompleter AIComplet
 	}
 }
 
-// ShouldSummarize returns true if there are enough unsummarized turns to warrant a new summary.
-func (s *Summarizer) ShouldSummarize(ctx context.Context, currentTurn int) (bool, error) {
+// PendingWindow returns the next unsummarized turn window if summarization is due.
+func (s *Summarizer) PendingWindow(ctx context.Context, currentTurn int) (int, int, bool, error) {
+	if s.interval <= 0 || currentTurn <= 0 {
+		return 0, 0, false, nil
+	}
+
 	lastTurn, err := s.store.LastSummarizedTurn(ctx, s.storyID)
 	if err != nil {
-		return false, fmt.Errorf("summarizer: checking last summarized turn: %w", err)
+		return 0, 0, false, fmt.Errorf("summarizer: checking last summarized turn: %w", err)
 	}
-	gap := currentTurn - lastTurn
-	return gap >= s.interval, nil
+	if currentTurn-lastTurn < s.interval {
+		return 0, 0, false, nil
+	}
+
+	return lastTurn + 1, currentTurn, true, nil
+}
+
+// ShouldSummarize returns true if there are enough unsummarized turns to warrant a new summary.
+func (s *Summarizer) ShouldSummarize(ctx context.Context, currentTurn int) (bool, error) {
+	_, _, should, err := s.PendingWindow(ctx, currentTurn)
+	return should, err
 }
 
 // Summarize generates a summary for unsummarized turns [lastSummarized+1 .. currentTurn],

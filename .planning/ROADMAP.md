@@ -337,7 +337,7 @@ Plans:
 **Goal:** Add browseable archives and knowledge surfaces so players can inspect story achievements, protagonist/NPC dossiers, and a descriptive codex from both the home surface and inside a run without flattening everything into static text overlays.
 **Requirements**: TBD
 **Depends on:** Phase 13
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 ### Success Criteria
 
@@ -349,9 +349,9 @@ Plans:
 6. Narrative dialogue renders more reliably even when the prose contains direct speech in single quotes, and duplicated prose-vs-dialogue output is normalized into clearer speaker-aware presentation.
 
 Plans:
-- [ ] Plan 14.1: Build a home-surface story archive and structured achievement browser
-- [ ] Plan 14.2: Upgrade character inspection into protagonist and character dossiers
-- [ ] Plan 14.3: Implement a descriptive codex, dialogue normalization, and multi-instance drill-down navigation
+- [x] Plan 14.1: Build a home-surface story archive and structured achievement browser
+- [x] Plan 14.2: Upgrade character inspection into protagonist and character dossiers
+- [x] Plan 14.3: Implement a descriptive codex, dialogue normalization, and multi-instance drill-down navigation
 
 ---
 

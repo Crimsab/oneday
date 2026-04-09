@@ -77,6 +77,14 @@ func (r *RAG) MaybeSummarize(ctx context.Context, messages []storage.ChatMessage
 	return true, nil
 }
 
+// PendingSummaryWindow reports the next unsummarized turn range when summarization is due.
+func (r *RAG) PendingSummaryWindow(ctx context.Context, currentTurn int) (int, int, bool, error) {
+	if r == nil || r.summarizer == nil {
+		return 0, 0, false, nil
+	}
+	return r.summarizer.PendingWindow(ctx, currentTurn)
+}
+
 // SummarizerInterval returns the configured summarization interval.
 func (r *RAG) SummarizerInterval() int {
 	return r.summarizer.Interval()

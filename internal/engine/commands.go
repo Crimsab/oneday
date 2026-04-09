@@ -36,6 +36,8 @@ var CommandRegistry = map[string]string{
 	"downtime":     "downtime",
 	"achievements": "achievements",
 	"a":            "achievements",
+	"codex":        "codex",
+	"characters":   "characters",
 }
 
 // IsCommand returns true if the input starts with "/".

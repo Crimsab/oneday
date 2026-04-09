@@ -22,6 +22,7 @@ type MenuAction int
 const (
 	ActionNewStory MenuAction = iota
 	ActionLoadStory
+	ActionAchievementArchive
 	ActionSettings
 	ActionQuit
 )
@@ -45,6 +46,7 @@ func NewMenuModel() MenuModel {
 		items: []MenuItem{
 			{Label: "New Story", Action: ActionNewStory},
 			{Label: "Load Story", Action: ActionLoadStory},
+			{Label: "Achievements", Action: ActionAchievementArchive},
 			{Label: "Settings", Action: ActionSettings},
 			{Label: "Quit", Action: ActionQuit},
 		},
@@ -68,6 +70,10 @@ func (m MenuModel) Update(msg tea.Msg) (MenuModel, tea.Cmd) {
 		case "enter", " ":
 			return m, func() tea.Msg {
 				return MenuSelectedMsg{Action: m.items[m.cursor].Action}
+			}
+		case "q", "Q":
+			return m, func() tea.Msg {
+				return MenuSelectedMsg{Action: ActionQuit}
 			}
 		}
 	case tea.WindowSizeMsg:

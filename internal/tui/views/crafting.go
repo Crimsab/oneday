@@ -43,14 +43,15 @@ type CraftingModel struct {
 	input      textarea.Model
 
 	// State
-	history     *strings.Builder
-	inventory   string // rendered inventory sidebar
-	inputFocus  bool
-	waiting     bool
-	errMsg      string
-	lastCrafted string // name of last crafted item (if any)
-	lastMissing []string
+	history          *strings.Builder
+	inventory        string // rendered inventory sidebar
+	inputFocus       bool
+	waiting          bool
+	errMsg           string
+	lastCrafted      string // name of last crafted item (if any)
+	lastMissing      []string
 	lastAlternatives []string
+	exitChoiceID     int
 }
 
 // NewCraftingModel creates a crafting view.
@@ -187,11 +188,9 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 		// Update choices.
-		items := make([]components.ChoiceItem, len(resp.Choices))
-		for i, c := range resp.Choices {
-			items[i] = components.ChoiceItem{ID: c.ID, Text: c.Text}
-		}
+		items, exitChoiceID := buildCraftingChoiceItems(resp.Choices)
 		m.choices.SetChoices(items)
+		m.exitChoiceID = exitChoiceID
 		m.inputFocus = false
 		m.input.Blur()
 
@@ -207,7 +206,7 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 			return m, nil
 		}
 
-		if isCraftingExitChoice(msg.Text) {
+		if msg.ID == m.exitChoiceID || isCraftingExitChoice(msg.Text) {
 			_ = m.crafting.Close()
 			return m, func() tea.Msg {
 				return CraftingEndMsg{
@@ -417,7 +416,7 @@ func (m CraftingModel) buildInventorySidebar() string {
 
 	if len(guidance.MaterialTags) > 0 {
 		sb.WriteString("\n" + theme.MutedText.Render("Tag materiali:\n"))
-		sb.WriteString(theme.NormalText.Render("  " + strings.Join(guidance.MaterialTags, " · ")) + "\n")
+		sb.WriteString(theme.NormalText.Render("  "+strings.Join(guidance.MaterialTags, " · ")) + "\n")
 	}
 
 	// Known recipes.
@@ -481,4 +480,33 @@ func isCraftingExitChoice(text string) bool {
 		}
 	}
 	return false
+}
+
+func buildCraftingChoiceItems(choices []engine.Choice) ([]components.ChoiceItem, int) {
+	items := make([]components.ChoiceItem, 0, len(choices)+1)
+	exitLabel := "Esci dal crafting"
+	maxID := 0
+
+	for _, choice := range choices {
+		if choice.ID > maxID {
+			maxID = choice.ID
+		}
+		if isCraftingExitChoice(choice.Text) {
+			if strings.TrimSpace(choice.Text) != "" {
+				exitLabel = choice.Text
+			}
+			continue
+		}
+		items = append(items, components.ChoiceItem{
+			ID:   choice.ID,
+			Text: choice.Text,
+		})
+	}
+
+	exitChoiceID := maxID + 1
+	items = append(items, components.ChoiceItem{
+		ID:   exitChoiceID,
+		Text: exitLabel,
+	})
+	return items, exitChoiceID
 }

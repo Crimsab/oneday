@@ -43,16 +43,9 @@ func ValidateAndPersistAchievement(db *storage.DB, storyID string, data *Achieve
 		return nil
 	}
 
-	// Check for duplicates (case-insensitive).
-	existing, err := db.ListAchievements(storyID)
-	if err != nil {
+	exists, err := db.AchievementExistsByName(storyID, data.Name)
+	if err != nil || exists {
 		return nil
-	}
-	nameLower := strings.ToLower(strings.TrimSpace(data.Name))
-	for _, a := range existing {
-		if strings.ToLower(strings.TrimSpace(a.Name)) == nameLower {
-			return nil // duplicate
-		}
 	}
 
 	a := &storage.Achievement{

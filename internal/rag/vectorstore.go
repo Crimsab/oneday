@@ -6,12 +6,20 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"time"
 )
 
 // VectorStore manages embedding storage and retrieval in SQLite.
 type VectorStore struct {
-	db *sql.DB
+	db      *sql.DB
+	cacheMu sync.RWMutex
+	cache   map[string][]cachedChunk
+}
+
+type cachedChunk struct {
+	chunk Chunk
+	norm  float64
 }
 
 // Chunk represents a stored text chunk with its embedding.
@@ -34,7 +42,10 @@ type SearchResult struct {
 
 // NewVectorStore creates a VectorStore using the given DB connection.
 func NewVectorStore(db *sql.DB) *VectorStore {
-	return &VectorStore{db: db}
+	return &VectorStore{
+		db:    db,
+		cache: map[string][]cachedChunk{},
+	}
 }
 
 // Insert stores a chunk with its embedding BLOB.
@@ -60,12 +71,43 @@ func (vs *VectorStore) Insert(ctx context.Context, chunk *Chunk) error {
 		return fmt.Errorf("vectorstore insert last id: %w", err)
 	}
 	chunk.ID = id
+	vs.invalidateStoryCache(chunk.StoryID)
 	return nil
 }
 
 // Search returns the top-K most similar chunks to the query embedding for a story.
 // Uses brute-force cosine similarity — fast enough for <10K vectors per story.
 func (vs *VectorStore) Search(ctx context.Context, storyID string, queryEmbedding []float32, topK int) ([]SearchResult, error) {
+	chunks, err := vs.loadCachedChunks(ctx, storyID)
+	if err != nil {
+		return nil, err
+	}
+
+	queryNorm := vectorNorm(queryEmbedding)
+	results := make([]SearchResult, 0, len(chunks))
+	for _, entry := range chunks {
+		sim := cosineSimilarityWithNorm(queryEmbedding, queryNorm, entry.chunk.Embedding, entry.norm)
+		results = append(results, SearchResult{Chunk: entry.chunk, Similarity: sim})
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Similarity > results[j].Similarity
+	})
+
+	if topK > 0 && len(results) > topK {
+		results = results[:topK]
+	}
+	return results, nil
+}
+
+func (vs *VectorStore) loadCachedChunks(ctx context.Context, storyID string) ([]cachedChunk, error) {
+	vs.cacheMu.RLock()
+	if chunks, ok := vs.cache[storyID]; ok {
+		vs.cacheMu.RUnlock()
+		return chunks, nil
+	}
+	vs.cacheMu.RUnlock()
+
 	rows, err := vs.db.QueryContext(ctx,
 		`SELECT id, story_id, text, chunk_type, turn_start, turn_end, embedding, created_at
 		 FROM rag_chunks
@@ -78,7 +120,7 @@ func (vs *VectorStore) Search(ctx context.Context, storyID string, queryEmbeddin
 	}
 	defer rows.Close()
 
-	var results []SearchResult
+	var chunks []cachedChunk
 	for rows.Next() {
 		var c Chunk
 		var blob []byte
@@ -97,22 +139,26 @@ func (vs *VectorStore) Search(ctx context.Context, storyID string, queryEmbeddin
 			c.CreatedAt = t
 		}
 
-		sim := cosineSimilarity(queryEmbedding, c.Embedding)
-		results = append(results, SearchResult{Chunk: c, Similarity: sim})
+		chunks = append(chunks, cachedChunk{
+			chunk: c,
+			norm:  vectorNorm(c.Embedding),
+		})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("vectorstore search rows: %w", err)
 	}
 
-	// Sort by similarity descending
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Similarity > results[j].Similarity
-	})
+	vs.cacheMu.Lock()
+	vs.cache[storyID] = chunks
+	vs.cacheMu.Unlock()
 
-	if topK > 0 && len(results) > topK {
-		results = results[:topK]
-	}
-	return results, nil
+	return chunks, nil
+}
+
+func (vs *VectorStore) invalidateStoryCache(storyID string) {
+	vs.cacheMu.Lock()
+	delete(vs.cache, storyID)
+	vs.cacheMu.Unlock()
 }
 
 // CountByStory returns the number of chunks stored for a story.
@@ -147,19 +193,32 @@ func (vs *VectorStore) LastSummarizedTurn(ctx context.Context, storyID string) (
 // cosineSimilarity computes the cosine similarity between two float32 vectors.
 // Returns 0 if either vector has zero magnitude.
 func cosineSimilarity(a, b []float32) float64 {
+	return cosineSimilarityWithNorm(a, vectorNorm(a), b, vectorNorm(b))
+}
+
+func cosineSimilarityWithNorm(a []float32, normA float64, b []float32, normB float64) float64 {
 	if len(a) != len(b) || len(a) == 0 {
 		return 0
 	}
-	var dot, normA, normB float64
+	var dot float64
 	for i := range a {
 		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
 	}
 	if normA == 0 || normB == 0 {
 		return 0
 	}
 	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
+}
+
+func vectorNorm(v []float32) float64 {
+	if len(v) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, value := range v {
+		sum += float64(value) * float64(value)
+	}
+	return sum
 }
 
 // serializeEmbedding encodes a float32 slice to a byte slice (little-endian IEEE 754).

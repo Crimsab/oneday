@@ -1,6 +1,11 @@
 package storage
 
-import "time"
+import (
+	"database/sql"
+	"errors"
+	"strings"
+	"time"
+)
 
 // CreateAchievement inserts a new achievement for a story.
 func (db *DB) CreateAchievement(a *Achievement) error {
@@ -45,4 +50,28 @@ func (db *DB) ListAchievements(storyID string) ([]Achievement, error) {
 		achievements = append(achievements, a)
 	}
 	return achievements, rows.Err()
+}
+
+// AchievementExistsByName reports whether a story already contains an
+// achievement with the given name, using case-insensitive matching.
+func (db *DB) AchievementExistsByName(storyID, name string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, nil
+	}
+
+	var id int64
+	err := db.conn.QueryRow(
+		`SELECT id FROM achievements
+		 WHERE story_id = ? AND name = ? COLLATE NOCASE
+		 LIMIT 1`,
+		storyID, name,
+	).Scan(&id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
