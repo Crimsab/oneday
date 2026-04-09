@@ -263,6 +263,152 @@ func TestBuildStoryCodexSurfacesNemesisTrailWithoutLeakingPrivateVow(t *testing.
 	}
 }
 
+func TestBuildStoryCodexSurfacesInvestigationCasesWithoutHiddenTruthLeaks(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+
+	story := &storage.Story{
+		ID:          "story-codex-investigation",
+		Name:        "Codex Investigation Story",
+		SettingJSON: `{"factions":["Bell Choir"]}`,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	if err := db.CreateCharacter(char); err != nil {
+		t.Fatalf("CreateCharacter: %v", err)
+	}
+
+	npc := &storage.NPC{
+		ID:                 "npc-lyanna-investigation",
+		StoryID:            story.ID,
+		Name:               "Lyanna",
+		Role:               "broker",
+		RelationshipJSON:   `{}`,
+		NotesOnProtagonist: `[]`,
+		PrivateThoughts:    `[]`,
+		NemesisJSON:        `{}`,
+		IsAlive:            true,
+		FirstAppearedTurn:  2,
+		LastSeenTurn:       8,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if err := db.CreateNPC(npc); err != nil {
+		t.Fatalf("CreateNPC: %v", err)
+	}
+
+	world := &storage.WorldState{
+		ID:              "world-codex-investigation",
+		StoryID:         story.ID,
+		CurrentLocation: "Bell Quarter",
+		KnownLocationsJSON: `[
+			{"name":"Bell Quarter","description":"A district of bells and narrow alleys.","discovered_turn":1}
+		]`,
+		CurrentChapter: 2,
+		CurrentTurn:    9,
+		UpdatedAt:      now,
+	}
+	storeFronts(world, []Front{
+		{
+			ID:           "front-bell",
+			Faction:      "Bell Choir",
+			Title:        "The Silent Bell Choir is seeding sleepers across the district",
+			PublicTitle:  "Whispers Around the Bell Tower",
+			PublicStakes: "Something ugly is taking hold around the tower.",
+			Visibility:   "known",
+			Segments:     6,
+			Progress:     4,
+		},
+	})
+	storeInvestigationBoard(world, InvestigationBoard{
+		Cases: []InvestigationCase{
+			{
+				ID:          "case-sold-out",
+				Title:       "Who sold you out?",
+				Summary:     "Someone warned the checkpoint ahead of time.",
+				UpdatedTurn: 9,
+				Links: []InvestigationLink{
+					{Kind: "front", RefID: "front-bell", Label: "Whispers Around the Bell Tower"},
+				},
+				Suspects: []InvestigationSuspect{
+					{Name: "Lyanna", Links: []InvestigationLink{{Kind: "npc", Label: "Lyanna"}}},
+				},
+				Clues: []InvestigationClue{
+					{Label: "Ledger ash", Detail: "The burned ledger page still smelled of sealing wax."},
+				},
+				Contradictions: []InvestigationContradiction{
+					{Label: "Two alibis overlap", Detail: "The quartermaster and captain both claim to have sealed the log."},
+				},
+				Theories: []InvestigationTheory{
+					{Statement: "The guard captain was bribed", Confidence: "likely", Status: "likely"},
+				},
+				HiddenTruths: []InvestigationHiddenTruth{
+					{Label: "Bell Choir silver changed hands", Detail: "This should stay hidden from the codex."},
+				},
+			},
+		},
+	})
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatalf("CreateWorldState: %v", err)
+	}
+
+	index, err := BuildStoryCodex(db, story, char, world)
+	if err != nil {
+		t.Fatalf("BuildStoryCodex: %v", err)
+	}
+
+	caseEntry, ok := index.Entry(codexInvestigationEntryID("case-sold-out"))
+	if !ok {
+		t.Fatalf("missing investigation entry")
+	}
+	caseSections := strings.Join(flattenCodexSections(caseEntry.Sections), "\n")
+	if !strings.Contains(caseSections, "Ledger ash") {
+		t.Fatalf("investigation entry missing clue:\n%s", caseSections)
+	}
+	if !strings.Contains(caseSections, "Two alibis overlap") {
+		t.Fatalf("investigation entry missing contradiction:\n%s", caseSections)
+	}
+	if strings.Contains(caseSections, "Bell Choir silver changed hands") {
+		t.Fatalf("investigation entry leaked hidden truth:\n%s", caseSections)
+	}
+	if !hasCodexLink(caseEntry.Related, codexNPCEntryID("Lyanna")) {
+		t.Fatalf("investigation entry missing npc link: %+v", caseEntry.Related)
+	}
+	if !hasCodexLink(caseEntry.Related, codexFrontEntryID("front-bell")) {
+		t.Fatalf("investigation entry missing front link: %+v", caseEntry.Related)
+	}
+
+	npcEntry, ok := index.Entry(codexNPCEntryID("Lyanna"))
+	if !ok {
+		t.Fatalf("missing npc entry")
+	}
+	if !hasCodexLink(npcEntry.Related, codexInvestigationEntryID("case-sold-out")) {
+		t.Fatalf("npc entry missing investigation backlink: %+v", npcEntry.Related)
+	}
+
+	frontEntry, ok := index.Entry(codexFrontEntryID("front-bell"))
+	if !ok {
+		t.Fatalf("missing front entry")
+	}
+	if !hasCodexLink(frontEntry.Related, codexInvestigationEntryID("case-sold-out")) {
+		t.Fatalf("front entry missing investigation backlink: %+v", frontEntry.Related)
+	}
+
+	protagonist, ok := index.Entry(ProtagonistCodexEntryID())
+	if !ok {
+		t.Fatalf("missing protagonist entry")
+	}
+	if !strings.Contains(strings.Join(flattenCodexSections(protagonist.Sections), "\n"), "Who sold you out? · clues 1 · contradictions 1 · theories 1") {
+		t.Fatalf("protagonist entry missing open investigation overview")
+	}
+}
+
 func flattenCodexSections(sections []CodexSection) []string {
 	lines := make([]string, 0, len(sections)*2)
 	for _, section := range sections {

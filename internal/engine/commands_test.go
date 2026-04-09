@@ -14,6 +14,7 @@ func TestParseCommandRecognizesCraftAliases(t *testing.T) {
 		{input: "/talk Lyanna", want: "talk"},
 		{input: "/downtime rest by the fire", want: "downtime"},
 		{input: "/codex", want: "codex"},
+		{input: "/investigations", want: "investigations"},
 		{input: "/characters", want: "characters"},
 	}
 
