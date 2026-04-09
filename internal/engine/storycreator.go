@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -449,21 +450,40 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 		ResponseFormat: ai.StoryDefinitionResponseFormat(),
 	}
 
-	start := time.Now()
-	resp, err := sc.router.Complete(ctx, req)
-	if err != nil {
-		return nil, err
+	const maxRepairAttempts = 2
+
+	var lastErr error
+	for attempt := 0; attempt <= maxRepairAttempts; attempt++ {
+		start := time.Now()
+		resp, err := sc.router.Complete(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+
+		sc.lastModel = resp.Model
+		sc.lastLatency = time.Since(start).Milliseconds()
+
+		def, parseErr := parseStoryDefinition(resp.Content)
+		if parseErr == nil {
+			return def, nil
+		}
+		lastErr = parseErr
+		if attempt == maxRepairAttempts {
+			break
+		}
+
+		req = ai.Request{
+			Messages: []ai.Message{
+				{Role: ai.RoleSystem, Content: prompts.StoryRepairSystemPrompt()},
+				{Role: ai.RoleUser, Content: prompts.StoryRepairUserPrompt(resp.Content, parseErr.Error())},
+			},
+			Temperature:    0.2,
+			MaxTokens:      sc.genCfg.MaxTokens,
+			ResponseFormat: ai.StoryDefinitionResponseFormat(),
+		}
 	}
 
-	sc.lastModel = resp.Model
-	sc.lastLatency = time.Since(start).Milliseconds()
-
-	def := extractStoryJSON(resp.Content)
-	if def == nil {
-		return nil, fmt.Errorf("invalid story definition returned by AI")
-	}
-
-	return def, nil
+	return nil, fmt.Errorf("invalid story definition returned by AI: %w", lastErr)
 }
 
 func (sc *StoryCreator) renderCurrentStage() string {
@@ -715,18 +735,66 @@ func (sc *StoryCreator) persistStory(charName, charBackground string) error {
 }
 
 func extractStoryJSON(text string) *StoryDefinition {
-	raw, err := ai.ExtractJSONPayload(text)
-	if err != nil || raw == "" {
+	def, err := parseStoryDefinition(text)
+	if err != nil {
 		return nil
+	}
+	return def
+}
+
+func parseStoryDefinition(text string) (*StoryDefinition, error) {
+	raw, err := ai.ExtractJSONPayload(text)
+	if err != nil {
+		return nil, fmt.Errorf("extracting JSON payload: %w", err)
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, errors.New("empty JSON payload")
 	}
 	var def StoryDefinition
 	if err := json.Unmarshal([]byte(raw), &def); err != nil {
-		return nil
+		return nil, fmt.Errorf("decoding story definition JSON: %w", err)
 	}
-	if def.Name == "" || def.Genre == "" || def.Language == "" || def.WritingStyle == "" || len(def.Setting.Rules) == 0 {
-		return nil
+	if err := validateStoryDefinition(&def); err != nil {
+		return nil, err
 	}
-	return &def
+	return &def, nil
+}
+
+func validateStoryDefinition(def *StoryDefinition) error {
+	if def == nil {
+		return errors.New("missing story definition")
+	}
+	if strings.TrimSpace(def.Name) == "" {
+		return errors.New("missing story name")
+	}
+	if strings.TrimSpace(def.Description) == "" {
+		return errors.New("missing story description")
+	}
+	if strings.TrimSpace(def.Genre) == "" {
+		return errors.New("missing genre")
+	}
+	if strings.TrimSpace(def.Tone) == "" {
+		return errors.New("missing tone")
+	}
+	if strings.TrimSpace(def.Language) == "" {
+		return errors.New("missing language")
+	}
+	if strings.TrimSpace(def.WritingStyle) == "" {
+		return errors.New("missing writing_style")
+	}
+	if strings.TrimSpace(def.Setting.WorldName) == "" {
+		return errors.New("missing setting.world_name")
+	}
+	if len(def.Setting.Rules) == 0 {
+		return errors.New("missing setting.rules")
+	}
+	if len(def.StatsSchema.Vitals) == 0 {
+		return errors.New("missing stats_schema.vitals")
+	}
+	if len(def.StatsSchema.Attributes) == 0 {
+		return errors.New("missing stats_schema.attributes")
+	}
+	return nil
 }
 
 type charJSON struct {

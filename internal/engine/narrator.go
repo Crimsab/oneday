@@ -401,14 +401,19 @@ func (n *Narrator) finalizeTurn(
 	// Parse the structured response.
 	narrative, err := parseNarrativeFromAI(resp.Content)
 	if err != nil {
-		// If parsing fails, wrap the raw text as a minimal narrative.
-		narrative = &NarrativeResponse{
-			Narrative: normalizeNarrativeText(resp.Content),
-			Choices: []Choice{
-				{ID: 1, Text: "Continue..."},
-			},
-			Mood:     "mysterious",
-			Location: n.world.CurrentLocation,
+		repaired, repairErr := n.repairNarrativeResponse(ctx, resp.Content, err)
+		if repairErr == nil {
+			narrative = repaired
+		} else {
+			// If repair also fails, wrap the raw text as a minimal narrative.
+			narrative = &NarrativeResponse{
+				Narrative: normalizeNarrativeText(resp.Content),
+				Choices: []Choice{
+					{ID: 1, Text: "Continue..."},
+				},
+				Mood:     "mysterious",
+				Location: n.world.CurrentLocation,
+			}
 		}
 	}
 	normalizeNarrativeResponse(narrative)

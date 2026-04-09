@@ -1,8 +1,8 @@
 # Roadmap: OneDay
 
 **Milestone:** v1.0 — First Playable
-**Phases:** 10
-**Requirements:** 88 mapped
+**Phases:** 11
+**Requirements:** 99 mapped
 
 ---
 
@@ -268,6 +268,31 @@ Plans:
 
 ---
 
+## Phase 11: Runtime Reliability and History UX
+
+**Goal:** Close the most visible live-play rough edges by making narrative playback reliable, keeping interaction timing coherent, improving challenge/session affordances, and adding a searchable history flow without changing the overall game structure.
+**Requirements**: AI-10, CMD-05, TUI-26, TUI-27, TUI-28, TUI-29, TUI-30, TUI-31, TUI-32, TUI-33, TUI-34, TUI-35
+**Depends on:** Phase 10
+**UI hint:** no
+**Status:** Complete (2026-04-09)
+
+### Success Criteria
+
+1. Live narrative playback never leaks raw ANSI escape sequences, and choices/free input do not appear before the visible scene playback is complete.
+2. Story bootstrap is more resilient: invalid structured story drafts are validated locally and retried/repaired before the user sees a hard failure.
+3. Active dice rolls and mini-games show a lightweight confirmation/prelude before starting, so events never seem to fire “by themselves”.
+4. Choice navigation no longer scrolls the narrative viewport, while mouse-wheel scrolling applies only to the narrative/chat area.
+5. Trusted locations, world names, factions, and similar entities render with clearer role-aware emphasis; dialogue and relationship/system updates render as compact structured blocks rather than flat markdown blobs.
+6. Players can inspect current/legacy choice metadata more usefully, see visible quick-save feedback, and read the footer/status area cleanly even on narrower terminals.
+7. A `/history` flow lets the player review prior interactions with optional text search without leaving the current story context.
+
+Plans:
+- [x] Plan 11.1: Fix runtime reliability — ANSI-safe typewriter playback, synchronized choice reveal, story-definition validation/retry, and challenge confirmation flow
+- [x] Plan 11.2: Polish live narrative interaction — scroll/input separation, mouse-wheel behavior, stronger entity/dialogue/callout rendering, inspect/help improvements, and visible save/status feedback
+- [x] Plan 11.3: Add searchable interaction history and final runtime polish — history command/overlay, narrow-footer layout, help/discoverability, and verification updates
+
+---
+
 ## Requirements Coverage
 
 | Phase | Requirement Count | IDs |
@@ -282,6 +307,7 @@ Plans:
 | 8 | 6 | AI-06, TUI-10–TUI-14 |
 | 9 | 12 | AI-07, STOR-06–STOR-08, TUI-15–TUI-22 |
 | 10 | 7 | AI-08, AI-09, BENCH-01, BENCH-02, TUI-23–TUI-25 |
-| **Total** | **88** | All mapped requirements through Phase 10 |
+| 11 | 12 | AI-10, CMD-05, TUI-26–TUI-35 |
+| **Total** | **99** | All mapped requirements through Phase 11 |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.

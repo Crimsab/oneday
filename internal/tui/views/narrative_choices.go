@@ -146,18 +146,22 @@ func resolveCharacterStatValues(char *storage.Character) map[string]string {
 }
 
 func buildChoiceHelp(choice engine.Choice, statInfo map[string]storyStatInfo, currentStats map[string]string) string {
-	lines := []string{"This choice signals:"}
+	lines := []string{
+		fmt.Sprintf("Choice: %s", strings.TrimSpace(choice.Text)),
+		"",
+		"This choice signals:",
+	}
 	if choice.Intent != "" {
-		lines = append(lines, fmt.Sprintf("- intent: %s", strings.ToLower(choice.Intent)))
+		lines = append(lines, fmt.Sprintf("- intent: %s — %s", strings.ToLower(choice.Intent), semanticChoiceHint("intent", choice.Intent)))
 	}
 	if choice.Risk != "" {
-		lines = append(lines, fmt.Sprintf("- risk: %s", strings.ToLower(choice.Risk)))
+		lines = append(lines, fmt.Sprintf("- risk: %s — %s", strings.ToLower(choice.Risk), semanticChoiceHint("risk", choice.Risk)))
 	}
 	if choice.Scope != "" {
-		lines = append(lines, fmt.Sprintf("- scope: %s", strings.ToLower(choice.Scope)))
+		lines = append(lines, fmt.Sprintf("- scope: %s — %s", strings.ToLower(choice.Scope), semanticChoiceHint("scope", choice.Scope)))
 	}
 	if choice.Certainty != "" {
-		lines = append(lines, fmt.Sprintf("- certainty: %s", strings.ToLower(choice.Certainty)))
+		lines = append(lines, fmt.Sprintf("- certainty: %s — %s", strings.ToLower(choice.Certainty), semanticChoiceHint("certainty", choice.Certainty)))
 	}
 
 	statLines := make([]string, 0, len(choice.RelatedStats))
@@ -187,8 +191,12 @@ func buildChoiceHelp(choice engine.Choice, statInfo map[string]storyStatInfo, cu
 		lines = append(lines, statLines...)
 	}
 
-	if len(lines) == 1 {
-		return ""
+	if len(lines) == 3 && len(statLines) == 0 {
+		lines = append(lines,
+			"- no structured metadata was provided for this choice",
+			"",
+			"Treat it as a freeform narrative action: judge risk and likely stat influence from the scene text.",
+		)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -203,5 +211,41 @@ func statCategoryHint(category string) string {
 		return "A progression or world-facing metric that tracks longer-term standing."
 	default:
 		return "This is a story-defined stat used by the narrator and game systems."
+	}
+}
+
+func semanticChoiceHint(kind, value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch kind {
+	case "intent":
+		switch value {
+		case "social":
+			return "leans on rapport, deception, persuasion, or etiquette"
+		case "explore", "observe", "lore":
+			return "focuses on information, discovery, or environmental reading"
+		case "combat", "aggressive":
+			return "pushes the scene toward confrontation or force"
+		case "stealth":
+			return "prioritizes subtlety, concealment, or low attention"
+		default:
+			return "describes the narrative purpose of the action"
+		}
+	case "risk":
+		switch value {
+		case "low":
+			return "safer play with fewer likely downsides"
+		case "medium":
+			return "balanced risk with meaningful upside and downside"
+		case "high":
+			return "big swing: stronger payoff, stronger danger"
+		default:
+			return "describes how dangerous or costly the action may be"
+		}
+	case "scope":
+		return "shows what part of the scene this choice mainly affects"
+	case "certainty":
+		return "shows how predictable the likely outcome is"
+	default:
+		return "structured hint provided by the narrator"
 	}
 }

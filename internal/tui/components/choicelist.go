@@ -36,6 +36,7 @@ type ChoiceItem struct {
 type ChoiceListModel struct {
 	choices []ChoiceItem
 	cursor  int
+	metaCursor int
 	width   int
 	mood    string
 }
@@ -49,6 +50,7 @@ func NewChoiceList() ChoiceListModel {
 func (c *ChoiceListModel) SetChoices(items []ChoiceItem) {
 	c.choices = items
 	c.cursor = 0
+	c.metaCursor = -1
 }
 
 // SetWidth sets the component width.
@@ -75,13 +77,44 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 			if c.cursor > 0 {
 				c.cursor--
 			}
+			c.metaCursor = -1
 		case "down", "j":
 			if c.cursor < len(c.choices)-1 {
 				c.cursor++
 			}
+			c.metaCursor = -1
+		case "right", "l":
+			if len(c.choices) > 0 {
+				badges := choiceBadges(c.choices[c.cursor], c.mood)
+				if len(badges) > 0 {
+					if c.metaCursor < 0 {
+						c.metaCursor = 0
+					} else {
+						c.metaCursor = (c.metaCursor + 1) % len(badges)
+					}
+				}
+			}
+		case "left", "h":
+			if len(c.choices) > 0 {
+				badges := choiceBadges(c.choices[c.cursor], c.mood)
+				if len(badges) > 0 {
+					if c.metaCursor < 0 {
+						c.metaCursor = len(badges) - 1
+					} else if c.metaCursor == 0 {
+						c.metaCursor = -1
+					} else {
+						c.metaCursor--
+					}
+				}
+			}
 		case "enter", " ":
 			if len(c.choices) > 0 {
 				selected := c.choices[c.cursor]
+				if c.metaCursor >= 0 {
+					return c, func() tea.Msg {
+						return ChoiceInspectRequestedMsg{ID: selected.ID}
+					}
+				}
 				return c, func() tea.Msg {
 					return ChoiceSelectedMsg{
 						ID:   selected.ID,
@@ -142,33 +175,18 @@ func (c ChoiceListModel) View() string {
 }
 
 func (c ChoiceListModel) renderChoiceMeta(choice ChoiceItem, selected bool) string {
-	if !choiceHasSemanticMetadata(choice) {
+	badges := choiceBadges(choice, c.mood)
+	if len(badges) == 0 {
 		return ""
 	}
 
-	palette := theme.GetMoodPalette(c.mood)
-	var badges []string
-
-	if choice.Intent != "" {
-		badges = append(badges, renderChoiceBadge("intent:"+strings.ToLower(choice.Intent), palette.NarrativeAccent, selected))
-	}
-	if choice.Risk != "" {
-		badges = append(badges, renderChoiceBadge("risk:"+strings.ToLower(choice.Risk), riskColor(choice.Risk), selected))
-	}
-	if choice.Certainty != "" {
-		badges = append(badges, renderChoiceBadge("certainty:"+strings.ToLower(choice.Certainty), palette.Accent, selected))
-	}
-	if choice.Scope != "" {
-		badges = append(badges, renderChoiceBadge("scope:"+strings.ToLower(choice.Scope), theme.Secondary, selected))
-	}
-	for _, stat := range choice.RelatedStats {
-		if strings.TrimSpace(stat) == "" {
-			continue
-		}
-		badges = append(badges, renderChoiceBadge(stat, theme.Highlight, selected))
+	rendered := make([]string, 0, len(badges))
+	for i, badge := range badges {
+		focused := selected && c.metaCursor == i
+		rendered = append(rendered, renderChoiceBadge(badge.label, badge.color, selected, focused))
 	}
 
-	return strings.Join(badges, " ")
+	return strings.Join(rendered, " ")
 }
 
 func choiceHasSemanticMetadata(choice ChoiceItem) bool {
@@ -179,12 +197,50 @@ func choiceHasSemanticMetadata(choice ChoiceItem) bool {
 		len(choice.RelatedStats) > 0
 }
 
-func renderChoiceBadge(label string, color lipgloss.Color, selected bool) string {
+func renderChoiceBadge(label string, color lipgloss.Color, selected bool, focused bool) string {
 	style := lipgloss.NewStyle().Foreground(color)
 	if selected {
 		style = style.Bold(true)
 	}
+	if focused {
+		style = style.Underline(true).Reverse(true)
+	}
 	return style.Render("[" + label + "]")
+}
+
+type choiceBadge struct {
+	label string
+	color lipgloss.Color
+}
+
+func choiceBadges(choice ChoiceItem, mood string) []choiceBadge {
+	if !choiceHasSemanticMetadata(choice) {
+		return nil
+	}
+
+	palette := theme.GetMoodPalette(mood)
+	var badges []choiceBadge
+
+	if choice.Intent != "" {
+		badges = append(badges, choiceBadge{label: "intent:" + strings.ToLower(choice.Intent), color: palette.NarrativeAccent})
+	}
+	if choice.Risk != "" {
+		badges = append(badges, choiceBadge{label: "risk:" + strings.ToLower(choice.Risk), color: riskColor(choice.Risk)})
+	}
+	if choice.Certainty != "" {
+		badges = append(badges, choiceBadge{label: "certainty:" + strings.ToLower(choice.Certainty), color: palette.Accent})
+	}
+	if choice.Scope != "" {
+		badges = append(badges, choiceBadge{label: "scope:" + strings.ToLower(choice.Scope), color: theme.Secondary})
+	}
+	for _, stat := range choice.RelatedStats {
+		if strings.TrimSpace(stat) == "" {
+			continue
+		}
+		badges = append(badges, choiceBadge{label: stat, color: theme.Highlight})
+	}
+
+	return badges
 }
 
 func riskColor(risk string) lipgloss.Color {

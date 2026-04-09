@@ -68,3 +68,28 @@ func TestChoiceListKeyboardSelectionUnchanged(t *testing.T) {
 		t.Fatalf("numeric selection should not move cursor, got %d", updated.cursor)
 	}
 }
+
+func TestChoiceListCanFocusMetadataAndInspect(t *testing.T) {
+	choices := NewChoiceList()
+	choices.SetChoices([]ChoiceItem{
+		{ID: 1, Text: "Observe the room", Intent: "observe", Risk: "low", RelatedStats: []string{"Perception"}},
+	})
+
+	updated, _ := choices.Update(tea.KeyMsg{Type: tea.KeyRight})
+	if updated.metaCursor != 0 {
+		t.Fatalf("metaCursor = %d, want 0 after first right", updated.metaCursor)
+	}
+
+	updated, cmd := updated.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("expected inspect command when metadata is focused")
+	}
+	msg := cmd()
+	inspect, ok := msg.(ChoiceInspectRequestedMsg)
+	if !ok {
+		t.Fatalf("expected ChoiceInspectRequestedMsg, got %T", msg)
+	}
+	if inspect.ID != 1 {
+		t.Fatalf("inspect ID = %d, want 1", inspect.ID)
+	}
+}

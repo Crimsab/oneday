@@ -2,24 +2,38 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: milestone
-current_phase: 10
+current_phase: 11
 status: completed
-last_updated: "2026-04-09T03:10:00Z"
+last_updated: "2026-04-09T05:05:00Z"
 progress:
-  total_phases: 10
-  completed_phases: 10
-  total_plans: 29
-  completed_plans: 29
+  total_phases: 11
+  completed_phases: 11
+  total_plans: 32
+  completed_plans: 32
   percent: 100
 ---
 
 # Project State
 
-**Current Phase:** 10
+**Current Phase:** 11
 **Status:** Completed
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 11 execution completed.
+  Summaries written to `.planning/phases/11-runtime-reliability-and-history-ux/11-01-SUMMARY.md`,
+  `.planning/phases/11-runtime-reliability-and-history-ux/11-02-SUMMARY.md`,
+  and `.planning/phases/11-runtime-reliability-and-history-ux/11-03-SUMMARY.md`.
+  Verification saved in `.planning/phases/11-runtime-reliability-and-history-ux/11-VERIFICATION.md`.
+  Delivered ANSI-safe incremental playback, choice reveal gating, story-definition validation/retry,
+  active challenge confirmation, mouse-enabled viewport scrolling, stronger dialogue/entity/callout rendering,
+  richer choice inspect/help, narrow-footer handling, and `/history` search.
+
+- 2026-04-09: Phase 11 added — Runtime Reliability and History UX.
+  Scope covers ANSI-safe typewriter playback, synchronized choice reveal,
+  story-definition validation/retry, challenge confirmation, scroll/input
+  separation, stronger narrative emphasis, searchable history, and footer/save polish.
 
 - 2026-04-09: Phase 10 execution completed.
   Summaries written to `.planning/phases/10-ambient-ascii-art-and-model-benchmarking/10-01-SUMMARY.md`,
