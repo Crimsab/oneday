@@ -487,6 +487,301 @@ func formatKnownFrontSummary(front Front) string {
 	return line
 }
 
+func frontHookStatus(front Front) string {
+	switch strings.ToLower(strings.TrimSpace(front.Status)) {
+	case "resolved":
+		return "resolved"
+	case "stalled":
+		return "cooling"
+	default:
+		return "active"
+	}
+}
+
+func frontContinuityHook(front Front, currentTurn int) StoryHook {
+	title := frontDisplayTitle(front)
+	if title == "" {
+		return StoryHook{}
+	}
+
+	detail := frontDisplayStakes(front)
+	if strings.EqualFold(front.Status, "resolved") && strings.TrimSpace(front.Resolution) != "" {
+		detail = strings.TrimSpace(front.Resolution)
+	}
+	if detail == "" {
+		pressures := normalizeFrontPressures(front.Pressures)
+		if len(pressures) > 0 {
+			detail = formatFrontPressureDisplay(pressures[0])
+		}
+	}
+
+	timerTurns := 0
+	if front.NextEscalationTurn > currentTurn {
+		timerTurns = front.NextEscalationTurn - currentTurn
+	}
+
+	sourceTurn := front.LastAdvancedTurn
+	if sourceTurn <= 0 {
+		sourceTurn = currentTurn
+	}
+
+	return StoryHook{
+		ID:          "front-hook:" + front.ID,
+		Kind:        "front",
+		Title:       title,
+		Detail:      detail,
+		Status:      frontHookStatus(front),
+		TimerTurns:  timerTurns,
+		SourceTurn:  sourceTurn,
+		UpdatedTurn: currentTurn,
+	}
+}
+
+func frontPressureReactionTitle(front Front, pressure FrontPressure) string {
+	base := frontDisplayTitle(front)
+	region := strings.TrimSpace(pressure.Region)
+	switch strings.ToLower(strings.TrimSpace(pressure.Kind)) {
+	case "suspicion", "heat", "notoriety":
+		return region + " grows watchful around " + base
+	case "hostility", "violence":
+		return region + " turns openly dangerous around " + base
+	case "fear":
+		return region + " starts shutting itself in"
+	case "influence", "control":
+		return base + " tightens its grip on " + region
+	case "scarcity":
+		return region + " starts feeling the squeeze"
+	default:
+		return region + " shifts under " + base
+	}
+}
+
+func slugKey(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return "item"
+	}
+
+	var sb strings.Builder
+	lastDash := false
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			sb.WriteRune(r)
+			lastDash = false
+		default:
+			if sb.Len() == 0 || lastDash {
+				continue
+			}
+			sb.WriteByte('-')
+			lastDash = true
+		}
+	}
+	out := strings.Trim(sb.String(), "-")
+	if out == "" {
+		return "item"
+	}
+	return out
+}
+
+func frontPressureReaction(front Front, pressure FrontPressure, currentTurn int) WorldReaction {
+	if strings.TrimSpace(pressure.Region) == "" || strings.TrimSpace(pressure.Kind) == "" {
+		return WorldReaction{}
+	}
+
+	title := strings.TrimSpace(frontPressureReactionTitle(front, pressure))
+	if title == "" {
+		return WorldReaction{}
+	}
+
+	createdTurn := pressure.UpdatedTurn
+	if createdTurn <= 0 {
+		createdTurn = currentTurn
+	}
+
+	status := "active"
+	if strings.EqualFold(front.Status, "resolved") {
+		status = "resolved"
+	}
+
+	return WorldReaction{
+		ID:          "front-pressure:" + front.ID + ":" + slugKey(pressure.Region) + ":" + slugKey(pressure.Kind),
+		Kind:        "front_pressure",
+		Title:       title,
+		Detail:      frontDisplayTitle(front) + " - " + formatFrontPressureDisplay(pressure),
+		Status:      status,
+		SourceTurn:  pressure.UpdatedTurn,
+		CreatedTurn: createdTurn,
+	}
+}
+
+func upsertFrontPressure(front *Front, pressure FrontPressure) {
+	if front == nil {
+		return
+	}
+	pressures := normalizeFrontPressures(front.Pressures)
+	replaced := false
+	for i := range pressures {
+		if strings.EqualFold(pressures[i].Region, pressure.Region) && strings.EqualFold(pressures[i].Kind, pressure.Kind) {
+			pressures[i] = pressure
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		pressures = append(pressures, pressure)
+	}
+	front.Pressures = normalizeFrontPressures(pressures)
+}
+
+func syncKnownFrontContinuity(world *storage.WorldState, currentTurn int) {
+	if world == nil {
+		return
+	}
+
+	hooks := loadStoryHooks(world)
+	reactions := loadWorldReactions(world)
+	activeHooks := map[string]StoryHook{}
+	activeReactions := map[string]WorldReaction{}
+
+	for _, front := range knownFronts(loadFronts(world)) {
+		hook := frontContinuityHook(front, currentTurn)
+		if hook.ID != "" {
+			activeHooks[hook.ID] = hook
+		}
+		for _, pressure := range normalizeFrontPressures(front.Pressures) {
+			reaction := frontPressureReaction(front, pressure, currentTurn)
+			if reaction.ID != "" {
+				activeReactions[reaction.ID] = reaction
+			}
+		}
+	}
+
+	for i := range hooks {
+		if !strings.HasPrefix(hooks[i].ID, "front-hook:") {
+			continue
+		}
+		replacement, ok := activeHooks[hooks[i].ID]
+		if !ok {
+			hooks[i].Status = "resolved"
+			hooks[i].TimerTurns = 0
+			hooks[i].UpdatedTurn = currentTurn
+			continue
+		}
+		if hooks[i].SourceTurn > 0 {
+			replacement.SourceTurn = hooks[i].SourceTurn
+		}
+		hooks[i] = replacement
+		delete(activeHooks, replacement.ID)
+	}
+	for _, hook := range activeHooks {
+		hooks = append(hooks, hook)
+	}
+
+	for i := range reactions {
+		if !strings.HasPrefix(reactions[i].ID, "front-pressure:") {
+			continue
+		}
+		replacement, ok := activeReactions[reactions[i].ID]
+		if !ok {
+			reactions[i].Status = "resolved"
+			continue
+		}
+		if reactions[i].CreatedTurn > 0 {
+			replacement.CreatedTurn = reactions[i].CreatedTurn
+		}
+		reactions[i] = replacement
+		delete(activeReactions, replacement.ID)
+	}
+	for _, reaction := range activeReactions {
+		reactions = append(reactions, reaction)
+	}
+
+	storeStoryHooks(world, hooks)
+	storeWorldReactions(world, reactions)
+}
+
+func applyFailForwardToFronts(world *storage.WorldState, val interface{}, currentTurn int) []StateChange {
+	if world == nil {
+		return nil
+	}
+
+	fronts := loadFronts(world)
+	if len(fronts) == 0 {
+		return nil
+	}
+
+	var applied []StateChange
+	updated := false
+	for _, failMap := range toObjectMaps(val) {
+		title := strings.TrimSpace(stringValue(failMap["front_title"]))
+		if title == "" {
+			title = strings.TrimSpace(stringValue(failMap["front"]))
+		}
+		idx := findFrontIndex(fronts, strings.TrimSpace(stringValue(failMap["front_id"])), title)
+		if idx < 0 {
+			continue
+		}
+
+		advance := int(toFloat(failMap["front_advance"]))
+		if advance <= 0 {
+			advance = 1
+		}
+		fronts[idx].Progress += advance
+		if fronts[idx].Progress > fronts[idx].Segments {
+			fronts[idx].Progress = fronts[idx].Segments
+		}
+		fronts[idx].LastAdvancedTurn = currentTurn
+		if status := strings.TrimSpace(stringValue(failMap["front_status"])); status != "" {
+			fronts[idx].Status = status
+		}
+		applied = append(applied, StateChange{
+			Target:      "world",
+			Field:       fmt.Sprintf("front.%s", frontDisplayTitle(fronts[idx])),
+			New:         fronts[idx].Progress,
+			Description: fmt.Sprintf("Front advances: %s", frontDisplayTitle(fronts[idx])),
+		})
+
+		region := strings.TrimSpace(stringValue(failMap["pressure_region"]))
+		kind := strings.TrimSpace(stringValue(failMap["pressure_kind"]))
+		if region != "" && kind != "" {
+			level := int(toFloat(failMap["pressure_value"]))
+			if changeVal, ok := failMap["pressure_change"]; ok {
+				level = int(toFloat(changeVal))
+				for i := range fronts[idx].Pressures {
+					if strings.EqualFold(fronts[idx].Pressures[i].Region, region) && strings.EqualFold(fronts[idx].Pressures[i].Kind, kind) {
+						level = fronts[idx].Pressures[i].Level + int(toFloat(changeVal))
+						break
+					}
+				}
+			} else if level <= 0 {
+				level = 15
+			}
+			upsertFrontPressure(&fronts[idx], FrontPressure{
+				Region:      region,
+				Kind:        kind,
+				Level:       level,
+				Detail:      strings.TrimSpace(stringValue(failMap["pressure_detail"])),
+				UpdatedTurn: currentTurn,
+			})
+			applied = append(applied, StateChange{
+				Target:      "world",
+				Field:       fmt.Sprintf("front_pressure.%s.%s", region, kind),
+				New:         level,
+				Description: fmt.Sprintf("Pressure rises in %s", region),
+			})
+		}
+		updated = true
+	}
+
+	if updated {
+		storeFronts(world, fronts)
+		syncKnownFrontContinuity(world, currentTurn)
+	}
+
+	return applied
+}
+
 func findFrontIndex(fronts []Front, id, title string) int {
 	id = strings.TrimSpace(id)
 	title = strings.TrimSpace(title)

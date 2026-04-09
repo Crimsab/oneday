@@ -836,6 +836,9 @@ func ApplyStateChanges(
 			if updated {
 				storeWorldReactions(world, reactions)
 			}
+			if key == "fail_forward" {
+				applied = append(applied, applyFailForwardToFronts(world, val, currentTurn)...)
+			}
 
 		case "combat_start":
 			// AI signals combat should begin. Records the event; the TUI/narrator
@@ -1060,6 +1063,7 @@ func ApplyNarratorStateChanges(
 
 	settingModified := false
 	worldModified := false
+	frontsModified := false
 	currentTurn := 0
 	if world != nil {
 		currentTurn = world.CurrentTurn
@@ -1239,6 +1243,7 @@ func ApplyNarratorStateChanges(
 			if updated {
 				storeFronts(world, fronts)
 				worldModified = true
+				frontsModified = true
 			}
 
 		case "front_advance":
@@ -1266,6 +1271,7 @@ func ApplyNarratorStateChanges(
 			if updated {
 				storeFronts(world, fronts)
 				worldModified = true
+				frontsModified = true
 			}
 
 		case "front_reveal":
@@ -1288,6 +1294,7 @@ func ApplyNarratorStateChanges(
 			if updated {
 				storeFronts(world, fronts)
 				worldModified = true
+				frontsModified = true
 			}
 
 		case "front_stall":
@@ -1307,6 +1314,7 @@ func ApplyNarratorStateChanges(
 			if updated {
 				storeFronts(world, fronts)
 				worldModified = true
+				frontsModified = true
 			}
 
 		case "front_resolve":
@@ -1325,6 +1333,7 @@ func ApplyNarratorStateChanges(
 			if updated {
 				storeFronts(world, fronts)
 				worldModified = true
+				frontsModified = true
 			}
 
 		case "front_pressure":
@@ -1376,6 +1385,7 @@ func ApplyNarratorStateChanges(
 			if updated {
 				storeFronts(world, fronts)
 				worldModified = true
+				frontsModified = true
 			}
 
 		// --- NPC desire updates ---
@@ -1415,6 +1425,11 @@ func ApplyNarratorStateChanges(
 				_ = db.UpdateStorySetting(story.ID, story.SettingJSON)
 			}
 		}
+	}
+
+	if frontsModified {
+		syncKnownFrontContinuity(world, currentTurn)
+		worldModified = true
 	}
 
 	// Persist world state changes.

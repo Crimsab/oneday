@@ -145,6 +145,12 @@ func TestApplyNarratorStateChangesPersistsCanonicalFronts(t *testing.T) {
 	}, db, story, world, nil); err != nil {
 		t.Fatalf("ApplyNarratorStateChanges front_add: %v", err)
 	}
+	if hooks := activeStoryHooks(loadStoryHooks(world)); len(hooks) != 0 {
+		t.Fatalf("hidden front should not create visible hooks yet: %+v", hooks)
+	}
+	if reactions := visibleWorldReactions(loadWorldReactions(world)); len(reactions) != 0 {
+		t.Fatalf("hidden front should not create visible reactions yet: %+v", reactions)
+	}
 
 	world.CurrentTurn = 7
 	if err := ApplyNarratorStateChanges(context.Background(), map[string]interface{}{
@@ -212,6 +218,14 @@ func TestApplyNarratorStateChangesPersistsCanonicalFronts(t *testing.T) {
 	if front.Pressures[0].Region != "Bell Quarter" || front.Pressures[0].Level != 35 {
 		t.Fatalf("front pressure = %+v, want Bell Quarter @ 35", front.Pressures[0])
 	}
+	hooks := activeStoryHooks(loadStoryHooks(storedWorld))
+	if len(hooks) != 1 || hooks[0].Title != "Whispers Around the Bell Tower" {
+		t.Fatalf("front hooks = %+v, want visible front hook", hooks)
+	}
+	reactions := visibleWorldReactions(loadWorldReactions(storedWorld))
+	if len(reactions) != 1 || !strings.Contains(reactions[0].Title, "Bell Quarter grows watchful") {
+		t.Fatalf("front reactions = %+v, want derived front pressure reaction", reactions)
+	}
 }
 
 func TestFormatStoryTrackerViewShowsKnownFrontsOnly(t *testing.T) {
@@ -258,5 +272,66 @@ func TestFormatStoryTrackerViewShowsKnownFrontsOnly(t *testing.T) {
 	}
 	if strings.Contains(view, "They will own the city courts by moonrise") {
 		t.Fatalf("tracker view leaked hidden front stakes:\n%s", view)
+	}
+}
+
+func TestApplyStateChangesFailForwardAdvancesReferencedFront(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+	world.FrontsJSON = `[
+		{
+			"id":"front-known",
+			"faction":"Bell Choir",
+			"title":"The Silent Bell Choir is seeding sleepers across the district",
+			"public_title":"Whispers Around the Bell Tower",
+			"public_stakes":"Something ugly is taking hold around the tower.",
+			"visibility":"known",
+			"segments":4,
+			"progress":1
+		}
+	]`
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"fail_forward": map[string]interface{}{
+			"title":           "The checkpoint captain doubles inspections",
+			"detail":          "You slip away, but the district is now on edge.",
+			"front_id":        "front-known",
+			"front_advance":   1,
+			"pressure_region": "Bell Quarter",
+			"pressure_kind":   "suspicion",
+			"pressure_change": 20,
+		},
+	}, char, world, nil, "test-story-id", 4)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+
+	foundFrontAdvance := false
+	for _, change := range applied {
+		if strings.Contains(change.Description, "Front advances: Whispers Around the Bell Tower") {
+			foundFrontAdvance = true
+			break
+		}
+	}
+	if !foundFrontAdvance {
+		t.Fatalf("applied changes = %+v, want front advancement entry", applied)
+	}
+
+	fronts := loadFronts(world)
+	if len(fronts) != 1 || fronts[0].Progress != 2 {
+		t.Fatalf("fronts = %+v, want progress advanced to 2", fronts)
+	}
+	if len(fronts[0].Pressures) != 1 || fronts[0].Pressures[0].Level != 20 {
+		t.Fatalf("front pressure = %+v, want Bell Quarter suspicion 20", fronts[0].Pressures)
+	}
+
+	hooks := activeStoryHooks(loadStoryHooks(world))
+	if len(hooks) != 1 || hooks[0].Title != "Whispers Around the Bell Tower" {
+		t.Fatalf("hooks = %+v, want synced front hook", hooks)
+	}
+
+	reactions := visibleWorldReactions(loadWorldReactions(world))
+	if len(reactions) != 2 {
+		t.Fatalf("reactions = %+v, want fail-forward reaction plus derived front pressure reaction", reactions)
 	}
 }
