@@ -85,7 +85,16 @@ func RecordNemesisEvent(npc *storage.NPC, event NemesisEvent) *NemesisProfile {
 		}
 	}
 	if profile.Status == NemesisStatusResolved {
-		return profile
+		if !qualifiesForNemesisTracking(event) {
+			return profile
+		}
+		profile.Status = NemesisStatusRival
+		if event.Kind == "betrayal" || event.Kind == "major_wound" || event.Impact >= 3 {
+			profile.Status = NemesisStatusActive
+		}
+		if posture := updateNemesisThreatPosture("", event); posture != "" {
+			profile.ThreatPosture = posture
+		}
 	}
 
 	profile.RivalryScore += maxInt(1, event.Impact)

@@ -137,6 +137,9 @@ Background/unnamed characters (generic guards, unnamed shopkeepers) do NOT need 
 - "npc_relationship": {"name": "NPC Name", "trust": {"change": 10}, "fear": {"change": -5}, "debt": {"change": 1}, "respect": {"change": 8}, "intimacy": {"change": 3}}
   Use these richer axes when the relationship meaningfully changes beyond a flat mood shift.
   Each axis accepts either {"change": N} or {"value": N}. Range: -100 to +100.
+- "nemesis_resolution": {"name": "NPC Name", "outcome": "capture|truce|alliance|exile|succession|death|humiliation", "detail": "What the resolution means now", "front_id": "optional affected front", "successor": "optional heir or replacement"}
+  Use ONLY for an already-established rival or nemesis whose arc is clearly transforming or closing.
+  Do not use this on a first meeting, and do not reduce every rivalry to death. Prefer capture, truce, alliance, exile, humiliation, or succession when the scene supports it.
 
 ### Dynamic World Updates
 As the story progresses, update the living world through state_changes:

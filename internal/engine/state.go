@@ -621,6 +621,19 @@ func ApplyStateChanges(
 				}
 			}
 
+		case "nemesis_resolution":
+			if db == nil {
+				continue
+			}
+			for _, resolutionMap := range toObjectMaps(val) {
+				spec := parseNemesisResolutionSpec(resolutionMap)
+				resolved, err := ApplyNemesisResolution(db, storyID, world, currentTurn, spec)
+				if err != nil {
+					continue
+				}
+				applied = append(applied, resolved...)
+			}
+
 		case "hook_add":
 			hooks := loadStoryHooks(world)
 			updated := false
