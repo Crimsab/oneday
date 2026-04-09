@@ -3,6 +3,9 @@ package engine
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/crimsab/oneday/internal/storage"
 )
 
 func TestApplyStateChangesProjectUpdateAdvancesWithCostAndPressure(t *testing.T) {
@@ -106,5 +109,122 @@ func TestApplyStateChangesProjectUpdateSetbackCreatesFailForward(t *testing.T) {
 	reactions := visibleWorldReactions(loadWorldReactions(world))
 	if len(reactions) != 1 || !strings.Contains(reactions[0].Title, "Lyanna calls out your sloppy guard") {
 		t.Fatalf("reactions = %+v, want fail-forward reaction", reactions)
+	}
+}
+
+func TestApplyStateChangesProjectUpdateCompleteAppliesDurableRewards(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+
+	story := &storage.Story{
+		ID:        "story-project-complete",
+		Name:      "Project Completion Story",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+
+	npc := &storage.NPC{
+		ID:                 "npc-lyanna-project",
+		StoryID:            story.ID,
+		Name:               "Lyanna",
+		Role:               "duelist",
+		RelationshipJSON:   `{"trust":2,"respect":1}`,
+		PrivateThoughts:    `[]`,
+		NotesOnProtagonist: `[]`,
+		NemesisJSON:        `{}`,
+		IsAlive:            true,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	}
+	if err := db.CreateNPC(npc); err != nil {
+		t.Fatalf("CreateNPC: %v", err)
+	}
+
+	world := newTestWorld()
+	world.StoryID = story.ID
+	world.UpdatedAt = now
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"project_update": map[string]interface{}{
+			"action":   "complete",
+			"title":    "Train with Lyanna",
+			"kind":     "relationship",
+			"segments": 4,
+			"summary":  "Your drills finally stop looking clumsy.",
+			"outcome":  "Lyanna begins treating you like a real student.",
+			"owner":    "Lyanna",
+			"links": []interface{}{
+				map[string]interface{}{"kind": "npc", "label": "Lyanna"},
+			},
+			"rewards": []interface{}{
+				map[string]interface{}{"kind": "skill", "label": "Blade Forms"},
+				map[string]interface{}{"kind": "trait", "label": "Patient Footwork"},
+				map[string]interface{}{"kind": "title", "label": "Lyanna's Proven Student"},
+				map[string]interface{}{"kind": "item", "label": "Weighted Practice Blade", "detail": "A balanced sparring weapon Lyanna lets you keep."},
+				map[string]interface{}{"kind": "relationship", "label": "Lyanna", "detail": "She stops treating you like dead weight."},
+			},
+		},
+	}, char, world, db, story.ID, 10)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+	if len(applied) == 0 {
+		t.Fatal("expected applied changes for completed project")
+	}
+
+	stats := parseStats(t, char)
+	skills := toSkillsMap(stats["skills"])
+	if _, ok := skills["Blade Forms"]; !ok {
+		t.Fatalf("skills = %+v, want Blade Forms unlocked", skills)
+	}
+	if !strings.Contains(char.TraitsJSON, "Patient Footwork") {
+		t.Fatalf("traits_json = %s, want Patient Footwork", char.TraitsJSON)
+	}
+	if !strings.Contains(char.StatsJSON, "Lyanna's Proven Student") {
+		t.Fatalf("stats_json = %s, want title reward persisted", char.StatsJSON)
+	}
+	if !strings.Contains(char.InventoryJSON, "Weighted Practice Blade") {
+		t.Fatalf("inventory_json = %s, want item reward persisted", char.InventoryJSON)
+	}
+
+	board := loadProjectBoard(world)
+	if len(board.Projects) != 1 || !strings.EqualFold(board.Projects[0].Status, "completed") {
+		t.Fatalf("project board = %+v, want one completed project", board.Projects)
+	}
+	if board.Projects[0].Outcome != "Lyanna begins treating you like a real student." {
+		t.Fatalf("project outcome = %q, want durable outcome persisted", board.Projects[0].Outcome)
+	}
+
+	updatedNPC, err := db.GetNPCByName(story.ID, "Lyanna")
+	if err != nil || updatedNPC == nil {
+		t.Fatalf("GetNPCByName: %v, npc = %+v", err, updatedNPC)
+	}
+	axes := loadRelationshipAxes(updatedNPC)
+	if axes.Trust <= 2 || axes.Respect <= 1 {
+		t.Fatalf("relationship axes = %+v, want project completion boost", axes)
+	}
+	if updatedNPC.Disposition <= 0 {
+		t.Fatalf("disposition = %d, want positive project completion bump", updatedNPC.Disposition)
+	}
+	if !strings.Contains(updatedNPC.NotesOnProtagonist, "dead weight") {
+		t.Fatalf("notes_on_protagonist = %s, want durable project note", updatedNPC.NotesOnProtagonist)
+	}
+
+	reactions := visibleWorldReactions(loadWorldReactions(world))
+	foundCompletionEcho := false
+	for _, reaction := range reactions {
+		if strings.Contains(reaction.Title, "Project completed: Train with Lyanna") {
+			foundCompletionEcho = true
+			break
+		}
+	}
+	if !foundCompletionEcho {
+		t.Fatalf("reactions = %+v, want completion echo in world reactions", reactions)
 	}
 }

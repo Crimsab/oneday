@@ -218,6 +218,16 @@ func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs 
 			sb.WriteString(fmt.Sprintf("- Investigations: %s\n", strings.Join(parts, " | ")))
 		}
 	}
+	if projectBoard := loadProjectBoard(world); len(projectBoard.Projects) > 0 {
+		if active, completed := buildProjectStateSummaryLines(projectBoard); len(active) > 0 || len(completed) > 0 {
+			if len(active) > 0 {
+				sb.WriteString(fmt.Sprintf("- Projects: %s\n", strings.Join(active, " | ")))
+			}
+			if len(completed) > 0 {
+				sb.WriteString(fmt.Sprintf("- Completed Projects: %s\n", strings.Join(completed, " | ")))
+			}
+		}
+	}
 	if fronts := knownFronts(loadFronts(world)); len(fronts) > 0 {
 		parts := make([]string, 0, len(fronts))
 		for _, front := range fronts {

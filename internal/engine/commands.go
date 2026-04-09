@@ -40,6 +40,8 @@ var CommandRegistry = map[string]string{
 	"codex":          "codex",
 	"investigations": "investigations",
 	"investigation":  "investigations",
+	"projects":       "projects",
+	"project":        "projects",
 	"characters":     "characters",
 }
 
