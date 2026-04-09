@@ -36,3 +36,23 @@ func TestCollectKnownEntitiesUsesResponseLocationWithoutNarratorState(t *testing
 		t.Fatalf("unexpected entity: %+v", entities[0])
 	}
 }
+
+func TestRenderTurnDeltaMarkdownAddsSystemNavigationHints(t *testing.T) {
+	delta := &engine.TurnDelta{
+		Items: []engine.TurnDeltaItem{
+			{Kind: "front", Label: "Front advances: Whispers Around the Bell Tower"},
+			{Kind: "project", Label: "Project completed: Train with Lyanna"},
+			{Kind: "investigation", Label: "Clue added: Missing seal"},
+		},
+	}
+
+	rendered := renderTurnDeltaMarkdown(delta)
+	for _, want := range []string{"`/fronts`", "`/projects`", "`/investigations`", "`/codex`"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("turn delta markdown missing %q:\n%s", want, rendered)
+		}
+	}
+	if callout := turnDeltaStatusCallout(delta); !strings.Contains(callout, "Press F, P, or I") {
+		t.Fatalf("status callout = %q, want combined systems hint", callout)
+	}
+}

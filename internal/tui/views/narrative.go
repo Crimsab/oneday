@@ -602,6 +602,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 
 		if m.frontTracker != nil && m.frontTracker.Visible() {
+			if next, cmd, handled := m.handleActiveSystemShortcut(msg); handled {
+				return next, cmd
+			}
 			updated, cmd := m.frontTracker.Update(msg)
 			if !updated.Visible() {
 				m.frontTracker = nil
@@ -613,6 +616,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 
 		if m.investigationBrowser != nil && m.investigationBrowser.Visible() {
+			if next, cmd, handled := m.handleActiveSystemShortcut(msg); handled {
+				return next, cmd
+			}
 			updated, cmd := m.investigationBrowser.Update(msg)
 			if !updated.Visible() {
 				m.investigationBrowser = nil
@@ -624,6 +630,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 
 		if m.projectBrowser != nil && m.projectBrowser.Visible() {
+			if next, cmd, handled := m.handleActiveSystemShortcut(msg); handled {
+				return next, cmd
+			}
 			updated, cmd := m.projectBrowser.Update(msg)
 			if !updated.Visible() {
 				m.projectBrowser = nil
@@ -635,6 +644,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 
 		if m.codexBrowser != nil && m.codexBrowser.Visible() {
+			if next, cmd, handled := m.handleActiveSystemShortcut(msg); handled {
+				return next, cmd
+			}
 			updated, cmd := m.codexBrowser.Update(msg)
 			if !updated.Visible() {
 				m.codexBrowser = nil
@@ -1087,6 +1099,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 Keyboard Shortcuts:
   s / F5              Quick save snapshot
   h                   Open searchable history browser
+  P / I / F / C       Jump between projects, investigations, fronts, and codex
   Up / Down           Browse free-input history (single-line input)
   Mouse wheel         Scroll the current scene
   Ctrl+Space          Close talk mode instantly
@@ -1464,6 +1477,71 @@ func (m NarrativeModel) openCodexBrowser(title, initialCategory, initialEntryID 
 	return m, nil
 }
 
+func (m NarrativeModel) handleActiveSystemShortcut(msg tea.KeyMsg) (NarrativeModel, tea.Cmd, bool) {
+	key := strings.ToLower(strings.TrimSpace(msg.String()))
+	switch key {
+	case "p":
+		if m.projectBrowser != nil && m.projectBrowser.Visible() {
+			return m, nil, true
+		}
+		return m.openActiveSystemWorkspace("projects", ""), nil, true
+	case "i":
+		if m.investigationBrowser != nil && m.investigationBrowser.Visible() {
+			return m, nil, true
+		}
+		return m.openActiveSystemWorkspace("investigations", ""), nil, true
+	case "f":
+		if m.frontTracker != nil && m.frontTracker.Visible() {
+			return m, nil, true
+		}
+		return m.openActiveSystemWorkspace("fronts", ""), nil, true
+	case "c":
+		if m.codexBrowser != nil && m.codexBrowser.Visible() {
+			return m, nil, true
+		}
+		return m.openActiveSystemWorkspace("codex", m.activeSystemCodexCategory()), nil, true
+	default:
+		return m, nil, false
+	}
+}
+
+func (m NarrativeModel) activeSystemCodexCategory() string {
+	switch {
+	case m.projectBrowser != nil && m.projectBrowser.Visible():
+		return "projects"
+	case m.investigationBrowser != nil && m.investigationBrowser.Visible():
+		return "investigations"
+	case m.frontTracker != nil && m.frontTracker.Visible():
+		return "fronts"
+	default:
+		return ""
+	}
+}
+
+func (m NarrativeModel) openActiveSystemWorkspace(target, codexCategory string) NarrativeModel {
+	m.frontTracker = nil
+	m.investigationBrowser = nil
+	m.projectBrowser = nil
+	m.codexBrowser = nil
+
+	switch target {
+	case "projects":
+		updated, _ := m.showProjects()
+		return updated
+	case "investigations":
+		updated, _ := m.showInvestigations()
+		return updated
+	case "fronts":
+		updated, _ := m.showHooks()
+		return updated
+	case "codex":
+		updated, _ := m.openCodexBrowser("Codex", codexCategory, "")
+		return updated
+	default:
+		return m
+	}
+}
+
 // doSave triggers a named manual save.
 func (m NarrativeModel) doSave(args []string) (NarrativeModel, tea.Cmd) {
 	saveName := "Manual Save"
@@ -1577,6 +1655,9 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 	rendered := m.renderNarrativeResponse(nr)
 	if strings.TrimSpace(rendered) == "" {
 		rendered = components.RenderMarkdown(nr.Narrative)
+	}
+	if callout := turnDeltaStatusCallout(nr.TurnDelta); callout != "" {
+		m.SetStatusMsg(callout)
 	}
 	m.streamRaw.Reset()
 	choiceItems, choiceHelp := m.buildChoicePresentation(nr.Choices)

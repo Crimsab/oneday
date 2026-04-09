@@ -204,7 +204,7 @@ func (m ProjectBrowserModel) View() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter open · Esc close"))
+	lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter open · I investigations · F fronts · C codex · Esc close"))
 
 	content := strings.Join(lines, "\n")
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Height(boxHeight).Render(content))

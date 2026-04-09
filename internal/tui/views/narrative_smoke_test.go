@@ -147,6 +147,62 @@ func TestNarrativeQuickSaveHotkeyCreatesSnapshot(t *testing.T) {
 	}
 }
 
+func TestNarrativeActiveSystemShortcutsSwitchBetweenWorkspaces(t *testing.T) {
+	t.Parallel()
+
+	model := newSystemSmokeNarrativeModel(t)
+	model.SetSize(120, 40)
+	model.inputFocus = true
+	model.input.Focus()
+	model.input.SetValue("/hooks")
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatalf("opening /hooks returned unexpected cmd")
+	}
+	if updated.frontTracker == nil || !updated.frontTracker.Visible() {
+		t.Fatal("front tracker not visible after /hooks")
+	}
+
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	if cmd != nil {
+		t.Fatalf("switch to projects returned unexpected cmd")
+	}
+	if updated.projectBrowser == nil || !updated.projectBrowser.Visible() {
+		t.Fatal("project browser not visible after P shortcut")
+	}
+	if updated.frontTracker != nil && updated.frontTracker.Visible() {
+		t.Fatal("front tracker should close when switching to projects")
+	}
+
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	if cmd != nil {
+		t.Fatalf("switch to investigations returned unexpected cmd")
+	}
+	if updated.investigationBrowser == nil || !updated.investigationBrowser.Visible() {
+		t.Fatal("investigation browser not visible after I shortcut")
+	}
+
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	if cmd != nil {
+		t.Fatalf("switch to codex returned unexpected cmd")
+	}
+	if updated.codexBrowser == nil || !updated.codexBrowser.Visible() {
+		t.Fatal("codex browser not visible after C shortcut")
+	}
+	if category := updated.codexBrowser.currentCategory(); category != "investigations" {
+		t.Fatalf("codex category = %q, want investigations", category)
+	}
+
+	updated, cmd = updated.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'f'}})
+	if cmd != nil {
+		t.Fatalf("switch back to fronts returned unexpected cmd")
+	}
+	if updated.frontTracker == nil || !updated.frontTracker.Visible() {
+		t.Fatal("front tracker not visible after F shortcut")
+	}
+}
+
 func newSystemSmokeNarrativeModel(t *testing.T) NarrativeModel {
 	t.Helper()
 
