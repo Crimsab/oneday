@@ -291,6 +291,26 @@ Plans:
 - [x] Plan 11.2: Polish live narrative interaction — scroll/input separation, mouse-wheel behavior, stronger entity/dialogue/callout rendering, inspect/help improvements, and visible save/status feedback
 - [x] Plan 11.3: Add searchable interaction history and final runtime polish — history command/overlay, narrow-footer layout, help/discoverability, and verification updates
 
+### Phase 12: State rollback integrity and narrative persistence
+
+**Goal:** Make save/load, canonical history, and long-term memory deterministic again so a resumed story never leaks future knowledge and every system-side event that should shape continuity is actually persisted.
+**Requirements**: TBD
+**Depends on:** Phase 11
+**Plans:** 3 plans
+
+### Success Criteria
+
+1. Loading an older save restores a coherent snapshot of the run, including canonical chat/history inputs used for resume and long-term memory, without replaying future turns or future state.
+2. `/narrator` interactions and combat/crafting follow-up summaries are persisted in the canonical log and survive resume, history, chapter summaries, and RAG retrieval.
+3. The command surface is internally consistent: documented commands such as `/craft` are actually parseable and routed.
+4. RAG embedding setup is explicit and provider-agnostic enough that the feature does not silently disappear just because LiteLLM is disabled.
+5. Autosave cleanup removes superseded snapshot files, and regression tests cover rollback, narrator persistence, and combat-summary persistence.
+
+Plans:
+- [x] Plan 12.1: Build true rollback snapshots and restore canonical story/session state
+- [x] Plan 12.2: Persist narrator-meta and combat-summary events in canonical history
+- [x] Plan 12.3: Fix `/craft` routing, autosave hygiene, embedding-provider fallback, and verification
+
 ---
 
 ## Requirements Coverage
