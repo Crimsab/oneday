@@ -596,6 +596,7 @@ func (n *Narrator) finalizeTurn(
 			ASCIIArt:          narrative.ASCIIArt,
 			OpenHooks:         narrative.OpenHooks,
 			WorldReactions:    narrative.WorldReactions,
+			SocialDuel:        narrative.SocialDuel,
 			StateChanges:      narrative.StateChanges,
 		},
 		AIModel:    resp.Model,
@@ -822,6 +823,7 @@ func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation s
 		nr.ASCIIArt = normalizeASCIIArt(meta.Output.ASCIIArt)
 		nr.OpenHooks = activeStoryHooks(meta.Output.OpenHooks)
 		nr.WorldReactions = visibleWorldReactions(meta.Output.WorldReactions)
+		nr.SocialDuel = normalizeSocialDuelCue(meta.Output.SocialDuel)
 	} else {
 		nr.Mood = firstNonEmpty(meta.Mood, nr.Mood)
 		nr.Location = firstNonEmpty(meta.Location, nr.Location)
@@ -845,6 +847,7 @@ func normalizeNarrativeResponse(nr *NarrativeResponse) {
 	nr.ASCIIArt = normalizeASCIIArt(nr.ASCIIArt)
 	nr.OpenHooks = activeStoryHooks(nr.OpenHooks)
 	nr.WorldReactions = visibleWorldReactions(nr.WorldReactions)
+	nr.SocialDuel = normalizeSocialDuelCue(nr.SocialDuel)
 }
 
 func normalizeDialogueBlocks(blocks []DialogueBlock) []DialogueBlock {
@@ -1067,6 +1070,7 @@ func (n *Narrator) persistAmbientASCII(turn int, base *NarrativeResponse, art st
 		ASCIIArt:          art,
 		OpenHooks:         base.OpenHooks,
 		WorldReactions:    base.WorldReactions,
+		SocialDuel:        base.SocialDuel,
 		StateChanges:      base.StateChanges,
 	}
 
