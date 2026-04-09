@@ -257,6 +257,9 @@ func buildProtagonistCodexEntry(story *storage.Story, char *storage.Character, w
 		}
 		entry.Sections = append(entry.Sections, CodexSection{Title: "Known People", Lines: lines})
 	}
+	if nemesisLines := buildProtagonistNemesisLines(npcs); len(nemesisLines) > 0 {
+		entry.Sections = append(entry.Sections, CodexSection{Title: "Nemeses", Lines: nemesisLines})
+	}
 
 	if len(fronts) > 0 {
 		lines := make([]string, 0, len(fronts))
@@ -291,6 +294,9 @@ func buildNPCCodexEntry(npc *storage.NPC) CodexEntry {
 			Title: "Profile",
 			Lines: splitBulletLines(summary),
 		})
+	}
+	if section := buildNPCNemesisCodexSection(npc); len(section.Lines) > 0 {
+		entry.Sections = append(entry.Sections, section)
 	}
 
 	if npc.LastSeenTurn > 0 {
@@ -563,6 +569,7 @@ func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, 
 	for id, entry := range index.Entries {
 		switch entry.Category {
 		case "people":
+			profile := findNPCNemesisProfileByName(npcs, entry.Title)
 			for _, hook := range hooks {
 				if entry.Title != "" && strings.EqualFold(hook.NPCName, entry.Title) {
 					entry.Related = append(entry.Related, CodexLink{
@@ -573,6 +580,35 @@ func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, 
 						entry.Related = append(entry.Related, CodexLink{
 							EntryID: codexMysteryEntryID(hook.ID),
 							Label:   hook.Title,
+						})
+					}
+				}
+			}
+			for _, reaction := range reactions {
+				if codexReactionMentionsNPC(reaction, entry.Title) {
+					entry.Related = append(entry.Related, CodexLink{
+						EntryID: codexThreadEntryID("reaction", reaction.ID),
+						Label:   reaction.Title,
+					})
+				}
+			}
+			if profile != nil {
+				for _, front := range fronts {
+					if nemesisProfileTouchesFront(profile, front) {
+						entry.Related = append(entry.Related, CodexLink{
+							EntryID: codexFrontEntryID(front.ID),
+							Label:   frontDisplayTitle(front),
+						})
+					}
+				}
+				for _, linked := range index.Entries {
+					if linked.Category != "places" {
+						continue
+					}
+					if nemesisProfileTouchesLocation(profile, linked.Title) {
+						entry.Related = append(entry.Related, CodexLink{
+							EntryID: linked.ID,
+							Label:   linked.Title,
 						})
 					}
 				}
@@ -597,6 +633,16 @@ func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, 
 						Label:   frontDisplayTitle(front),
 					})
 				}
+			}
+			for _, npc := range npcs {
+				profile := loadNemesisProfile(&npc)
+				if profile == nil || !nemesisProfileTouchesLocation(profile, entry.Title) {
+					continue
+				}
+				entry.Related = append(entry.Related, CodexLink{
+					EntryID: codexNPCEntryID(npc.Name),
+					Label:   npc.Name,
+				})
 			}
 		case "factions":
 			for _, front := range fronts {
@@ -627,6 +673,16 @@ func enrichCodexLinks(index *CodexIndex, npcs []storage.NPC, hooks []StoryHook, 
 							Label:   pressure.Region + " pressure",
 						})
 					}
+				}
+				for _, npc := range npcs {
+					profile := loadNemesisProfile(&npc)
+					if profile == nil || !nemesisProfileTouchesFront(profile, front) {
+						continue
+					}
+					entry.Related = append(entry.Related, CodexLink{
+						EntryID: codexNPCEntryID(npc.Name),
+						Label:   npc.Name,
+					})
 				}
 			}
 		}
@@ -746,6 +802,171 @@ func formatStringSliceLines(items []string) []string {
 		}
 	}
 	return lines
+}
+
+func buildProtagonistNemesisLines(npcs []storage.NPC) []string {
+	lines := []string{}
+	for _, npc := range npcs {
+		profile := loadNemesisProfile(&npc)
+		if profile == nil || profile.Status == NemesisStatusResolved {
+			continue
+		}
+		line := fmt.Sprintf("%s — %s", npc.Name, nemesisStatusLabel(profile.Status))
+		if profile.EscalationTier > 0 {
+			line += fmt.Sprintf(" · Tier %d", profile.EscalationTier)
+		}
+		if agenda := strings.TrimSpace(nemesisAgendaHint(profile.ThreatPosture)); agenda != "" {
+			line += " · " + agenda
+		}
+		if npc.LastSeenTurn > 0 {
+			line += fmt.Sprintf(" · Last seen turn %d", npc.LastSeenTurn)
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func buildNPCNemesisCodexSection(npc *storage.NPC) CodexSection {
+	profile := loadNemesisProfile(npc)
+	if profile == nil {
+		return CodexSection{}
+	}
+
+	lines := []string{
+		"Status: " + nemesisStatusLabel(profile.Status),
+		fmt.Sprintf("Escalation: Tier %d", maxInt(1, profile.EscalationTier)),
+	}
+	if agenda := strings.TrimSpace(nemesisAgendaHint(profile.ThreatPosture)); agenda != "" {
+		lines = append(lines, "Suspected agenda: "+agenda)
+	}
+	if outcome := strings.TrimSpace(profile.LastOutcome); outcome != "" {
+		lines = append(lines, "Last outcome: "+outcome)
+	}
+	if len(profile.VisibleScars) > 0 {
+		lines = append(lines, "Visible scars: "+strings.Join(profile.VisibleScars, "; "))
+	}
+
+	for _, trace := range nemesisEscalationTrace(profile.EventHistory) {
+		lines = append(lines, trace)
+	}
+
+	title := "Rivalry Trace"
+	if profile.Status == NemesisStatusActive {
+		title = "Nemesis Trail"
+	}
+	return CodexSection{Title: title, Lines: compactLines(lines)}
+}
+
+func findNPCNemesisProfileByName(npcs []storage.NPC, name string) *NemesisProfile {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	for i := range npcs {
+		if strings.EqualFold(strings.TrimSpace(npcs[i].Name), name) {
+			return loadNemesisProfile(&npcs[i])
+		}
+	}
+	return nil
+}
+
+func codexReactionMentionsNPC(reaction WorldReaction, npcName string) bool {
+	npcName = strings.ToLower(strings.TrimSpace(npcName))
+	if npcName == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(reaction.Title), npcName) ||
+		strings.Contains(strings.ToLower(reaction.Detail), npcName)
+}
+
+func nemesisStatusLabel(status NemesisStatus) string {
+	switch status {
+	case NemesisStatusActive:
+		return "Active nemesis"
+	case NemesisStatusResolved:
+		return "Resolved rival"
+	default:
+		return "Recurring rival"
+	}
+}
+
+func nemesisAgendaHint(posture string) string {
+	switch strings.ToLower(strings.TrimSpace(posture)) {
+	case "hunting", "vengeful":
+		return "Direct revenge looks likely."
+	case "political":
+		return "Pressure through allies, rumor, or institutions seems likely."
+	case "obsessive":
+		return "They keep circling the same grievance."
+	case "watching":
+		return "They have not dropped the grudge."
+	default:
+		return ""
+	}
+}
+
+func nemesisEscalationTrace(events []NemesisEvent) []string {
+	if len(events) == 0 {
+		return nil
+	}
+	start := maxInt(0, len(events)-3)
+	lines := make([]string, 0, len(events)-start)
+	for _, event := range events[start:] {
+		label := strings.Title(strings.ReplaceAll(strings.TrimSpace(event.Kind), "_", " "))
+		line := label
+		if event.Turn > 0 {
+			line = fmt.Sprintf("Turn %d: %s", event.Turn, label)
+		}
+		if detail := strings.TrimSpace(event.Detail); detail != "" {
+			line += " — " + detail
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+func nemesisProfileTouchesLocation(profile *NemesisProfile, location string) bool {
+	location = strings.ToLower(strings.TrimSpace(location))
+	if profile == nil || location == "" {
+		return false
+	}
+	return strings.Contains(nemesisProfileFootprint(profile), location)
+}
+
+func nemesisProfileTouchesFront(profile *NemesisProfile, front Front) bool {
+	if profile == nil {
+		return false
+	}
+	footprint := nemesisProfileFootprint(profile)
+	if footprint == "" {
+		return false
+	}
+	terms := []string{
+		frontDisplayTitle(front),
+		strings.TrimSpace(front.Faction),
+	}
+	for _, pressure := range normalizeFrontPressures(front.Pressures) {
+		terms = append(terms, pressure.Region)
+	}
+	for _, term := range terms {
+		term = strings.ToLower(strings.TrimSpace(term))
+		if term != "" && strings.Contains(footprint, term) {
+			return true
+		}
+	}
+	return false
+}
+
+func nemesisProfileFootprint(profile *NemesisProfile) string {
+	if profile == nil {
+		return ""
+	}
+	parts := []string{profile.LastOutcome}
+	parts = append(parts, profile.VisibleScars...)
+	for _, event := range profile.EventHistory {
+		parts = append(parts, event.Detail, event.Outcome)
+	}
+	return strings.ToLower(strings.Join(parts, " | "))
 }
 
 func formatSkillsLines(char *storage.Character, stats map[string]interface{}) []string {
