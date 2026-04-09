@@ -1,8 +1,9 @@
 package engine
 
 import (
-	"bufio"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -66,6 +67,25 @@ type GameSession struct {
 	turn        int
 }
 
+type mirrorSyncError struct {
+	path string
+	err  error
+}
+
+func (e *mirrorSyncError) Error() string {
+	return fmt.Sprintf("writing jsonl mirror %s: %v", e.path, e.err)
+}
+
+func (e *mirrorSyncError) Unwrap() error {
+	return e.err
+}
+
+// IsMirrorSyncError reports whether err is a non-fatal JSONL mirror sync failure.
+func IsMirrorSyncError(err error) bool {
+	var target *mirrorSyncError
+	return errors.As(err, &target)
+}
+
 // NewGameSession creates or resumes a session.
 // If an active session exists in DB, it resumes it. Otherwise creates a new one.
 func NewGameSession(db *storage.DB, storyID, dataDir string) (*GameSession, error) {
@@ -104,10 +124,9 @@ func NewGameSession(db *storage.DB, storyID, dataDir string) (*GameSession, erro
 		return nil, fmt.Errorf("opening jsonl file: %w", err)
 	}
 
-	// Count existing lines to restore turn counter for resumed sessions.
-	initialTurn, err := countJSONLLines(jsonlPath)
+	// Restore the turn counter from canonical DB state, not from the JSONL mirror.
+	initialTurn, err := db.GetStoryTurnCursor(storyID)
 	if err != nil {
-		// Non-fatal: start from 0 if we can't read.
 		initialTurn = 0
 	}
 
@@ -175,11 +194,13 @@ func (gs *GameSession) CloseSubSession(subSessionID string) error {
 // The entry's Turn field is set automatically from the internal counter.
 func (gs *GameSession) AppendTurn(db *storage.DB, entry ChatEntry) error {
 	entry.Turn = gs.turn
-	if err := gs.appendEntry(db, entry); err != nil {
+	committed, err := gs.appendEntry(db, entry)
+	if committed {
+		gs.turn++
+	}
+	if err != nil {
 		return err
 	}
-
-	gs.turn++
 	return nil
 }
 
@@ -190,7 +211,35 @@ func (gs *GameSession) AppendHistoryEntry(db *storage.DB, entry ChatEntry) error
 	if entry.Turn < 0 {
 		entry.Turn = gs.turn
 	}
-	return gs.appendEntry(db, entry)
+	_, err := gs.appendEntry(db, entry)
+	return err
+}
+
+// CommitTurn persists the canonical turn state in one DB transaction and then
+// mirrors the result to JSONL. The world must already contain the next turn
+// number that should become canonical on success.
+func (gs *GameSession) CommitTurn(db *storage.DB, char *storage.Character, world *storage.WorldState, entry ChatEntry) error {
+	if db == nil {
+		return fmt.Errorf("committing turn: db is nil")
+	}
+	if char == nil {
+		return fmt.Errorf("committing turn: character is nil")
+	}
+	if world == nil {
+		return fmt.Errorf("committing turn: world is nil")
+	}
+
+	entry.Turn = gs.turn
+	expectedNextTurn := entry.Turn + 1
+	if world.CurrentTurn != expectedNextTurn {
+		return fmt.Errorf("committing turn %d: world current turn %d does not match expected next turn %d", entry.Turn, world.CurrentTurn, expectedNextTurn)
+	}
+
+	committed, err := gs.commitTurn(db, char, world, entry)
+	if committed {
+		gs.turn = expectedNextTurn
+	}
+	return err
 }
 
 // Close flushes and closes the JSONL file, all sub-session files, and marks the session as ended in DB.
@@ -238,24 +287,54 @@ func (gs *GameSession) Turn() int {
 // SetTurn overrides the internal turn counter. Used when resuming a story to
 // align the session counter with the persisted world.CurrentTurn from the DB.
 func (gs *GameSession) SetTurn(turn int) {
-	if turn > 0 {
+	if turn >= 0 {
 		gs.turn = turn
 	}
 }
 
-func (gs *GameSession) appendEntry(db *storage.DB, entry ChatEntry) error {
+func (gs *GameSession) appendEntry(db *storage.DB, entry ChatEntry) (bool, error) {
 	if entry.Timestamp.IsZero() {
 		entry.Timestamp = time.Now()
 	}
 
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return fmt.Errorf("marshaling chat entry: %w", err)
-	}
-	if _, err := gs.jsonlFile.Write(append(data, '\n')); err != nil {
-		return fmt.Errorf("writing to jsonl: %w", err)
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		return gs.appendEntryToDB(tx, db, entry)
+	}); err != nil {
+		return false, err
 	}
 
+	if err := gs.writeJSONLEntry(entry); err != nil {
+		return true, &mirrorSyncError{path: gs.mainJSONLPath(), err: err}
+	}
+
+	return true, nil
+}
+
+func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world *storage.WorldState, entry ChatEntry) (bool, error) {
+	if entry.Timestamp.IsZero() {
+		entry.Timestamp = time.Now()
+	}
+
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		if err := db.UpdateCharacterFullTx(tx, char); err != nil {
+			return fmt.Errorf("saving character state: %w", err)
+		}
+		if err := db.UpdateWorldStateTx(tx, world); err != nil {
+			return fmt.Errorf("saving world state: %w", err)
+		}
+		return gs.appendEntryToDB(tx, db, entry)
+	}); err != nil {
+		return false, err
+	}
+
+	if err := gs.writeJSONLEntry(entry); err != nil {
+		return true, &mirrorSyncError{path: gs.mainJSONLPath(), err: err}
+	}
+
+	return true, nil
+}
+
+func (gs *GameSession) appendEntryToDB(tx *sql.Tx, db *storage.DB, entry ChatEntry) error {
 	msgType := entry.MessageType
 	if msgType == "" {
 		msgType = "narrative"
@@ -273,63 +352,65 @@ func (gs *GameSession) appendEntry(db *storage.DB, entry ChatEntry) error {
 			MetadataJSON: "{}",
 			CreatedAt:    now,
 		}
-		if err := db.AppendChatMessage(userMsg); err != nil {
+		if err := db.AppendChatMessageTx(tx, userMsg); err != nil {
 			return fmt.Errorf("saving user message to db: %w", err)
 		}
 	}
 
-	if entry.Output != nil {
-		meta := map[string]interface{}{
-			"model":                  entry.AIModel,
-			"latency_ms":             entry.AILatency,
-			"time_to_first_token_ms": entry.AITTFT,
-			"usage":                  entry.AIUsage,
-			"streamed":               entry.AIStreamed,
-			"mood":                   entry.Output.Mood,
-			"location":               entry.Output.Location,
-			"choices":                entry.Output.Choices,
-			"output":                 entry.Output,
-		}
-		metaJSON, err := json.Marshal(meta)
-		if err != nil {
-			metaJSON = []byte("{}")
-		}
-		assistantMsg := &storage.ChatMessage{
-			SessionID:    gs.session.ID,
-			StoryID:      gs.storyID,
-			Turn:         entry.Turn,
-			Role:         "assistant",
-			Content:      entry.Output.Narrative,
-			MessageType:  msgType,
-			MetadataJSON: string(metaJSON),
-			CreatedAt:    now,
-		}
-		if err := db.AppendChatMessage(assistantMsg); err != nil {
-			return fmt.Errorf("saving assistant message to db: %w", err)
-		}
+	if entry.Output == nil {
+		return nil
+	}
+
+	meta := map[string]interface{}{
+		"model":                  entry.AIModel,
+		"latency_ms":             entry.AILatency,
+		"time_to_first_token_ms": entry.AITTFT,
+		"usage":                  entry.AIUsage,
+		"streamed":               entry.AIStreamed,
+		"mood":                   entry.Output.Mood,
+		"location":               entry.Output.Location,
+		"choices":                entry.Output.Choices,
+		"output":                 entry.Output,
+	}
+	metaJSON, err := json.Marshal(meta)
+	if err != nil {
+		metaJSON = []byte("{}")
+	}
+	assistantMsg := &storage.ChatMessage{
+		SessionID:    gs.session.ID,
+		StoryID:      gs.storyID,
+		Turn:         entry.Turn,
+		Role:         "assistant",
+		Content:      entry.Output.Narrative,
+		MessageType:  msgType,
+		MetadataJSON: string(metaJSON),
+		CreatedAt:    now,
+	}
+	if err := db.AppendChatMessageTx(tx, assistantMsg); err != nil {
+		return fmt.Errorf("saving assistant message to db: %w", err)
 	}
 
 	return nil
 }
 
-// countJSONLLines counts non-empty lines in a file.
-// Used to restore the turn counter when resuming a session.
-func countJSONLLines(path string) (int, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, fmt.Errorf("opening jsonl for counting: %w", err)
+func (gs *GameSession) writeJSONLEntry(entry ChatEntry) error {
+	if gs.jsonlFile == nil {
+		return fmt.Errorf("main jsonl file is closed")
 	}
-	defer f.Close()
 
-	count := 0
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		if line := scanner.Text(); line != "" {
-			count++
-		}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		return fmt.Errorf("marshaling chat entry: %w", err)
 	}
-	return count, scanner.Err()
+	if _, err := gs.jsonlFile.Write(append(data, '\n')); err != nil {
+		return fmt.Errorf("writing to jsonl: %w", err)
+	}
+	return nil
+}
+
+func (gs *GameSession) mainJSONLPath() string {
+	if gs == nil || gs.jsonlFile == nil {
+		return ""
+	}
+	return gs.jsonlFile.Name()
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -294,7 +295,7 @@ func (nc *NarratorCommand) logMetaInteraction(commandName, input, response strin
 		commandName = "narrator"
 	}
 
-	return nc.session.AppendHistoryEntry(nc.db, ChatEntry{
+	if err := nc.session.AppendHistoryEntry(nc.db, ChatEntry{
 		Turn:        nc.world.CurrentTurn,
 		Timestamp:   time.Now(),
 		Chapter:     nc.world.CurrentChapter,
@@ -309,7 +310,14 @@ func (nc *NarratorCommand) logMetaInteraction(commandName, input, response strin
 			Mood:      "neutral",
 			Location:  nc.world.CurrentLocation,
 		},
-	})
+	}); err != nil {
+		if IsMirrorSyncError(err) {
+			log.Printf("oneday: narrator meta interaction persisted canonically but jsonl mirror failed: %v", err)
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (nc *NarratorCommand) logNarratorInteraction(input, response string) error {
