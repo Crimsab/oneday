@@ -174,7 +174,7 @@ func (vs *VectorStore) CountByStory(ctx context.Context, storyID string) (int, e
 }
 
 // LastSummarizedTurn returns the highest turn_end among summary chunks for a story.
-// Returns 0 if no summaries exist yet.
+// Returns -1 if no summaries exist yet so committed turn 0 remains summarizable.
 func (vs *VectorStore) LastSummarizedTurn(ctx context.Context, storyID string) (int, error) {
 	var turnEnd sql.NullInt64
 	err := vs.db.QueryRowContext(ctx,
@@ -185,7 +185,7 @@ func (vs *VectorStore) LastSummarizedTurn(ctx context.Context, storyID string) (
 		return 0, fmt.Errorf("vectorstore last summarized turn: %w", err)
 	}
 	if !turnEnd.Valid {
-		return 0, nil
+		return -1, nil
 	}
 	return int(turnEnd.Int64), nil
 }

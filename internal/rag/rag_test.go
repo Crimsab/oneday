@@ -245,8 +245,8 @@ func TestVectorStoreCountAndLastTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("last turn: %v", err)
 	}
-	if lastTurn != 0 {
-		t.Errorf("expected 0 for empty store, got %d", lastTurn)
+	if lastTurn != -1 {
+		t.Errorf("expected -1 for empty store, got %d", lastTurn)
 	}
 
 	_ = vs.Insert(ctx, &Chunk{StoryID: storyID, Text: "t", ChunkType: "summary", TurnStart: 1, TurnEnd: 10, Embedding: vec(1)})
@@ -317,25 +317,25 @@ func TestSummarizerShouldSummarize(t *testing.T) {
 	s := NewSummarizer(embedder, vs, &mockAI{text: "summary"}, "story-s", 10)
 	ctx := context.Background()
 
-	// No summaries yet — gap from 0 to 9 is 9, not >= 10.
-	should, err := s.ShouldSummarize(ctx, 9)
+	// No summaries yet — committed turns 0..8 count as 9 turns, not enough.
+	should, err := s.ShouldSummarize(ctx, 8)
 	if err != nil || should {
-		t.Errorf("should be false at turn 9: %v %v", should, err)
+		t.Errorf("should be false at turn 8: %v %v", should, err)
 	}
 
-	// Gap of 10 should trigger.
-	should, err = s.ShouldSummarize(ctx, 10)
+	// First summary window covers committed turns 0..9.
+	should, err = s.ShouldSummarize(ctx, 9)
 	if err != nil || !should {
-		t.Errorf("should be true at turn 10: %v %v", should, err)
+		t.Errorf("should be true at turn 9: %v %v", should, err)
 	}
 
-	// After storing a summary at turn 15, gap from 15 to 24 is 9 — should not fire.
-	_ = vs.Insert(ctx, &Chunk{StoryID: "story-s", Text: "x", ChunkType: "summary", TurnStart: 1, TurnEnd: 15, Embedding: vec(0.1, 0.2)})
-	should, _ = s.ShouldSummarize(ctx, 24)
+	// After storing a summary up to turn 14, committed turns 15..23 count as 9.
+	_ = vs.Insert(ctx, &Chunk{StoryID: "story-s", Text: "x", ChunkType: "summary", TurnStart: 0, TurnEnd: 14, Embedding: vec(0.1, 0.2)})
+	should, _ = s.ShouldSummarize(ctx, 23)
 	if should {
 		t.Errorf("gap 9 after stored summary: should be false")
 	}
-	should, _ = s.ShouldSummarize(ctx, 25)
+	should, _ = s.ShouldSummarize(ctx, 24)
 	if !should {
 		t.Errorf("gap 10 after stored summary: should be true")
 	}
@@ -348,38 +348,38 @@ func TestSummarizerPendingWindow(t *testing.T) {
 	s := NewSummarizer(embedder, vs, &mockAI{text: "summary"}, "story-window", 10)
 	ctx := context.Background()
 
-	start, end, should, err := s.PendingWindow(ctx, 9)
+	start, end, should, err := s.PendingWindow(ctx, 8)
+	if err != nil {
+		t.Fatalf("PendingWindow turn 8: %v", err)
+	}
+	if should || start != 0 || end != 0 {
+		t.Fatalf("unexpected pending window at turn 8: start=%d end=%d should=%v", start, end, should)
+	}
+
+	start, end, should, err = s.PendingWindow(ctx, 9)
 	if err != nil {
 		t.Fatalf("PendingWindow turn 9: %v", err)
 	}
-	if should || start != 0 || end != 0 {
+	if !should || start != 0 || end != 9 {
 		t.Fatalf("unexpected pending window at turn 9: start=%d end=%d should=%v", start, end, should)
-	}
-
-	start, end, should, err = s.PendingWindow(ctx, 10)
-	if err != nil {
-		t.Fatalf("PendingWindow turn 10: %v", err)
-	}
-	if !should || start != 1 || end != 10 {
-		t.Fatalf("unexpected pending window at turn 10: start=%d end=%d should=%v", start, end, should)
 	}
 
 	if err := vs.Insert(ctx, &Chunk{
 		StoryID:   "story-window",
 		Text:      "existing summary",
 		ChunkType: "summary",
-		TurnStart: 1,
-		TurnEnd:   15,
+		TurnStart: 0,
+		TurnEnd:   14,
 		Embedding: vec(0.1, 0.2),
 	}); err != nil {
 		t.Fatalf("insert existing summary: %v", err)
 	}
 
-	start, end, should, err = s.PendingWindow(ctx, 25)
+	start, end, should, err = s.PendingWindow(ctx, 24)
 	if err != nil {
-		t.Fatalf("PendingWindow turn 25: %v", err)
+		t.Fatalf("PendingWindow turn 24: %v", err)
 	}
-	if !should || start != 16 || end != 25 {
+	if !should || start != 15 || end != 24 {
 		t.Fatalf("unexpected pending window after summary: start=%d end=%d should=%v", start, end, should)
 	}
 }
@@ -393,13 +393,13 @@ func TestSummarizerSummarize(t *testing.T) {
 	ctx := context.Background()
 
 	msgs := []storage.ChatMessage{
-		{Turn: 1, Role: "user", Content: "I attack the goblin"},
-		{Turn: 1, Role: "assistant", Content: "You strike the goblin down."},
-		{Turn: 2, Role: "user", Content: "I loot the body"},
-		{Turn: 2, Role: "assistant", Content: "You find 5 gold coins."},
+		{Turn: 0, Role: "user", Content: "I attack the goblin"},
+		{Turn: 0, Role: "assistant", Content: "You strike the goblin down."},
+		{Turn: 1, Role: "user", Content: "I loot the body"},
+		{Turn: 1, Role: "assistant", Content: "You find 5 gold coins."},
 	}
 
-	err := s.Summarize(ctx, msgs, 10)
+	err := s.Summarize(ctx, msgs, 9)
 	if err != nil {
 		t.Fatalf("summarize: %v", err)
 	}
@@ -419,8 +419,8 @@ func TestSummarizerSummarize(t *testing.T) {
 	if results[0].Chunk.Text != aiMock.text {
 		t.Errorf("expected summary text %q, got %q", aiMock.text, results[0].Chunk.Text)
 	}
-	if results[0].Chunk.TurnStart != 1 {
-		t.Errorf("expected turn_start 1, got %d", results[0].Chunk.TurnStart)
+	if results[0].Chunk.TurnStart != 0 {
+		t.Errorf("expected turn_start 0, got %d", results[0].Chunk.TurnStart)
 	}
 }
 
@@ -432,12 +432,12 @@ func TestSummarizerSkipsAlreadySummarized(t *testing.T) {
 	ctx := context.Background()
 
 	// Store a summary up to turn 5.
-	_ = vs.Insert(ctx, &Chunk{StoryID: "story-skip", Text: "old", ChunkType: "summary", TurnStart: 1, TurnEnd: 5, Embedding: vec(0.5, 0.5)})
+	_ = vs.Insert(ctx, &Chunk{StoryID: "story-skip", Text: "old", ChunkType: "summary", TurnStart: 0, TurnEnd: 4, Embedding: vec(0.5, 0.5)})
 
-	// Messages only for turns <= 5 — nothing new to summarize.
+	// Messages only for turns <= 4 — nothing new to summarize.
 	msgs := []storage.ChatMessage{
 		{Turn: 3, Role: "user", Content: "action"},
-		{Turn: 5, Role: "assistant", Content: "response"},
+		{Turn: 4, Role: "assistant", Content: "response"},
 	}
 
 	err := s.Summarize(ctx, msgs, 10)
@@ -507,26 +507,26 @@ func TestRAGMaybeSummarize(t *testing.T) {
 	r := NewRAG(embedder, vs, summarizer, storyID, 3)
 
 	msgs := []storage.ChatMessage{
-		{Turn: 1, Role: "user", Content: "action 1"},
-		{Turn: 2, Role: "assistant", Content: "response 2"},
-		{Turn: 3, Role: "user", Content: "action 3"},
-		{Turn: 4, Role: "assistant", Content: "response 4"},
-		{Turn: 5, Role: "user", Content: "action 5"},
+		{Turn: 0, Role: "user", Content: "action 0"},
+		{Turn: 1, Role: "assistant", Content: "response 1"},
+		{Turn: 2, Role: "user", Content: "action 2"},
+		{Turn: 3, Role: "assistant", Content: "response 3"},
+		{Turn: 4, Role: "user", Content: "action 4"},
 	}
 
-	// Turn 4: gap = 4, interval = 5 → should not summarize.
-	fired, err := r.MaybeSummarize(ctx, msgs, 4)
+	// Turn 3: committed turns 0..3 count as 4, still below interval.
+	fired, err := r.MaybeSummarize(ctx, msgs, 3)
 	if err != nil || fired {
-		t.Errorf("should not have fired at turn 4: fired=%v err=%v", fired, err)
+		t.Errorf("should not have fired at turn 3: fired=%v err=%v", fired, err)
 	}
 
-	// Turn 5: gap = 5 >= interval → should summarize.
-	fired, err = r.MaybeSummarize(ctx, msgs, 5)
+	// Turn 4: committed turns 0..4 count as 5 → should summarize.
+	fired, err = r.MaybeSummarize(ctx, msgs, 4)
 	if err != nil {
-		t.Fatalf("unexpected error at turn 5: %v", err)
+		t.Fatalf("unexpected error at turn 4: %v", err)
 	}
 	if !fired {
-		t.Error("expected summarization to fire at turn 5")
+		t.Error("expected summarization to fire at turn 4")
 	}
 
 	count, _ := vs.CountByStory(ctx, storyID)
