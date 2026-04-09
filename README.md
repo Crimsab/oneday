@@ -42,13 +42,16 @@ go test ./...
 go run ./cmd/oneday
 
 # Refresh the repo-root binary used by ./oneday
-go build -o ./oneday ./cmd/oneday
+make build
+
+# Check which build you are actually running
+./oneday --version
 
 # Build the benchmark tool
-go build -o ./oneday-benchmark ./cmd/oneday-benchmark
+make build-bench
 
 # Build the ASCII benchmark tool
-go build -o ./oneday-ascii-benchmark ./cmd/oneday-ascii-benchmark
+make build-ascii-bench
 
 # Linux amd64
 GOOS=linux GOARCH=amd64 go build -o build/oneday-linux-amd64 ./cmd/oneday
@@ -74,6 +77,7 @@ Practical rules:
 - `config.yaml` is ignored by git and is where local secrets / endpoints go
 - the binary looks for `config.yaml` in the current working directory first, then next to the executable itself
 - if `config.yaml` is missing, the app falls back to the built-in defaults
+- `./oneday --version` prints the binary's version, commit, build date, and dirty-state so you can confirm you rebuilt after source changes
 
 Current default provider strategy:
 
