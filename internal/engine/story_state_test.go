@@ -250,7 +250,7 @@ func TestFormatStoryTrackerViewShowsKnownFrontsOnly(t *testing.T) {
 	if !strings.Contains(view, "Whispers Around the Bell Tower") {
 		t.Fatalf("tracker view missing known front title:\n%s", view)
 	}
-	if !strings.Contains(view, "Bell Quarter [suspicion 35]") {
+	if !strings.Contains(view, "Bell Quarter [suspicion 35 rising]") {
 		t.Fatalf("tracker view missing known front pressure:\n%s", view)
 	}
 	if strings.Contains(view, "Ash Court is buying judges in secret") {
