@@ -2,24 +2,33 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: reliability-and-systemic-world-depth
-current_phase: 17
+current_phase: 18
 status: planning
-last_updated: "2026-04-09T20:09:22+02:00"
+last_updated: "2026-04-09T21:08:00+02:00"
 progress:
   total_phases: 22
-  completed_phases: 17
+  completed_phases: 18
   total_plans: 67
-  completed_plans: 49
-  percent: 77.3
+  completed_plans: 53
+  percent: 79.1
 ---
 
 # Project State
 
-**Current Phase:** 17
+**Current Phase:** 18
 **Status:** Planning next milestone
 **Last Updated:** 2026-04-09
 
 ## Phase History
+
+- 2026-04-09: Phase 17 execution completed.
+  Summaries written to `.planning/phases/17-faction-fronts-and-regional-pressure/17-01-SUMMARY.md`,
+  `.planning/phases/17-faction-fronts-and-regional-pressure/17-02-SUMMARY.md`,
+  `.planning/phases/17-faction-fronts-and-regional-pressure/17-03-SUMMARY.md`,
+  and `.planning/phases/17-faction-fronts-and-regional-pressure/17-04-SUMMARY.md`.
+  Verification saved in `.planning/phases/17-faction-fronts-and-regional-pressure/17-VERIFICATION.md`.
+  Delivered canonical front persistence, pressure-derived systemic fallout, fail-forward/front continuity sync,
+  and codex/dossier surfacing for discovered fronts without hidden-state leaks.
 
 - 2026-04-09: Phase 16 execution completed.
   Summaries written to `.planning/phases/16-streaming-memory-reliability-and-provider-capability-hardening/16-01-SUMMARY.md`,

@@ -403,6 +403,7 @@ Plans:
 **Requirements**: TBD
 **Depends on:** Phase 16
 **UI hint:** no
+**Status:** Complete (2026-04-09)
 
 ### Success Criteria
 
@@ -412,10 +413,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 17.1: Add canonical front/pressure state and engine events for advance, reveal, resolve, and consequence application
-- [ ] Plan 17.2: Fold local heat/reputation into fronts as regional pressure rather than a separate system
-- [ ] Plan 17.3: Integrate fronts with hook tracking, world reactions, fail-forward outcomes, and context-building
-- [ ] Plan 17.4: Surface known fronts and their fallout in codex/journal/dossiers with hidden-vs-known information rules
+- [x] Plan 17.1: Add canonical front/pressure state and engine events for advance, reveal, resolve, and consequence application
+- [x] Plan 17.2: Fold local heat/reputation into fronts as regional pressure rather than a separate system
+- [x] Plan 17.3: Integrate fronts with hook tracking, world reactions, fail-forward outcomes, and context-building
+- [x] Plan 17.4: Surface known fronts and their fallout in codex/journal/dossiers with hidden-vs-known information rules
 
 ### Phase 18: Social Duels and Leverage Battles
 
