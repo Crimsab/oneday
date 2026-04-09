@@ -17,6 +17,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/buildinfo"
 )
 
 type asciiBenchmarkCase struct {
@@ -187,7 +188,13 @@ func main() {
 	outputDirFlag := flag.String("output-dir", firstNonEmpty(os.Getenv("ONEDAY_ASCII_BENCH_OUTPUT_DIR"), "docs/benchmarks/runs"), "Directory for JSON and Markdown reports")
 	timeoutFlag := flag.Duration("timeout", 90*time.Second, "Per-request timeout")
 	modeFlag := flag.String("mode", string(asciiModeJSONSchema), "Benchmark mode: prompt, json_object, json_schema, all")
+	versionFlag := flag.Bool("version", false, "Print build information and exit")
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Println(buildinfo.Text("oneday-ascii-benchmark"))
+		return
+	}
 
 	if strings.TrimSpace(*apiKeyFlag) == "" {
 		fmt.Fprintln(os.Stderr, "missing API key: pass -api-key or export ONEDAY_ASCII_BENCH_API_KEY / OPENROUTER_API_KEY")
@@ -404,7 +411,7 @@ func buildASCIISignageCase() asciiBenchmarkCase {
 }
 
 func buildASCIITerminalCase() asciiBenchmarkCase {
-		return asciiBenchmarkCase{
+	return asciiBenchmarkCase{
 		ID:          "terminal-screen",
 		Title:       "Terminal screen",
 		Category:    "terminal",
@@ -645,7 +652,7 @@ func fitsASCIICase(kind, art string) bool {
 
 func (c *asciiClient) complete(ctx context.Context, model string, bc asciiBenchmarkCase, mode asciiBenchmarkMode, meta asciiModelMetadata) (string, string, asciiUsage, time.Duration, error) {
 	body := asciiAPIRequest{
-		Model:       model,
+		Model: model,
 		Messages: []ai.Message{
 			{Role: ai.RoleSystem, Content: prompts.ASCIIArtSystem()},
 			{Role: ai.RoleUser, Content: prompts.ASCIIArtUser(

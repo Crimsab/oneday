@@ -8,12 +8,18 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crimsab/oneday/internal/aifactory"
+	"github.com/crimsab/oneday/internal/buildinfo"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui"
 )
 
 func main() {
+	if wantsVersion(os.Args[1:]) {
+		fmt.Println(buildinfo.Text("oneday"))
+		return
+	}
+
 	// Load config
 	cfg, err := config.Load(resolveConfigPath())
 	if err != nil {
@@ -64,4 +70,14 @@ func resolveConfigPath() string {
 	}
 
 	return configName
+}
+
+func wantsVersion(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version", "version":
+			return true
+		}
+	}
+	return false
 }
