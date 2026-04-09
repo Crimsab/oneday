@@ -721,7 +721,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /stats        (/s)   Show character sheet
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
-  /history [q]        Show session history (optional filter)
+  h                   Show session history
   /btw <question>     Ask the AI a quick contextual question without advancing the turn
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
@@ -1682,12 +1682,24 @@ func (m *NarrativeModel) applyInputCommandStyle() {
 			promptColor = theme.Danger
 		}
 	}
+	baseStyle := lipgloss.NewStyle().Foreground(textColor)
 	m.input.FocusedStyle.Text = lipgloss.NewStyle().Foreground(textColor)
 	m.input.BlurredStyle.Text = lipgloss.NewStyle().Foreground(textColor)
+	m.input.FocusedStyle.Base = baseStyle
+	m.input.BlurredStyle.Base = baseStyle
 	m.input.FocusedStyle.CursorLine = m.input.FocusedStyle.CursorLine.Foreground(textColor)
 	m.input.BlurredStyle.CursorLine = m.input.BlurredStyle.CursorLine.Foreground(textColor)
+	m.input.FocusedStyle.CursorLineNumber = m.input.FocusedStyle.CursorLineNumber.Foreground(textColor)
+	m.input.BlurredStyle.CursorLineNumber = m.input.BlurredStyle.CursorLineNumber.Foreground(textColor)
+	m.input.FocusedStyle.LineNumber = m.input.FocusedStyle.LineNumber.Foreground(textColor)
+	m.input.BlurredStyle.LineNumber = m.input.BlurredStyle.LineNumber.Foreground(textColor)
 	m.input.FocusedStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor).Bold(true)
 	m.input.BlurredStyle.Prompt = lipgloss.NewStyle().Foreground(promptColor)
+	if m.inputFocus {
+		m.input.Focus()
+	} else {
+		m.input.Blur()
+	}
 }
 
 func (m NarrativeModel) View() string {
