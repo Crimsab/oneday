@@ -53,6 +53,7 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 		StoryHooksJSON:         `[{"id":"hook-1","kind":"mystery","title":"Who sold you out?","status":"active"}]`,
 		WorldReactionsJSON:     `[{"id":"react-1","kind":"rumor","title":"The guard remembers you","status":"active"}]`,
 		InvestigationBoardJSON: `{"cases":[{"id":"case-1","title":"Who sold you out?","status":"open","clues":[{"id":"clue-1","label":"A missing seal","status":"known"}],"hidden_truths":[{"id":"truth-1","label":"The guard captain was paid","status":"hidden"}]}]}`,
+		ProjectClocksJSON:      `{"projects":[{"id":"project-1","title":"Train with Lyanna","kind":"training","status":"active","progress":1,"segments":4,"owner":"Mara","rewards":[{"kind":"skill","label":"Footwork +1"}]}]}`,
 		FrontsJSON:             `[{"id":"front-1","faction":"Old Guard","title":"The Old Guard is tightening checkpoints","public_title":"Checkpoints Tighten","public_stakes":"Travel is getting tense.","visibility":"known","segments":4,"progress":2}]`,
 		CurrentChapter:         1,
 		CurrentTurn:            1,
@@ -286,6 +287,9 @@ func TestSaveGameAndLoadGameRestoreCanonicalStoryState(t *testing.T) {
 	}
 	if !strings.Contains(restoredWorld.InvestigationBoardJSON, "The guard captain was paid") {
 		t.Fatalf("restored investigation board lost hidden truth payload: %s", restoredWorld.InvestigationBoardJSON)
+	}
+	if !strings.Contains(restoredWorld.ProjectClocksJSON, "Train with Lyanna") {
+		t.Fatalf("restored project clocks = %s, want original project payload", restoredWorld.ProjectClocksJSON)
 	}
 	if !strings.Contains(restoredWorld.FrontsJSON, "Checkpoints Tighten") {
 		t.Fatalf("restored fronts = %s, want original front payload", restoredWorld.FrontsJSON)

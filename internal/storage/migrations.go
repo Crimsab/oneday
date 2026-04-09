@@ -33,6 +33,7 @@ func (db *DB) migrate() error {
 		{13, migrationV13},
 		{14, migrationV14},
 		{15, migrationV15},
+		{16, migrationV16},
 	}
 
 	for _, m := range migrations {
@@ -311,4 +312,9 @@ ALTER TABLE npcs ADD COLUMN nemesis_json TEXT NOT NULL DEFAULT '{}';
 const migrationV15 = `
 -- Canonical investigation board state for mysteries, clues, suspects, and theories.
 ALTER TABLE world_state ADD COLUMN investigation_board_json TEXT NOT NULL DEFAULT '{}';
+`
+
+const migrationV16 = `
+-- Canonical long-arc downtime project clocks.
+ALTER TABLE world_state ADD COLUMN project_clocks_json TEXT NOT NULL DEFAULT '{}';
 `
