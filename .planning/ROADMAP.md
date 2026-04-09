@@ -484,6 +484,7 @@ Plans:
 **Requirements**: TBD
 **Depends on:** Phase 20
 **UI hint:** no
+**Status:** Complete (2026-04-09)
 
 ### Success Criteria
 
@@ -493,9 +494,9 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 21.1: Add canonical project-clock state for training, rituals, crafting chains, relationships, and home/base improvements
-- [ ] Plan 21.2: Integrate downtime advancement with fronts, regional pressure, resource costs, and fail-forward consequences
-- [ ] Plan 21.3: Surface project status and outcomes through dossiers, codex, and downtime interaction flows
+- [x] Plan 21.1: Add canonical project-clock state for training, rituals, crafting chains, relationships, and home/base improvements
+- [x] Plan 21.2: Integrate downtime advancement with fronts, regional pressure, resource costs, and fail-forward consequences
+- [x] Plan 21.3: Surface project status and outcomes through dossiers, codex, and downtime interaction flows
 
 ---
 
@@ -517,4 +518,4 @@ Plans:
 | **Total** | **99** | All mapped requirements through Phase 11 |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.
-Post-v1.0 expansion phases 17-21 are still roadmap/planning work and keep requirements `TBD` until detailed implementation begins.
+Post-v1.0 expansion phases 17-21 are now implemented; their requirements remain `TBD` until the next roadmap pass formalizes requirement IDs for the expansion systems.
