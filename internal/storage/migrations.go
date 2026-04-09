@@ -32,6 +32,7 @@ func (db *DB) migrate() error {
 		{12, migrationV12},
 		{13, migrationV13},
 		{14, migrationV14},
+		{15, migrationV15},
 	}
 
 	for _, m := range migrations {
@@ -305,4 +306,9 @@ ALTER TABLE world_state ADD COLUMN fronts_json TEXT NOT NULL DEFAULT '[]';
 const migrationV14 = `
 -- Canonical nemesis state for promoted rivals.
 ALTER TABLE npcs ADD COLUMN nemesis_json TEXT NOT NULL DEFAULT '{}';
+`
+
+const migrationV15 = `
+-- Canonical investigation board state for mysteries, clues, suspects, and theories.
+ALTER TABLE world_state ADD COLUMN investigation_board_json TEXT NOT NULL DEFAULT '{}';
 `
