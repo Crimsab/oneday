@@ -44,6 +44,8 @@ type openAIChatRequest struct {
 	Temperature    float64            `json:"temperature,omitempty"`
 	MaxTokens      int                `json:"max_tokens,omitempty"`
 	ResponseFormat *ai.ResponseFormat `json:"response_format,omitempty"`
+	Plugins        []ai.Plugin        `json:"plugins,omitempty"`
+	Provider       *ai.ProviderConfig `json:"provider,omitempty"`
 }
 
 // openAIChatResponse is the response from /v1/chat/completions.
@@ -124,13 +126,17 @@ func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Respons
 	}
 
 	responseFormat := o.selectResponseFormat(ctx, model, req.ResponseFormat)
-	content, resolvedModel, usage, err := o.completeOnce(ctx, openAIChatRequest{
+	body := openAIChatRequest{
 		Model:          model,
 		Messages:       req.Messages,
 		Temperature:    req.Temperature,
 		MaxTokens:      req.MaxTokens,
 		ResponseFormat: responseFormat,
-	})
+		Plugins:        req.Plugins,
+		Provider:       req.Provider,
+	}
+	o.applyStructuredJSONGuards(&body)
+	content, resolvedModel, usage, err := o.completeOnce(ctx, body)
 	if err != nil {
 		httpErr, ok := err.(*openAICompatHTTPError)
 		if responseFormat != nil && ok && shouldRetryWithoutResponseFormat(httpErr) {
@@ -296,6 +302,9 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 	if responseFormat := o.selectResponseFormat(ctx, model, req.ResponseFormat); responseFormat != nil {
 		body["response_format"] = responseFormat
 	}
+	if req.Provider != nil {
+		body["provider"] = req.Provider
+	}
 
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
@@ -373,6 +382,41 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 	}()
 
 	return ch, nil
+}
+
+func (o *OpenAICompat) applyStructuredJSONGuards(body *openAIChatRequest) {
+	if body == nil || body.ResponseFormat == nil {
+		return
+	}
+	if !supportsOpenRouterExtensions(o.name) {
+		return
+	}
+	if !hasPlugin(body.Plugins, "response-healing") {
+		body.Plugins = append(body.Plugins, ai.Plugin{ID: "response-healing"})
+	}
+	if body.Provider == nil {
+		body.Provider = &ai.ProviderConfig{RequireParameters: true}
+		return
+	}
+	body.Provider.RequireParameters = true
+}
+
+func supportsOpenRouterExtensions(providerName string) bool {
+	switch providerName {
+	case "openrouter", "litellm":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasPlugin(plugins []ai.Plugin, id string) bool {
+	for _, plugin := range plugins {
+		if plugin.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func usageFromDTO(dto openAIUsageDTO) ai.Usage {

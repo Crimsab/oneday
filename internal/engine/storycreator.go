@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -451,6 +452,10 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 	}
 
 	const maxRepairAttempts = 2
+	repairFormats := []*ai.ResponseFormat{
+		ai.StoryDefinitionResponseFormat(),
+		ai.NewJSONObjectResponseFormat(),
+	}
 
 	var lastErr error
 	for attempt := 0; attempt <= maxRepairAttempts; attempt++ {
@@ -463,7 +468,7 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 		sc.lastModel = resp.Model
 		sc.lastLatency = time.Since(start).Milliseconds()
 
-		def, parseErr := parseStoryDefinition(resp.Content)
+		def, parseErr := parseStoryDefinitionWithFallback(resp.Content, sc.initialBrief, sc.definition)
 		if parseErr == nil {
 			return def, nil
 		}
@@ -472,14 +477,22 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 			break
 		}
 
+		previousDraftJSON := ""
+		if sc.definition != nil {
+			if data, err := json.MarshalIndent(sc.definition, "", "  "); err == nil {
+				previousDraftJSON = string(data)
+			}
+		}
+
 		req = ai.Request{
 			Messages: []ai.Message{
 				{Role: ai.RoleSystem, Content: prompts.StoryRepairSystemPrompt()},
-				{Role: ai.RoleUser, Content: prompts.StoryRepairUserPrompt(resp.Content, parseErr.Error())},
+				{Role: ai.RoleUser, Content: prompts.StoryRepairUserPrompt(resp.Content, parseErr.Error(), sc.initialBrief, previousDraftJSON)},
 			},
+			Model:          sc.genCfg.RepairModel,
 			Temperature:    0.2,
 			MaxTokens:      sc.genCfg.MaxTokens,
-			ResponseFormat: ai.StoryDefinitionResponseFormat(),
+			ResponseFormat: repairFormats[min(attempt, len(repairFormats)-1)],
 		}
 	}
 
@@ -751,13 +764,364 @@ func parseStoryDefinition(text string) (*StoryDefinition, error) {
 		return nil, errors.New("empty JSON payload")
 	}
 	var def StoryDefinition
-	if err := json.Unmarshal([]byte(raw), &def); err != nil {
-		return nil, fmt.Errorf("decoding story definition JSON: %w", err)
+	if err := decodeStoryDefinitionJSON(raw, &def); err != nil {
+		return nil, err
 	}
 	if err := validateStoryDefinition(&def); err != nil {
 		return nil, err
 	}
 	return &def, nil
+}
+
+func parseStoryDefinitionWithFallback(text, brief string, previous *StoryDefinition) (*StoryDefinition, error) {
+	raw, err := ai.ExtractJSONPayload(text)
+	if err != nil {
+		return nil, fmt.Errorf("extracting JSON payload: %w", err)
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, errors.New("empty JSON payload")
+	}
+	var def StoryDefinition
+	if err := decodeStoryDefinitionJSON(raw, &def); err != nil {
+		return nil, err
+	}
+	normalizeStoryDefinition(&def, brief, previous)
+	if err := validateStoryDefinition(&def); err != nil {
+		return nil, err
+	}
+	return &def, nil
+}
+
+func decodeStoryDefinitionJSON(raw string, out *StoryDefinition) error {
+	if err := json.Unmarshal([]byte(raw), out); err == nil {
+		return nil
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return fmt.Errorf("decoding story definition JSON: %w", err)
+	}
+
+	normalized := normalizeLooseStoryDefinitionPayload(payload)
+	buf, err := json.Marshal(normalized)
+	if err != nil {
+		return fmt.Errorf("normalizing story definition JSON: %w", err)
+	}
+	if err := json.Unmarshal(buf, out); err != nil {
+		return fmt.Errorf("decoding story definition JSON: %w", err)
+	}
+	return nil
+}
+
+func normalizeLooseStoryDefinitionPayload(payload map[string]any) map[string]any {
+	if payload == nil {
+		return map[string]any{}
+	}
+
+	if statsRaw, ok := payload["stats_schema"].(map[string]any); ok {
+		statsRaw["vitals"] = coerceStatDefPayload(statsRaw["vitals"])
+		statsRaw["attributes"] = coerceStatDefPayload(statsRaw["attributes"])
+		statsRaw["secondary"] = coerceStatDefPayload(statsRaw["secondary"])
+		if currency := coerceCurrencyPayload(statsRaw["currency"]); currency != nil {
+			statsRaw["currency"] = currency
+		}
+		payload["stats_schema"] = statsRaw
+	}
+	if settingRaw, ok := payload["setting"].(map[string]any); ok {
+		settingRaw["rules"] = coerceStringListPayload(settingRaw["rules"])
+		settingRaw["factions"] = coerceStringListPayload(settingRaw["factions"])
+		settingRaw["cultures"] = coerceStringListPayload(settingRaw["cultures"])
+		settingRaw["dangers"] = coerceStringListPayload(settingRaw["dangers"])
+		payload["setting"] = settingRaw
+	}
+
+	return payload
+}
+
+func coerceStatDefPayload(value any) any {
+	switch typed := value.(type) {
+	case []any:
+		out := make([]map[string]any, 0, len(typed))
+		for _, item := range typed {
+			if stat, ok := coerceSingleStatDef("", item); ok {
+				out = append(out, stat)
+			}
+		}
+		return out
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		out := make([]map[string]any, 0, len(keys))
+		for _, key := range keys {
+			if stat, ok := coerceSingleStatDef(key, typed[key]); ok {
+				out = append(out, stat)
+			}
+		}
+		return out
+	default:
+		return value
+	}
+}
+
+func coerceSingleStatDef(defaultKey string, value any) (map[string]any, bool) {
+	switch typed := value.(type) {
+	case map[string]any:
+		key := stringFromAny(typed["key"])
+		if key == "" {
+			key = defaultKey
+		}
+		label := stringFromAny(typed["label"])
+		if label == "" {
+			label = defaultKey
+		}
+		starting, ok := intFromAny(typed["starting"])
+		if !ok {
+			starting = 0
+		}
+		if strings.TrimSpace(key) == "" {
+			return nil, false
+		}
+		if strings.TrimSpace(label) == "" {
+			label = key
+		}
+		return map[string]any{
+			"key":      key,
+			"label":    label,
+			"starting": starting,
+		}, true
+	case float64, int, int64, json.Number:
+		if strings.TrimSpace(defaultKey) == "" {
+			return nil, false
+		}
+		starting, _ := intFromAny(typed)
+		return map[string]any{
+			"key":      defaultKey,
+			"label":    defaultKey,
+			"starting": starting,
+		}, true
+	default:
+		return nil, false
+	}
+}
+
+func coerceCurrencyPayload(value any) any {
+	switch typed := value.(type) {
+	case []any:
+		for _, item := range typed {
+			if currency := coerceCurrencyPayload(item); currency != nil {
+				return currency
+			}
+		}
+		return nil
+	case map[string]any:
+		name := stringFromAny(typed["name"])
+		if name == "" {
+			name = "Credits"
+		}
+		starting, ok := intFromAny(typed["starting"])
+		if !ok {
+			starting = 0
+		}
+		return map[string]any{
+			"name":     name,
+			"starting": starting,
+		}
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return nil
+		}
+		return map[string]any{
+			"name":     typed,
+			"starting": 0,
+		}
+	default:
+		return value
+	}
+}
+
+func coerceStringListPayload(value any) any {
+	switch typed := value.(type) {
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if entry := coerceStringListEntry("", item); entry != "" {
+				out = append(out, entry)
+			}
+		}
+		return out
+	case map[string]any:
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		out := make([]string, 0, len(keys))
+		for _, key := range keys {
+			if entry := coerceStringListEntry(key, typed[key]); entry != "" {
+				out = append(out, entry)
+			}
+		}
+		return out
+	case string:
+		if trimmed := strings.TrimSpace(typed); trimmed != "" {
+			return []string{trimmed}
+		}
+		return []string{}
+	default:
+		return value
+	}
+}
+
+func coerceStringListEntry(defaultKey string, value any) string {
+	switch typed := value.(type) {
+	case string:
+		trimmed := strings.TrimSpace(typed)
+		if trimmed != "" {
+			return trimmed
+		}
+	case map[string]any:
+		for _, field := range []string{"name", "title", "label"} {
+			if text := stringFromAny(typed[field]); text != "" {
+				return text
+			}
+		}
+		if trimmed := strings.TrimSpace(defaultKey); trimmed != "" && !looksGenericListKey(trimmed) {
+			return trimmed
+		}
+		if text := stringFromAny(typed["description"]); text != "" {
+			return text
+		}
+	}
+	return strings.TrimSpace(defaultKey)
+}
+
+func looksGenericListKey(value string) bool {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return true
+	}
+	allDigits := true
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			allDigits = false
+			break
+		}
+	}
+	if allDigits {
+		return true
+	}
+	for _, prefix := range []string{"r", "rule", "item", "entry", "key"} {
+		if strings.HasPrefix(value, prefix) {
+			suffix := strings.TrimPrefix(value, prefix)
+			if suffix == "" {
+				continue
+			}
+			onlyDigits := true
+			for _, r := range suffix {
+				if r < '0' || r > '9' {
+					onlyDigits = false
+					break
+				}
+			}
+			if onlyDigits {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func stringFromAny(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	default:
+		return ""
+	}
+}
+
+func intFromAny(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int64:
+		return int(typed), true
+	case float64:
+		return int(typed), true
+	case json.Number:
+		v, err := typed.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(v), true
+	default:
+		return 0, false
+	}
+}
+
+func normalizeStoryDefinition(def *StoryDefinition, _ string, previous *StoryDefinition) {
+	if def == nil {
+		return
+	}
+
+	applyStringFallback(&def.Name, previousValue(previous, func(d *StoryDefinition) string { return d.Name }))
+	applyStringFallback(&def.Description, previousValue(previous, func(d *StoryDefinition) string { return d.Description }))
+	applyStringFallback(&def.Genre, previousValue(previous, func(d *StoryDefinition) string { return d.Genre }))
+	applyStringFallback(&def.Tone, previousValue(previous, func(d *StoryDefinition) string { return d.Tone }))
+	applyStringFallback(&def.Language, previousValue(previous, func(d *StoryDefinition) string { return d.Language }))
+	applyStringFallback(&def.WritingStyle, previousValue(previous, func(d *StoryDefinition) string { return d.WritingStyle }))
+	applyStringFallback(&def.PromptDirectives, previousValue(previous, func(d *StoryDefinition) string { return d.PromptDirectives }))
+	applyStringFallback(&def.Setting.WorldName, previousValue(previous, func(d *StoryDefinition) string { return d.Setting.WorldName }))
+	applyStringFallback(&def.Setting.Era, previousValue(previous, func(d *StoryDefinition) string { return d.Setting.Era }))
+	applyStringFallback(&def.Setting.Geography, previousValue(previous, func(d *StoryDefinition) string { return d.Setting.Geography }))
+	applyStringFallback(&def.Setting.MagicSystem, previousValue(previous, func(d *StoryDefinition) string { return d.Setting.MagicSystem }))
+	applyStringFallback(&def.Setting.TechnologyLevel, previousValue(previous, func(d *StoryDefinition) string { return d.Setting.TechnologyLevel }))
+	applyStringFallback(&def.Setting.Society, previousValue(previous, func(d *StoryDefinition) string { return d.Setting.Society }))
+
+	if len(def.Setting.Rules) == 0 && previous != nil {
+		def.Setting.Rules = append([]string(nil), previous.Setting.Rules...)
+	}
+	if len(def.Setting.Factions) == 0 && previous != nil {
+		def.Setting.Factions = append([]string(nil), previous.Setting.Factions...)
+	}
+	if len(def.Setting.Cultures) == 0 && previous != nil {
+		def.Setting.Cultures = append([]string(nil), previous.Setting.Cultures...)
+	}
+	if len(def.Setting.Dangers) == 0 && previous != nil {
+		def.Setting.Dangers = append([]string(nil), previous.Setting.Dangers...)
+	}
+	if len(def.StatsSchema.Vitals) == 0 && previous != nil {
+		def.StatsSchema.Vitals = append([]StatDef(nil), previous.StatsSchema.Vitals...)
+	}
+	if len(def.StatsSchema.Attributes) == 0 && previous != nil {
+		def.StatsSchema.Attributes = append([]StatDef(nil), previous.StatsSchema.Attributes...)
+	}
+	if len(def.StatsSchema.Secondary) == 0 && previous != nil {
+		def.StatsSchema.Secondary = append([]StatDef(nil), previous.StatsSchema.Secondary...)
+	}
+	if def.StatsSchema.Currency == nil && previous != nil && previous.StatsSchema.Currency != nil {
+		currency := *previous.StatsSchema.Currency
+		def.StatsSchema.Currency = &currency
+	}
+	if previous != nil && !def.StatsSchema.HasCombat && previous.StatsSchema.HasCombat {
+		def.StatsSchema.HasCombat = true
+	}
+}
+
+func applyStringFallback(target *string, fallback string) {
+	if strings.TrimSpace(*target) == "" && strings.TrimSpace(fallback) != "" {
+		*target = fallback
+	}
+}
+
+func previousValue(previous *StoryDefinition, fn func(*StoryDefinition) string) string {
+	if previous == nil {
+		return ""
+	}
+	return fn(previous)
 }
 
 func validateStoryDefinition(def *StoryDefinition) error {
@@ -785,14 +1149,56 @@ func validateStoryDefinition(def *StoryDefinition) error {
 	if strings.TrimSpace(def.Setting.WorldName) == "" {
 		return errors.New("missing setting.world_name")
 	}
-	if len(def.Setting.Rules) == 0 {
+	if len(def.Setting.Rules) == 0 || containsBlankString(def.Setting.Rules) {
 		return errors.New("missing setting.rules")
+	}
+	if len(def.Setting.Factions) == 0 || containsBlankString(def.Setting.Factions) {
+		return errors.New("missing setting.factions")
+	}
+	if len(def.Setting.Cultures) == 0 || containsBlankString(def.Setting.Cultures) {
+		return errors.New("missing setting.cultures")
+	}
+	if len(def.Setting.Dangers) == 0 || containsBlankString(def.Setting.Dangers) {
+		return errors.New("missing setting.dangers")
 	}
 	if len(def.StatsSchema.Vitals) == 0 {
 		return errors.New("missing stats_schema.vitals")
 	}
 	if len(def.StatsSchema.Attributes) == 0 {
 		return errors.New("missing stats_schema.attributes")
+	}
+	if err := validateStatDefs("stats_schema.vitals", def.StatsSchema.Vitals); err != nil {
+		return err
+	}
+	if err := validateStatDefs("stats_schema.attributes", def.StatsSchema.Attributes); err != nil {
+		return err
+	}
+	if err := validateStatDefs("stats_schema.secondary", def.StatsSchema.Secondary); err != nil {
+		return err
+	}
+	if def.StatsSchema.Currency != nil && strings.TrimSpace(def.StatsSchema.Currency.Name) == "" {
+		return errors.New("missing stats_schema.currency.name")
+	}
+	return nil
+}
+
+func containsBlankString(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) == "" {
+			return true
+		}
+	}
+	return false
+}
+
+func validateStatDefs(path string, defs []StatDef) error {
+	for i, def := range defs {
+		if strings.TrimSpace(def.Key) == "" {
+			return fmt.Errorf("missing %s[%d].key", path, i)
+		}
+		if strings.TrimSpace(def.Label) == "" {
+			return fmt.Errorf("missing %s[%d].label", path, i)
+		}
 	}
 	return nil
 }

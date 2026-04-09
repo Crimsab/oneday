@@ -17,16 +17,21 @@ type storyStatInfo struct {
 }
 
 func (m *NarrativeModel) buildChoiceItems(choices []engine.Choice) []components.ChoiceItem {
+	items, help := m.buildChoicePresentation(choices)
+	m.choiceHelp = help
+	return items
+}
+
+func (m *NarrativeModel) buildChoicePresentation(choices []engine.Choice) ([]components.ChoiceItem, map[int]string) {
 	if len(choices) == 0 {
-		m.choiceHelp = map[int]string{}
-		return nil
+		return nil, map[int]string{}
 	}
 
 	statInfo := resolveStoryStatInfo(m.narrator.Story())
 	statLabels := labelsFromStatInfo(statInfo)
 	currentStats := resolveCharacterStatValues(m.narrator.Character())
 
-	m.choiceHelp = make(map[int]string, len(choices))
+	help := make(map[int]string, len(choices))
 	items := make([]components.ChoiceItem, len(choices))
 	for i, choice := range choices {
 		relatedStats := resolveChoiceStatLabels(choice.RelatedStats, statLabels)
@@ -39,9 +44,9 @@ func (m *NarrativeModel) buildChoiceItems(choices []engine.Choice) []components.
 			Certainty:    choice.Certainty,
 			RelatedStats: relatedStats,
 		}
-		m.choiceHelp[i+1] = buildChoiceHelp(choice, statInfo, currentStats)
+		help[i+1] = buildChoiceHelp(choice, statInfo, currentStats)
 	}
-	return items
+	return items, help
 }
 
 func resolveStoryStatInfo(story *storage.Story) map[string]storyStatInfo {

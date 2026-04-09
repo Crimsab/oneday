@@ -150,22 +150,34 @@ Rules:
 - Do not add conversational prose, apology text, or explanations.
 - writing_style must stay a short reusable prose profile.
 - prompt_directives must stay a short reusable instruction string, or "".
+- Every required top-level field must be present: name, description, genre, tone, language, writing_style, prompt_directives, setting, stats_schema.
+- setting must include: world_name, era, geography, magic_system, technology_level, society, rules, factions, cultures, dangers.
+- stats_schema must include: vitals, attributes, secondary, has_combat. currency is strongly preferred when the setting suggests an economy.
+- rules, factions, cultures, dangers, vitals, attributes, and secondary must be arrays, not strings or objects.
+- Any required string field must be non-empty after trimming whitespace.
+- Every stat entry must have a non-empty key and a non-empty label.
 
 Return ONLY valid JSON matching the required schema. Markdown fences are optional.`
 }
 
 // StoryRepairUserPrompt provides the invalid output plus the validation error so
 // the model can return a corrected full story definition.
-func StoryRepairUserPrompt(invalidOutput, validationError string) string {
+func StoryRepairUserPrompt(invalidOutput, validationError, originalBrief, previousDraftJSON string) string {
 	return fmt.Sprintf(`The previous story definition response was invalid.
 
 Validation error:
 %s
 
+Original player brief:
+%s
+
+Current valid draft JSON to preserve when possible:
+%s
+
 Previous output to repair:
 %s
 
-Return the corrected full story definition as JSON only.`, validationError, invalidOutput)
+Return the corrected full story definition as JSON only.`, validationError, blankPromptField(originalBrief), blankPromptField(previousDraftJSON), invalidOutput)
 }
 
 // CharacterCreationSystem builds the prompt after story creation,
@@ -190,4 +202,11 @@ When they provide the name (and optionally background), output ONLY valid JSON w
 `+"```"+`
 
 Write the conversation and any clarifications in the configured story language above.`, authoringSection)
+}
+
+func blankPromptField(value string) string {
+	if value == "" {
+		return "(none)"
+	}
+	return value
 }

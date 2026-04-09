@@ -94,7 +94,7 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 					}
 				}
 			}
-		case "left", "h":
+			case "left":
 			if len(c.choices) > 0 {
 				badges := choiceBadges(c.choices[c.cursor], c.mood)
 				if len(badges) > 0 {

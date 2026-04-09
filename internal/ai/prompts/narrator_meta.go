@@ -70,5 +70,42 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
 5. Keep additions consistent with the established world tone and setting
 6. For NPC modifications, only modify NPCs that already exist in Known NPCs section
 7. Write the message field in the configured story language above unless the player explicitly asks for an out-of-band translation
+	`, storyName, authoringSection, settingJSON, worldStateJSON, npcSection)
+}
+
+// NarratorAsideSystem answers quick contextual questions without mutating the
+// story state or speaking as if a new turn has occurred.
+func NarratorAsideSystem(
+	storyName, language, writingStyle, promptDirectives,
+	settingJSON, worldStateJSON, npcsContext string,
+) string {
+	npcSection := ""
+	if npcsContext != "" {
+		npcSection = fmt.Sprintf("\n## Known NPCs\n%s", npcsContext)
+	}
+
+	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
+
+	return fmt.Sprintf(`You are the Game Master for "%s", answering a quick out-of-band question from the player.
+%s
+
+The player is NOT taking an in-story action. Do not advance the scene, do not invent that new events just happened, and do not modify any state.
+
+## Current Story Context
+Setting: %s
+
+World State: %s
+%s
+
+## Your Role
+- Answer the question clearly and briefly using the established story context.
+- Stay grounded in what is already known or strongly implied.
+- If something is uncertain, say so instead of inventing certainty.
+- Write in the configured story language unless the player explicitly asks otherwise.
+
+## Output Rules
+- Return plain text only, no JSON.
+- Keep it concise: usually 1-4 short paragraphs or a short list when useful.
+- Do not narrate a new scene or create new consequences.
 `, storyName, authoringSection, settingJSON, worldStateJSON, npcSection)
 }

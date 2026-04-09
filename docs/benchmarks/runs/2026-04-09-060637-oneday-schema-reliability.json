@@ -1,0 +1,241 @@
+{
+  "generated_at": "2026-04-09T06:04:59+02:00",
+  "brief": "Mondo steampunk in tono serio e tenebroso, città industriale decadente, culto del vapore, dialoghi tesi, prosa elegante ma non prolissa. Lingua italiana. Voglio una campagna lunga, politica, investigativa e pericolosa.",
+  "models": [
+    "grok-4.1-fast",
+    "main-fast",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "qwen3.6-plus"
+  ],
+  "cases": [
+    {
+      "name": "missing_authoring_fields"
+    },
+    {
+      "name": "missing_world_rules_and_stats"
+    },
+    {
+      "name": "wrong_shapes"
+    },
+    {
+      "name": "not_json"
+    }
+  ],
+  "summaries": [
+    {
+      "model": "grok-4.1-fast",
+      "success_count": 4,
+      "case_count": 4,
+      "success_rate": 100,
+      "average_latency_ms": 14776.25,
+      "average_latency_seconds": 14.77625,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 9775,
+          "duration_seconds": 9.775011431,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 21436,
+          "duration_seconds": 21.436167063,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.00012905,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": true,
+          "duration_ms": 27894,
+          "duration_seconds": 27.894293945,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Ombre di Vapore",
+          "world_name": "Vaporgrad"
+        }
+      ]
+    },
+    {
+      "model": "gemini-2.5-flash-lite",
+      "success_count": 3,
+      "case_count": 4,
+      "success_rate": 75,
+      "average_latency_ms": 1855,
+      "average_latency_seconds": 1.855,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 2671,
+          "duration_seconds": 2.671312075,
+          "resolved_model": "google/gemini-2.5-flash-lite",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 2894,
+          "duration_seconds": 2.894624432,
+          "resolved_model": "google/gemini-2.5-flash-lite",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000120484,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": false,
+          "duration_ms": 10289,
+          "duration_seconds": 10.289579146,
+          "error": "invalid story definition returned by AI: missing stats_schema.currency.name"
+        }
+      ]
+    },
+    {
+      "model": "main-fast",
+      "success_count": 3,
+      "case_count": 4,
+      "success_rate": 75,
+      "average_latency_ms": 3993.3333333333335,
+      "average_latency_seconds": 3.9933333333333336,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 3525,
+          "duration_seconds": 3.525837902,
+          "resolved_model": "google/gemini-2.5-flash-lite",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 8455,
+          "duration_seconds": 8.455458717,
+          "resolved_model": "google/gemini-2.5-flash-lite",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000256737,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": false,
+          "duration_ms": 11538,
+          "duration_seconds": 11.538290538,
+          "error": "invalid story definition returned by AI: missing stats_schema.currency.name"
+        }
+      ]
+    },
+    {
+      "model": "gemini-3.1-flash-lite-preview",
+      "success_count": 1,
+      "case_count": 4,
+      "success_rate": 25,
+      "average_latency_ms": 0,
+      "average_latency_seconds": 0,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": false,
+          "duration_ms": 29,
+          "duration_seconds": 0.029440168,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: status 400: {\"error\":{\"message\":\"litellm.BadRequestError: You passed in model=gemini-3.1-flash-lite-preview. There are no healthy deployments for this modelNo fallback model group found for original model_group=gemini-3.1-flash-lite-preview. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]. Received Model Group=gemini-3.1-flash-lite-preview\\nAvailable Model Group Fallbacks=None\\nError doing the fallback: litellm.BadRequestError: You passed in model=gemini-3.1-flash-lite-preview. There are no healthy deployments for this modelNo fallback model group found for original model_group=gemini-3.1-flash-lite-preview. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]\",\"type\":null,\"param\":null,\"code\":\"400\"}}"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": false,
+          "duration_ms": 20,
+          "duration_seconds": 0.020037505,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: status 400: {\"error\":{\"message\":\"litellm.BadRequestError: You passed in model=gemini-3.1-flash-lite-preview. There are no healthy deployments for this modelNo fallback model group found for original model_group=gemini-3.1-flash-lite-preview. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]. Received Model Group=gemini-3.1-flash-lite-preview\\nAvailable Model Group Fallbacks=None\\nError doing the fallback: litellm.BadRequestError: You passed in model=gemini-3.1-flash-lite-preview. There are no healthy deployments for this modelNo fallback model group found for original model_group=gemini-3.1-flash-lite-preview. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]\",\"type\":null,\"param\":null,\"code\":\"400\"}}"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000545193,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": false,
+          "duration_ms": 18,
+          "duration_seconds": 0.018064601,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: status 400: {\"error\":{\"message\":\"litellm.BadRequestError: You passed in model=gemini-3.1-flash-lite-preview. There are no healthy deployments for this modelNo fallback model group found for original model_group=gemini-3.1-flash-lite-preview. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]. Received Model Group=gemini-3.1-flash-lite-preview\\nAvailable Model Group Fallbacks=None\\nError doing the fallback: litellm.BadRequestError: You passed in model=gemini-3.1-flash-lite-preview. There are no healthy deployments for this modelNo fallback model group found for original model_group=gemini-3.1-flash-lite-preview. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]\",\"type\":null,\"param\":null,\"code\":\"400\"}}"
+        }
+      ]
+    },
+    {
+      "model": "qwen3.6-plus",
+      "success_count": 1,
+      "case_count": 4,
+      "success_rate": 25,
+      "average_latency_ms": 0,
+      "average_latency_seconds": 0,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": false,
+          "duration_ms": 15,
+          "duration_seconds": 0.015425911,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: status 400: {\"error\":{\"message\":\"litellm.BadRequestError: You passed in model=qwen3.6-plus. There are no healthy deployments for this modelNo fallback model group found for original model_group=qwen3.6-plus. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]. Received Model Group=qwen3.6-plus\\nAvailable Model Group Fallbacks=None\\nError doing the fallback: litellm.BadRequestError: You passed in model=qwen3.6-plus. There are no healthy deployments for this modelNo fallback model group found for original model_group=qwen3.6-plus. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]\",\"type\":null,\"param\":null,\"code\":\"400\"}}"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": false,
+          "duration_ms": 13,
+          "duration_seconds": 0.013419894,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: status 400: {\"error\":{\"message\":\"litellm.BadRequestError: You passed in model=qwen3.6-plus. There are no healthy deployments for this modelNo fallback model group found for original model_group=qwen3.6-plus. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]. Received Model Group=qwen3.6-plus\\nAvailable Model Group Fallbacks=None\\nError doing the fallback: litellm.BadRequestError: You passed in model=qwen3.6-plus. There are no healthy deployments for this modelNo fallback model group found for original model_group=qwen3.6-plus. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]\",\"type\":null,\"param\":null,\"code\":\"400\"}}"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.00012911,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": false,
+          "duration_ms": 13,
+          "duration_seconds": 0.013589559,
+          "error": "all AI providers failed:\n  seeded-repair-provider: all AI providers failed:\n  litellm: HTTP request to litellm: status 400: {\"error\":{\"message\":\"litellm.BadRequestError: You passed in model=qwen3.6-plus. There are no healthy deployments for this modelNo fallback model group found for original model_group=qwen3.6-plus. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]. Received Model Group=qwen3.6-plus\\nAvailable Model Group Fallbacks=None\\nError doing the fallback: litellm.BadRequestError: You passed in model=qwen3.6-plus. There are no healthy deployments for this modelNo fallback model group found for original model_group=qwen3.6-plus. Fallbacks=[{'grok-4.1-fast': ['trinity-free', 'step-3.5-flash-free', 'qwen3.5-397b']}, {'main-fast': ['vision-main', 'free-main']}, {'free-main': ['gemini-free']}, {'ascii-ambient': ['ascii-ambient-fallback-1', 'ascii-ambient-fallback-2', 'main-fast', 'free-main']}, {'app-classifier': ['free-main']}]\",\"type\":null,\"param\":null,\"code\":\"400\"}}"
+        }
+      ]
+    }
+  ]
+}
