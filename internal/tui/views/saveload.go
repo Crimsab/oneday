@@ -127,6 +127,15 @@ func (m SaveLoadModel) View() string {
 		if location == "" {
 			location = "Unknown"
 		}
+		tag := ""
+		if meta := save.Metadata(); meta != nil {
+			switch {
+			case strings.TrimSpace(meta.BranchLabel) != "":
+				tag = "  ↺ " + truncate(meta.BranchLabel, 26)
+			case strings.TrimSpace(meta.Kind) != "":
+				tag = "  [" + meta.Kind + "]"
+			}
+		}
 		line := fmt.Sprintf("%s%-24s  Turn %-4d  %-18s  %s",
 			cursor,
 			truncate(save.Name, 22),
@@ -134,6 +143,9 @@ func (m SaveLoadModel) View() string {
 			truncate(location, 16),
 			lastPlayed,
 		)
+		if tag != "" {
+			line += tag
+		}
 		sb.WriteString(itemStyle.Render(line))
 		sb.WriteString("\n")
 	}

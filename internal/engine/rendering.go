@@ -44,12 +44,24 @@ func StateChangesToEventCallouts(changes []StateChange) []EventCallout {
 			appendCallout("npc", strings.TrimPrefix(desc, "NPC seen again: "), "NPC encountered again")
 		case strings.Contains(desc, "'s disposition: "):
 			appendCallout("relationship", "Disposition changed", desc)
+		case strings.Contains(desc, " trust: ") || strings.Contains(desc, " fear: ") || strings.Contains(desc, " debt: ") || strings.Contains(desc, " respect: ") || strings.Contains(desc, " intimacy: "):
+			appendCallout("relationship", "Relationship shifted", desc)
 		case strings.HasSuffix(desc, "had a new thought (private)"):
 			appendCallout("npc", "NPC perspective shifted", desc)
 		case strings.HasSuffix(desc, "noted something about protagonist (private)"):
 			appendCallout("npc", "NPC note recorded", desc)
 		case strings.HasSuffix(desc, "'s desires updated"):
 			appendCallout("npc", "NPC desire updated", desc)
+		case strings.HasPrefix(desc, "New hook: "):
+			appendCallout("hook", strings.TrimPrefix(desc, "New hook: "), "Open thread added")
+		case strings.HasPrefix(desc, "Hook updated: "):
+			appendCallout("hook", strings.TrimPrefix(desc, "Hook updated: "), "Open thread updated")
+		case strings.HasPrefix(desc, "Hook progressed: "):
+			appendCallout("hook", strings.TrimPrefix(desc, "Hook progressed: "), "Open thread progressed")
+		case strings.HasPrefix(desc, "Hook resolved: "):
+			appendCallout("hook", strings.TrimPrefix(desc, "Hook resolved: "), "Open thread resolved")
+		case strings.HasPrefix(desc, "World reacts: "):
+			appendCallout("reaction", strings.TrimPrefix(desc, "World reacts: "), "Visible consequence")
 		case desc == "Combat initiated!":
 			appendCallout("combat", "Combat initiated", "")
 		case desc == "Crafting session initiated":

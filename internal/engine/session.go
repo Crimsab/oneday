@@ -41,6 +41,7 @@ type ChatOutput struct {
 	Narrative         string                 `json:"narrative"`
 	Choices           []string               `json:"choices,omitempty"`
 	ChoicesData       []Choice               `json:"choices_data,omitempty"`
+	TurnDelta         *TurnDelta             `json:"turn_delta,omitempty"`
 	Mood              string                 `json:"mood,omitempty"`
 	Location          string                 `json:"location,omitempty"`
 	SceneType         string                 `json:"scene_type,omitempty"`
@@ -49,6 +50,8 @@ type ChatOutput struct {
 	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
 	ASCIICue          *ASCIIArtCue           `json:"ascii_cue,omitempty"`
 	ASCIIArt          string                 `json:"ascii_art,omitempty"`
+	OpenHooks         []StoryHook            `json:"open_hooks,omitempty"`
+	WorldReactions    []WorldReaction        `json:"world_reactions,omitempty"`
 	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
 }
 

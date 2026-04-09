@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +32,14 @@ type CraftingResponse struct {
 	Missing      []string     `json:"missing,omitempty"`      // what player lacks
 	Alternatives []string     `json:"alternatives,omitempty"` // what they could make instead
 	Choices      []Choice     `json:"choices,omitempty"`      // next options
+}
+
+// CraftingGuidance is local QoL data derived from inventory + known recipes.
+type CraftingGuidance struct {
+	Materials   []string
+	MaterialTags []string
+	CraftableNow []string
+	NearMisses   []string
 }
 
 // CraftingEngine manages a crafting conversation session.
@@ -267,6 +276,109 @@ func buildInventoryContext(char *storage.Character) string {
 		return "{}"
 	}
 	return string(b)
+}
+
+// GetCraftingGuidance derives practical sidebar guidance from the current inventory and known recipes.
+func GetCraftingGuidance(char *storage.Character) CraftingGuidance {
+	if char == nil {
+		return CraftingGuidance{}
+	}
+
+	names, tags := extractCraftingMaterials(char.InventoryJSON)
+	nameSet := make(map[string]bool, len(names))
+	for _, name := range names {
+		nameSet[strings.ToLower(name)] = true
+	}
+
+	recipes, _ := GetKnownRecipes(char)
+	guidance := CraftingGuidance{
+		Materials:    names,
+		MaterialTags: tags,
+	}
+	for _, recipe := range recipes {
+		if strings.TrimSpace(recipe.Name) == "" || len(recipe.Materials) == 0 {
+			continue
+		}
+		missing := 0
+		for _, material := range recipe.Materials {
+			if !nameSet[strings.ToLower(strings.TrimSpace(material))] {
+				missing++
+			}
+		}
+		switch missing {
+		case 0:
+			guidance.CraftableNow = append(guidance.CraftableNow, recipe.Name)
+		case 1:
+			guidance.NearMisses = append(guidance.NearMisses, recipe.Name)
+		}
+	}
+	return guidance
+}
+
+func extractCraftingMaterials(raw string) ([]string, []string) {
+	if strings.TrimSpace(raw) == "" || raw == "null" || raw == "[]" || raw == "{}" {
+		return nil, nil
+	}
+
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return nil, nil
+	}
+
+	nameSet := map[string]bool{}
+	tagSet := map[string]bool{}
+	addItem := func(name, tag string) {
+		name = strings.TrimSpace(name)
+		tag = strings.TrimSpace(strings.ToLower(tag))
+		if name != "" {
+			nameSet[strings.ToLower(name)] = true
+		}
+		if tag != "" {
+			tagSet[tag] = true
+		}
+	}
+
+	var walk func(value interface{})
+	walk = func(value interface{}) {
+		switch typed := value.(type) {
+		case []interface{}:
+			for _, item := range typed {
+				walk(item)
+			}
+		case map[string]interface{}:
+			if name, ok := typed["name"].(string); ok {
+				itemType, _ := typed["type"].(string)
+				addItem(name, itemType)
+				return
+			}
+			for _, key := range []string{"backpack", "equipped", "quest", "items"} {
+				if child, ok := typed[key]; ok {
+					walk(child)
+				}
+			}
+		case string:
+			addItem(typed, "")
+		}
+	}
+	walk(decoded)
+
+	names := make([]string, 0, len(nameSet))
+	for lower := range nameSet {
+		names = append(names, lower)
+	}
+	tags := make([]string, 0, len(tagSet))
+	for tag := range tagSet {
+		tags = append(tags, tag)
+	}
+	sort.Strings(names)
+	sort.Strings(tags)
+	for i, name := range names {
+		names[i] = strings.Title(name)
+	}
+	for i, tag := range tags {
+		tags[i] = strings.Title(tag)
+	}
+	return names, tags
 }
 
 // toInterfaceSliceFromStrings converts []string to []interface{} for state changes.

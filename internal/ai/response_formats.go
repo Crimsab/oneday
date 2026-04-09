@@ -228,6 +228,7 @@ func narrativeSchema() map[string]any {
 				"type":  "array",
 				"items": eventCalloutSchema(),
 			},
+			"turn_delta": nullableObjectSchema(turnDeltaSchema()),
 			"ascii_cue": nullableObjectSchema(asciiCueSchema()),
 			"state_changes": map[string]any{
 				"type":                 "object",
@@ -386,6 +387,32 @@ func eventCalloutSchema() map[string]any {
 		"properties": map[string]any{
 			"kind":   stringSchema(),
 			"title":  stringSchema(),
+			"detail": stringSchema(),
+		},
+	}
+}
+
+func turnDeltaSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"properties": map[string]any{
+			"items": map[string]any{
+				"type":  "array",
+				"items": turnDeltaItemSchema(),
+			},
+		},
+	}
+}
+
+func turnDeltaItemSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"label"},
+		"properties": map[string]any{
+			"kind":   stringSchema(),
+			"label":  stringSchema(),
 			"detail": stringSchema(),
 		},
 	}

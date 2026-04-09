@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -16,6 +17,7 @@ type SaveSnapshot struct {
 	CharacterJSON  string             `json:"character_json"`
 	WorldStateJSON string             `json:"world_state_json"`
 	SessionID      string             `json:"session_id"`
+	MetadataJSON   string             `json:"metadata_json,omitempty"`
 	Story          *Story             `json:"story,omitempty"`
 	NPCs           []NPC              `json:"npcs,omitempty"`
 	Achievements   []Achievement      `json:"achievements,omitempty"`
@@ -40,19 +42,45 @@ type RAGChunkSnapshot struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// SaveMetadata captures branch/rewind context for a snapshot.
+type SaveMetadata struct {
+	Kind               string   `json:"kind,omitempty"`
+	LoadedFromSaveID   string   `json:"loaded_from_save_id,omitempty"`
+	LoadedFromSaveName string   `json:"loaded_from_save_name,omitempty"`
+	BranchLabel        string   `json:"branch_label,omitempty"`
+	Notes              []string `json:"notes,omitempty"`
+}
+
 // HasFullRollbackState reports whether the snapshot contains the richer
 // canonical state needed for a true rollback instead of just char/world data.
 func (s *SaveSnapshot) HasFullRollbackState() bool {
 	return s != nil && s.Story != nil
 }
 
+// Metadata parses the snapshot metadata payload. Nil means absent or invalid.
+func (s SaveSnapshot) Metadata() *SaveMetadata {
+	raw := s.MetadataJSON
+	if raw == "" || raw == "{}" || raw == "null" {
+		return nil
+	}
+
+	var meta SaveMetadata
+	if err := json.Unmarshal([]byte(raw), &meta); err != nil {
+		return nil
+	}
+	return &meta
+}
+
 // CreateSave inserts a new save snapshot into the DB.
 func (db *DB) CreateSave(s *SaveSnapshot) error {
+	if s.MetadataJSON == "" {
+		s.MetadataJSON = "{}"
+	}
 	_, err := db.conn.Exec(
-		`INSERT INTO saves (id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO saves (id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, metadata_json, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.StoryID, s.Name, s.Turn, s.Chapter, s.Location,
-		s.CharacterJSON, s.WorldStateJSON, s.SessionID, s.CreatedAt,
+		s.CharacterJSON, s.WorldStateJSON, s.SessionID, s.MetadataJSON, s.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting save: %w", err)
@@ -64,10 +92,10 @@ func (db *DB) CreateSave(s *SaveSnapshot) error {
 func (db *DB) GetSave(id string) (*SaveSnapshot, error) {
 	s := &SaveSnapshot{}
 	err := db.conn.QueryRow(
-		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at
+		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, metadata_json, created_at
          FROM saves WHERE id = ?`, id,
 	).Scan(&s.ID, &s.StoryID, &s.Name, &s.Turn, &s.Chapter, &s.Location,
-		&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.CreatedAt)
+		&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.MetadataJSON, &s.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("getting save %s: %w", id, err)
 	}
@@ -77,7 +105,7 @@ func (db *DB) GetSave(id string) (*SaveSnapshot, error) {
 // ListSaves returns all saves for a story, most recent first.
 func (db *DB) ListSaves(storyID string) ([]SaveSnapshot, error) {
 	rows, err := db.conn.Query(
-		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at
+		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, metadata_json, created_at
          FROM saves WHERE story_id = ? ORDER BY created_at DESC`, storyID,
 	)
 	if err != nil {
@@ -89,7 +117,7 @@ func (db *DB) ListSaves(storyID string) ([]SaveSnapshot, error) {
 	for rows.Next() {
 		var s SaveSnapshot
 		if err := rows.Scan(&s.ID, &s.StoryID, &s.Name, &s.Turn, &s.Chapter, &s.Location,
-			&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.CreatedAt); err != nil {
+			&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.MetadataJSON, &s.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scanning save: %w", err)
 		}
 		saves = append(saves, s)
@@ -110,11 +138,11 @@ func (db *DB) DeleteSave(id string) error {
 func (db *DB) GetAutosave(storyID string) (*SaveSnapshot, error) {
 	s := &SaveSnapshot{}
 	err := db.conn.QueryRow(
-		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, created_at
+		`SELECT id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, metadata_json, created_at
          FROM saves WHERE story_id = ? AND name = 'autosave'
          ORDER BY created_at DESC LIMIT 1`, storyID,
 	).Scan(&s.ID, &s.StoryID, &s.Name, &s.Turn, &s.Chapter, &s.Location,
-		&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.CreatedAt)
+		&s.CharacterJSON, &s.WorldStateJSON, &s.SessionID, &s.MetadataJSON, &s.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("getting autosave for story %s: %w", storyID, err)
 	}

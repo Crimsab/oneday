@@ -42,6 +42,7 @@ type NPC struct {
 	Role               string    `json:"role"`
 	Appearance         string    `json:"appearance"`
 	PersonalityJSON    string    `json:"personality_json"`
+	RelationshipJSON   string    `json:"relationship_json"`
 	PrivateThoughts    string    `json:"private_thoughts"`
 	NotesOnProtagonist string    `json:"notes_on_protagonist"`
 	Desires            string    `json:"desires"`
@@ -62,6 +63,8 @@ type WorldState struct {
 	KnownLocationsJSON   string    `json:"known_locations_json"`
 	GlobalEventsJSON     string    `json:"global_events_json"`
 	FactionStandingsJSON string    `json:"faction_standings_json"`
+	StoryHooksJSON       string    `json:"story_hooks_json"`
+	WorldReactionsJSON   string    `json:"world_reactions_json"`
 	CurrentChapter       int       `json:"current_chapter"`
 	CurrentTurn          int       `json:"current_turn"`
 	UpdatedAt            time.Time `json:"updated_at"`

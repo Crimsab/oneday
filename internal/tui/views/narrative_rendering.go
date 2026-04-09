@@ -29,7 +29,43 @@ func (m *NarrativeModel) renderNarrativeResponse(nr *engine.NarrativeResponse) s
 	if strings.TrimSpace(renderedMarkdown) == "" {
 		renderedMarkdown = strings.TrimSpace(nr.Narrative)
 	}
-	return components.RenderMarkdown(renderedMarkdown)
+
+	sections := []string{strings.TrimSpace(renderedMarkdown)}
+	if delta := renderTurnDeltaMarkdown(nr.TurnDelta); delta != "" {
+		sections = append(sections, delta)
+	}
+
+	var nonEmpty []string
+	for _, section := range sections {
+		if strings.TrimSpace(section) != "" {
+			nonEmpty = append(nonEmpty, section)
+		}
+	}
+	return components.RenderMarkdown(strings.Join(nonEmpty, "\n\n"))
+}
+
+func renderTurnDeltaMarkdown(delta *engine.TurnDelta) string {
+	if delta == nil || len(delta.Items) == 0 {
+		return ""
+	}
+
+	lines := []string{"### What changed this turn?"}
+	for _, item := range delta.Items {
+		label := strings.TrimSpace(item.Label)
+		detail := strings.TrimSpace(item.Detail)
+		switch {
+		case label != "" && detail != "":
+			lines = append(lines, "- **"+label+"**: "+detail)
+		case label != "":
+			lines = append(lines, "- "+label)
+		case detail != "":
+			lines = append(lines, "- "+detail)
+		}
+	}
+	if len(lines) == 1 {
+		return ""
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *NarrativeModel) collectKnownEntities(nr *engine.NarrativeResponse) []rendering.KnownEntity {
