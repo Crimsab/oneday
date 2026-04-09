@@ -79,37 +79,40 @@ type sessionMenuItem struct {
 
 // NarrativeModel is the core gameplay view.
 type NarrativeModel struct {
-	narrator           *engine.Narrator
-	viewport           viewport.Model
-	typewriter         components.TypewriterModel
-	statusBar          components.StatusBarModel
-	choices            components.ChoiceListModel
-	overlay            components.OverlayModel
-	historyBrowser     *historyBrowserModel
-	achievementPopup   components.AchievementPopupModel
-	input              textarea.Model
-	history            *strings.Builder // full narrative text accumulated so far
-	pendingNarrative   string
-	queuedNarrative    []queuedNarrativeSegment
-	deferredChoiceItems []components.ChoiceItem
-	deferredChoiceHelp  map[int]string
-	deferredInputFocus  bool
-	deferredChallenges  []*engine.ChallengeSpec
-	streamRaw          *strings.Builder // raw streamed JSON chunks for the current turn
-	streaming          bool
-	streamCh           <-chan engine.NarrativeStreamChunk
-	waiting            bool // waiting for AI response
-	errMsg             string
-	statusMsg          string    // temporary status message (e.g. "Autosaved")
-	statusExpiry       time.Time // when to clear the status message
-	width              int
-	height             int
-	inputFocus         bool // true = free input active, false = choice list active
-	sessionMenuVisible bool
-	sessionMenuCursor  int
-	currentMood        string
-	sceneCounter       int
-	choiceHelp         map[int]string
+	narrator                *engine.Narrator
+	viewport                viewport.Model
+	typewriter              components.TypewriterModel
+	statusBar               components.StatusBarModel
+	choices                 components.ChoiceListModel
+	overlay                 components.OverlayModel
+	historyBrowser          *historyBrowserModel
+	achievementPopup        components.AchievementPopupModel
+	input                   textarea.Model
+	history                 *strings.Builder // full narrative text accumulated so far
+	pendingNarrative        string
+	queuedNarrative         []queuedNarrativeSegment
+	deferredChoiceItems     []components.ChoiceItem
+	deferredChoiceHelp      map[int]string
+	deferredInputFocus      bool
+	deferredChallenges      []*engine.ChallengeSpec
+	streamRaw               *strings.Builder // raw streamed JSON chunks for the current turn
+	streaming               bool
+	streamCh                <-chan engine.NarrativeStreamChunk
+	waiting                 bool // waiting for AI response
+	errMsg                  string
+	statusMsg               string    // temporary status message (e.g. "Autosaved")
+	statusExpiry            time.Time // when to clear the status message
+	width                   int
+	height                  int
+	inputFocus              bool // true = free input active, false = choice list active
+	historyReturnInputFocus bool
+	sessionMenuVisible      bool
+	sessionMenuCursor       int
+	currentMood             string
+	sceneCounter            int
+	choiceHelp              map[int]string
+	talkTarget              string
+	talkIntent              string
 
 	// Combat sub-view
 	combatView *CombatModel
@@ -429,13 +432,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			updated, cmd := m.historyBrowser.Update(msg)
 			if !updated.Visible() {
 				m.historyBrowser = nil
-				if m.choices.HasChoices() {
-					m.inputFocus = false
-					m.input.Blur()
-				} else {
-					m.inputFocus = true
-					m.input.Focus()
-				}
+				m.restoreInputFocusAfterHistory()
 				return m, nil
 			}
 			m.historyBrowser = &updated
@@ -456,13 +453,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			updated, cmd := m.historyBrowser.Update(msg)
 			if !updated.Visible() {
 				m.historyBrowser = nil
-				if m.choices.HasChoices() {
-					m.inputFocus = false
-					m.input.Blur()
-				} else {
-					m.inputFocus = true
-					m.input.Focus()
-				}
+				m.restoreInputFocusAfterHistory()
 				return m, nil
 			}
 			m.historyBrowser = &updated
@@ -492,46 +483,46 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, nil
 		}
 
-			if m.pendingChallenge != nil {
-				switch msg.String() {
-				case "enter", " ":
-					return m, m.beginPendingChallenge()
-				}
-				return m, nil
-			}
-
-			if m.waiting {
-				switch msg.String() {
-				case "tab":
-					m.inputFocus = !m.inputFocus
-					if m.inputFocus {
-						m.input.Focus()
-					} else {
-						m.input.Blur()
-					}
-					return m, nil
-				case "esc":
-					m.sessionMenuVisible = true
-					m.sessionMenuCursor = 0
-					return m, nil
-				}
-				if m.inputFocus && msg.String() != "enter" {
-					var cmd tea.Cmd
-					m.input, cmd = m.input.Update(msg)
-					return m, cmd
-				}
-				return m, nil
-			}
-
+		if m.pendingChallenge != nil {
 			switch msg.String() {
-			case "h":
-				if !m.inputFocus {
-					return m.showHistory(nil)
-				}
+			case "enter", " ":
+				return m, m.beginPendingChallenge()
+			}
+			return m, nil
+		}
 
+		if m.waiting {
+			switch msg.String() {
 			case "tab":
-				// Toggle between choice list and free input
 				m.inputFocus = !m.inputFocus
+				if m.inputFocus {
+					m.input.Focus()
+				} else {
+					m.input.Blur()
+				}
+				return m, nil
+			case "esc":
+				m.sessionMenuVisible = true
+				m.sessionMenuCursor = 0
+				return m, nil
+			}
+			if m.inputFocus && msg.String() != "enter" {
+				var cmd tea.Cmd
+				m.input, cmd = m.input.Update(msg)
+				return m, cmd
+			}
+			return m, nil
+		}
+
+		switch msg.String() {
+		case "h":
+			if !m.inputFocus {
+				return m.showHistory(nil)
+			}
+
+		case "tab":
+			// Toggle between choice list and free input
+			m.inputFocus = !m.inputFocus
 			if m.inputFocus {
 				m.input.Focus()
 			} else {
@@ -552,12 +543,12 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				}
 				return m, m.sendAction(text)
 			}
-			// If on choices, let choice list handle it below
+		// If on choices, let choice list handle it below
 
-			case "s", "S", "f5":
-				if !m.inputFocus {
-					return m, m.doQuickSave()
-				}
+		case "s", "S", "f5":
+			if !m.inputFocus {
+				return m, m.doQuickSave()
+			}
 
 		case "esc":
 			m.sessionMenuVisible = true
@@ -646,12 +637,18 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.showJournal()
 	case "history":
 		return m.showHistory(cmd.Args)
+	case "hooks":
+		return m.showHooks()
 	case "map":
 		return m.showMap()
 	case "achievements":
 		return m.showAchievements()
 	case "craft", "crafting":
 		return m.startCrafting()
+	case "talk":
+		return m.handleTalkCommand(cmd.Args)
+	case "downtime":
+		return m.handleDowntimeCommand(cmd.Args)
 	default:
 		name := strings.TrimSpace(cmd.Name)
 		if name == "" || name == "unknown" {
@@ -776,11 +773,14 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /stats        (/s)   Show character sheet
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
+  /hooks               Show open hooks and world reactions
   h                   Open the story history browser
   /btw <question>     Ask the AI a quick contextual question without advancing the turn
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
   /craft               Open crafting station (AI-driven)
+  /talk [npc] [intent] Enter nearby-NPC talk mode
+  /downtime [focus]    Request a quieter downtime beat
   /save [name]         Save your game
   /load                Load a saved game
   /help                Show this help
@@ -799,6 +799,16 @@ Narrator examples:
   /n Make Lyanna secretly jealous
   /n What factions exist in this world?
   /n I want the next area to be a haunted forest
+
+Talk mode:
+  /talk Lyanna
+  /talk Lyanna promise
+  /talk off
+
+Downtime examples:
+  /downtime rest by the fire
+  /downtime write a letter home
+  /downtime train with Lyanna
 
 Challenges:
   Active challenges pause first on a confirmation screen.
@@ -1388,6 +1398,7 @@ func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
 				}
 				sb.WriteString(fmt.Sprintf("  %-24s %s  %s (%s%d)\n",
 					npc.Name+roleStr, bar, label, sign, d))
+				sb.WriteString(theme.MutedText.Render("      " + relationshipAxesSummary(npc.RelationshipJSON)) + "\n")
 			}
 		} else {
 			sb.WriteString(theme.MutedText.Render("  (no one met yet)") + "\n")
@@ -1408,10 +1419,10 @@ func (m NarrativeModel) doSave(args []string) (NarrativeModel, tea.Cmd) {
 	}
 	narrator := m.narrator
 	return m, func() tea.Msg {
-		_, err := engine.SaveGame(
+		_, err := engine.SaveGameWithMetadata(
 			narrator.DB(), narrator.DataDir(),
 			narrator.Story(), narrator.Character(), narrator.World(),
-			narrator.SessionID(), saveName,
+			narrator.SessionID(), saveName, narrator.BuildSaveMetadata("manual"),
 		)
 		return SaveCompleteMsg{Name: saveName, Err: err}
 	}
@@ -1421,10 +1432,10 @@ func (m NarrativeModel) doQuickSave() tea.Cmd {
 	saveName := fmt.Sprintf("Quicksave T%d", m.narrator.Turn())
 	narrator := m.narrator
 	return func() tea.Msg {
-		_, err := engine.SaveGame(
+		_, err := engine.SaveGameWithMetadata(
 			narrator.DB(), narrator.DataDir(),
 			narrator.Story(), narrator.Character(), narrator.World(),
-			narrator.SessionID(), saveName,
+			narrator.SessionID(), saveName, narrator.BuildSaveMetadata("quicksave"),
 		)
 		return SaveCompleteMsg{Name: saveName, Err: err}
 	}
@@ -1451,10 +1462,10 @@ type ShowSaveListMsg struct {
 func (m NarrativeModel) doQuit() (NarrativeModel, tea.Cmd) {
 	narrator := m.narrator
 	return m, func() tea.Msg {
-		_ = engine.Autosave(
+		_ = engine.AutosaveWithMetadata(
 			narrator.DB(), narrator.DataDir(),
 			narrator.Story(), narrator.Character(), narrator.World(),
-			narrator.SessionID(),
+			narrator.SessionID(), narrator.BuildSaveMetadata("autosave"),
 		)
 		narrator.CloseSession()
 		return QuitToMenuMsg{}
@@ -1465,6 +1476,7 @@ func (m *NarrativeModel) sendAction(action string) tea.Cmd {
 	m.waiting = true
 	m.choices.SetChoices(nil) // clear choices while waiting for AI
 	narrator := m.narrator
+	action = m.wrapPlayerAction(action)
 	return func() tea.Msg {
 		stream, err := narrator.StreamAction(context.Background(), action)
 		return narrativeStreamStartedMsg{stream: stream, err: err}
@@ -1826,6 +1838,9 @@ func (m NarrativeModel) View() string {
 	if world.CurrentLocation != "" {
 		header += "  " + subtitleStyle.Render(world.CurrentLocation)
 	}
+	if m.talkModeActive() {
+		header += "  " + theme.MutedText.Render(fmt.Sprintf("talking to %s [%s]", m.talkTarget, m.activeTalkIntent()))
+	}
 
 	// Narrative viewport
 	body := m.viewport.View()
@@ -1871,7 +1886,7 @@ func (m NarrativeModel) View() string {
 	}
 
 	// Help line
-		help := theme.MutedText.Render("h history · tab toggle · 1-9 choose · ←/→ badge info · enter send · s quicksave · esc session")
+	help := theme.MutedText.Render("h history · tab toggle · 1-9 choose · ←/→ badge info · enter send · s quicksave · esc session")
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)
@@ -1907,6 +1922,20 @@ func (m NarrativeModel) View() string {
 func (m *NarrativeModel) SetStatusMsg(msg string) {
 	m.statusMsg = msg
 	m.statusExpiry = time.Now().Add(3 * time.Second)
+}
+
+func (m *NarrativeModel) restoreInputFocusAfterHistory() {
+	if m == nil {
+		return
+	}
+	if m.historyReturnInputFocus || !m.choices.HasChoices() {
+		m.inputFocus = true
+		m.input.Focus()
+	} else {
+		m.inputFocus = false
+		m.input.Blur()
+	}
+	m.historyReturnInputFocus = false
 }
 
 func (m NarrativeModel) handleSessionMenu(msg tea.KeyMsg) (NarrativeModel, tea.Cmd) {

@@ -31,25 +31,30 @@ type NarrativeStreamChunk struct {
 
 // Narrator manages the gameplay AI conversation.
 type Narrator struct {
-	router        *ai.Router
-	db            *storage.DB
-	story         *storage.Story
-	character     *storage.Character
-	world         *storage.WorldState
-	session       *GameSession
-	contextCfg    ContextConfig
-	genCfg        config.GenerationConfig // AI generation parameters (temperature, max_tokens, timeout)
-	lastModel     string
-	lastLatency   int64
-	lastTTFT      int64
-	lastUsage     ai.Usage
-	lastStreamed  bool
-	asciiCfg      config.ASCIIArtConfig
-	dataDir       string
-	autosaveEvery int
-	rag           *rag.RAG         // optional — nil means RAG is disabled
-	chapters      *ChapterManager  // optional — nil means chapter tracking is disabled
-	narratorCmd   *NarratorCommand // optional — nil means /narrator command is disabled
+	router                 *ai.Router
+	db                     *storage.DB
+	story                  *storage.Story
+	character              *storage.Character
+	world                  *storage.WorldState
+	session                *GameSession
+	contextCfg             ContextConfig
+	genCfg                 config.GenerationConfig // AI generation parameters (temperature, max_tokens, timeout)
+	lastModel              string
+	lastLatency            int64
+	lastTTFT               int64
+	lastUsage              ai.Usage
+	lastStreamed           bool
+	asciiCfg               config.ASCIIArtConfig
+	dataDir                string
+	autosaveEvery          int
+	rag                    *rag.RAG         // optional — nil means RAG is disabled
+	chapters               *ChapterManager  // optional — nil means chapter tracking is disabled
+	narratorCmd            *NarratorCommand // optional — nil means /narrator command is disabled
+	achievementCacheLoaded bool
+	achievementCache       []storage.Achievement
+	chapterSummaryCache    map[int]string
+	loadedFromSaveID       string
+	loadedFromSaveName     string
 }
 
 // NewNarrator creates a narrator for an existing story.
@@ -92,17 +97,18 @@ func NewNarrator(
 		}
 	}
 	return &Narrator{
-		router:        router,
-		db:            db,
-		story:         story,
-		character:     char,
-		world:         world,
-		session:       session,
-		contextCfg:    contextCfg,
-		genCfg:        genCfg,
-		asciiCfg:      asciiCfg,
-		dataDir:       dataDir,
-		autosaveEvery: autosaveEvery,
+		router:              router,
+		db:                  db,
+		story:               story,
+		character:           char,
+		world:               world,
+		session:             session,
+		contextCfg:          contextCfg,
+		genCfg:              genCfg,
+		asciiCfg:            asciiCfg,
+		dataDir:             dataDir,
+		autosaveEvery:       autosaveEvery,
+		chapterSummaryCache: make(map[int]string),
 	}
 }
 
@@ -157,6 +163,42 @@ func (n *Narrator) DB() *storage.DB { return n.db }
 
 // DataDir returns the data directory path.
 func (n *Narrator) DataDir() string { return n.dataDir }
+
+// SetLoadedSaveContext marks future saves as a rewind branch from the given snapshot.
+func (n *Narrator) SetLoadedSaveContext(save *storage.SaveSnapshot) {
+	if n == nil || save == nil {
+		return
+	}
+	n.loadedFromSaveID = strings.TrimSpace(save.ID)
+	n.loadedFromSaveName = strings.TrimSpace(save.Name)
+}
+
+// BuildSaveMetadata returns branch-aware metadata for manual, quick, or auto saves.
+func (n *Narrator) BuildSaveMetadata(kind string) *storage.SaveMetadata {
+	if n == nil {
+		return nil
+	}
+	meta := &storage.SaveMetadata{
+		Kind: strings.TrimSpace(kind),
+	}
+	if meta.Kind == "" {
+		meta.Kind = "manual"
+	}
+	if n.loadedFromSaveID != "" {
+		meta.LoadedFromSaveID = n.loadedFromSaveID
+		meta.LoadedFromSaveName = n.loadedFromSaveName
+		label := "Rewind branch"
+		if n.loadedFromSaveName != "" {
+			label = "Rewind branch from " + n.loadedFromSaveName
+		}
+		meta.BranchLabel = label
+		meta.Notes = []string{
+			"Created after loading an earlier snapshot.",
+			"This branch preserves alternate choices without overwriting the original line.",
+		}
+	}
+	return meta
+}
 
 // SessionID returns the current session ID (empty string if no session).
 func (n *Narrator) SessionID() string {
@@ -232,6 +274,51 @@ func (n *Narrator) SendAction(ctx context.Context, action string) (*NarrativeRes
 // once the upstream provider finishes.
 func (n *Narrator) StreamAction(ctx context.Context, action string) (<-chan NarrativeStreamChunk, error) {
 	return n.streamTurn(ctx, action)
+}
+
+func (n *Narrator) loadEarnedAchievements() []storage.Achievement {
+	if n == nil || n.db == nil || n.story == nil {
+		return nil
+	}
+	if n.achievementCacheLoaded {
+		return n.achievementCache
+	}
+
+	achievements, err := n.db.ListAchievements(n.story.ID)
+	if err != nil {
+		return nil
+	}
+
+	n.achievementCache = achievements
+	n.achievementCacheLoaded = true
+	return n.achievementCache
+}
+
+func (n *Narrator) rememberAchievement(a *storage.Achievement) {
+	if n == nil || a == nil || !n.achievementCacheLoaded {
+		return
+	}
+	n.achievementCache = append(n.achievementCache, *a)
+}
+
+func (n *Narrator) loadPreviousChapterSummary() string {
+	if n == nil || n.db == nil || n.story == nil || n.world == nil || n.chapters == nil || n.world.CurrentChapter <= 1 {
+		return ""
+	}
+
+	prevChapter := n.world.CurrentChapter - 1
+	if summary, ok := n.chapterSummaryCache[prevChapter]; ok {
+		return summary
+	}
+
+	chapter, err := n.db.GetChapter(n.story.ID, prevChapter)
+	if err != nil || chapter == nil {
+		n.chapterSummaryCache[prevChapter] = ""
+		return ""
+	}
+
+	n.chapterSummaryCache[prevChapter] = chapter.Summary
+	return chapter.Summary
 }
 
 func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeResponse, error) {
@@ -350,19 +437,8 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 		ragChunks, _ = n.rag.Retrieve(ctx, input)
 	}
 
-	// Fetch the previous chapter summary for narrative continuity (non-fatal if unavailable).
-	var lastChapterSummary string
-	if n.world.CurrentChapter > 1 && n.chapters != nil {
-		if prevChapter, err := n.db.GetChapter(n.story.ID, n.world.CurrentChapter-1); err == nil && prevChapter != nil {
-			lastChapterSummary = prevChapter.Summary
-		}
-	}
-
-	// Load existing achievements to prevent AI from re-awarding duplicates.
-	var earnedAchievements []storage.Achievement
-	if existingAchs, achErr := n.db.ListAchievements(n.story.ID); achErr == nil {
-		earnedAchievements = existingAchs
-	}
+	lastChapterSummary := n.loadPreviousChapterSummary()
+	earnedAchievements := n.loadEarnedAchievements()
 
 	// Build the full context using the context builder.
 	messages := BuildContext(
@@ -424,8 +500,10 @@ func (n *Narrator) finalizeTurn(
 	normalizeNarrativeResponse(narrative)
 
 	// Apply state_changes from AI response, including NPC creation/updates.
+	var appliedChanges []StateChange
 	if len(narrative.StateChanges) > 0 {
-		appliedChanges, applyErr := ApplyStateChanges(
+		var applyErr error
+		appliedChanges, applyErr = ApplyStateChanges(
 			narrative.StateChanges,
 			n.character,
 			n.world,
@@ -448,12 +526,16 @@ func (n *Narrator) finalizeTurn(
 		// This allows the AI to organically update factions, events, and locations mid-story.
 		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, n.db, n.story, n.world, n.rag)
 	}
+	narrative.TurnDelta = mergeTurnDelta(buildTurnDelta(appliedChanges), narrative.TurnDelta)
+	narrative.OpenHooks = activeStoryHooks(loadStoryHooks(n.world))
+	narrative.WorldReactions = visibleWorldReactions(loadWorldReactions(n.world))
 	normalizeNarrativeResponse(narrative)
 
 	// Process achievement_earned from AI: validate, check duplicates, persist to DB.
 	if narrative.AchievementEarned != nil {
 		if persisted := ValidateAndPersistAchievement(n.db, n.story.ID, narrative.AchievementEarned); persisted != nil {
 			narrative.PersistedAchievement = persisted
+			n.rememberAchievement(persisted)
 		}
 	}
 
@@ -514,6 +596,7 @@ func (n *Narrator) finalizeTurn(
 			Narrative:         narrative.Narrative,
 			Choices:           choiceTexts,
 			ChoicesData:       narrative.Choices,
+			TurnDelta:         narrative.TurnDelta,
 			Mood:              narrative.Mood,
 			Location:          n.world.CurrentLocation,
 			SceneType:         narrative.SceneType,
@@ -522,6 +605,8 @@ func (n *Narrator) finalizeTurn(
 			EventCallouts:     narrative.EventCallouts,
 			ASCIICue:          narrative.ASCIICue,
 			ASCIIArt:          narrative.ASCIIArt,
+			OpenHooks:         narrative.OpenHooks,
+			WorldReactions:    narrative.WorldReactions,
 			StateChanges:      narrative.StateChanges,
 		},
 		AIModel:    resp.Model,
@@ -544,11 +629,15 @@ func (n *Narrator) finalizeTurn(
 		db := n.db
 		go func() {
 			bgCtx := context.Background()
-			msgs, err := db.GetStoryMessagesByTurnRange(storyID, 0, turn)
+			startTurn, endTurn, should, err := ragPipeline.PendingSummaryWindow(bgCtx, turn)
+			if err != nil || !should {
+				return
+			}
+			msgs, err := db.GetStoryMessagesByTurnRange(storyID, startTurn, endTurn)
 			if err != nil {
 				return
 			}
-			_, _ = ragPipeline.MaybeSummarize(bgCtx, msgs, turn)
+			_, _ = ragPipeline.MaybeSummarize(bgCtx, msgs, endTurn)
 		}()
 	}
 
@@ -575,9 +664,10 @@ func (n *Narrator) AutosaveCmd() tea.Cmd {
 	char := *n.character
 	world := *n.world
 	sessionID := n.session.SessionID()
+	meta := n.BuildSaveMetadata("autosave")
 
 	return func() tea.Msg {
-		err := Autosave(db, dataDir, story, &char, &world, sessionID)
+		err := AutosaveWithMetadata(db, dataDir, story, &char, &world, sessionID, meta)
 		return AutosaveCompleteMsg{Err: err}
 	}
 }
@@ -701,11 +791,14 @@ func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation s
 		nr.Mood = firstNonEmpty(meta.Output.Mood, meta.Mood, nr.Mood)
 		nr.Location = firstNonEmpty(meta.Output.Location, meta.Location, nr.Location)
 		nr.SceneType = strings.TrimSpace(meta.Output.SceneType)
+		nr.TurnDelta = normalizeTurnDelta(meta.Output.TurnDelta)
 		nr.DialogueBlocks = normalizeDialogueBlocks(meta.Output.DialogueBlocks)
 		nr.EntitiesMentioned = meta.Output.EntitiesMentioned
 		nr.EventCallouts = normalizeEventCallouts(meta.Output.EventCallouts)
 		nr.ASCIICue = normalizeASCIICue(meta.Output.ASCIICue)
 		nr.ASCIIArt = normalizeASCIIArt(meta.Output.ASCIIArt)
+		nr.OpenHooks = activeStoryHooks(meta.Output.OpenHooks)
+		nr.WorldReactions = visibleWorldReactions(meta.Output.WorldReactions)
 	} else {
 		nr.Mood = firstNonEmpty(meta.Mood, nr.Mood)
 		nr.Location = firstNonEmpty(meta.Location, nr.Location)
@@ -722,10 +815,13 @@ func normalizeNarrativeResponse(nr *NarrativeResponse) {
 	}
 	nr.Narrative = normalizeNarrativeText(nr.Narrative)
 	nr.Choices = sanitizeChoices(nr.Choices)
+	nr.TurnDelta = normalizeTurnDelta(nr.TurnDelta)
 	nr.DialogueBlocks = normalizeDialogueBlocks(nr.DialogueBlocks)
 	nr.EventCallouts = normalizeEventCallouts(nr.EventCallouts)
 	nr.ASCIICue = normalizeASCIICue(nr.ASCIICue)
 	nr.ASCIIArt = normalizeASCIIArt(nr.ASCIIArt)
+	nr.OpenHooks = activeStoryHooks(nr.OpenHooks)
+	nr.WorldReactions = visibleWorldReactions(nr.WorldReactions)
 }
 
 func normalizeDialogueBlocks(blocks []DialogueBlock) []DialogueBlock {
@@ -926,6 +1022,7 @@ func (n *Narrator) persistAmbientASCII(turn int, base *NarrativeResponse, art st
 		Narrative:         base.Narrative,
 		Choices:           choiceTexts,
 		ChoicesData:       base.Choices,
+		TurnDelta:         base.TurnDelta,
 		Mood:              base.Mood,
 		Location:          firstNonEmpty(base.Location, n.world.CurrentLocation),
 		SceneType:         base.SceneType,
@@ -934,6 +1031,8 @@ func (n *Narrator) persistAmbientASCII(turn int, base *NarrativeResponse, art st
 		EventCallouts:     base.EventCallouts,
 		ASCIICue:          base.ASCIICue,
 		ASCIIArt:          art,
+		OpenHooks:         base.OpenHooks,
+		WorldReactions:    base.WorldReactions,
 		StateChanges:      base.StateChanges,
 	}
 

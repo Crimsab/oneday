@@ -423,6 +423,7 @@ func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
 		a.cfg.Game.AutosaveEvery,
 	)
 	narrator.SetRAG(a.buildRAG(storyID))
+	narrator.SetLoadedSaveContext(loadResult.Save)
 	m := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed)
 	m.SetSize(a.width, a.height)
 	a.narrative = &m

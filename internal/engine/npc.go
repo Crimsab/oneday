@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -130,6 +131,7 @@ func NPCToStorage(data *NPCData, storyID string, turn int) (*storage.NPC, error)
 		Role:               data.Role,
 		Appearance:         data.Appearance,
 		PersonalityJSON:    string(personalityBytes),
+		RelationshipJSON:   "{}",
 		PrivateThoughts:    string(thoughtsBytes),
 		NotesOnProtagonist: "[]",
 		Desires:            string(desiresBytes),
@@ -182,6 +184,10 @@ func FormatNPCForContext(npc *storage.NPC) string {
 		sb.WriteString(" (hostile)\n")
 	default:
 		sb.WriteString(" (neutral)\n")
+	}
+	if rel := loadRelationshipAxes(npc); rel != (RelationshipAxes{}) {
+		fmt.Fprintf(&sb, "Relationship axes: trust=%d fear=%d debt=%d respect=%d intimacy=%d\n",
+			rel.Trust, rel.Fear, rel.Debt, rel.Respect, rel.Intimacy)
 	}
 
 	// Private thoughts
@@ -256,6 +262,41 @@ func UpdateNPCLastSeen(db *storage.DB, storyID string, narrativeText string, cur
 	return nil
 }
 
+// NearbyNPCs returns the most relevant NPCs for the current scene.
+// It prefers NPCs seen in the last few turns, then falls back to the most recently seen roster.
+func NearbyNPCs(db *storage.DB, storyID string, currentTurn, limit int) ([]storage.NPC, error) {
+	if db == nil || storyID == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 5
+	}
+
+	recent, err := db.ListRecentNPCs(storyID, currentTurn, 3)
+	if err == nil && len(recent) > 0 {
+		if len(recent) > limit {
+			return recent[:limit], nil
+		}
+		return recent, nil
+	}
+
+	all, err := db.ListNPCs(storyID)
+	if err != nil || len(all) == 0 {
+		return nil, err
+	}
+
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].LastSeenTurn == all[j].LastSeenTurn {
+			return all[i].FirstAppearedTurn > all[j].FirstAppearedTurn
+		}
+		return all[i].LastSeenTurn > all[j].LastSeenTurn
+	})
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
 // FormatNPCForPlayer returns a player-visible summary of an NPC.
 // Excludes private thoughts and hidden desires.
 func FormatNPCForPlayer(npc *storage.NPC) string {
@@ -285,6 +326,10 @@ func FormatNPCForPlayer(npc *storage.NPC) string {
 		sb.WriteString(" (hostile)\n")
 	default:
 		sb.WriteString(" (neutral)\n")
+	}
+	if rel := loadRelationshipAxes(npc); rel != (RelationshipAxes{}) {
+		fmt.Fprintf(&sb, "Trust/Fear/Debt/Respect/Intimacy: %d / %d / %d / %d / %d\n",
+			rel.Trust, rel.Fear, rel.Debt, rel.Respect, rel.Intimacy)
 	}
 
 	// Only show desires that are known to the player

@@ -9,6 +9,9 @@ func TestParseCommandRecognizesCraftAliases(t *testing.T) {
 	}{
 		{input: "/craft", want: "craft"},
 		{input: "/crafting", want: "craft"},
+		{input: "/hooks", want: "hooks"},
+		{input: "/talk Lyanna", want: "talk"},
+		{input: "/downtime rest by the fire", want: "downtime"},
 	}
 
 	for _, tc := range tests {

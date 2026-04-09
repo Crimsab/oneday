@@ -63,6 +63,7 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
   "dialogue_blocks": [],
   "entities_mentioned": [],
   "event_callouts": [],
+  "turn_delta": {"items": [{"kind": "world", "label": "Short player-facing consequence", "detail": "Optional extra context"}]},
   "state_changes": {},
   "challenges": [],
   "achievement_earned": null,
@@ -131,6 +132,9 @@ Background/unnamed characters (generic guards, unnamed shopkeepers) do NOT need 
   the NPC forms a new opinion about the protagonist after an interaction.
 - "npc_notes": {"name": "NPC Name", "note": "What they observed"} — record what the NPC
   noticed about the protagonist's behavior, skills, or choices.
+- "npc_relationship": {"name": "NPC Name", "trust": {"change": 10}, "fear": {"change": -5}, "debt": {"change": 1}, "respect": {"change": 8}, "intimacy": {"change": 3}}
+  Use these richer axes when the relationship meaningfully changes beyond a flat mood shift.
+  Each axis accepts either {"change": N} or {"value": N}. Range: -100 to +100.
 
 ### Dynamic World Updates
 As the story progresses, update the living world through state_changes:
@@ -141,8 +145,14 @@ As the story progresses, update the living world through state_changes:
 - "setting_factions_add": "New Faction — brief description" — add a faction discovered during gameplay.
 - "setting_dangers_add": "New Danger — brief description" — add a newly identified danger to the world.
 - "setting_rules_add": "Newly discovered world rule" — add a world rule uncovered through play.
+- "hook_add": {"kind": "mystery|promise|debt|timer|rumor|goal", "title": "Open thread title", "detail": "Why it matters", "npc": "Optional NPC", "timer_turns": 3}
+- "hook_update": {"title": "Open thread title", "detail": "What changed about it", "status": "active|cooling"}
+- "hook_resolve": {"title": "Open thread title", "detail": "How it was resolved"}
+- "world_reaction_add": {"kind": "rumor|heat|faction|notoriety|setback|fallout", "title": "Visible consequence", "detail": "How the world reacts"}
+- "fail_forward": {"title": "Complication introduced by failure", "detail": "Cost, delay, injury, suspicion, or fallout"}
 
 Use these naturally — not every turn, but whenever the world genuinely evolves.
+When the player fails, prefer fail-forward consequences, new pressure, rumors, debt, or complications over hard narrative dead ends.
 
 ## Optional Rendering Metadata
 
@@ -160,6 +170,9 @@ You MAY include extra renderer metadata when it improves clarity, but gameplay m
 - "event_callouts": compact event summaries worth surfacing apart from the prose
   Example:
   [{"kind":"location","title":"Old Harbor","detail":"New location discovered"}]
+- "turn_delta": optional short consequence bullets for "What changed this turn?"
+  Example:
+  {"items":[{"kind":"relationship","label":"Lyanna trust +10","detail":"She saw you keep your promise"},{"kind":"hook","label":"New mystery: Who opened the north gate?","detail":"The clue trail is still open"}]}
 - "ascii_cue": ask the runtime for optional ambient ASCII art when the scene would benefit from it
   Example:
   {"kind":"signage","subject":"Neon shrine entrance sign","detail":"flickering devotional slogan","placement":"scene_header"}

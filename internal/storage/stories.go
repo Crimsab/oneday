@@ -99,12 +99,29 @@ func (db *DB) GetCharacterByStory(storyID string) (*Character, error) {
 
 // CreateWorldState inserts a new world state.
 func (db *DB) CreateWorldState(ws *WorldState) error {
+	if ws.KnownLocationsJSON == "" {
+		ws.KnownLocationsJSON = "[]"
+	}
+	if ws.GlobalEventsJSON == "" {
+		ws.GlobalEventsJSON = "[]"
+	}
+	if ws.FactionStandingsJSON == "" {
+		ws.FactionStandingsJSON = "{}"
+	}
+	if ws.StoryHooksJSON == "" {
+		ws.StoryHooksJSON = "[]"
+	}
+	if ws.WorldReactionsJSON == "" {
+		ws.WorldReactionsJSON = "[]"
+	}
 	_, err := db.conn.Exec(
 		`INSERT INTO world_state (id, story_id, current_location, known_locations_json,
-         global_events_json, faction_standings_json, current_chapter, current_turn, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         global_events_json, faction_standings_json, story_hooks_json, world_reactions_json,
+         current_chapter, current_turn, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		ws.ID, ws.StoryID, ws.CurrentLocation, ws.KnownLocationsJSON,
-		ws.GlobalEventsJSON, ws.FactionStandingsJSON, ws.CurrentChapter, ws.CurrentTurn, ws.UpdatedAt,
+		ws.GlobalEventsJSON, ws.FactionStandingsJSON, ws.StoryHooksJSON, ws.WorldReactionsJSON,
+		ws.CurrentChapter, ws.CurrentTurn, ws.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting world state: %w", err)
@@ -117,10 +134,12 @@ func (db *DB) GetWorldState(storyID string) (*WorldState, error) {
 	ws := &WorldState{}
 	err := db.conn.QueryRow(
 		`SELECT id, story_id, current_location, known_locations_json,
-         global_events_json, faction_standings_json, current_chapter, current_turn, updated_at
+         global_events_json, faction_standings_json, story_hooks_json, world_reactions_json,
+         current_chapter, current_turn, updated_at
          FROM world_state WHERE story_id = ?`, storyID,
 	).Scan(&ws.ID, &ws.StoryID, &ws.CurrentLocation, &ws.KnownLocationsJSON,
-		&ws.GlobalEventsJSON, &ws.FactionStandingsJSON, &ws.CurrentChapter, &ws.CurrentTurn, &ws.UpdatedAt)
+		&ws.GlobalEventsJSON, &ws.FactionStandingsJSON, &ws.StoryHooksJSON, &ws.WorldReactionsJSON,
+		&ws.CurrentChapter, &ws.CurrentTurn, &ws.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("getting world state for story %s: %w", storyID, err)
 	}
@@ -157,13 +176,28 @@ func (db *DB) UpdateCharacterFull(c *Character) error {
 
 // UpdateWorldState updates the world state fields.
 func (db *DB) UpdateWorldState(ws *WorldState) error {
+	if ws.KnownLocationsJSON == "" {
+		ws.KnownLocationsJSON = "[]"
+	}
+	if ws.GlobalEventsJSON == "" {
+		ws.GlobalEventsJSON = "[]"
+	}
+	if ws.FactionStandingsJSON == "" {
+		ws.FactionStandingsJSON = "{}"
+	}
+	if ws.StoryHooksJSON == "" {
+		ws.StoryHooksJSON = "[]"
+	}
+	if ws.WorldReactionsJSON == "" {
+		ws.WorldReactionsJSON = "[]"
+	}
 	_, err := db.conn.Exec(
 		`UPDATE world_state SET current_location = ?, known_locations_json = ?,
-         global_events_json = ?, faction_standings_json = ?,
-         current_chapter = ?, current_turn = ?, updated_at = ?
+         global_events_json = ?, faction_standings_json = ?, story_hooks_json = ?,
+         world_reactions_json = ?, current_chapter = ?, current_turn = ?, updated_at = ?
          WHERE id = ?`,
 		ws.CurrentLocation, ws.KnownLocationsJSON,
-		ws.GlobalEventsJSON, ws.FactionStandingsJSON,
+		ws.GlobalEventsJSON, ws.FactionStandingsJSON, ws.StoryHooksJSON, ws.WorldReactionsJSON,
 		ws.CurrentChapter, ws.CurrentTurn, time.Now(),
 		ws.ID,
 	)
