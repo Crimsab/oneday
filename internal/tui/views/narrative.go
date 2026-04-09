@@ -86,6 +86,8 @@ type NarrativeModel struct {
 	achievementPopup   components.AchievementPopupModel
 	input              textarea.Model
 	history            *strings.Builder // full narrative text accumulated so far
+	pendingNarrative   string
+	queuedNarrative    []queuedNarrativeSegment
 	streamRaw          *strings.Builder // raw streamed JSON chunks for the current turn
 	streaming          bool
 	streamCh           <-chan engine.NarrativeStreamChunk
@@ -114,6 +116,7 @@ type NarrativeModel struct {
 	challengeView     *ChallengeView
 	inChallenge       bool
 	pendingChallenges []*engine.ChallengeSpec // queue of challenges to resolve
+	pendingChallenge  *engine.ChallengeSpec
 
 	// Achievement queue — holds achievements earned while the popup is already visible.
 	// Dequeued one-by-one as each popup is dismissed.
@@ -180,8 +183,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.combatView = nil
 			// Append combat summary to narrative history.
 			summary := components.RenderMarkdown("\n---\n**[Riepilogo Combattimento]** " + endMsg.Summary + "\n---\n")
-			m.history.WriteString(summary)
-			cmd := m.typewriter.SetText(m.history.String())
+			cmd := m.appendNarrativeSegment(summary, false)
 			return m, cmd
 		default:
 			updated, cmd := m.combatView.Update(msg)
@@ -198,8 +200,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.craftingView = nil
 			if endMsg.ItemCrafted {
 				note := components.RenderMarkdown(fmt.Sprintf("\n*[Craftato: %s]*\n", endMsg.ItemName))
-				m.history.WriteString(note)
-				cmd := m.typewriter.SetText(m.history.String())
+				cmd := m.appendNarrativeSegment(note, false)
 				return m, cmd
 			}
 			return m, nil
@@ -225,8 +226,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			} else {
 				resultNote = fmt.Sprintf("\n*[✗ %s]*\n", crMsg.Result.Detail)
 			}
-			m.history.WriteString(components.RenderMarkdown(resultNote))
-			histCmd := m.typewriter.SetText(m.history.String())
+			histCmd := m.appendNarrativeSegment(components.RenderMarkdown(resultNote), false)
 			cmds = append(cmds, histCmd)
 
 			// Send result to AI for narrative continuation.
@@ -323,8 +323,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		m.errMsg = ""
 		// Display narrator response styled distinctly (prefixed with [Game Master]).
 		rendered := components.RenderMarkdown("\n**[Game Master]** " + msg.message + "\n")
-		m.history.WriteString(rendered + "\n")
-		cmd := m.typewriter.SetText(m.history.String())
+		cmd := m.appendNarrativeSegment(rendered+"\n", false)
 		// Restore input focus (narrator command does not change choices).
 		m.inputFocus = true
 		m.input.Focus()
@@ -359,10 +358,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		return m, nil
 
 	case components.TypewriterDoneMsg:
-		// Typewriter finished — update viewport content and scroll to bottom
-		m.viewport.SetContent(m.typewriter.View())
-		m.viewport.GotoBottom()
-		return m, nil
+		return m, m.completePendingNarrative()
 
 	case components.ChoiceSelectedMsg:
 		if m.waiting {
@@ -386,11 +382,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, nil
 		}
 		rendered := components.RenderMarkdown("```text\n" + msg.art + "\n```")
-		m.history.WriteString(rendered + "\n")
-		m.typewriter.SetTextInstant(m.history.String())
-		m.viewport.SetContent(m.typewriter.View())
-		m.viewport.GotoBottom()
-		return m, nil
+		return m, m.appendNarrativeSegment(rendered+"\n", false)
 
 	case components.OverlayDismissedMsg:
 		// Restore input focus after overlay closes
@@ -420,6 +412,26 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 
 		if m.sessionMenuVisible {
 			return m.handleSessionMenu(msg)
+		}
+
+		if m.scenePlaybackActive() {
+			switch msg.String() {
+			case "enter", " ":
+				return m, m.skipCurrentPlayback()
+			case "esc":
+				m.sessionMenuVisible = true
+				m.sessionMenuCursor = 0
+				return m, nil
+			}
+			return m, nil
+		}
+
+		if m.pendingChallenge != nil {
+			switch msg.String() {
+			case "enter", " ":
+				return m, m.beginPendingChallenge()
+			}
+			return m, nil
 		}
 
 		if m.waiting {
@@ -481,14 +493,30 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 	if twCmd != nil {
 		cmds = append(cmds, twCmd)
 		// Update viewport content as typewriter progresses
-		m.viewport.SetContent(m.typewriter.View())
+		m.viewport.SetContent(m.visibleNarrativeContent())
 		m.viewport.GotoBottom()
 	}
 
 	// Update viewport scrolling
-	var vpCmd tea.Cmd
-	m.viewport, vpCmd = m.viewport.Update(msg)
-	cmds = append(cmds, vpCmd)
+	shouldUpdateViewport := true
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && !m.inputFocus && m.choices.HasChoices() {
+		switch keyMsg.String() {
+		case "up", "down", "left", "right", "j", "k", "h", "l", "enter", " ", "?":
+			shouldUpdateViewport = false
+		default:
+			if len(keyMsg.String()) == 1 {
+				ch := keyMsg.String()[0]
+				if ch >= '1' && ch <= '9' {
+					shouldUpdateViewport = false
+				}
+			}
+		}
+	}
+	if shouldUpdateViewport {
+		var vpCmd tea.Cmd
+		m.viewport, vpCmd = m.viewport.Update(msg)
+		cmds = append(cmds, vpCmd)
+	}
 
 	return m, tea.Batch(cmds...)
 }
@@ -517,6 +545,8 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.sendNarratorCommand(input)
 	case "journal":
 		return m.showJournal()
+	case "history":
+		return m.showHistory(cmd.Args)
 	case "map":
 		return m.showMap()
 	case "achievements":
@@ -609,19 +639,11 @@ func (m *NarrativeModel) startNextChallenge() tea.Cmd {
 	}
 	spec := m.pendingChallenges[0]
 	m.pendingChallenges = m.pendingChallenges[1:]
-
-	ce := engine.NewChallengeEngine()
-	cv, cmd := NewChallengeView(
-		spec,
-		ce,
-		m.narrator.Character(),
-		m.narrator.DB(),
-		m.narrator.Story().ID,
-		m.width, m.height,
-	)
-	m.challengeView = cv
-	m.inChallenge = true
-	return cmd
+	if activeChallengeRequiresConfirm(spec) {
+		m.pendingChallenge = spec
+		return nil
+	}
+	return m.launchChallenge(spec)
 }
 
 func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
@@ -631,6 +653,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   /stats        (/s)   Show character sheet
   /map          (/m)   Show discovered world map
   /journal      (/j)   Show chapter journal
+  /history [q]        Show session history (optional filter)
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
   /craft               Open crafting station (AI-driven)
@@ -643,6 +666,7 @@ Keyboard Shortcuts:
   S / F5              Quick save snapshot
   Esc                 Open session menu (resume, quick save, load, main menu)
   Space               Confirms the highlighted option in menus and pickers
+  Left / Right        Focus metadata badges on the selected choice
   ?                   Explain the selected choice's related stats/metadata
 
 Narrator examples:
@@ -652,7 +676,7 @@ Narrator examples:
   /n I want the next area to be a haunted forest
 
 Challenges:
-  Challenges appear automatically when the narrator proposes a test.
+  Active challenges pause first on a confirmation screen.
   Types: dice roll (d100), rock-paper-scissors, memory sequence,
          quick-time (press key in time), riddle, stat/skill/item checks.
   The game engine resolves the outcome fairly — the AI then narrates the result.
@@ -1359,16 +1383,11 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 	if strings.TrimSpace(rendered) == "" {
 		rendered = components.RenderMarkdown(nr.Narrative)
 	}
-	m.history.WriteString(rendered + "\n")
 	m.streamRaw.Reset()
-	m.viewport.SetContent(m.history.String())
-	m.viewport.GotoBottom()
 
 	var cmds []tea.Cmd
-	if !streamed {
-		if cmd := m.typewriter.SetText(m.history.String()); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+	if cmd := m.appendNarrativeSegment(rendered+"\n", !streamed); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 
 	if len(nr.Choices) > 0 {
@@ -1443,7 +1462,7 @@ func (m *NarrativeModel) renderStreamingNarrative() {
 	if strings.TrimSpace(partial) == "" {
 		return
 	}
-	content := m.history.String() + partial
+	content := m.visibleNarrativeContent() + partial
 	m.viewport.SetContent(content)
 	m.viewport.GotoBottom()
 }
@@ -1573,6 +1592,10 @@ func (m NarrativeModel) View() string {
 		return m.challengeView.View()
 	}
 
+	if m.pendingChallenge != nil && !m.scenePlaybackActive() {
+		return m.challengePreludeView()
+	}
+
 	// If overlay is visible, render it full-screen.
 	if m.overlay.Visible() {
 		return m.overlay.View()
@@ -1608,12 +1631,19 @@ func (m NarrativeModel) View() string {
 		}
 	}
 
+	sceneReady := !m.scenePlaybackActive()
+
 	// Choices
-	choicesView := m.choices.View()
+	choicesView := ""
+	if sceneReady {
+		choicesView = m.choices.View()
+	}
 
 	// Input area
 	var inputView string
-	if m.inputFocus {
+	if !sceneReady {
+		inputView = theme.MutedText.Render("  [Enter/Space] Finish scene")
+	} else if m.inputFocus {
 		inputView = m.input.View()
 	} else {
 		inputView = theme.MutedText.Render("  [TAB] Free input")
@@ -1622,11 +1652,11 @@ func (m NarrativeModel) View() string {
 	// Temporary status message (e.g. "Autosaved")
 	var statusLine string
 	if m.statusMsg != "" {
-		statusLine = theme.MutedText.Render("  ✓ " + m.statusMsg)
+		statusLine = theme.SuccessText.Render("  ✓ " + m.statusMsg)
 	}
 
 	// Help line
-	help := theme.MutedText.Render("tab toggle · 1-9 choose · enter send · S quicksave · /save /load · esc session")
+	help := theme.MutedText.Render("tab toggle · 1-9 choose · ←/→ badge info · enter send · S quicksave · /history · esc session")
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)

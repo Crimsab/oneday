@@ -2,6 +2,7 @@ package views
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/crimsab/oneday/internal/config"
@@ -54,5 +55,15 @@ func TestResolveChoiceStatLabelsIgnoresUnknownKeys(t *testing.T) {
 
 	if len(labels) != 1 || labels[0] != "Perception" {
 		t.Fatalf("unexpected labels: %+v", labels)
+	}
+}
+
+func TestBuildChoiceHelpFallsBackForLegacyChoice(t *testing.T) {
+	help := buildChoiceHelp(engine.Choice{
+		Text: "Trust your instincts and move.",
+	}, nil, nil)
+
+	if !strings.Contains(help, "no structured metadata was provided") {
+		t.Fatalf("expected legacy fallback help, got %q", help)
 	}
 }

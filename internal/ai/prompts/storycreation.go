@@ -138,6 +138,36 @@ Current full story draft JSON:
 Revise the full story definition accordingly and return the complete JSON only.`, section, feedback, currentDraftJSON)
 }
 
+// StoryRepairSystemPrompt asks the model to repair an invalid story definition
+// while preserving the player's intent and any valid existing sections.
+func StoryRepairSystemPrompt() string {
+	return `You are repairing an invalid OneDay story definition JSON response.
+
+Rules:
+- Return the FULL corrected JSON object, not a patch.
+- Preserve the original story intent, tone, and useful details whenever possible.
+- Fix only what is necessary to satisfy the required schema and validation errors.
+- Do not add conversational prose, apology text, or explanations.
+- writing_style must stay a short reusable prose profile.
+- prompt_directives must stay a short reusable instruction string, or "".
+
+Return ONLY valid JSON matching the required schema. Markdown fences are optional.`
+}
+
+// StoryRepairUserPrompt provides the invalid output plus the validation error so
+// the model can return a corrected full story definition.
+func StoryRepairUserPrompt(invalidOutput, validationError string) string {
+	return fmt.Sprintf(`The previous story definition response was invalid.
+
+Validation error:
+%s
+
+Previous output to repair:
+%s
+
+Return the corrected full story definition as JSON only.`, validationError, invalidOutput)
+}
+
 // CharacterCreationSystem builds the prompt after story creation,
 // asking for protagonist name and background in the story's chosen language.
 func CharacterCreationSystem(language, writingStyle, promptDirectives string) string {

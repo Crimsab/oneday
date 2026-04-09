@@ -122,21 +122,27 @@ func (s StatusBarModel) View() string {
 		aiInfo = theme.MutedText.Render(joinStatusParts(parts))
 	}
 
-	// Compose the bar with vitals on left, ai info on right
+	barStyle := theme.StatusBar.Width(s.width)
+	if s.hasMoodBG {
+		barStyle = barStyle.Background(s.moodBG)
+	}
+
+	if aiInfo == "" {
+		return barStyle.Render(vitals)
+	}
+
 	leftWidth := lipgloss.Width(vitals)
 	rightWidth := lipgloss.Width(aiInfo)
+	if leftWidth+rightWidth+2 > s.width || s.width < 72 {
+		return barStyle.Render(vitals + "\n" + aiInfo)
+	}
+
 	gap := s.width - leftWidth - rightWidth - 2 // 2 for padding
 	if gap < 1 {
 		gap = 1
 	}
 	spacer := lipgloss.NewStyle().Width(gap).Render("")
-
 	bar := lipgloss.JoinHorizontal(lipgloss.Top, vitals, spacer, aiInfo)
-
-	barStyle := theme.StatusBar.Width(s.width)
-	if s.hasMoodBG {
-		barStyle = barStyle.Background(s.moodBG)
-	}
 	return barStyle.Render(bar)
 }
 
