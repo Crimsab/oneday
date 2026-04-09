@@ -155,6 +155,8 @@ As the story progresses, update the living world through state_changes:
 - "hook_resolve": {"title": "Open thread title", "detail": "How it was resolved"}
 - "world_reaction_add": {"kind": "rumor|heat|faction|notoriety|setback|fallout", "title": "Visible consequence", "detail": "How the world reacts"}
 - "fail_forward": {"title": "Complication introduced by failure", "detail": "Cost, delay, injury, suspicion, or fallout"}
+- "investigation_update": {"case_title": "Mystery or conspiracy title", "summary": "What changed in the case", "status": "open|cold|solved", "clues": [{"action": "add|revise|discredit|reveal", "label": "Clue title", "detail": "What it suggests", "source": "Where it came from"}], "suspects": [{"action": "add|revise|discredit", "name": "NPC or group", "detail": "Why they matter"}], "claims": [{"action": "add|strengthen|discredit|collapse|reveal", "statement": "What might be true", "confidence": "fragile|uncertain|likely|supported"}], "contradictions": [{"action": "add|resolve", "label": "What does not add up", "detail": "Why it conflicts"}], "leads": [{"action": "add|progress|collapse", "title": "Follow-up path", "detail": "Where it points next"}], "theories": [{"action": "add|strengthen|collapse|reveal", "statement": "Working theory", "confidence": "fragile|uncertain|likely|supported"}]}
+  Use this when the player uncovers evidence, deepens a mystery, discredits a bad lead, or meaningfully reframes a case. Do not use it as a quest checklist; keep uncertainty and contradiction alive until earned.
 
 Use these naturally — not every turn, but whenever the world genuinely evolves.
 When the player fails, prefer fail-forward consequences, new pressure, rumors, debt, or complications over hard narrative dead ends.
