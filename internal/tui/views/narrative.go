@@ -98,6 +98,7 @@ type NarrativeModel struct {
 	deferredChoiceHelp      map[int]string
 	deferredInputFocus      bool
 	deferredChallenges      []*engine.ChallengeSpec
+	deferredSocialDuel      *engine.SocialDuelCue
 	streamRaw               *strings.Builder // raw streamed JSON chunks for the current turn
 	streaming               bool
 	streamCh                <-chan engine.NarrativeStreamChunk
@@ -133,6 +134,14 @@ type NarrativeModel struct {
 	inChallenge       bool
 	pendingChallenges []*engine.ChallengeSpec // queue of challenges to resolve
 	pendingChallenge  *engine.ChallengeSpec
+
+	// Social duel sub-view
+	socialDuelView      *SocialDuelView
+	inSocialDuel        bool
+	pendingSocialDuel   *engine.SocialDuelCue
+	activeSocialDuel    *engine.SocialDuelState
+	activeSocialDuelCue *engine.SocialDuelCue
+	socialDuelNPC       *storage.NPC
 
 	// Achievement queue — holds achievements earned while the popup is already visible.
 	// Dequeued one-by-one as each popup is dismissed.
@@ -275,6 +284,30 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				return m, nextCmd
 			}
 
+			return m, tea.Batch(cmds...)
+		}
+		return m, cmd
+	}
+
+	// --- Delegate to social-duel sub-view when in a duel exchange ---
+	if m.inSocialDuel && m.socialDuelView != nil {
+		updated, cmd := m.socialDuelView.Update(msg)
+		m.socialDuelView = updated
+		if duelMsg, ok := msg.(socialDuelRoundResolvedMsg); ok {
+			m.inSocialDuel = false
+			m.socialDuelView = nil
+			m.pendingSocialDuel = nil
+
+			if duelMsg.State != nil && duelMsg.State.Status == engine.SocialDuelActive {
+				m.activeSocialDuel = duelMsg.State
+			} else if duelMsg.Round != nil && duelMsg.Round.Resolved {
+				m.clearSocialDuelRuntime()
+			}
+
+			var cmds []tea.Cmd
+			histCmd := m.appendNarrativeSegment(renderSocialDuelRoundNote(duelMsg), false)
+			cmds = append(cmds, histCmd)
+			cmds = append(cmds, m.sendRawAction(buildSocialDuelResultInput(duelMsg)))
 			return m, tea.Batch(cmds...)
 		}
 		return m, cmd
@@ -567,6 +600,14 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			switch msg.String() {
 			case "enter", " ":
 				return m, m.beginPendingChallenge()
+			}
+			return m, nil
+		}
+
+		if m.pendingSocialDuel != nil {
+			switch msg.String() {
+			case "enter", " ":
+				return m, m.beginPendingSocialDuel()
 			}
 			return m, nil
 		}
@@ -1420,31 +1461,55 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 	}
 	m.streamRaw.Reset()
 	choiceItems, choiceHelp := m.buildChoicePresentation(nr.Choices)
+	duelCue := m.socialDuelCueForTurn(nr.SocialDuel)
+	duelPending := duelCue != nil
 	animateScene := !streamed && strings.TrimSpace(rendered) != ""
 	m.choices.SetMood(m.currentMood)
 	if animateScene {
-		m.deferredChoiceItems = choiceItems
-		m.deferredChoiceHelp = choiceHelp
-		m.deferredInputFocus = len(nr.Choices) == 0
-		m.deferredChallenges = nr.Challenges
+		if duelPending {
+			m.deferredChoiceItems = nil
+			m.deferredChoiceHelp = nil
+			m.deferredInputFocus = false
+			m.deferredChallenges = nil
+			m.deferredSocialDuel = duelCue
+		} else {
+			m.deferredChoiceItems = choiceItems
+			m.deferredChoiceHelp = choiceHelp
+			m.deferredInputFocus = len(nr.Choices) == 0
+			m.deferredChallenges = nr.Challenges
+			m.deferredSocialDuel = nil
+		}
 		m.choices.SetChoices(nil)
 		m.choiceHelp = map[int]string{}
 		m.pendingChallenges = nil
 		m.pendingChallenge = nil
+		m.pendingSocialDuel = nil
 		m.inputFocus = false
 		m.input.Blur()
 	} else {
 		m.deferredChoiceItems = nil
 		m.deferredChoiceHelp = nil
 		m.deferredChallenges = nil
-		m.choiceHelp = choiceHelp
-		m.choices.SetChoices(choiceItems)
-		if len(nr.Choices) > 0 {
+		m.deferredSocialDuel = nil
+		if duelPending {
+			m.choiceHelp = map[int]string{}
+			m.choices.SetChoices(nil)
+			m.pendingChallenges = nil
+			m.pendingChallenge = nil
+			m.pendingSocialDuel = duelCue
 			m.inputFocus = false
 			m.input.Blur()
 		} else {
-			m.inputFocus = true
-			m.input.Focus()
+			m.choiceHelp = choiceHelp
+			m.choices.SetChoices(choiceItems)
+			m.pendingSocialDuel = nil
+			if len(nr.Choices) > 0 {
+				m.inputFocus = false
+				m.input.Blur()
+			} else {
+				m.inputFocus = true
+				m.input.Focus()
+			}
 		}
 	}
 
@@ -1464,7 +1529,7 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 		m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
 	}
 
-	if !animateScene && len(nr.Challenges) > 0 {
+	if !animateScene && !duelPending && len(nr.Challenges) > 0 {
 		m.pendingChallenges = nr.Challenges
 		if nextCmd := m.startNextChallenge(); nextCmd != nil {
 			cmds = append(cmds, nextCmd)
@@ -1714,8 +1779,16 @@ func (m NarrativeModel) View() string {
 		return m.challengeView.View()
 	}
 
+	if m.inSocialDuel && m.socialDuelView != nil {
+		return m.socialDuelView.View()
+	}
+
 	if m.pendingChallenge != nil && !m.scenePlaybackActive() {
 		return m.challengePreludeView()
+	}
+
+	if m.pendingSocialDuel != nil && !m.scenePlaybackActive() {
+		return m.socialDuelPreludeView()
 	}
 
 	if m.historyBrowser != nil && m.historyBrowser.Visible() {
