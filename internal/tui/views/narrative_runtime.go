@@ -191,6 +191,9 @@ func challengePreludeDescription(spec *engine.ChallengeSpec) string {
 	if spec == nil {
 		return ""
 	}
+	if text := strings.TrimSpace(spec.Description); text != "" {
+		return text
+	}
 	switch spec.Type {
 	case engine.ChallengeDiceRoll:
 		return fmt.Sprintf("Roll against difficulty %d. Modifiers and the engine will resolve the outcome fairly.", spec.Difficulty)
@@ -227,7 +230,9 @@ func (m NarrativeModel) challengePreludeView() string {
 	if spec.Difficulty > 0 {
 		lines = append(lines, fmt.Sprintf("Difficulty: %d", spec.Difficulty))
 	}
-	lines = append(lines, "", theme.MutedText.Render("Press Enter or Space to begin"))
+	lines = append(lines, "")
+	lines = append(lines, theme.MutedText.Render("The result will continue the scene automatically."))
+	lines = append(lines, theme.MutedText.Render("Press Enter or Space to begin"))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

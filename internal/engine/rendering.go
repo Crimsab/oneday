@@ -66,6 +66,8 @@ func StateChangesToEventCallouts(changes []StateChange) []EventCallout {
 			appendCallout("guidance", strings.TrimPrefix(desc, "Guidance fulfilled: "), "Requested beat paid off")
 		case strings.HasPrefix(desc, "Guidance progressed: "):
 			appendCallout("guidance", strings.TrimPrefix(desc, "Guidance progressed: "), "Requested beat progressed")
+		case strings.HasPrefix(desc, "Timeline advanced: "):
+			appendCallout("timeline", strings.TrimPrefix(desc, "Timeline advanced: "), "Character timeline progressed")
 		case strings.HasPrefix(desc, "World reacts: "):
 			appendCallout("reaction", strings.TrimPrefix(desc, "World reacts: "), "Visible consequence")
 		case desc == "Combat initiated!":

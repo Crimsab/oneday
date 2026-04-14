@@ -34,6 +34,7 @@ func (db *DB) migrate() error {
 		{14, migrationV14},
 		{15, migrationV15},
 		{16, migrationV16},
+		{17, migrationV17},
 	}
 
 	for _, m := range migrations {
@@ -317,4 +318,9 @@ ALTER TABLE world_state ADD COLUMN investigation_board_json TEXT NOT NULL DEFAUL
 const migrationV16 = `
 -- Canonical long-arc downtime project clocks.
 ALTER TABLE world_state ADD COLUMN project_clocks_json TEXT NOT NULL DEFAULT '{}';
+`
+
+const migrationV17 = `
+-- Canonical protagonist timeline for age, life stage, and major growth milestones.
+ALTER TABLE world_state ADD COLUMN character_timeline_json TEXT NOT NULL DEFAULT '{}';
 `

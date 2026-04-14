@@ -20,6 +20,24 @@ func TestBuildCommandSuggestionsFiltersTalk(t *testing.T) {
 	}
 }
 
+func TestBuildCommandSuggestionsIncludesAdvanceAndTimeskip(t *testing.T) {
+	items := buildCommandSuggestions("adv")
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(items))
+	}
+	if items[0].Value != "/advance " {
+		t.Fatalf("items[0].Value = %q, want /advance ", items[0].Value)
+	}
+
+	items = buildCommandSuggestions("time")
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(items))
+	}
+	if items[0].Value != "/timeskip " {
+		t.Fatalf("items[0].Value = %q, want /timeskip ", items[0].Value)
+	}
+}
+
 func TestNearbyTalkNPCSuggestionItemsPreferRecentRoster(t *testing.T) {
 	db := openAutocompleteTestDB(t)
 	now := time.Now()

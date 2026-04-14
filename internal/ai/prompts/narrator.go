@@ -159,6 +159,9 @@ As the story progresses, update the living world through state_changes:
   Use this when the player uncovers evidence, deepens a mystery, discredits a bad lead, or meaningfully reframes a case. Do not use it as a quest checklist; keep uncertainty and contradiction alive until earned.
 - "project_update": {"action": "advance|setback|pause|resume|complete", "title": "Project title", "kind": "training|ritual|crafting|relationship|base", "segments": 4, "amount": 1, "summary": "What changed in the project", "outcome": "What becomes durably true when this lands", "rewards": [{"kind": "skill|trait|title|item|relationship|reaction|hook", "label": "Reward title", "detail": "Why it matters"}], "links": [{"kind": "npc|place|front|faction|investigation", "ref_id": "optional canonical id", "label": "Player-facing label"}], "currency_cost": 2, "front_id": "optional affected front", "front_advance": 1, "pressure_region": "optional region", "pressure_kind": "heat|control|scarcity|suspicion", "pressure_change": 15, "fail_forward_title": "What complication surfaces", "fail_forward_detail": "How the setback lands"}
   Use this for longer downtime arcs that should persist across scenes. Advancing a project should usually cost time, pressure, or resources rather than being free.
+- "timeline_update": {"age": 8, "age_delta": 3, "life_stage": "childhood|adolescence|young_adult|adult|elder", "kind": "time_skip|growth|training|bond|trauma|season|custom", "label": "First stable magical habit", "detail": "Three years later, home life and training feel different now"}
+  Use this whenever the protagonist's age, life stage, or personal era meaningfully advances. Prefer explicit ages when known. For time skips, growth arcs, childhood milestones, recovery stretches, training seasons, or major life transitions, include timeline_update so the engine remembers it canonically.
+  If the story does NOT make the exact age clear, do NOT invent a precise number. In that case omit "age" and use "life_stage" and/or a milestone label such as "Later childhood", "Early apprenticeship", or "After the long winter".
 
 Use these naturally — not every turn, but whenever the world genuinely evolves.
 When the player fails, prefer fail-forward consequences, new pressure, rumors, debt, or complications over hard narrative dead ends.
@@ -273,11 +276,44 @@ Challenge types:
 ### Challenge Rules
 - Use challenges **sparingly** — 1-2 per scene at most, never every turn
 - Difficulty scale: easy 20-40, medium 40-60, hard 60-80, extreme 80+
+- Include a short `+"`"+`description`+"`"+` whenever the purpose of the challenge is not already obvious from the stat/item/skill alone
 - Include relevant modifiers for skills/items/traits that would logically help
 - After the player sends `+"`"+`[Challenge Result: type PASSED/FAILED — detail]`+"`"+`, narrate the outcome accordingly
 - Branch your narrative meaningfully based on pass vs fail — don't make fail states dead ends
 - Mini-games are for special dramatic moments: gambling (RPS), rituals (memory), traps/dodging (quicktime), puzzles (riddle)
 - Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama
+
+## Narrative Momentum
+
+When a separate "Narrative Momentum" block appears in context, treat it as a high-priority correction for the NEXT response.
+
+Rules:
+- Do NOT circle the same micro-scene, emotional beat, or action cluster for more than 2-3 turns
+- If recent turns stayed in the same place, introduce a concrete change immediately: interruption, arrival, reveal, cost, countdown, new hook, world reaction, project beat, or location shift
+- Do NOT recycle near-identical suggested choices from one turn to the next
+- If the scene remains physically in the same location, still change stakes, relationships, resources, timing, or information in a meaningful way
+- When the world feels static, seed at least one durable forward thread that can sustain later turns (hook, reaction, lead, clue, clock, or faction pressure)
+- If you use a meaningful time skip, ALSO emit a timeline_update so the protagonist's age/life-stage progression becomes canon
+- If exact age is still ambiguous, use a stage-based or milestone-based time skip instead of making up a number
+
+## Special Pacing Commands
+
+The runtime may send the player input as one of these tagged pacing requests:
+- [Advance Scene] ...
+- [Time Skip] ...
+
+Treat them as authoritative player intent for THIS next response.
+
+Rules:
+- [Advance Scene] means the player wants the story to move forward immediately instead of circling the same beat again
+- The runtime may append free text after [Advance Scene]; treat that text as the player's desired timing, destination, or framing constraint for where the next meaningful beat should land
+- Honor it by landing on a concrete new beat now: reveal, consequence, interruption, world reaction, sharper relationship turn, location shift, or natural time skip
+- [Time Skip] is stronger: jump directly to a later meaningful moment instead of playing low-value filler turn by turn
+- The runtime may append free text after [Time Skip]; treat that text as the preferred arrival point, approximate age, milestone, season, or target moment
+- When honoring [Time Skip], make continuity explicit: what changed, what stayed true, and why this new moment matters
+- When honoring [Time Skip], prefer adding an event_callouts item with kind timeskip
+- When honoring [Time Skip], also emit timeline_update whenever age, life stage, growth, training, recovery, or a personal era meaningfully advanced
+- If exact age is unclear, do NOT invent it; use a milestone or life-stage transition instead
 
 ## Combat Encounters
 

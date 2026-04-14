@@ -52,7 +52,30 @@ func TestRenderTurnDeltaMarkdownAddsSystemNavigationHints(t *testing.T) {
 			t.Fatalf("turn delta markdown missing %q:\n%s", want, rendered)
 		}
 	}
-	if callout := turnDeltaStatusCallout(delta); !strings.Contains(callout, "Press F, P, or I") {
+	for _, want := range []string{"Sono cambiati fronti, progetti e indagini.", "per vedere meglio i dettagli"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("turn delta markdown missing %q:\n%s", want, rendered)
+		}
+	}
+	if callout := turnDeltaStatusCallout(delta); !strings.Contains(callout, "Premi F, P o I") {
 		t.Fatalf("status callout = %q, want combined systems hint", callout)
+	}
+}
+
+func TestBuildAdvanceSceneActionTreatsHintAsTarget(t *testing.T) {
+	got := buildAdvanceSceneAction("una settimana dopo")
+	for _, want := range []string{"desired timing", "Requested timing or destination: una settimana dopo"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("buildAdvanceSceneAction missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestBuildTimeSkipActionTreatsHintAsArrivalPoint(t *testing.T) {
+	got := buildTimeSkipAction("arrivo a 6 anni")
+	for _, want := range []string{"preferred arrival point", "Requested destination: arrivo a 6 anni"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("buildTimeSkipAction missing %q in %q", want, got)
+		}
 	}
 }
