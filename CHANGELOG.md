@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.5.0](https://github.com/Crimsab/oneday/compare/v1.4.0...v1.5.0) (2026-04-14)
+
+
+### Features
+
+* **narrative:** improve pacing, timeline, and multiline input ([b57507f](https://github.com/Crimsab/oneday/commit/b57507f377502126d27e12880cd848ec441f0ced))
+
 ## [1.4.0](https://github.com/Crimsab/oneday/compare/v1.3.0...v1.4.0) (2026-04-09)
 
 
