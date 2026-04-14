@@ -32,6 +32,8 @@ var slashCommandSpecs = []slashCommandSpec{
 	{Name: "projects", Hint: "Open the project workspace"},
 	{Name: "btw", Hint: "Ask a contextual side question", TrailingSpace: true},
 	{Name: "guide", Hint: "Store soft future story guidance", TrailingSpace: true},
+	{Name: "advance", Hint: "Push to the next meaningful beat; free text accepted", TrailingSpace: true},
+	{Name: "timeskip", Hint: "Jump ahead to a later meaningful moment; free text accepted", TrailingSpace: true},
 	{Name: "achievements", Hint: "Show earned achievements", Aliases: []string{"a"}},
 	{Name: "narrator", Hint: "Speak to the game master", Aliases: []string{"n"}, TrailingSpace: true},
 	{Name: "craft", Hint: "Open the crafting station"},

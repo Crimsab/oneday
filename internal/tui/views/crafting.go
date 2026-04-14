@@ -60,13 +60,9 @@ type CraftingModel struct {
 // NewCraftingModel creates a crafting view.
 func NewCraftingModel(crafting *engine.CraftingEngine, narrator *engine.Narrator, width, height int) CraftingModel {
 	// Create textarea for free input.
-	input := textarea.New()
-	input.Placeholder = "Descrivi cosa vuoi creare..."
-	input.ShowLineNumbers = false
-	input.CharLimit = 512
+	input := newGameTextarea("Descrivi cosa vuoi creare...", storyInputHeight)
 	chatWidth := craftingChatWidth(width)
 	input.SetWidth(chatWidth - 4)
-	input.SetHeight(3)
 	input.Focus()
 
 	// Initialize choice list.
@@ -359,9 +355,9 @@ func (m CraftingModel) View() string {
 	if !m.inputFocus && m.choices.HasChoices() {
 		focusHint = theme.MutedText.Render(" [Tab: input libero]")
 	} else if m.inputFocus && m.choices.HasChoices() {
-		focusHint = theme.MutedText.Render(" [Tab: scelte | Esc: esci]")
+		focusHint = theme.MutedText.Render(" [Alt+Enter/Ctrl+J: nuova riga | Tab: scelte | Esc: esci]")
 	} else {
-		focusHint = theme.MutedText.Render(" [Esc: esci]")
+		focusHint = theme.MutedText.Render(" [Alt+Enter/Ctrl+J: nuova riga | Esc: esci]")
 	}
 
 	// Input.

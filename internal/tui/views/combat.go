@@ -61,12 +61,8 @@ func NewCombatModel(combat *engine.CombatEngine, narrator *engine.Narrator, widt
 	state := combat.State()
 
 	// Create textarea for free input.
-	input := textarea.New()
-	input.Placeholder = "Describe your action..."
-	input.ShowLineNumbers = false
-	input.CharLimit = 512
+	input := newGameTextarea("Describe your action...", actionInputHeight)
 	input.SetWidth(width - 4)
-	input.SetHeight(2)
 	input.Focus()
 
 	// Initialize choice list.
@@ -350,7 +346,7 @@ func (m CombatModel) View() string {
 	if !m.inputFocus && m.choices.HasChoices() {
 		focusHint = theme.MutedText.Render(" [Tab: switch to free input]")
 	} else if m.inputFocus && m.choices.HasChoices() {
-		focusHint = theme.MutedText.Render(" [Tab: switch to choices]")
+		focusHint = theme.MutedText.Render(" [Tab: switch to choices | Alt+Enter/Ctrl+J: newline]")
 	}
 	inputSection := lipgloss.JoinVertical(lipgloss.Left,
 		theme.MutedText.Render("  Free action:")+focusHint,

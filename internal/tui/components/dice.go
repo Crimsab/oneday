@@ -29,6 +29,7 @@ type ModDisplay struct {
 // DiceModel renders an animated d100 dice roll with modifiers and result.
 type DiceModel struct {
 	// Configuration (set once)
+	Context    string       // what the roll is for
 	FinalRoll  int          // the actual d100 result (pre-computed by engine)
 	Total      int          // roll + sum(modifiers)
 	Difficulty int          // threshold to pass
@@ -49,8 +50,9 @@ type DiceModel struct {
 
 // NewDiceModel creates a dice roll animation.
 // All values are pre-computed by the engine — this is purely visual.
-func NewDiceModel(roll, total, difficulty int, modifiers []ModDisplay, passed bool, width, height int) DiceModel {
+func NewDiceModel(context string, roll, total, difficulty int, modifiers []ModDisplay, passed bool, width, height int) DiceModel {
 	return DiceModel{
+		Context:         strings.TrimSpace(context),
 		FinalRoll:       roll,
 		Total:           total,
 		Difficulty:      difficulty,
@@ -136,6 +138,10 @@ func (d DiceModel) View() string {
 
 	var lines []string
 	lines = append(lines, title)
+	if d.Context != "" {
+		lines = append(lines, theme.MutedText.Render("  "+d.Context))
+		lines = append(lines, "")
+	}
 	lines = append(lines, "")
 	lines = append(lines, numberLine)
 	lines = append(lines, "")
@@ -163,7 +169,7 @@ func (d DiceModel) View() string {
 		}
 		lines = append(lines, resultLine)
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  Press any key to continue"))
+		lines = append(lines, theme.MutedText.Render("  Press any key to continue the story"))
 	} else {
 		lines = append(lines, theme.MutedText.Render("  Rolling..."))
 	}

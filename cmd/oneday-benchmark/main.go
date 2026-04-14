@@ -418,7 +418,7 @@ func buildNarrativeIntroCase() benchmarkCase {
 		Weight:      0.25,
 		Temperature: 0.8,
 		MaxTokens:   1200,
-		Messages:    engine.BuildContext(story, character, world, nil, nil, nil, "", prompts.FirstTurnUser, nil),
+		Messages:    engine.BuildContext(story, character, world, nil, nil, nil, "", prompts.FirstTurnUser, nil, nil),
 		Schema:      ai.NarrativeResponseFormat(),
 		Eval:        evaluateNarrativeBasic,
 	}
@@ -481,6 +481,7 @@ func buildDialogueMetadataCase() benchmarkCase {
 		"",
 		"I keep my voice low and ask Lyanna what she really heard beneath the bells, and whether the patrols are looking for me or for the relic. Rispondi in italiano.",
 		[]storage.Achievement{{Name: "Debito sul Molo", Category: "story"}},
+		nil,
 	)
 
 	return benchmarkCase{
@@ -536,6 +537,7 @@ func buildChallengeCase() benchmarkCase {
 		nil,
 		"Nel capitolo precedente Nerea è sfuggita al sequestro di una reliquia, ma ha attirato il sospetto delle Guardie di Marea.",
 		"I sprint for the side rope and try to keep my balance while the bridge collapses and the lantern chains lash overhead. Rispondi in italiano.",
+		nil,
 		nil,
 	)
 

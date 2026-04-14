@@ -73,6 +73,11 @@ func TestNarratorSystemIncludesCombatAndGuidanceInstructions(t *testing.T) {
 		`"combat_start": null`,
 		"## Combat Encounters",
 		"## Player Guidance",
+		"## Special Pacing Commands",
+		"[Advance Scene] ...",
+		"[Time Skip] ...",
+		"free text after [Advance Scene]",
+		"free text after [Time Skip]",
 		`"guide_update": {"title": "Guidance title", "status": "seeded"`,
 	} {
 		if !strings.Contains(prompt, want) {

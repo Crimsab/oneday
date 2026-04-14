@@ -907,6 +907,8 @@ func buildTurnDelta(changes []StateChange) *TurnDelta {
 			kind = "hook"
 		case strings.HasPrefix(change.Field, "reaction."):
 			kind = "reaction"
+		case change.Field == "timeline":
+			kind = "timeline"
 		case strings.Contains(change.Field, "setting_") || strings.HasPrefix(change.Field, "world_"):
 			kind = "lore"
 		case change.Field == "location":

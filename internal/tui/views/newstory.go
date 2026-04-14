@@ -46,10 +46,7 @@ type NewStoryModel struct {
 
 // NewNewStoryModel creates the story creation view.
 func NewNewStoryModel(creator *engine.StoryCreator) NewStoryModel {
-	ta := textarea.New()
-	ta.Placeholder = "Type your response..."
-	ta.CharLimit = 500
-	ta.SetHeight(3)
+	ta := newGameTextarea("Type your response...", storyInputHeight)
 	ta.Focus()
 
 	sp := spinner.New()
@@ -167,10 +164,10 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 			return m, nil
 		}
 
-		switch msg.Type {
-		case tea.KeyCtrlC:
+		switch msg.String() {
+		case "ctrl+c":
 			// handled by parent app
-		case tea.KeyTab:
+		case "tab":
 			if len(m.actions) > 0 {
 				m.inputFocus = !m.inputFocus
 				if m.inputFocus {
@@ -179,12 +176,12 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 					m.input.Blur()
 				}
 			}
-		case tea.KeyEnter:
+		case "enter":
 			if !m.inputFocus && len(m.actions) > 0 {
 				break
 			}
-			if msg.Alt {
-				// Alt+Enter for newline in textarea — fall through to textarea update
+			if isTextareaNewlineKey(msg) {
+				// Let the textarea handle multiline shortcuts.
 				break
 			}
 			text := strings.TrimSpace(m.input.Value())
@@ -258,9 +255,9 @@ func (m NewStoryModel) View() string {
 		choicesView = theme.MutedText.Render("Quick choices") + "\n" + choicesView
 	}
 
-	help := theme.MutedText.Render("tab toggle · enter send/select · esc back · ctrl+c quit")
+	help := theme.MutedText.Render("tab toggle · enter send/select · alt+enter/ctrl+j newline · esc back · ctrl+c quit")
 	if len(m.actions) == 0 {
-		help = theme.MutedText.Render("enter send · esc back · ctrl+c quit")
+		help = theme.MutedText.Render("enter send · alt+enter/ctrl+j newline · esc back · ctrl+c quit")
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left,

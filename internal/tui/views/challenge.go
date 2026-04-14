@@ -102,7 +102,7 @@ func NewChallengeView(
 		for i, m := range result.Modifiers {
 			mods[i] = components.ModDisplay{Source: m.Source, Value: m.Value}
 		}
-		dice := components.NewDiceModel(result.Roll, result.Total, result.Difficulty, mods, result.Passed, width, height)
+		dice := components.NewDiceModel(challengeDisplayContext(spec), result.Roll, result.Total, result.Difficulty, mods, result.Passed, width, height)
 		cv.dice = &dice
 		return cv, cv.dice.Start()
 
@@ -308,11 +308,46 @@ func buildPassiveMessage(spec *engine.ChallengeSpec, result *engine.ChallengeRes
 	default:
 		label = "Check"
 	}
+	if context := strings.TrimSpace(spec.Description); context != "" {
+		label += " — " + context
+	}
 
 	if result.Passed {
 		return fmt.Sprintf("✓ %s — Passed", label)
 	}
 	return fmt.Sprintf("✗ %s — Failed", label)
+}
+
+func challengeDisplayContext(spec *engine.ChallengeSpec) string {
+	if spec == nil {
+		return ""
+	}
+	if text := strings.TrimSpace(spec.Description); text != "" {
+		return text
+	}
+
+	switch spec.Type {
+	case engine.ChallengeDiceRoll:
+		return fmt.Sprintf("Roll against difficulty %d.", spec.Difficulty)
+	case engine.ChallengeStatCheck:
+		if spec.Stat != "" {
+			return fmt.Sprintf("Check %s.", strings.ToUpper(spec.Stat))
+		}
+	case engine.ChallengeItemCheck:
+		if spec.Item != "" {
+			return fmt.Sprintf("Requires %s.", spec.Item)
+		}
+	case engine.ChallengeSkillCheck:
+		if spec.Skill != "" {
+			return fmt.Sprintf("Check skill %s.", spec.Skill)
+		}
+	case engine.ChallengeRelCheck:
+		if spec.NPCName != "" {
+			return fmt.Sprintf("Social check against %s.", spec.NPCName)
+		}
+	}
+
+	return "Resolve the current challenge."
 }
 
 // renderPassiveOverlay renders a brief notification for passive challenges.
