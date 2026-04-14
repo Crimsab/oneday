@@ -180,6 +180,7 @@ const (
 // ChallengeSpec is what the AI includes in its response to request a challenge.
 type ChallengeSpec struct {
 	Type        ChallengeType `json:"type"`
+	Description string        `json:"description,omitempty"` // short player-facing context for what this challenge represents
 	Difficulty  int           `json:"difficulty,omitempty"`  // threshold for dice/stat checks
 	Stat        string        `json:"stat,omitempty"`        // which stat to check (e.g., "per", "str")
 	Item        string        `json:"item,omitempty"`        // required item name

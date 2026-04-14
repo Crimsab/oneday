@@ -49,6 +49,12 @@ func GuideMetaResponseFormat() *ResponseFormat {
 	return NewJSONSchemaResponseFormat("oneday_guide_meta", guideMetaSchema())
 }
 
+// SceneProgressionResponseFormat is the schema for the mini-judge that decides
+// how a stalled scene should move next.
+func SceneProgressionResponseFormat() *ResponseFormat {
+	return NewJSONSchemaResponseFormat("oneday_scene_progression", sceneProgressionSchema())
+}
+
 // CraftingResponseFormat is the schema for crafting evaluations.
 func CraftingResponseFormat() *ResponseFormat {
 	return NewJSONSchemaResponseFormat("oneday_crafting_response", craftingSchema())
@@ -196,6 +202,35 @@ func guideDirectiveSchema() map[string]any {
 			"priority": stringSchema(),
 			"status":   stringSchema(),
 			"progress": stringSchema(),
+		},
+	}
+}
+
+func sceneProgressionSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required": []string{
+			"assessment",
+			"strategy",
+			"reason",
+			"instruction",
+			"time_skip_label",
+			"time_skip_detail",
+		},
+		"properties": map[string]any{
+			"assessment": map[string]any{
+				"type": "string",
+				"enum": []string{"productive", "stalled"},
+			},
+			"strategy": map[string]any{
+				"type": "string",
+				"enum": []string{"deepen", "interrupt", "reveal", "consequence", "time_skip", "location_shift"},
+			},
+			"reason":           nonEmptyStringSchema(),
+			"instruction":      nonEmptyStringSchema(),
+			"time_skip_label":  stringSchema(),
+			"time_skip_detail": stringSchema(),
 		},
 	}
 }
@@ -350,6 +385,7 @@ func challengeSchema() map[string]any {
 				"type": "string",
 				"enum": []string{"stat_check", "dice_roll", "item_check", "skill_check", "relationship_check", "mini_game"},
 			},
+			"description": stringSchema(),
 			"difficulty":  integerSchema(),
 			"stat":        stringSchema(),
 			"item":        stringSchema(),

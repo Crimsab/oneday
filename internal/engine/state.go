@@ -804,6 +804,11 @@ func ApplyStateChanges(
 				storePlayerGuidance(world, updatePlayerGuidance(guidance, updates, currentTurn))
 			}
 
+		case "timeline_update":
+			for _, updateMap := range toObjectMaps(val) {
+				applied = append(applied, ApplyTimelineUpdate(world, updateMap, currentTurn)...)
+			}
+
 		case "world_reaction_add", "fail_forward":
 			reactions := loadWorldReactions(world)
 			updated := false

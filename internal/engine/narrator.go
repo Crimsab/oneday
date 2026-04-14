@@ -328,7 +328,7 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 		return nil, err
 	}
 
-	resp, err := n.router.Complete(ctx, prep.req)
+	resp, err := n.completeTurnResponse(ctx, prep)
 	if err != nil {
 		return nil, err
 	}
@@ -340,6 +340,31 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
 		return nil, err
+	}
+
+	if prep.sceneProgression != nil {
+		out := make(chan NarrativeStreamChunk, 4)
+		go func() {
+			defer close(out)
+
+			resp, err := n.completeTurnResponse(ctx, prep)
+			if err != nil {
+				out <- NarrativeStreamChunk{Err: err}
+				return
+			}
+
+			narrative, err := n.finalizeTurn(ctx, prep, input, resp, 0, false)
+			if err != nil {
+				out <- NarrativeStreamChunk{Err: err}
+				return
+			}
+
+			if resp.Content != "" {
+				out <- NarrativeStreamChunk{Delta: resp.Content}
+			}
+			out <- NarrativeStreamChunk{Done: true, Response: narrative}
+		}()
+		return out, nil
 	}
 
 	stream, providerName, err := n.router.Stream(ctx, prep.req)
@@ -401,9 +426,13 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 }
 
 type preparedTurn struct {
-	inputType   string
-	currentTurn int
-	req         ai.Request
+	inputType        string
+	currentTurn      int
+	req              ai.Request
+	preflightUsage   ai.Usage
+	preflightLatency int64
+	recentMessages   []storage.ChatMessage
+	sceneProgression *SceneProgressionGuidance
 }
 
 func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn, error) {
@@ -440,6 +469,17 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 
 	lastChapterSummary := n.loadPreviousChapterSummary()
 	earnedAchievements := n.loadEarnedAchievements()
+	var sceneProgression *SceneProgressionGuidance
+	var preflightUsage ai.Usage
+	var preflightLatency int64
+	if signal := detectNarrativeMomentumSignal(n.world, recentMsgs); signal != nil {
+		guidance, usage, latency, err := n.evaluateSceneProgression(ctx, recentMsgs, signal)
+		preflightUsage = mergeUsage(preflightUsage, usage)
+		preflightLatency += latency
+		if err == nil {
+			sceneProgression = guidance
+		}
+	}
 
 	// Build the full context using the context builder.
 	messages := BuildContext(
@@ -452,11 +492,16 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 		lastChapterSummary,
 		input,
 		earnedAchievements,
+		sceneProgression,
 	)
 
 	return &preparedTurn{
-		inputType:   inputType,
-		currentTurn: currentTurn,
+		inputType:        inputType,
+		currentTurn:      currentTurn,
+		preflightUsage:   preflightUsage,
+		preflightLatency: preflightLatency,
+		recentMessages:   recentMsgs,
+		sceneProgression: sceneProgression,
 		req: ai.Request{
 			Messages:       messages,
 			Temperature:    n.genCfg.Temperature,
@@ -464,6 +509,23 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 			ResponseFormat: ai.NarrativeResponseFormat(),
 		},
 	}, nil
+}
+
+func (n *Narrator) completeTurnResponse(ctx context.Context, prep *preparedTurn) (ai.Response, error) {
+	if prep == nil {
+		return ai.Response{}, fmt.Errorf("missing prepared turn")
+	}
+
+	resp, err := n.router.Complete(ctx, prep.req)
+	if err != nil {
+		return ai.Response{}, err
+	}
+
+	if prep.sceneProgression == nil {
+		return resp, nil
+	}
+
+	return n.rerollStalledNarrativeDraft(ctx, prep, resp)
 }
 
 func (n *Narrator) finalizeTurn(
@@ -475,9 +537,9 @@ func (n *Narrator) finalizeTurn(
 	streamed bool,
 ) (*NarrativeResponse, error) {
 	n.lastModel = resp.Model
-	n.lastLatency = resp.LatencyMs
+	n.lastLatency = prep.preflightLatency + resp.LatencyMs
 	n.lastTTFT = firstTokenMs
-	n.lastUsage = resp.Usage
+	n.lastUsage = mergeUsage(prep.preflightUsage, resp.Usage)
 	n.lastStreamed = streamed
 
 	charSnapshot := *n.character

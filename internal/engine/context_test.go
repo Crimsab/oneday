@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
+	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -142,4 +144,173 @@ func TestBuildStateSummaryIncludesProjectProgressAndCompletedFallout(t *testing.
 	if !strings.Contains(summary, "Completed Projects: Restore the Lantern Loft 4/4 [base] — You now have a safe place to disappear for a night.") {
 		t.Fatalf("summary missing completed project fallout:\n%s", summary)
 	}
+}
+
+func TestBuildContextAddsNarrativeMomentumWhenRecentTurnsStall(t *testing.T) {
+	story := &storage.Story{
+		ID:              "story-momentum",
+		Name:            "Momentum Test",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		Language:        "it",
+	}
+	char := newTestChar()
+	world := newTestWorld()
+	world.CurrentLocation = "Capanna familiare"
+
+	recent := []storage.ChatMessage{
+		testAssistantTurnWithMeta(t, 7, "Una scintilla azzurra vibra sopra il latte nel pentolino.", "Capanna familiare",
+			"Ascolta ancora la scintilla e cerca un ritmo",
+			"Osserva il latte per capire se la magia cresce",
+			"Chiama Thorne e chiedigli cosa ne pensa",
+		),
+		testAssistantTurnWithMeta(t, 8, "La scintilla torna a increspare il latte mentre l'aria resta ferma.", "Capanna familiare",
+			"Studia la scintilla piu da vicino",
+			"Controlla il latte e la sua aura",
+			"Vai da Thorne per un consiglio",
+		),
+		testAssistantTurnWithMeta(t, 9, "La magia continua a fremere sul bordo del latte senza cambiare davvero scena.", "Capanna familiare",
+			"Analizza la scintilla prima che svanisca",
+			"Esamina il latte per leggere la magia",
+			"Cerca Thorne e condividi il dubbio",
+		),
+	}
+
+	msgs := BuildContext(story, char, world, nil, recent, nil, "", "Continuo.", nil, nil)
+	momentum := findLiveMomentumSummary(msgs)
+	if momentum == "" {
+		t.Fatalf("expected Narrative Momentum system message, got %#v", msgs)
+	}
+	if !strings.Contains(momentum, "Do NOT offer near-identical choices") {
+		t.Fatalf("momentum guidance missing anti-repeat instruction:\n%s", momentum)
+	}
+	if !strings.Contains(momentum, "The live world state currently lacks strong external pressure.") {
+		t.Fatalf("momentum guidance missing low-pressure note:\n%s", momentum)
+	}
+}
+
+func TestBuildContextSkipsNarrativeMomentumWhenTurnsAreHealthy(t *testing.T) {
+	story := &storage.Story{
+		ID:              "story-healthy",
+		Name:            "Healthy Test",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		Language:        "it",
+	}
+	char := newTestChar()
+	world := newTestWorld()
+	world.CurrentLocation = "Villaggio"
+
+	recent := []storage.ChatMessage{
+		testAssistantTurnWithMeta(t, 4, "La piazza si apre davanti a te con il mercato in fermento.", "Villaggio",
+			"Parla con il mercante del rame",
+			"Vai verso il tempio in fondo alla strada",
+			"Segui il corriere che corre verso il porto",
+		),
+		testAssistantTurnWithMeta(t, 5, "Al porto una sirena interrompe le contrattazioni e tutti si voltano verso l'acqua.", "Porto",
+			"Raggiungi il molo in fiamme",
+			"Interroga la guardia sul segnale",
+			"Cerca subito una via di fuga",
+		),
+		testAssistantTurnWithMeta(t, 6, "Nel tempio abbandonato trovi un archivio spezzato e un diario ancora tiepido.", "Tempio abbandonato",
+			"Apri il diario sul tavolo",
+			"Ispeziona le impronte nella polvere",
+			"Richiama la tua memoria sul simbolo inciso",
+		),
+	}
+
+	msgs := BuildContext(story, char, world, nil, recent, nil, "", "Continuo.", nil, nil)
+	if momentum := findLiveMomentumSummary(msgs); momentum != "" {
+		t.Fatalf("did not expect Narrative Momentum guidance for varied turns:\n%s", momentum)
+	}
+}
+
+func TestBuildContextUsesSceneProgressionJudgeGuidance(t *testing.T) {
+	story := &storage.Story{
+		ID:              "story-timeskip",
+		Name:            "Timeskip Test",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		Language:        "it",
+	}
+	char := newTestChar()
+	world := newTestWorld()
+	world.CurrentLocation = "Casa di famiglia"
+
+	recent := []storage.ChatMessage{
+		testAssistantTurnWithMeta(t, 3, "Nella casa di famiglia la scintilla di magia torna a tremare sopra il latte mentre la madre osserva il focolare.", "Casa di famiglia",
+			"Osserva ancora la scintilla di magia sopra il latte",
+			"Chiedi alla madre cosa significhi quella scintilla di magia",
+			"Resta accanto al focolare guardando latte e scintilla",
+		),
+		testAssistantTurnWithMeta(t, 4, "Nel pomeriggio la stessa scintilla di magia torna sul latte nella stessa casa mentre la madre resta al focolare.", "Casa di famiglia",
+			"Segui ancora la scintilla di magia sul latte",
+			"Fai un'altra domanda alla madre sulla magia della scintilla",
+			"Rimani al focolare osservando latte e scintilla",
+		),
+		testAssistantTurnWithMeta(t, 5, "La sera nella casa di famiglia riporta la stessa scintilla di magia sul latte e la stessa attesa accanto al focolare.", "Casa di famiglia",
+			"Controlla ancora la scintilla di magia che vibra sul latte",
+			"Parla di nuovo con tua madre della scintilla di magia",
+			"Aspetta al focolare guardando latte e scintilla",
+		),
+	}
+
+	guidance := &SceneProgressionGuidance{
+		Assessment:     sceneProgressionAssessmentStalled,
+		Strategy:       sceneProgressionStrategyTimeSkip,
+		Reason:         "The childhood beat is atmospheric but no new pressure is landing turn by turn.",
+		Instruction:    "Jump to the next meaningful childhood milestone and show how the same home now feels different.",
+		TimeSkipLabel:  "Age 8 - first stable magical habit",
+		TimeSkipDetail: "Carry forward the family home, but reveal what changed in routine, confidence, and tension.",
+	}
+
+	msgs := BuildContext(story, char, world, nil, recent, nil, "", "Continuo.", nil, guidance)
+	momentum := findLiveMomentumSummary(msgs)
+	if momentum == "" {
+		t.Fatalf("expected Narrative Momentum summary with scene judge guidance")
+	}
+	if !strings.Contains(momentum, "Preferred strategy: time_skip.") {
+		t.Fatalf("momentum summary missing time_skip strategy:\n%s", momentum)
+	}
+	if !strings.Contains(momentum, "Time skip target: Age 8 - first stable magical habit") {
+		t.Fatalf("momentum summary missing time skip target:\n%s", momentum)
+	}
+}
+
+func testAssistantTurnWithMeta(t *testing.T, turn int, narrative, location string, choices ...string) storage.ChatMessage {
+	t.Helper()
+
+	metaJSON, err := json.Marshal(persistedAssistantMeta{
+		Location: location,
+		Choices:  choices,
+		Output: &ChatOutput{
+			Narrative: narrative,
+			Choices:   choices,
+			Location:  location,
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal test assistant meta: %v", err)
+	}
+
+	return storage.ChatMessage{
+		Turn:         turn,
+		Role:         "assistant",
+		Content:      narrative,
+		MetadataJSON: string(metaJSON),
+	}
+}
+
+func findLiveMomentumSummary(msgs []ai.Message) string {
+	for _, msg := range msgs {
+		if msg.Role != "system" {
+			continue
+		}
+		if strings.HasPrefix(msg.Content, "## Narrative Momentum\n") &&
+			(strings.Contains(msg.Content, "Recent turns are circling the same micro-beat.") ||
+				strings.Contains(msg.Content, "Recent turns may be drifting. Use this scene progression directive")) {
+			return msg.Content
+		}
+	}
+	return ""
 }

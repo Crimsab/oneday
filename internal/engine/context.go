@@ -2,7 +2,9 @@ package engine
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
@@ -40,6 +42,7 @@ func BuildContext(
 	lastChapterSummary string,
 	currentInput string,
 	earnedAchievements []storage.Achievement,
+	sceneProgression *SceneProgressionGuidance,
 ) []ai.Message {
 	msgs := make([]ai.Message, 0, len(recentMessages)+5)
 
@@ -86,6 +89,13 @@ func BuildContext(
 		msgs = append(msgs, ai.Message{
 			Role:    ai.RoleSystem,
 			Content: guidanceSummary,
+		})
+	}
+
+	if momentumSummary := buildNarrativeMomentumSummary(world, recentMessages, sceneProgression); momentumSummary != "" {
+		msgs = append(msgs, ai.Message{
+			Role:    ai.RoleSystem,
+			Content: momentumSummary,
 		})
 	}
 
@@ -140,10 +150,21 @@ func BuildContext(
 // lastChapterSummary is the AI-generated summary of the previous chapter (empty if chapter 1).
 func buildStateSummary(char *storage.Character, world *storage.WorldState, npcs []storage.NPC, lastChapterSummary string) string {
 	var sb strings.Builder
+	timeline := loadCharacterTimeline(world)
 	sb.WriteString("## Current Game State\n")
 	sb.WriteString(fmt.Sprintf("- Chapter: %d\n", world.CurrentChapter))
 	sb.WriteString(fmt.Sprintf("- Turn: %d\n", world.CurrentTurn))
 	sb.WriteString(fmt.Sprintf("- Location: %s\n", world.CurrentLocation))
+	timelineSummary := formatCharacterTimelineSummary(timeline)
+	recentTimelineMilestones := formatRecentTimelineMilestones(timeline, 2)
+	if timelineSummary != "" {
+		sb.WriteString(fmt.Sprintf("- Timeline: %s\n", timelineSummary))
+	} else if recentTimelineMilestones != "" {
+		sb.WriteString("- Timeline: unresolved\n")
+	}
+	if recentTimelineMilestones != "" {
+		sb.WriteString(fmt.Sprintf("- Recent Milestones: %s\n", recentTimelineMilestones))
+	}
 	sb.WriteString(fmt.Sprintf("- Character: %s\n", char.Name))
 	sb.WriteString(fmt.Sprintf("- Stats (live): %s\n", char.StatsJSON))
 	if char.TraitsJSON != "" && char.TraitsJSON != "null" && char.TraitsJSON != "[]" {
@@ -268,4 +289,376 @@ func buildPlayerGuidanceSummary(world *storage.WorldState) string {
 		sb.WriteString(line + "\n")
 	}
 	return sb.String()
+}
+
+type recentAssistantBeat struct {
+	location    string
+	terms       []string
+	choiceTerms map[string]struct{}
+}
+
+type narrativeMomentumSignal struct {
+	recentTurns        int
+	sameLocation       bool
+	lowWorldPressure   bool
+	similarChoicePairs int
+	repeatedTerms      []string
+}
+
+func buildNarrativeMomentumSummary(world *storage.WorldState, recentMessages []storage.ChatMessage, sceneProgression *SceneProgressionGuidance) string {
+	signal := detectNarrativeMomentumSignal(world, recentMessages)
+	if signal == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("## Narrative Momentum\n")
+	if sceneProgression != nil {
+		sb.WriteString("Recent turns may be drifting. Use this scene progression directive for the NEXT response.\n")
+	} else {
+		sb.WriteString("Recent turns are circling the same micro-beat. Treat this as a high-priority correction for the NEXT response.\n")
+	}
+	if signal.sameLocation {
+		sb.WriteString("- The scene has lingered in the same location across recent turns.\n")
+	}
+	if signal.lowWorldPressure {
+		sb.WriteString("- The live world state currently lacks strong external pressure.\n")
+	}
+	if len(signal.repeatedTerms) > 0 {
+		sb.WriteString(fmt.Sprintf("- Repeated motifs to stop recycling: %s\n", strings.Join(signal.repeatedTerms, ", ")))
+	}
+	if signal.similarChoicePairs > 0 {
+		sb.WriteString(fmt.Sprintf("- Similar choice families repeated across %d recent turn pairs.\n", signal.similarChoicePairs))
+	}
+	if sceneProgression != nil {
+		sb.WriteString(fmt.Sprintf("- Scene judge assessment: %s.\n", sceneProgression.Assessment))
+		sb.WriteString(fmt.Sprintf("- Preferred strategy: %s.\n", sceneProgression.Strategy))
+		sb.WriteString("- Reason: " + sceneProgression.Reason + "\n")
+		sb.WriteString("- Apply now: " + sceneProgression.Instruction + "\n")
+		if sceneProgression.Strategy == sceneProgressionStrategyTimeSkip {
+			if sceneProgression.TimeSkipLabel != "" {
+				sb.WriteString("- Time skip target: " + sceneProgression.TimeSkipLabel + "\n")
+			}
+			if sceneProgression.TimeSkipDetail != "" {
+				sb.WriteString("- Time skip continuity: " + sceneProgression.TimeSkipDetail + "\n")
+			}
+			sb.WriteString("- If you time skip, jump directly to the next meaningful age, milestone, or changed situation. Do not play filler turns in between.\n")
+		}
+	} else {
+		sb.WriteString("- Introduce one concrete change immediately: interruption, arrival, discovery, reveal, cost, countdown, hook, world reaction, project beat, or location shift.\n")
+	}
+	sb.WriteString("- Do NOT offer near-identical choices to the last turns.\n")
+	sb.WriteString("- If the scene stays in the same place, materially change stakes, relationships, resources, or available information.\n")
+	sb.WriteString("- Prefer 2-4 choices that open genuinely different directions instead of rephrasing the same action.\n")
+	if signal.lowWorldPressure {
+		sb.WriteString("- Seed at least one durable thread when it fits: open hook, visible world reaction, front clue, investigation lead, or project progress.\n")
+	}
+	return sb.String()
+}
+
+func detectNarrativeMomentumSignal(world *storage.WorldState, recentMessages []storage.ChatMessage) *narrativeMomentumSignal {
+	beats := extractRecentAssistantBeats(recentMessages, 4)
+	if len(beats) < 3 {
+		return nil
+	}
+
+	repeatedTerms := repeatedBeatTerms(beats)
+	similarChoicePairs := countSimilarChoicePairs(beats)
+	if len(repeatedTerms) < 2 && similarChoicePairs < 2 {
+		return nil
+	}
+
+	sameLocation := sameRecentLocation(beats)
+	lowWorldPressure := worldHasLowNarrativePressure(world)
+	if !sameLocation && !lowWorldPressure && len(repeatedTerms) < 3 {
+		return nil
+	}
+
+	return &narrativeMomentumSignal{
+		recentTurns:        len(beats),
+		sameLocation:       sameLocation,
+		lowWorldPressure:   lowWorldPressure,
+		similarChoicePairs: similarChoicePairs,
+		repeatedTerms:      repeatedTerms,
+	}
+}
+
+func extractRecentAssistantBeats(recentMessages []storage.ChatMessage, limit int) []recentAssistantBeat {
+	if limit <= 0 {
+		limit = 4
+	}
+
+	beats := make([]recentAssistantBeat, 0, limit)
+	for i := len(recentMessages) - 1; i >= 0 && len(beats) < limit; i-- {
+		msg := recentMessages[i]
+		if !strings.EqualFold(msg.Role, "assistant") {
+			continue
+		}
+
+		beat, ok := buildRecentAssistantBeat(msg)
+		if !ok {
+			continue
+		}
+		beats = append(beats, beat)
+	}
+
+	for i, j := 0, len(beats)-1; i < j; i, j = i+1, j-1 {
+		beats[i], beats[j] = beats[j], beats[i]
+	}
+	return beats
+}
+
+func buildRecentAssistantBeat(msg storage.ChatMessage) (recentAssistantBeat, bool) {
+	var beat recentAssistantBeat
+
+	narrative := normalizeNarrativeText(msg.Content)
+	var choiceTexts []string
+	if meta, ok := parsePersistedAssistantMeta(msg.MetadataJSON); ok {
+		if meta.Output != nil {
+			if text := normalizeNarrativeText(meta.Output.Narrative); text != "" {
+				narrative = text
+			}
+			beat.location = firstNonEmpty(meta.Output.Location, meta.Location)
+			if len(meta.Output.ChoicesData) > 0 {
+				for _, choice := range meta.Output.ChoicesData {
+					if text := strings.TrimSpace(choice.Text); text != "" {
+						choiceTexts = append(choiceTexts, text)
+					}
+				}
+			} else if len(meta.Output.Choices) > 0 {
+				choiceTexts = append(choiceTexts, meta.Output.Choices...)
+			}
+		}
+		if beat.location == "" {
+			beat.location = strings.TrimSpace(meta.Location)
+		}
+		if len(choiceTexts) == 0 && len(meta.Choices) > 0 {
+			choiceTexts = append(choiceTexts, meta.Choices...)
+		}
+	}
+
+	if narrative == "" && len(choiceTexts) == 0 {
+		return recentAssistantBeat{}, false
+	}
+
+	termSet := make(map[string]struct{})
+	for _, token := range significantNarrativeTokens(narrative) {
+		termSet[token] = struct{}{}
+	}
+	choiceTermSet := make(map[string]struct{})
+	for _, choice := range choiceTexts {
+		for _, token := range significantNarrativeTokens(choice) {
+			termSet[token] = struct{}{}
+			choiceTermSet[token] = struct{}{}
+		}
+	}
+
+	beat.terms = sortedKeys(termSet)
+	beat.choiceTerms = choiceTermSet
+	return beat, len(beat.terms) > 0 || len(beat.choiceTerms) > 0
+}
+
+func repeatedBeatTerms(beats []recentAssistantBeat) []string {
+	if len(beats) == 0 {
+		return nil
+	}
+
+	threshold := len(beats)
+	if threshold > 3 {
+		threshold = 3
+	}
+
+	counts := make(map[string]int)
+	for _, beat := range beats {
+		seen := make(map[string]struct{}, len(beat.terms))
+		for _, term := range beat.terms {
+			if _, ok := seen[term]; ok {
+				continue
+			}
+			seen[term] = struct{}{}
+			counts[term]++
+		}
+	}
+
+	type repeatedTerm struct {
+		term  string
+		count int
+	}
+	var repeated []repeatedTerm
+	for term, count := range counts {
+		if count >= threshold {
+			repeated = append(repeated, repeatedTerm{term: term, count: count})
+		}
+	}
+	sort.Slice(repeated, func(i, j int) bool {
+		if repeated[i].count != repeated[j].count {
+			return repeated[i].count > repeated[j].count
+		}
+		return repeated[i].term < repeated[j].term
+	})
+
+	if len(repeated) == 0 {
+		return nil
+	}
+	limit := len(repeated)
+	if limit > 5 {
+		limit = 5
+	}
+	out := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		out = append(out, repeated[i].term)
+	}
+	return out
+}
+
+func countSimilarChoicePairs(beats []recentAssistantBeat) int {
+	if len(beats) < 2 {
+		return 0
+	}
+
+	count := 0
+	for i := 1; i < len(beats); i++ {
+		if jaccardSimilarity(beats[i-1].choiceTerms, beats[i].choiceTerms) >= 0.4 {
+			count++
+		}
+	}
+	return count
+}
+
+func jaccardSimilarity(a, b map[string]struct{}) float64 {
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+
+	intersection := 0
+	union := len(a)
+	for term := range b {
+		if _, ok := a[term]; ok {
+			intersection++
+			continue
+		}
+		union++
+	}
+	if union == 0 {
+		return 0
+	}
+	return float64(intersection) / float64(union)
+}
+
+func sameRecentLocation(beats []recentAssistantBeat) bool {
+	if len(beats) < 3 {
+		return false
+	}
+
+	location := strings.TrimSpace(beats[0].location)
+	if location == "" {
+		return false
+	}
+	for i := 1; i < len(beats); i++ {
+		if !strings.EqualFold(location, strings.TrimSpace(beats[i].location)) {
+			return false
+		}
+	}
+	return true
+}
+
+func worldHasLowNarrativePressure(world *storage.WorldState) bool {
+	if world == nil {
+		return true
+	}
+	if world.GlobalEventsJSON != "" && world.GlobalEventsJSON != "null" && world.GlobalEventsJSON != "[]" {
+		return false
+	}
+	if len(activeStoryHooks(loadStoryHooks(world))) > 0 {
+		return false
+	}
+	if len(visibleWorldReactions(loadWorldReactions(world))) > 0 {
+		return false
+	}
+	if len(knownFronts(loadFronts(world))) > 0 {
+		return false
+	}
+	board := loadInvestigationBoard(world)
+	for _, invCase := range board.Cases {
+		if !strings.EqualFold(invCase.Status, "solved") {
+			return false
+		}
+	}
+	projectBoard := loadProjectBoard(world)
+	for _, project := range projectBoard.Projects {
+		if !strings.EqualFold(project.Status, "completed") {
+			return false
+		}
+	}
+	return true
+}
+
+func significantNarrativeTokens(text string) []string {
+	fields := strings.FieldsFunc(strings.ToLower(text), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
+	if len(fields) == 0 {
+		return nil
+	}
+
+	seen := make(map[string]struct{}, len(fields))
+	var out []string
+	for _, field := range fields {
+		if len(field) < 4 {
+			continue
+		}
+		if narrativeMomentumStopwords[field] {
+			continue
+		}
+		if isAllDigits(field) {
+			continue
+		}
+		if _, ok := seen[field]; ok {
+			continue
+		}
+		seen[field] = struct{}{}
+		out = append(out, field)
+	}
+	return out
+}
+
+func sortedKeys(items map[string]struct{}) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(items))
+	for key := range items {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func isAllDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
+var narrativeMomentumStopwords = map[string]bool{
+	"alla": true, "alle": true, "anche": true, "ancora": true, "avere": true, "avrai": true, "bene": true,
+	"come": true, "con": true, "cosa": true, "dalla": true, "dalle": true, "dello": true, "della": true,
+	"delle": true, "dopo": true, "dove": true, "fare": true, "fino": true, "mentre": true, "nella": true,
+	"nelle": true, "ogni": true, "perche": true, "quale": true, "quella": true, "quello": true, "questa": true,
+	"queste": true, "questi": true, "questo": true, "resti": true, "resta": true, "sempre": true, "senza": true,
+	"solo": true, "sono": true, "sotto": true, "sulla": true, "sulle": true,
+	"about": true, "after": true, "again": true, "along": true, "always": true, "around": true, "before": true,
+	"between": true, "choose": true, "choice": true, "continue": true, "could": true, "despite": true,
+	"each": true, "from": true, "have": true, "into": true, "just": true, "like": true, "look": true,
+	"more": true, "near": true, "onto": true, "over": true, "same": true, "scene": true, "since": true,
+	"still": true, "take": true, "that": true, "their": true, "them": true, "then": true, "there": true,
+	"these": true, "they": true, "this": true, "through": true, "toward": true, "under": true, "until": true,
+	"very": true, "what": true, "when": true, "where": true, "while": true, "with": true, "would": true,
+	"your": true,
 }

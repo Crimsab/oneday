@@ -84,6 +84,7 @@ func turnDeltaNavigationMarkdown(delta *engine.TurnDelta) string {
 	}
 
 	commands := make([]string, 0, 4)
+	context := "Si e mosso qualcosa nel mondo."
 	if targets.fronts {
 		commands = append(commands, "`/fronts`")
 	}
@@ -93,27 +94,43 @@ func turnDeltaNavigationMarkdown(delta *engine.TurnDelta) string {
 	if targets.investigations {
 		commands = append(commands, "`/investigations`")
 	}
+	switch {
+	case targets.fronts && targets.projects && targets.investigations:
+		context = "Sono cambiati fronti, progetti e indagini."
+	case targets.fronts && targets.projects:
+		context = "Sono cambiati fronti e progetti."
+	case targets.fronts && targets.investigations:
+		context = "Sono cambiati fronti e indagini."
+	case targets.projects && targets.investigations:
+		context = "Sono cambiati progetti e indagini."
+	case targets.fronts:
+		context = "Si e mosso il sistema di fronti e fallout."
+	case targets.projects:
+		context = "Si e aggiornato un progetto."
+	case targets.investigations:
+		context = "Ci sono novita nelle indagini."
+	}
 	commands = append(commands, "`/codex`")
-	return "> Inspect now: " + strings.Join(commands, " · ")
+	return "> " + context + " Apri " + strings.Join(commands, " · ") + " per vedere meglio i dettagli."
 }
 
 func turnDeltaStatusCallout(delta *engine.TurnDelta) string {
 	targets := turnDeltaTargets(delta)
 	switch {
 	case targets.fronts && targets.projects && targets.investigations:
-		return "Active systems changed. Press F, P, or I to inspect them."
+		return "Fronti, progetti e indagini sono cambiati. Premi F, P o I per controllarli."
 	case targets.fronts && targets.projects:
-		return "Front pressure and project state changed. Press F or P to inspect."
+		return "Fronti e progetti sono cambiati. Premi F o P per controllarli."
 	case targets.fronts && targets.investigations:
-		return "Front pressure and investigations shifted. Press F or I to inspect."
+		return "Fronti e indagini sono cambiati. Premi F o I per controllarli."
 	case targets.projects && targets.investigations:
-		return "Projects and investigations updated. Press P or I to inspect."
+		return "Progetti e indagini sono cambiati. Premi P o I per controllarli."
 	case targets.fronts:
-		return "Front pressure shifted. Press F or use /fronts."
+		return "Si e mosso qualcosa nei fronti. Premi F o usa /fronts."
 	case targets.projects:
-		return "Project board updated. Press P or use /projects."
+		return "Un progetto si e aggiornato. Premi P o usa /projects."
 	case targets.investigations:
-		return "Investigation board updated. Press I or use /investigations."
+		return "Le indagini hanno novita. Premi I o usa /investigations."
 	default:
 		return ""
 	}

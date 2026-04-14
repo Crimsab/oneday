@@ -153,10 +153,7 @@ type NarrativeModel struct {
 
 // NewNarrativeModel creates the narrative view.
 func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) NarrativeModel {
-	ta := textarea.New()
-	ta.Placeholder = "Type a free action or press 1-4 to choose..."
-	ta.CharLimit = 500
-	ta.SetHeight(2)
+	ta := newGameTextarea("Type a free action or press 1-4 to choose...", actionInputHeight)
 
 	vp := viewport.New(80, 20)
 
@@ -258,6 +255,10 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		if crMsg, ok := msg.(ChallengeResolvedMsg); ok {
 			m.inChallenge = false
 			m.challengeView = nil
+			m.choices.SetChoices(nil)
+			m.choiceHelp = map[int]string{}
+			m.inputFocus = false
+			m.input.Blur()
 
 			// Show brief result note in narrative history.
 			var resultNote string
@@ -907,6 +908,10 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 			return m, nil
 		}
 		return m.sendGuideCommand(strings.Join(cmd.Args, " "))
+	case "advance":
+		return m.handleAdvanceCommand(cmd.Args)
+	case "timeskip":
+		return m.handleTimeSkipCommand(cmd.Args)
 	case "journal":
 		return m.showJournal()
 	case "history":
@@ -1003,6 +1008,34 @@ func (m NarrativeModel) sendGuideCommand(input string) (NarrativeModel, tea.Cmd)
 	}
 }
 
+func (m NarrativeModel) handleAdvanceCommand(args []string) (NarrativeModel, tea.Cmd) {
+	m.statusMsg = "Sto mandando avanti la scena..."
+	m.statusExpiry = time.Now().Add(3 * time.Second)
+	return m, m.sendRawAction(buildAdvanceSceneAction(strings.Join(args, " ")))
+}
+
+func (m NarrativeModel) handleTimeSkipCommand(args []string) (NarrativeModel, tea.Cmd) {
+	m.statusMsg = "Sto saltando al prossimo momento importante..."
+	m.statusExpiry = time.Now().Add(3 * time.Second)
+	return m, m.sendRawAction(buildTimeSkipAction(strings.Join(args, " ")))
+}
+
+func buildAdvanceSceneAction(hint string) string {
+	base := "[Advance Scene] Move to the next meaningful beat now. If this micro-scene is exhausted, do not replay it with near-identical prose or choices. Introduce a concrete change: reveal, consequence, interruption, pressure, location shift, or a natural time skip."
+	if hint = strings.TrimSpace(hint); hint != "" {
+		base += " Treat any extra text after this tag as the player's desired timing, destination, or arrival point for the next beat. Requested timing or destination: " + hint
+	}
+	return base
+}
+
+func buildTimeSkipAction(hint string) string {
+	base := "[Time Skip] Jump forward to a later meaningful moment instead of playing filler turn by turn. Keep continuity clear: show what changed, what stayed true, and why this later beat matters now. If exact age is unclear, use a life stage or milestone rather than inventing a precise number."
+	if hint = strings.TrimSpace(hint); hint != "" {
+		base += " Treat any extra text after this tag as the player's preferred arrival point, approximate age, or target moment. Requested destination: " + hint
+	}
+	return base
+}
+
 // showJournal displays the chapter journal overlay.
 func (m NarrativeModel) showJournal() (NarrativeModel, tea.Cmd) {
 	world := m.narrator.World()
@@ -1086,6 +1119,8 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
   h                   Open the story history browser
   /btw <question>     Ask the AI a quick contextual question without advancing the turn
   /guide <request>    Store a soft future-facing chapter wish without advancing the turn
+  /advance [hint]     Move to the next meaningful beat now; free text after it is a soft target
+  /timeskip [hint]    Jump ahead to a later meaningful moment; free text sets the target moment
   /achievements (/a)   Show earned achievements
   /narrator     (/n)   Speak to the game master
   /craft               Open crafting station (AI-driven)
@@ -1118,6 +1153,17 @@ Guide examples:
   /guide In questo capitolo voglio una boss fight memorabile
   /guide Fammi trovare materiali rari e almeno un reward forte
   /guide Semina una scena tesa con Lyanna, ma falla arrivare quando ha senso
+
+Pacing examples:
+  /advance
+  /advance Vai oltre questa scena domestica e portami al primo vero cambiamento
+  /advance una settimana dopo
+  /advance la mattina seguente, quando torno al mercato
+  /timeskip
+  /timeskip arrivo a 6 anni
+  /timeskip Tre anni dopo, quando la magia e gia parte della routine
+  /timeskip al prossimo inverno
+  /timeskip Alla prossima tappa davvero importante del viaggio
 
 Talk mode:
   /talk Lyanna
@@ -1663,6 +1709,7 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 	choiceItems, choiceHelp := m.buildChoicePresentation(nr.Choices)
 	duelCue := m.socialDuelCueForTurn(nr.SocialDuel)
 	duelPending := duelCue != nil
+	challengePending := len(nr.Challenges) > 0
 	animateScene := !streamed && strings.TrimSpace(rendered) != ""
 	m.choices.SetMood(m.currentMood)
 	if animateScene {
@@ -1672,6 +1719,12 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 			m.deferredInputFocus = false
 			m.deferredChallenges = nil
 			m.deferredSocialDuel = duelCue
+		} else if challengePending {
+			m.deferredChoiceItems = nil
+			m.deferredChoiceHelp = nil
+			m.deferredInputFocus = false
+			m.deferredChallenges = nr.Challenges
+			m.deferredSocialDuel = nil
 		} else {
 			m.deferredChoiceItems = choiceItems
 			m.deferredChoiceHelp = choiceHelp
@@ -1697,6 +1750,14 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 			m.pendingChallenges = nil
 			m.pendingChallenge = nil
 			m.pendingSocialDuel = duelCue
+			m.inputFocus = false
+			m.input.Blur()
+		} else if challengePending {
+			m.choiceHelp = map[int]string{}
+			m.choices.SetChoices(nil)
+			m.pendingSocialDuel = nil
+			m.pendingChallenges = nr.Challenges
+			m.pendingChallenge = nil
 			m.inputFocus = false
 			m.input.Blur()
 		} else {
@@ -2031,6 +2092,9 @@ func (m NarrativeModel) View() string {
 	if world.CurrentLocation != "" {
 		header += "  " + subtitleStyle.Render(world.CurrentLocation)
 	}
+	if timelineSummary := engine.CharacterTimelineSummary(engine.LoadCharacterTimeline(world)); timelineSummary != "" {
+		header += "  " + theme.MutedText.Render(timelineSummary)
+	}
 	if m.talkModeActive() {
 		header += "  " + theme.MutedText.Render(fmt.Sprintf("talking to %s [%s]", m.talkTarget, m.activeTalkIntent()))
 	}
@@ -2083,7 +2147,7 @@ func (m NarrativeModel) View() string {
 	}
 
 	// Help line
-	help := theme.MutedText.Render("↑/↓ input history · wheel scroll scene · tab complete slash · ctrl+space close talk · s quicksave · esc session")
+	help := theme.MutedText.Render("↑/↓ input history · alt+enter/ctrl+j newline · wheel scroll scene · tab complete slash · ctrl+space close talk · s quicksave · esc session")
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)

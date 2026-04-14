@@ -31,6 +31,8 @@ var CommandRegistry = map[string]string{
 	"front":          "hooks",
 	"btw":            "btw",
 	"guide":          "guide",
+	"advance":        "advance",
+	"timeskip":       "timeskip",
 	"map":            "map",
 	"m":              "map",
 	"craft":          "craft",
