@@ -29,6 +29,12 @@ jobs:
       - name: Run verification gate
         run: make verify
 
+      - name: Run non-live command smoke checks
+        run: |
+          go run ./cmd/oneday config show --safe
+          go run ./cmd/oneday rag benchmark
+          go run ./cmd/oneday story-packs list
+
   build:
     name: Build ${{ matrix.target.goos }}-${{ matrix.target.goarch }}
     needs: test
