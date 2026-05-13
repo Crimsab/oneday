@@ -299,6 +299,9 @@ func runSetup(args []string) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
+	if err := configureStoryPackChoice(reader); err != nil {
+		return err
+	}
 	data, err := config.Marshal(cfg)
 	if err != nil {
 		return err
@@ -813,8 +816,44 @@ func runStoryPacksList() error {
 		return nil
 	}
 	for _, pack := range packs {
+		if err := validateStoryPack(pack); err != nil {
+			fmt.Printf("- %s (invalid: %v)\n", pack, err)
+			continue
+		}
 		fmt.Printf("- %s\n", pack)
 	}
+	return nil
+}
+
+func configureStoryPackChoice(reader *bufio.Reader) error {
+	packs, err := discoverStoryPacks([]string{"plugins/story-packs", "plugins/examples"})
+	if err != nil || len(packs) == 0 {
+		return err
+	}
+	fmt.Println()
+	fmt.Println("Optional story pack:")
+	fmt.Println("  0) None")
+	for i, pack := range packs {
+		status := ""
+		if err := validateStoryPack(pack); err != nil {
+			status = " (invalid)"
+		}
+		fmt.Printf("  %d) %s%s\n", i+1, pack, status)
+	}
+	fmt.Print("Selection [0]: ")
+	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+	if choice == "" || choice == "0" {
+		return nil
+	}
+	idx := parsePositiveInt(choice, 0)
+	if idx <= 0 || idx > len(packs) {
+		return fmt.Errorf("unknown story pack selection %q", choice)
+	}
+	if err := validateStoryPack(packs[idx-1]); err != nil {
+		return err
+	}
+	fmt.Printf("Selected story pack: %s\n", packs[idx-1])
 	return nil
 }
 
@@ -909,6 +948,20 @@ func discoverStoryPacks(roots []string) ([]string, error) {
 	}
 	sort.Strings(packs)
 	return packs, nil
+}
+
+func validateStoryPack(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	text := string(data)
+	for _, field := range []string{"id:", "name:", "description:"} {
+		if !strings.Contains(text, field) {
+			return fmt.Errorf("missing %s", strings.TrimSuffix(field, ":"))
+		}
+	}
+	return nil
 }
 
 func reportConfigConsistency(cfg config.Config) {
