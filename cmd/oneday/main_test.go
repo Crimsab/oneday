@@ -33,6 +33,9 @@ func TestWantsOperatorCommands(t *testing.T) {
 	if !wantsRAGBenchmark([]string{"rag", "benchmark"}) {
 		t.Fatal("expected rag benchmark")
 	}
+	if !wantsRAGReindex([]string{"rag", "reindex"}) {
+		t.Fatal("expected rag reindex")
+	}
 	if !wantsStoryPacksList([]string{"story-packs", "list"}) {
 		t.Fatal("expected story-packs list")
 	}
