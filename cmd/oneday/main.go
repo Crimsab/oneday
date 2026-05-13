@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/crimsab/oneday/internal/aifactory"
 	"github.com/crimsab/oneday/internal/buildinfo"
 	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui"
 )
@@ -53,6 +55,13 @@ func main() {
 	if wantsRAGBenchmark(os.Args[1:]) {
 		if err := runRAGBenchmark(); err != nil {
 			fmt.Fprintf(os.Stderr, "RAG benchmark failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsRAGReindex(os.Args[1:]) {
+		if err := runRAGReindex(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "RAG reindex failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -202,6 +211,10 @@ func wantsConfigShowSafe(args []string) bool {
 
 func wantsRAGBenchmark(args []string) bool {
 	return len(args) >= 2 && args[0] == "rag" && args[1] == "benchmark"
+}
+
+func wantsRAGReindex(args []string) bool {
+	return len(args) >= 2 && args[0] == "rag" && args[1] == "reindex"
 }
 
 func wantsStoryPacksList(args []string) bool {
@@ -701,6 +714,71 @@ func runRAGBenchmark() error {
 	}
 	fmt.Printf("benchmark: %s provider=%s kind=%s model=%s dimensions=%d expected=%d latency=%s\n", status, spec.Name, spec.Kind, resp.Model, len(resp.Embedding), spec.Dimensions, latency.Round(time.Millisecond))
 	return nil
+}
+
+func runRAGReindex(args []string) error {
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		fmt.Printf("ENV: WARN: could not load .env: %v\n", err)
+	}
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		return err
+	}
+	storyID := argValue(args, "--story")
+	all := hasArg(args, "--all")
+	if storyID == "" && !all {
+		fmt.Println("Usage: oneday rag reindex --story <story-id> [--all]")
+		fmt.Println("This clears stale RAG chunks so they are regenerated during play.")
+		return nil
+	}
+	db, err := storage.Open(filepath.Join(cfg.DataDir, "oneday.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	store := rag.NewVectorStore(db.Conn())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if all {
+		removed, err := clearAllRAGChunks(ctx, db.Conn())
+		if err != nil {
+			return err
+		}
+		fmt.Printf("RAG reindex: cleared %d chunks across all stories\n", removed)
+		return nil
+	}
+	removed, err := store.DeleteByStory(ctx, storyID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("RAG reindex: cleared %d chunks for story %s\n", removed, storyID)
+	return nil
+}
+
+func clearAllRAGChunks(ctx context.Context, db *sql.DB) (int64, error) {
+	result, err := db.ExecContext(ctx, `DELETE FROM rag_chunks`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func hasArg(args []string, needle string) bool {
+	for _, arg := range args {
+		if arg == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func argValue(args []string, key string) string {
+	for i, arg := range args {
+		if arg == key && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }
 
 func runStoryPacksList() error {
