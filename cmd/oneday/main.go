@@ -73,9 +73,9 @@ func main() {
 		}
 		return
 	}
-	if wantsExportFriend(os.Args[1:]) {
-		if err := runExportFriend(os.Args[1:]); err != nil {
-			fmt.Fprintf(os.Stderr, "Friend export failed: %v\n", err)
+	if wantsExport(os.Args[1:]) {
+		if err := runExport(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Export failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -221,8 +221,8 @@ func wantsStoryPacksList(args []string) bool {
 	return len(args) >= 2 && (args[0] == "story-packs" || args[0] == "storypacks") && args[1] == "list"
 }
 
-func wantsExportFriend(args []string) bool {
-	return len(args) >= 2 && args[0] == "export" && args[1] == "--friend"
+func wantsExport(args []string) bool {
+	return len(args) >= 1 && args[0] == "export"
 }
 
 type localEmbeddingModel struct {
@@ -857,8 +857,8 @@ func configureStoryPackChoice(reader *bufio.Reader) error {
 	return nil
 }
 
-func runExportFriend(args []string) error {
-	outDir := "dist/oneday-friend"
+func runExport(args []string) error {
+	outDir := "dist/oneday-export"
 	for i, arg := range args {
 		if arg == "--out" && i+1 < len(args) {
 			outDir = args[i+1]
@@ -879,11 +879,11 @@ func runExportFriend(args []string) error {
 	if err := copyDirIfExists("plugins/examples", filepath.Join(outDir, "plugins", "examples")); err != nil {
 		return err
 	}
-	manifest := "OneDay friend-safe export\n\nRun:\n  ./oneday setup --reconfigure\n  ./oneday doctor\n\nExcluded: config.yaml, .env, oneday_data, databases, generated binaries, local secrets.\n"
-	if err := os.WriteFile(filepath.Join(outDir, "FRIEND-SETUP.txt"), []byte(manifest), 0644); err != nil {
+	manifest := "OneDay safe export\n\nRun:\n  ./oneday setup --reconfigure\n  ./oneday doctor\n\nAlways excluded: config.yaml, .env, oneday_data, databases, generated binaries, local secrets.\n"
+	if err := os.WriteFile(filepath.Join(outDir, "SAFE-SETUP.txt"), []byte(manifest), 0644); err != nil {
 		return err
 	}
-	fmt.Printf("Friend-safe export written to %s\n", outDir)
+	fmt.Printf("Safe export written to %s\n", outDir)
 	return nil
 }
 

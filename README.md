@@ -47,14 +47,23 @@ go run ./cmd/oneday setup --reconfigure
 # Check local tools, provider auth, model smoke, and RAG readiness
 go run ./cmd/oneday doctor
 
+# Machine-readable diagnostics for scripts/CI/support
+go run ./cmd/oneday doctor --json
+
 # Inspect effective config without secrets
 go run ./cmd/oneday config show --safe
 
 # Check local/remote embedding readiness and latency
 go run ./cmd/oneday rag benchmark
 
+# Clear stale embeddings after changing models/dimensions
+go run ./cmd/oneday rag reindex --story <story-id>
+
 # List available story pack files
 go run ./cmd/oneday story-packs list
+
+# Create a clean share/release handoff directory
+go run ./cmd/oneday export
 
 # Run tests
 go test ./...
@@ -135,11 +144,12 @@ Setup behavior:
 - `oneday setup --reconfigure` or `oneday setup --force` opens the wizard again and can rewrite local config
 - Ollama is optional: choose it for the easiest local model download/run path, or choose a custom local endpoint if you already run Python, llama.cpp, ONNX, or another embedding service
 
-Friend-Safe sharing:
+Safe sharing:
 
 - share `config.example.yaml`, `.env.example`, and source files, not local `config.yaml`, `.env`, `oneday_data/`, databases, or binaries
 - run `oneday setup` on a friend's machine so provider choice and local auth are generated there
 - run `oneday doctor` after setup; 401/403 errors should point at the exact env key to fix
+- `oneday export` is always safe-by-default; it excludes local config, env files, story data, databases, generated binaries, and secrets
 
 ## CI / Release
 
