@@ -1,18 +1,41 @@
+# Local config / secrets
+config.yaml
+config.*.yaml
+!config.example.yaml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
 # Binary
 /oneday
 /oneday.exe
 /oneday-benchmark
 /oneday-ascii-benchmark
 /build/
+dist/
+release/
+*.tar.gz
+*.zip
 
 # Data
-oneday_data/
+/oneday_data/
+*.db
+*.sqlite
+*.sqlite3
 
-# Config (contains API keys)
-config.yaml
+# Logs / local runs
+*.log
+tmp/
+temp/
 
 # Go
 vendor/
+coverage.out
+coverage.html
 
 # IDE
 .idea/
@@ -23,6 +46,3 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
-
-# Test
-coverage.out

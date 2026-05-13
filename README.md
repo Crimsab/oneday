@@ -24,7 +24,7 @@ Stories are infinite, AI-generated, and deeply personalized. Every NPC has perso
 
 - **Go** + Bubbletea/Bubbles/Lipgloss (TUI)
 - **SQLite** + embedding BLOBs + cosine similarity in Go (RAG, no `sqlite-vec`)
-- AI via **LiteLLM** / **OpenRouter** / **Claude Code** (configurable fallback chain)
+- AI via **Codex OAuth** / **LiteLLM** / **OpenRouter** / **Claude Code** (configurable fallback chain)
 
 ## Quick Start
 
@@ -32,8 +32,29 @@ Stories are infinite, AI-generated, and deeply personalized. Every NPC has perso
 # Copy local config
 cp config.example.yaml config.yaml
 
-# Edit provider keys / endpoints
+# Configure provider keys / endpoints.
+# Prefer env vars so secrets do not live in config.yaml.
+export ONEDAY_LITELLM_API_KEY="..."
+export ONEDAY_OPENROUTER_API_KEY="..."
 $EDITOR config.yaml
+
+# Or run the first-time setup helper
+go run ./cmd/oneday setup
+
+# Re-open setup when config.yaml already exists
+go run ./cmd/oneday setup --reconfigure
+
+# Check local tools, provider auth, model smoke, and RAG readiness
+go run ./cmd/oneday doctor
+
+# Inspect effective config without secrets
+go run ./cmd/oneday config show --safe
+
+# Check local/remote embedding readiness and latency
+go run ./cmd/oneday rag benchmark
+
+# List available story pack files
+go run ./cmd/oneday story-packs list
 
 # Run tests
 go test ./...
@@ -81,6 +102,8 @@ Practical rules:
 - `config.example.yaml` is the tracked template for the repo
 - release archives also include `config.example.yaml` next to the binaries
 - `config.yaml` is ignored by git and is where local secrets / endpoints go
+- `${ENV_VAR}` placeholders in `config.yaml` are expanded at load time, so prefer environment variables for API keys
+- `.env` is loaded automatically when present and does not overwrite already-exported variables
 - the binary looks for `config.yaml` in the current working directory first, then next to the executable itself
 - if `config.yaml` is missing, the app falls back to the built-in defaults
 - `./oneday --version` prints the binary's version, commit, build date, and dirty-state so you can confirm you rebuilt after source changes
@@ -89,6 +112,8 @@ Current default provider strategy:
 
 - primary: `litellm` via `http://lite.homelab.local/v1` with `grok-4.1-fast`
 - `openrouter` is available but disabled by default until you provide a real API key
+- optional experimental `codex` provider shells out to the local Codex CLI after `codex login`, defaulting to `gpt-5.5` with reasoning `off`
+- ancillary repair/validation work can use `ai.generation.utility_model`, defaulting to `gpt-5.4-mini` when no dedicated repair model is configured
 - final fallback: `claude-code` if enabled
 - optional ambient ASCII art uses `ai.ascii_art.*` and can target a different model from the main narrator
 
@@ -96,7 +121,25 @@ RAG / embeddings note:
 
 - embeddings are stored in SQLite as raw BLOB vectors
 - retrieval uses cosine similarity in Go
+- the default embedding model is `text-embedding-3-small`
+- Codex is generation-only, but it can be paired with local RAG embeddings
+- remote RAG can use LiteLLM/OpenRouter with `text-embedding-3-small`
+- local RAG can use Ollama or a custom local HTTP embedding server without API keys
+- recommended local default: `bge-m3` for multilingual/Italian-friendly retrieval
+- alternatives: `nomic-embed-text` for fast/light local use, `mxbai-embed-large` for English retrieval quality, `qwen3-embedding` for heavier quality-oriented setups where available
 - this project does **not** use `sqlite-vec`
+
+Setup behavior:
+
+- `oneday setup` preserves an existing `config.yaml` and prints the reconfigure command
+- `oneday setup --reconfigure` or `oneday setup --force` opens the wizard again and can rewrite local config
+- Ollama is optional: choose it for the easiest local model download/run path, or choose a custom local endpoint if you already run Python, llama.cpp, ONNX, or another embedding service
+
+Friend-Safe sharing:
+
+- share `config.example.yaml`, `.env.example`, and source files, not local `config.yaml`, `.env`, `oneday_data/`, databases, or binaries
+- run `oneday setup` on a friend's machine so provider choice and local auth are generated there
+- run `oneday doctor` after setup; 401/403 errors should point at the exact env key to fix
 
 ## CI / Release
 
