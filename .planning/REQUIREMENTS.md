@@ -243,14 +243,14 @@
 
 ### Product Hardening
 
-- [ ] **HARDEN-01**: GitHub Actions runs non-live smoke checks for `config show --safe`, `rag benchmark`, and `story-packs list`
-- [ ] **HARDEN-02**: `oneday doctor --json` emits machine-readable diagnostics while redacting secrets
-- [ ] **HARDEN-03**: `oneday export --friend` creates a shareable package without local config, env files, databases, story data, or generated secrets
-- [ ] **HARDEN-04**: Config includes a version field and migration helper so older config files are normalized safely
-- [ ] **HARDEN-05**: `oneday rag reindex` provides a safe command path for clearing stale embeddings when models/dimensions change
-- [ ] **HARDEN-06**: `oneday rag benchmark` explains configured provider/model readiness and recommended next steps
-- [ ] **HARDEN-07**: Story packs have lightweight schema validation and can be selected by setup/config scaffolding
-- [ ] **HARDEN-08**: All new command paths are covered by non-live tests
+- [x] **HARDEN-01**: GitHub Actions runs non-live smoke checks for `config show --safe`, `rag benchmark`, and `story-packs list`
+- [x] **HARDEN-02**: `oneday doctor --json` emits machine-readable diagnostics while redacting secrets
+- [x] **HARDEN-03**: `oneday export` creates a shareable safe-by-default package without local config, env files, databases, story data, or generated secrets
+- [x] **HARDEN-04**: Config includes a version field and migration helper so older config files are normalized safely
+- [x] **HARDEN-05**: `oneday rag reindex` provides a safe command path for clearing stale embeddings when models/dimensions change
+- [x] **HARDEN-06**: `oneday rag benchmark` explains configured provider/model readiness and recommended next steps
+- [x] **HARDEN-07**: Story packs have lightweight schema validation and can be selected by setup/config scaffolding
+- [x] **HARDEN-08**: All new command paths are covered by non-live tests
 
 ## v2 Requirements
 
