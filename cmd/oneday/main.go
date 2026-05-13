@@ -691,11 +691,13 @@ func runRAGBenchmark() error {
 	fmt.Println("OneDay RAG benchmark")
 	if !cfg.RAG.Enabled {
 		fmt.Println("RAG: disabled")
+		fmt.Println("Next: run `oneday setup --reconfigure` and choose local or remote RAG embeddings.")
 		return nil
 	}
 	spec, reason := aifactory.SelectEmbeddingProvider(cfg)
 	if reason != "" {
 		fmt.Printf("RAG: unavailable: %s\n", reason)
+		fmt.Println(ragBenchmarkAdvice(cfg, reason))
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -705,6 +707,7 @@ func runRAGBenchmark() error {
 	resp, err := emb.Embed(ctx, ai.EmbeddingRequest{Input: "oneday rag benchmark local retrieval smoke", Model: spec.Model})
 	if err != nil {
 		fmt.Printf("benchmark: FAIL: %v\n", err)
+		fmt.Println(ragBenchmarkAdvice(cfg, err.Error()))
 		return nil
 	}
 	latency := time.Since(start)
@@ -713,7 +716,25 @@ func runRAGBenchmark() error {
 		status = "DIMENSION_MISMATCH"
 	}
 	fmt.Printf("benchmark: %s provider=%s kind=%s model=%s dimensions=%d expected=%d latency=%s\n", status, spec.Name, spec.Kind, resp.Model, len(resp.Embedding), spec.Dimensions, latency.Round(time.Millisecond))
+	if status == "DIMENSION_MISMATCH" {
+		fmt.Println("Next: check model dimensions in config or run `oneday rag reindex --all` after correcting config.")
+	} else {
+		fmt.Println("Next: RAG embeddings are ready for gameplay.")
+	}
 	return nil
+}
+
+func ragBenchmarkAdvice(cfg config.Config, detail string) string {
+	switch {
+	case cfg.AI.Embedding.Provider == "local" && cfg.AI.Embedding.Local.Type == "ollama":
+		return fmt.Sprintf("Next: start Ollama and run `ollama pull %s`, then `oneday rag benchmark` again.", cfg.AI.Embedding.Local.Model)
+	case cfg.AI.Embedding.Provider == "local":
+		return "Next: start your custom local embedding endpoint and verify URL/model/dimensions."
+	case strings.Contains(detail, "api_key"):
+		return "Next: set the provider API key in .env or choose local RAG with `oneday setup --reconfigure`."
+	default:
+		return "Next: run `oneday doctor` for full diagnostics or `oneday setup --reconfigure` to change RAG provider."
+	}
 }
 
 func runRAGReindex(args []string) error {
