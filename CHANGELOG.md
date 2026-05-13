@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.6.0](https://github.com/Crimsab/oneday/compare/v1.5.0...v1.6.0) (2026-05-13)
+
+
+### Features
+
+* **ai:** add reconfigurable local rag setup tooling ([32b5a3e](https://github.com/Crimsab/oneday/commit/32b5a3ecc737073dcf35c74ab6d9b7a94907901f))
+* **config:** add version migration defaults ([1574d7b](https://github.com/Crimsab/oneday/commit/1574d7b62f492598811281bc4dc19837109cea61))
+* **doctor:** add safe json diagnostics ([f9f4dc3](https://github.com/Crimsab/oneday/commit/f9f4dc3f505d55438d5de695310dec8ca33bbce6))
+* **export:** add friend-safe package command ([1141c4f](https://github.com/Crimsab/oneday/commit/1141c4f80f81650f6f28cd14363a6a9fda2cc5b9))
+* **narrative:** harden runtime continuity and autocomplete flows ([3f5166d](https://github.com/Crimsab/oneday/commit/3f5166d90f0307edfd7c35cccf97a5c1eb9d3ff1))
+* **rag:** add benchmark guidance ([24de437](https://github.com/Crimsab/oneday/commit/24de4373e7853c4bbb1def70ecfde90e6ed7063f))
+* **rag:** add safe reindex maintenance command ([3ea8e93](https://github.com/Crimsab/oneday/commit/3ea8e936dd9ba049629051cde7c9a1e077f95764))
+* **story-packs:** validate and select pack scaffolds ([596b8e8](https://github.com/Crimsab/oneday/commit/596b8e869e23f23e351df58aa1e47e720ce5c830))
+
 ## [1.5.0](https://github.com/Crimsab/oneday/compare/v1.4.0...v1.5.0) (2026-04-14)
 
 
