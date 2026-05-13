@@ -156,3 +156,12 @@ func TestWantsSetupForce(t *testing.T) {
 		t.Fatal("plain setup should not force")
 	}
 }
+
+func TestWantsJSON(t *testing.T) {
+	if !wantsJSON([]string{"doctor", "--json"}) {
+		t.Fatal("expected --json")
+	}
+	if wantsJSON([]string{"doctor"}) {
+		t.Fatal("plain doctor should not request json")
+	}
+}
