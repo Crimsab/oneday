@@ -8,6 +8,9 @@ import (
 
 func TestDefault(t *testing.T) {
 	cfg := Default()
+	if cfg.ConfigVersion != 2 {
+		t.Errorf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
+	}
 
 	if cfg.DataDir != "./oneday_data" {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "./oneday_data")
@@ -47,6 +50,28 @@ func TestDefault(t *testing.T) {
 	}
 	if cfg.AI.Embedding.Provider != "auto" {
 		t.Errorf("Embedding.Provider = %q, want auto", cfg.AI.Embedding.Provider)
+	}
+}
+
+func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
+	cfg := Default()
+	cfg.ConfigVersion = 1
+	cfg.AI.Embedding.Local.Type = ""
+	cfg.AI.Embedding.Local.BaseURL = ""
+	cfg.AI.Embedding.Local.Model = ""
+	cfg.AI.Embedding.Local.Dimensions = 0
+	cfg.AI.Generation.UtilityModel = ""
+
+	cfg.Migrate()
+
+	if cfg.ConfigVersion != 2 {
+		t.Fatalf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
+	}
+	if cfg.AI.Embedding.Local.Type != "ollama" || cfg.AI.Embedding.Local.Model != "bge-m3" || cfg.AI.Embedding.Local.Dimensions != 1024 {
+		t.Fatalf("local embedding defaults not migrated: %#v", cfg.AI.Embedding.Local)
+	}
+	if cfg.AI.Generation.UtilityModel != "gpt-5.4-mini" {
+		t.Fatalf("UtilityModel = %q", cfg.AI.Generation.UtilityModel)
 	}
 }
 
