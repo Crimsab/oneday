@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/crimsab/oneday/internal/config"
+)
 
 func TestWantsVersion(t *testing.T) {
 	tests := []struct {
@@ -17,5 +23,136 @@ func TestWantsVersion(t *testing.T) {
 		if got := wantsVersion(tc.args); got != tc.want {
 			t.Fatalf("wantsVersion(%v) = %v, want %v", tc.args, got, tc.want)
 		}
+	}
+}
+
+func TestWantsOperatorCommands(t *testing.T) {
+	if !wantsConfigShowSafe([]string{"config", "show", "--safe"}) {
+		t.Fatal("expected config show --safe")
+	}
+	if !wantsRAGBenchmark([]string{"rag", "benchmark"}) {
+		t.Fatal("expected rag benchmark")
+	}
+	if !wantsStoryPacksList([]string{"story-packs", "list"}) {
+		t.Fatal("expected story-packs list")
+	}
+}
+
+func TestProviderConsistencyWarnings(t *testing.T) {
+	cfg := config.Default()
+	cfg.AI.LiteLLM.Enabled = true
+	cfg.AI.LiteLLM.APIKey = ""
+	warnings := providerConsistencyWarnings(cfg)
+	if len(warnings) == 0 {
+		t.Fatal("expected missing LiteLLM key warning")
+	}
+}
+
+func TestDiscoverStoryPacks(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "plugins", "examples")
+	if err := os.MkdirAll(root, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pack.yaml"), []byte("id: pack\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	packs, err := discoverStoryPacks([]string{root})
+	if err != nil {
+		t.Fatalf("discoverStoryPacks: %v", err)
+	}
+	if len(packs) != 1 || filepath.Base(packs[0]) != "pack.yaml" {
+		t.Fatalf("packs = %#v", packs)
+	}
+}
+
+func TestSetupConfigForChoice(t *testing.T) {
+	tests := []struct {
+		name           string
+		choice         string
+		wantProvider   string
+		wantCodex      bool
+		wantLiteLLM    bool
+		wantOpenRouter bool
+		wantRAG        bool
+		wantKey        string
+	}{
+		{
+			name:         "codex",
+			choice:       "1",
+			wantProvider: "codex",
+			wantCodex:    true,
+			wantRAG:      false,
+		},
+		{
+			name:         "litellm",
+			choice:       "2",
+			wantProvider: "litellm",
+			wantLiteLLM:  true,
+			wantRAG:      true,
+			wantKey:      "${ONEDAY_LITELLM_API_KEY}",
+		},
+		{
+			name:           "openrouter",
+			choice:         "3",
+			wantProvider:   "openrouter",
+			wantOpenRouter: true,
+			wantRAG:        true,
+			wantKey:        "${ONEDAY_OPENROUTER_API_KEY}",
+		},
+		{
+			name:         "codex local rag",
+			choice:       "4",
+			wantProvider: "codex",
+			wantCodex:    true,
+			wantRAG:      true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := setupConfigForChoice(config.Default(), tc.choice)
+			if err != nil {
+				t.Fatalf("setupConfigForChoice: %v", err)
+			}
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate: %v", err)
+			}
+			if cfg.AI.ProviderPriority[0] != tc.wantProvider {
+				t.Fatalf("first provider = %q, want %q", cfg.AI.ProviderPriority[0], tc.wantProvider)
+			}
+			if cfg.AI.Codex.Enabled != tc.wantCodex {
+				t.Fatalf("Codex enabled = %v, want %v", cfg.AI.Codex.Enabled, tc.wantCodex)
+			}
+			if cfg.AI.LiteLLM.Enabled != tc.wantLiteLLM {
+				t.Fatalf("LiteLLM enabled = %v, want %v", cfg.AI.LiteLLM.Enabled, tc.wantLiteLLM)
+			}
+			if cfg.AI.OpenRouter.Enabled != tc.wantOpenRouter {
+				t.Fatalf("OpenRouter enabled = %v, want %v", cfg.AI.OpenRouter.Enabled, tc.wantOpenRouter)
+			}
+			if cfg.RAG.Enabled != tc.wantRAG {
+				t.Fatalf("RAG enabled = %v, want %v", cfg.RAG.Enabled, tc.wantRAG)
+			}
+			if tc.wantKey != "" && cfg.AI.LiteLLM.APIKey != tc.wantKey && cfg.AI.OpenRouter.APIKey != tc.wantKey {
+				t.Fatalf("expected placeholder key %q in setup config", tc.wantKey)
+			}
+			if tc.choice == "4" {
+				if cfg.AI.Embedding.Provider != "local" || cfg.AI.Embedding.Local.Type != "ollama" {
+					t.Fatalf("local RAG config not selected: %#v", cfg.AI.Embedding)
+				}
+			}
+		})
+	}
+}
+
+func TestWantsSetupForce(t *testing.T) {
+	if !wantsSetupForce([]string{"setup", "--reconfigure"}) {
+		t.Fatal("expected --reconfigure to force setup")
+	}
+	if !wantsSetupForce([]string{"setup", "--force"}) {
+		t.Fatal("expected --force to force setup")
+	}
+	if wantsSetupForce([]string{"setup"}) {
+		t.Fatal("plain setup should not force")
 	}
 }

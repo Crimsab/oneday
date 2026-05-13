@@ -45,6 +45,9 @@ func (e *Embedder) Generate(ctx context.Context, text string) ([]float32, error)
 	if len(resp.Embedding) == 0 {
 		return nil, fmt.Errorf("embedding: provider returned empty vector")
 	}
+	if e.dimensions > 0 && len(resp.Embedding) != e.dimensions {
+		return nil, fmt.Errorf("embedding generation: model %s returned %d dimensions, want %d", resp.Model, len(resp.Embedding), e.dimensions)
+	}
 
 	return resp.Embedding, nil
 }

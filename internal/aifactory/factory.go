@@ -36,6 +36,8 @@ func NewRouterFromConfig(cfg config.Config) (*ai.Router, error) {
 
 func buildProvider(name string, cfg config.Config, timeout time.Duration) (ai.Provider, error) {
 	switch name {
+	case "codex":
+		return providers.NewCodex(cfg.AI.Codex), nil
 	case "claude-code":
 		return providers.NewClaudeCode(cfg.AI.ClaudeCode), nil
 	case "litellm":

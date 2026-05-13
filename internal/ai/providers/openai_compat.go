@@ -147,6 +147,9 @@ func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Respons
 }
 
 func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest) (string, string, ai.Usage, error) {
+	if err := o.requireAPIKey(); err != nil {
+		return "", "", ai.Usage{}, err
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return "", "", ai.Usage{}, fmt.Errorf("marshaling request: %w", err)
@@ -177,7 +180,7 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest)
 	if resp.StatusCode != http.StatusOK {
 		return "", "", ai.Usage{}, &openAICompatHTTPError{
 			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(respBody)),
+			Body:       o.actionableHTTPError(resp.StatusCode, string(respBody)),
 		}
 	}
 
@@ -210,6 +213,9 @@ type openAIEmbeddingResponse struct {
 
 // Embed generates an embedding vector for the given text using the /v1/embeddings endpoint.
 func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.EmbeddingResponse, error) {
+	if err := o.requireAPIKey(); err != nil {
+		return ai.EmbeddingResponse{}, err
+	}
 	model := req.Model
 	if model == "" {
 		model = o.defaultModel
@@ -248,7 +254,7 @@ func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.E
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return ai.EmbeddingResponse{}, fmt.Errorf("%s embedding returned status %d: %s", o.name, resp.StatusCode, string(respBody))
+		return ai.EmbeddingResponse{}, fmt.Errorf("%s embedding returned status %d: %s", o.name, resp.StatusCode, o.actionableHTTPError(resp.StatusCode, string(respBody)))
 	}
 
 	var embResp openAIEmbeddingResponse
@@ -370,6 +376,9 @@ func withoutResponseFormat(body openAIChatRequest) openAIChatRequest {
 }
 
 func (o *OpenAICompat) openStream(ctx context.Context, body openAIChatRequest) (*http.Response, error) {
+	if err := o.requireAPIKey(); err != nil {
+		return nil, err
+	}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling stream request: %w", err)
@@ -397,11 +406,53 @@ func (o *OpenAICompat) openStream(ctx context.Context, body openAIChatRequest) (
 		}
 		return nil, &openAICompatHTTPError{
 			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(respBody)),
+			Body:       o.actionableHTTPError(resp.StatusCode, string(respBody)),
 		}
 	}
 
 	return resp, nil
+}
+
+func (o *OpenAICompat) requireAPIKey() error {
+	if strings.TrimSpace(o.apiKey) != "" {
+		return nil
+	}
+	switch o.name {
+	case "litellm", "litellm-embed":
+		return fmt.Errorf("LiteLLM authentication missing: set ONEDAY_LITELLM_API_KEY in .env or your shell, then run `oneday doctor`")
+	case "openrouter":
+		return fmt.Errorf("OpenRouter authentication missing: set ONEDAY_OPENROUTER_API_KEY in .env or your shell, then run `oneday doctor`")
+	default:
+		return nil
+	}
+}
+
+func (o *OpenAICompat) actionableHTTPError(statusCode int, body string) string {
+	body = sanitizeHTTPErrorBody(body)
+	if statusCode != http.StatusUnauthorized && statusCode != http.StatusForbidden {
+		return body
+	}
+	switch o.name {
+	case "litellm", "litellm-embed":
+		return fmt.Sprintf("LiteLLM authentication failed: check ONEDAY_LITELLM_API_KEY and the LiteLLM virtual key, then run `oneday doctor` (%s)", body)
+	case "openrouter":
+		return fmt.Sprintf("OpenRouter authentication failed: check ONEDAY_OPENROUTER_API_KEY and OpenRouter account credits, then run `oneday doctor` (%s)", body)
+	default:
+		return body
+	}
+}
+
+func sanitizeHTTPErrorBody(body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return "empty response body"
+	}
+	body = strings.ReplaceAll(body, "\n", " ")
+	body = strings.ReplaceAll(body, "\r", " ")
+	if len(body) > 500 {
+		return body[:500] + "...(truncated)"
+	}
+	return body
 }
 
 func (o *OpenAICompat) completeAsStream(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {

@@ -173,6 +173,33 @@ func (vs *VectorStore) CountByStory(ctx context.Context, storyID string) (int, e
 	return count, nil
 }
 
+// PruneDimensionMismatches removes chunks whose serialized embedding length does
+// not match the configured embedding dimensions. This keeps model switches from
+// silently poisoning cosine search with incompatible vectors.
+func (vs *VectorStore) PruneDimensionMismatches(ctx context.Context, storyID string, dimensions int) (int64, error) {
+	if storyID == "" || dimensions <= 0 {
+		return 0, nil
+	}
+	result, err := vs.db.ExecContext(ctx,
+		`DELETE FROM rag_chunks
+		 WHERE story_id = ?
+		   AND embedding IS NOT NULL
+		   AND length(embedding) != ?`,
+		storyID, dimensions*4,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("vectorstore prune dimension mismatches: %w", err)
+	}
+	removed, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("vectorstore prune rows affected: %w", err)
+	}
+	if removed > 0 {
+		vs.invalidateStoryCache(storyID)
+	}
+	return removed, nil
+}
+
 // LastSummarizedTurn returns the highest turn_end among summary chunks for a story.
 // Returns -1 if no summaries exist yet so committed turn 0 remains summarizable.
 func (vs *VectorStore) LastSummarizedTurn(ctx context.Context, storyID string) (int, error) {
