@@ -36,6 +36,9 @@ func TestWantsOperatorCommands(t *testing.T) {
 	if !wantsStoryPacksList([]string{"story-packs", "list"}) {
 		t.Fatal("expected story-packs list")
 	}
+	if !wantsExportFriend([]string{"export", "--friend"}) {
+		t.Fatal("expected export --friend")
+	}
 }
 
 func TestProviderConsistencyWarnings(t *testing.T) {
