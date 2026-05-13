@@ -193,6 +193,52 @@
 - [x] **TUI-34**: Players can review current and past interactions through an in-story history/search overlay without losing the current scene
 - [x] **TUI-35**: Choice inspect/help can explain semantic badges and legacy/underspecified choices more usefully than a generic “no extra info” fallback
 
+## v1.5 Requirements
+
+### AI Provider Setup
+
+- [x] **AI-SETUP-01**: AI config exposes explicit model roles for primary generation, utility/repair, ASCII generation, and embeddings without requiring secrets in tracked YAML
+- [x] **AI-SETUP-02**: `oneday setup` can create a local provider configuration for Codex OAuth, LiteLLM, or OpenRouter and writes API keys to environment storage rather than tracked files
+- [x] **AI-SETUP-03**: `oneday doctor` reports provider readiness, Codex login status, model smoke-test results, embedding smoke-test results, and RAG readiness before gameplay starts
+- [x] **AI-SETUP-04**: Provider authentication and capability failures produce actionable OneDay errors that name the missing env var, disabled provider, invalid login, or unsupported model path
+
+### RAG Setup
+
+- [x] **RAG-SETUP-01**: RAG embeddings require an explicit embedding-capable provider, preserve the existing `text-embedding-3-small` default for remote embeddings, and degrade with a clear no-RAG warning when unavailable
+
+### Distribution
+
+- [x] **DIST-01**: Shared/release artifacts exclude local config, env files, story data, databases, generated binaries, and secrets while documenting `oneday setup` as the friend-safe handoff path
+
+## v1.6 Requirements
+
+### Local RAG
+
+- [x] **LOCAL-RAG-01**: Config supports `ai.embedding.provider: local` with explicit local backend type, base URL, model, and dimensions without requiring API keys
+- [x] **LOCAL-RAG-02**: Runtime RAG can generate embeddings through Ollama `/api/embed` and a custom local HTTP endpoint, then store/retrieve vectors with the configured dimensions
+- [x] **LOCAL-RAG-03**: Setup presents local model choices with practical trade-offs and dimension defaults for `bge-m3`, `nomic-embed-text`, `mxbai-embed-large`, and `qwen3-embedding`
+- [x] **LOCAL-RAG-04**: Ollama setup can check for Ollama, optionally run/pull the selected model, and smoke-test embeddings before writing final config
+- [x] **LOCAL-RAG-05**: Custom local embedding setup accepts URL/model/dimensions and validates the endpoint with an embedding smoke test
+- [x] **LOCAL-RAG-06**: `oneday doctor` reports local embedding backend readiness, model, dimensions, and actionable local RAG failures
+
+### Reconfigurable Setup
+
+- [x] **SETUP-RECONF-01**: Existing `config.yaml` is preserved by default, but setup clearly explains `--force` / `--reconfigure`
+- [x] **SETUP-RECONF-02**: `oneday setup --force` and `oneday setup --reconfigure` reopen the AI/RAG wizard and rewrite local config only after explicit user intent
+- [x] **SETUP-RECONF-03**: Setup-generated Codex, remote RAG, local RAG, custom local RAG, and no-RAG configurations validate and are covered by tests
+
+## v1.7 Requirements
+
+### Operator Tooling
+
+- [x] **OPS-01**: `oneday config show --safe` prints active provider/model/RAG/database settings while redacting secrets
+- [x] **OPS-02**: `oneday rag benchmark` checks configured/local embedding models for availability, dimensions, and latency without requiring live story gameplay
+- [x] **OPS-03**: Runtime RAG automatically removes stale vector chunks whose stored embedding dimensions differ from the configured embedding dimensions
+- [x] **OPS-04**: `oneday doctor` reports provider/env consistency warnings beyond basic smoke tests
+- [x] **OPS-05**: Setup output is clearer about existing config, reconfiguration commands, selected profile, and post-setup validation
+- [x] **OPS-06**: Story pack files are discoverable via CLI from plugin directories without mixing them into tracked local config
+- [x] **OPS-07**: Non-live E2E tests cover setup/config/RAG command behavior without real external model calls
+
 ## v2 Requirements
 
 ### Plugin System
@@ -331,6 +377,28 @@
 | TUI-33 | Phase 11: Runtime Reliability and History UX |
 | TUI-34 | Phase 11: Runtime Reliability and History UX |
 | TUI-35 | Phase 11: Runtime Reliability and History UX |
+| AI-SETUP-01 | Phase 24: AI Provider Onboarding, Codex OAuth, and RAG Setup Hardening |
+| AI-SETUP-02 | Phase 24: AI Provider Onboarding, Codex OAuth, and RAG Setup Hardening |
+| AI-SETUP-03 | Phase 24: AI Provider Onboarding, Codex OAuth, and RAG Setup Hardening |
+| AI-SETUP-04 | Phase 24: AI Provider Onboarding, Codex OAuth, and RAG Setup Hardening |
+| RAG-SETUP-01 | Phase 24: AI Provider Onboarding, Codex OAuth, and RAG Setup Hardening |
+| DIST-01 | Phase 24: AI Provider Onboarding, Codex OAuth, and RAG Setup Hardening |
+| LOCAL-RAG-01 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| LOCAL-RAG-02 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| LOCAL-RAG-03 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| LOCAL-RAG-04 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| LOCAL-RAG-05 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| LOCAL-RAG-06 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| SETUP-RECONF-01 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| SETUP-RECONF-02 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| SETUP-RECONF-03 | Phase 25: Local RAG Embeddings and Reconfigurable Setup |
+| OPS-01 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
+| OPS-02 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
+| OPS-03 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
+| OPS-04 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
+| OPS-05 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
+| OPS-06 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
+| OPS-07 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
 
 ---
-*Last updated: 2026-04-09 after completing Phase 11*
+*Last updated: 2026-05-13 after adding Phase 25 local RAG setup requirements*

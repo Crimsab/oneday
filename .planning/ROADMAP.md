@@ -160,7 +160,7 @@
 ### Phase 06.1: Bugfix and Stabilization — fix resume/load, save restoration, inventory contract, config alignment, story metadata, runtime contract (INSERTED)
 
 **Goal:** [Urgent work - to be planned]
-**Requirements**: TBD
+**Requirements**: AI-SETUP-01, AI-SETUP-02, AI-SETUP-03, AI-SETUP-04, RAG-SETUP-01, DIST-01
 **Depends on:** Phase 6
 **Plans:** 0 plans
 
@@ -544,6 +544,83 @@ Plans:
 
 ---
 
+### Phase 24: AI Provider Onboarding, Codex OAuth, and RAG Setup Hardening
+
+**Goal:** Make OneDay easy and safe to hand to another player by providing a complete first-time AI setup flow, Codex OAuth defaults, explicit ancillary model routing, deterministic embedding/RAG configuration, and diagnostics that explain provider failures before gameplay starts.
+**Requirements**: TBD
+**Depends on:** Phase 23
+**UI hint:** no
+
+### Success Criteria
+
+1. A first-time player can run `oneday setup` and end with a working `config.yaml` plus optional `.env` without manually editing secrets into tracked files.
+2. Codex OAuth can be selected as the primary generation provider, with `gpt-5.5` as the narrator default and `gpt-5.4-mini` as the default utility/repair/ancillary Codex model.
+3. RAG embeddings are configured explicitly: setup either provisions a compatible remote embedding provider using the existing `text-embedding-3-small` path, or disables RAG with a clear warning when no embedding provider is available.
+4. A `oneday doctor` command checks OS, Go, Codex login, provider reachability, model smoke responses, env/config consistency, and embedding/RAG viability.
+5. LiteLLM/OpenRouter 401 and missing-key failures produce actionable messages that name the missing env var or disabled provider instead of surfacing raw upstream errors during play.
+6. Release/shared artifacts remain friend-safe: no local `config.yaml`, `.env`, `oneday_data`, binaries, or secrets are included by default.
+
+### Plans
+
+- [ ] Plan 24.1: Normalize AI config schema for primary, utility, repair, ASCII, and embedding models across Codex, LiteLLM, and OpenRouter
+- [ ] Plan 24.2: Complete `oneday setup` and add `oneday doctor` diagnostics with provider smoke tests
+- [ ] Plan 24.3: Harden RAG embedding setup with explicit remote embedding defaults, optional local embedding fallback design, and clear no-RAG degradation
+- [ ] Plan 24.4: Improve provider error handling, docs, and friend-safe release packaging
+
+---
+
+### Phase 25: Local RAG Embeddings and Reconfigurable Setup
+
+**Goal:** Make local/offline RAG embeddings a first-class, working setup path by supporting Ollama and custom local embedding servers, explaining model trade-offs, downloading/verifying selected local models when possible, and allowing users to re-run setup safely after `config.yaml` already exists.
+**Requirements**: LOCAL-RAG-01–LOCAL-RAG-06, SETUP-RECONF-01–SETUP-RECONF-03
+**Depends on:** Phase 24
+**UI hint:** no
+
+### Success Criteria
+
+1. `oneday setup` explains that existing config is preserved by default and tells users how to reconfigure; `oneday setup --force` / `--reconfigure` shows choices even when `config.yaml` exists.
+2. Setup offers clear RAG choices: no RAG, remote LiteLLM/OpenRouter embeddings, Ollama local embeddings, or custom local embedding endpoint.
+3. Local model choices are explained with trade-offs and dimensions: `bge-m3` recommended multilingual/default, `nomic-embed-text` fast/lightweight, `mxbai-embed-large` English quality, and `qwen3-embedding` quality/heavier where available.
+4. The selected local embedding path is written into config, smoke-tested, and used by runtime RAG without requiring API keys.
+5. Ollama setup can detect/install guidance, pull the selected model on request, and verify `/api/embed`; custom local setup accepts URL/model/dimensions and verifies it.
+6. `oneday doctor` reports local embedding server status, model, dimensions, RAG readiness, and actionable failures.
+7. Tests cover setup reconfiguration, local embedding provider selection, Ollama/custom embedding clients, doctor-safe behavior, and config validation.
+
+### Plans
+
+- [ ] Plan 25.1: Extend config and embedding provider abstraction for local Ollama and custom HTTP embedding backends
+- [ ] Plan 25.2: Rework setup into a reconfigurable AI/RAG wizard with model explanations, Ollama pull/smoke, and custom endpoint support
+- [ ] Plan 25.3: Wire runtime RAG and doctor to local embeddings with actionable diagnostics and full regression coverage
+- [ ] Plan 25.4: Update docs, examples, and friend-safe release checks for local RAG setup
+
+---
+
+### Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations
+
+**Goal:** Add high-leverage operational tooling around setup/config/RAG: safe config inspection, local RAG benchmarking, automatic embedding-dimension cleanup, deeper doctor diagnostics, friend-facing setup polish, story pack discovery, and non-live E2E coverage.
+**Requirements**: OPS-01–OPS-07
+**Depends on:** Phase 25
+**UI hint:** no
+
+### Success Criteria
+
+1. `oneday config show --safe` prints active config without secrets.
+2. `oneday rag benchmark` tests local embedding model availability/latency and reports actionable setup advice.
+3. Runtime RAG automatically removes stale chunks whose stored embedding dimensions do not match the configured model dimensions.
+4. `oneday doctor` reports richer provider/env/config consistency warnings.
+5. Setup output is clearer about existing config, reconfiguration, and final chosen profile.
+6. Story packs can be discovered from `plugins/story-packs` or `plugins/examples` without changing core story generation yet.
+7. Non-live E2E tests cover setup/config/RAG command behavior without real external model calls.
+
+### Plans
+
+- [ ] Plan 26.1: Add safe config and RAG operator CLI commands
+- [ ] Plan 26.2: Add automatic RAG dimension cleanup and deeper doctor diagnostics
+- [ ] Plan 26.3: Add story pack discovery and E2E non-live command tests
+- [ ] Plan 26.4: Documentation, verification, and release commit hygiene
+
+---
+
 ## Requirements Coverage
 
 | Phase | Requirement Count | IDs |
@@ -559,7 +636,9 @@ Plans:
 | 9 | 12 | AI-07, STOR-06–STOR-08, TUI-15–TUI-22 |
 | 10 | 7 | AI-08, AI-09, BENCH-01, BENCH-02, TUI-23–TUI-25 |
 | 11 | 12 | AI-10, CMD-05, TUI-26–TUI-35 |
-| **Total** | **99** | All mapped requirements through Phase 11 |
+| 24 | 6 | AI-SETUP-01–AI-SETUP-04, RAG-SETUP-01, DIST-01 |
+| 25 | 9 | LOCAL-RAG-01–LOCAL-RAG-06, SETUP-RECONF-01–SETUP-RECONF-03 |
+| **Total** | **114** | Mapped requirements through Phase 11 plus Phase 24-25 setup/RAG hardening |
 
 *STOR-04 (separate chat logs for combat/crafting) spans Phase 5 (design) and Phase 6 (usage); primary mapping is Phase 5.
 Post-v1.0 expansion phases 17-21 are now implemented; their requirements remain `TBD` until the next roadmap pass formalizes requirement IDs for the expansion systems.
