@@ -64,6 +64,13 @@ func main() {
 		}
 		return
 	}
+	if wantsExportFriend(os.Args[1:]) {
+		if err := runExportFriend(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Friend export failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not load .env: %v\n", err)
@@ -199,6 +206,10 @@ func wantsRAGBenchmark(args []string) bool {
 
 func wantsStoryPacksList(args []string) bool {
 	return len(args) >= 2 && (args[0] == "story-packs" || args[0] == "storypacks") && args[1] == "list"
+}
+
+func wantsExportFriend(args []string) bool {
+	return len(args) >= 2 && args[0] == "export" && args[1] == "--friend"
 }
 
 type localEmbeddingModel struct {
@@ -704,6 +715,74 @@ func runStoryPacksList() error {
 	}
 	for _, pack := range packs {
 		fmt.Printf("- %s\n", pack)
+	}
+	return nil
+}
+
+func runExportFriend(args []string) error {
+	outDir := "dist/oneday-friend"
+	for i, arg := range args {
+		if arg == "--out" && i+1 < len(args) {
+			outDir = args[i+1]
+		}
+	}
+	if err := os.RemoveAll(outDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return err
+	}
+	files := []string{"README.md", "config.example.yaml", ".env.example"}
+	for _, file := range files {
+		if err := copyFileIfExists(file, filepath.Join(outDir, file)); err != nil {
+			return err
+		}
+	}
+	if err := copyDirIfExists("plugins/examples", filepath.Join(outDir, "plugins", "examples")); err != nil {
+		return err
+	}
+	manifest := "OneDay friend-safe export\n\nRun:\n  ./oneday setup --reconfigure\n  ./oneday doctor\n\nExcluded: config.yaml, .env, oneday_data, databases, generated binaries, local secrets.\n"
+	if err := os.WriteFile(filepath.Join(outDir, "FRIEND-SETUP.txt"), []byte(manifest), 0644); err != nil {
+		return err
+	}
+	fmt.Printf("Friend-safe export written to %s\n", outDir)
+	return nil
+}
+
+func copyFileIfExists(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
+func copyDirIfExists(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDirIfExists(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := copyFileIfExists(srcPath, dstPath); err != nil {
+			return err
+		}
 	}
 	return nil
 }
