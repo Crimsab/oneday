@@ -72,6 +72,24 @@ func TestDiscoverStoryPacks(t *testing.T) {
 	}
 }
 
+func TestValidateStoryPack(t *testing.T) {
+	dir := t.TempDir()
+	pack := filepath.Join(dir, "pack.yaml")
+	if err := os.WriteFile(pack, []byte("id: pack\nname: Pack\ndescription: Demo\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateStoryPack(pack); err != nil {
+		t.Fatalf("validateStoryPack: %v", err)
+	}
+	bad := filepath.Join(dir, "bad.yaml")
+	if err := os.WriteFile(bad, []byte("id: bad\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateStoryPack(bad); err == nil {
+		t.Fatal("expected invalid story pack")
+	}
+}
+
 func TestSetupConfigForChoice(t *testing.T) {
 	tests := []struct {
 		name           string
