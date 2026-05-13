@@ -22,6 +22,7 @@ fi
 
 step "Verification"
 run make verify
+run make friend-safe-check
 
 step "Release Artifact Builds"
 run make build-bench

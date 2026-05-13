@@ -12,8 +12,8 @@ func TestDefault(t *testing.T) {
 	if cfg.DataDir != "./oneday_data" {
 		t.Errorf("DataDir = %q, want %q", cfg.DataDir, "./oneday_data")
 	}
-	if len(cfg.AI.ProviderPriority) != 3 {
-		t.Errorf("ProviderPriority length = %d, want 3", len(cfg.AI.ProviderPriority))
+	if len(cfg.AI.ProviderPriority) != 4 {
+		t.Errorf("ProviderPriority length = %d, want 4", len(cfg.AI.ProviderPriority))
 	}
 	if cfg.AI.ProviderPriority[0] != "litellm" {
 		t.Errorf("ProviderPriority[0] = %q, want %q", cfg.AI.ProviderPriority[0], "litellm")
@@ -30,8 +30,14 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.OpenRouter.Enabled {
 		t.Error("OpenRouter.Enabled = true, want false by default")
 	}
+	if cfg.AI.Codex.Enabled {
+		t.Error("Codex.Enabled = true, want false by default")
+	}
 	if cfg.AI.Generation.Temperature != 0.8 {
 		t.Errorf("Temperature = %f, want 0.8", cfg.AI.Generation.Temperature)
+	}
+	if cfg.AI.Generation.UtilityModel != "gpt-5.4-mini" {
+		t.Errorf("UtilityModel = %q, want gpt-5.4-mini", cfg.AI.Generation.UtilityModel)
 	}
 	if !cfg.AI.ASCIIArt.Enabled {
 		t.Error("ASCIIArt.Enabled = false, want true by default")
@@ -68,7 +74,7 @@ ai:
   litellm:
     enabled: true
     base_url: "http://localhost:4000/v1"
-    default_model: "gpt-4"
+    default_model: "test-model"
   generation:
     temperature: 0.5
     max_tokens: 1024
@@ -98,6 +104,58 @@ game:
 	}
 }
 
+func TestLoadExpandsEnvironmentVariables(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	t.Setenv("ONEDAY_TEST_API_KEY", "test-secret-key")
+
+	yaml := `
+ai:
+  provider_priority:
+    - litellm
+  litellm:
+    enabled: true
+    api_key: "${ONEDAY_TEST_API_KEY}"
+`
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.AI.LiteLLM.APIKey != "test-secret-key" {
+		t.Errorf("LiteLLM.APIKey = %q, want expanded env value", cfg.AI.LiteLLM.APIKey)
+	}
+}
+
+func TestLoadDotEnvDoesNotOverwriteExistingEnv(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	t.Setenv("ONEDAY_EXISTING", "from-shell")
+
+	content := `
+# comment
+ONEDAY_EXISTING=from-file
+ONEDAY_NEW="from dotenv"
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := LoadDotEnv(path); err != nil {
+		t.Fatalf("LoadDotEnv: %v", err)
+	}
+	if got := os.Getenv("ONEDAY_EXISTING"); got != "from-shell" {
+		t.Errorf("ONEDAY_EXISTING = %q, want shell value", got)
+	}
+	if got := os.Getenv("ONEDAY_NEW"); got != "from dotenv" {
+		t.Errorf("ONEDAY_NEW = %q, want dotenv value", got)
+	}
+}
+
 func TestValidateInvalidProvider(t *testing.T) {
 	cfg := Default()
 	cfg.AI.ProviderPriority = []string{"claude-code", "invalid-provider"}
@@ -105,6 +163,47 @@ func TestValidateInvalidProvider(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Error("expected validation error for invalid provider")
+	}
+}
+
+func TestValidateInvalidCodexReasoning(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Codex.Reasoning = "turbo"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid codex reasoning")
+	}
+}
+
+func TestValidateEmptyUtilityModel(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Generation.UtilityModel = " "
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for empty utility model")
+	}
+}
+
+func TestRepairModelCandidatesUsesUtilityOnlyWhenRepairMissing(t *testing.T) {
+	withRepair := GenerationConfig{
+		UtilityModel:         "gpt-5.4-mini",
+		RepairModel:          "repair-primary",
+		RepairFallbackModels: []string{"repair-fallback"},
+	}
+	candidates := withRepair.RepairModelCandidates()
+	if len(candidates) != 2 || candidates[0] != "repair-primary" || candidates[1] != "repair-fallback" {
+		t.Fatalf("RepairModelCandidates with repair = %#v", candidates)
+	}
+
+	withoutRepair := GenerationConfig{
+		UtilityModel:         "gpt-5.4-mini",
+		RepairFallbackModels: []string{"repair-fallback"},
+	}
+	candidates = withoutRepair.RepairModelCandidates()
+	if len(candidates) != 2 || candidates[0] != "gpt-5.4-mini" || candidates[1] != "repair-fallback" {
+		t.Fatalf("RepairModelCandidates without repair = %#v", candidates)
 	}
 }
 

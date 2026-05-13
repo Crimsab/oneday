@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/crimsab/oneday/internal/aifactory"
 	"github.com/crimsab/oneday/internal/config"
 )
 
@@ -10,10 +11,11 @@ func TestSelectEmbeddingProviderUsesFirstEmbeddingCapableProvider(t *testing.T) 
 	cfg := config.Default()
 	cfg.AI.ClaudeCode.Enabled = true
 	cfg.AI.OpenRouter.Enabled = true
+	cfg.AI.OpenRouter.APIKey = "openrouter-key"
 	cfg.AI.LiteLLM.Enabled = false
 	cfg.AI.ProviderPriority = []string{"claude-code", "openrouter", "litellm"}
 
-	spec, reason := selectEmbeddingProvider(cfg)
+	spec, reason := aifactory.SelectEmbeddingProvider(cfg)
 	if reason != "" {
 		t.Fatalf("selectEmbeddingProvider returned unexpected reason: %s", reason)
 	}
@@ -30,8 +32,9 @@ func TestSelectEmbeddingProviderHonorsExplicitProvider(t *testing.T) {
 	cfg.AI.Embedding.Provider = "openrouter"
 	cfg.AI.LiteLLM.Enabled = true
 	cfg.AI.OpenRouter.Enabled = true
+	cfg.AI.OpenRouter.APIKey = "openrouter-key"
 
-	spec, reason := selectEmbeddingProvider(cfg)
+	spec, reason := aifactory.SelectEmbeddingProvider(cfg)
 	if reason != "" {
 		t.Fatalf("selectEmbeddingProvider returned unexpected reason: %s", reason)
 	}
@@ -45,7 +48,7 @@ func TestSelectEmbeddingProviderRejectsExplicitUnsupportedProvider(t *testing.T)
 	cfg.AI.Embedding.Provider = "claude-code"
 	cfg.AI.ClaudeCode.Enabled = true
 
-	_, reason := selectEmbeddingProvider(cfg)
+	_, reason := aifactory.SelectEmbeddingProvider(cfg)
 	if reason == "" {
 		t.Fatal("selectEmbeddingProvider reason = empty, want unsupported-provider explanation")
 	}
@@ -58,7 +61,7 @@ func TestSelectEmbeddingProviderReportsMissingSupport(t *testing.T) {
 	cfg.AI.OpenRouter.Enabled = false
 	cfg.AI.ProviderPriority = []string{"claude-code"}
 
-	_, reason := selectEmbeddingProvider(cfg)
+	_, reason := aifactory.SelectEmbeddingProvider(cfg)
 	if reason == "" {
 		t.Fatal("selectEmbeddingProvider reason = empty, want a missing-provider explanation")
 	}

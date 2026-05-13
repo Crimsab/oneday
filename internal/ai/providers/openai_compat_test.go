@@ -81,6 +81,87 @@ func TestOpenAICompatServerError(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatMissingLiteLLMKeyIsActionable(t *testing.T) {
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "litellm",
+		BaseURL:      "http://example.invalid",
+		DefaultModel: "test-model",
+		Timeout:      time.Second,
+	})
+
+	_, err := provider.Complete(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatal("expected missing key error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"ONEDAY_LITELLM_API_KEY", "oneday doctor"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error %q missing %q", msg, want)
+		}
+	}
+}
+
+func TestOpenAICompatOpenRouter401IsActionable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"bad key"}`))
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "openrouter",
+		BaseURL:      server.URL,
+		APIKey:       "bad-key",
+		DefaultModel: "test-model",
+		Timeout:      time.Second,
+	})
+
+	_, err := provider.Complete(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatal("expected auth error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"OpenRouter authentication failed", "ONEDAY_OPENROUTER_API_KEY", "oneday doctor"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error %q missing %q", msg, want)
+		}
+	}
+}
+
+func TestOpenAICompatEmbedding401IsActionable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"forbidden"}`))
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "litellm-embed",
+		BaseURL:      server.URL,
+		APIKey:       "bad-key",
+		DefaultModel: "text-embedding-3-small",
+		Timeout:      time.Second,
+	})
+
+	_, err := provider.Embed(context.Background(), ai.EmbeddingRequest{
+		Input: "hello",
+		Model: "text-embedding-3-small",
+	})
+	if err == nil {
+		t.Fatal("expected auth error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"LiteLLM authentication failed", "ONEDAY_LITELLM_API_KEY"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error %q missing %q", msg, want)
+		}
+	}
+}
+
 func TestOpenAICompatNoChoices(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
@@ -148,6 +229,7 @@ func TestOpenAICompatCompletePassesResponseFormat(t *testing.T) {
 	provider := NewOpenAICompat(OpenAICompatConfig{
 		Name:         "litellm",
 		BaseURL:      server.URL,
+		APIKey:       "test-key",
 		DefaultModel: "test-model",
 		Timeout:      5 * time.Second,
 	})
@@ -198,6 +280,7 @@ func TestOpenAICompatCompletePreservesExplicitPluginConfig(t *testing.T) {
 	provider := NewOpenAICompat(OpenAICompatConfig{
 		Name:         "litellm",
 		BaseURL:      server.URL,
+		APIKey:       "test-key",
 		DefaultModel: "test-model",
 		Timeout:      5 * time.Second,
 	})
@@ -322,6 +405,7 @@ func TestOpenAICompatStream(t *testing.T) {
 	provider := NewOpenAICompat(OpenAICompatConfig{
 		Name:    "litellm",
 		BaseURL: server.URL,
+		APIKey:  "test-key",
 		Timeout: 5 * time.Second,
 	})
 
@@ -393,6 +477,7 @@ func TestOpenAICompatStreamRetriesWithoutUnsupportedResponseFormat(t *testing.T)
 	provider := NewOpenAICompat(OpenAICompatConfig{
 		Name:         "litellm",
 		BaseURL:      server.URL,
+		APIKey:       "test-key",
 		DefaultModel: "test-model",
 		Timeout:      5 * time.Second,
 	})
@@ -453,6 +538,7 @@ func TestOpenAICompatStreamFallsBackToCompleteWhenStreamingUnsupported(t *testin
 	provider := NewOpenAICompat(OpenAICompatConfig{
 		Name:         "litellm",
 		BaseURL:      server.URL,
+		APIKey:       "test-key",
 		DefaultModel: "test-model",
 		Timeout:      5 * time.Second,
 	})

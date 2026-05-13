@@ -4,7 +4,7 @@ ASCII_BENCH=oneday-ascii-benchmark
 BUILD_DIR=build
 LDFLAGS=$(shell bash ./scripts/build-ldflags.sh)
 
-.PHONY: test vet verify qa-matrix qa-matrix-auto release-check build build-bench build-ascii-bench build-cross all
+.PHONY: test vet verify qa-matrix qa-matrix-auto release-check friend-safe-check build build-bench build-ascii-bench build-cross all
 
 test:
 	go test ./...
@@ -22,6 +22,9 @@ qa-matrix-auto:
 
 release-check:
 	./scripts/release-gate.sh
+
+friend-safe-check:
+	./scripts/friend-safe-check.sh
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o ./$(APP) ./cmd/oneday

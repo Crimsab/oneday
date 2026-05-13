@@ -1,0 +1,5 @@
+id: noir-investigation
+name: Noir Investigation
+description: Detective-focused story pack with cases, suspects, contradictions, and pressure clocks.
+genre: noir
+recommended_rag: bge-m3

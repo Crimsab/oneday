@@ -6,11 +6,22 @@ data_dir: "./oneday_data"
 # AI Provider configuration
 ai:
   # Provider priority (first available is used, others are fallbacks)
-  # Options: claude-code, litellm, openrouter
+  # Options: codex, claude-code, litellm, openrouter
   provider_priority:
     - litellm
     - openrouter
+    - codex
     - claude-code
+
+  # OpenAI Codex CLI (experimental; uses local `codex login` OAuth/API auth)
+  codex:
+    enabled: false
+    # Path to codex CLI binary (leave empty for PATH lookup)
+    binary: ""
+    model: "gpt-5.5"
+    # Options: off, none, minimal, low, medium, high, xhigh
+    reasoning: "off"
+    # Codex is generation-only. RAG embeddings still require LiteLLM/OpenRouter.
 
   # Claude Code CLI (uses your Claude subscription)
   claude_code:
@@ -24,14 +35,14 @@ ai:
     # Host-native default. If you run OneDay inside Docker on the homelab network,
     # use http://ai-proxy:4000/v1 instead.
     base_url: "http://llm.example.com/v1"
-    api_key: ""
+    api_key: "${ONEDAY_LITELLM_API_KEY}"
     default_model: "grok-4.1-fast"
 
   # OpenRouter
   openrouter:
     enabled: false
     base_url: "https://openrouter.ai/api/v1"
-    api_key: ""
+    api_key: "${ONEDAY_OPENROUTER_API_KEY}"
     default_model: "google/gemini-2.5-flash-lite"
 
   # Embedding model (for RAG)
@@ -39,7 +50,19 @@ ai:
     model: "text-embedding-3-small"
     provider: "auto"
     # Use "auto" to pick the first enabled embedding-capable provider in the
-    # priority chain, or force one of: litellm, openrouter
+    # priority chain, or force one of: litellm, openrouter, local
+    # Local embeddings do not require API keys. Ollama is the easiest backend,
+    # but custom local HTTP embedding endpoints are also supported.
+    local:
+      enabled: false
+      # ollama: POST {base_url}/api/embed
+      # custom: POST {base_url} with {"model":"...","input":"..."}
+      type: "ollama"
+      base_url: "http://127.0.0.1:11434"
+      # Recommended multilingual/Italian default. Alternatives:
+      # nomic-embed-text (fast/light), mxbai-embed-large (English), qwen3-embedding (heavier/quality)
+      model: "bge-m3"
+      dimensions: 1024
 
   # Optional ambient ASCII-art generation for scene headers/signage/maps/etc.
   ascii_art:
@@ -56,6 +79,8 @@ ai:
     temperature: 0.8
     max_tokens: 2048
     timeout_seconds: 60
+    # Utility/ancillary model for repair, validation, and other small side calls.
+    utility_model: "gpt-5.4-mini"
     # Optional dedicated repair/validator model for schema-fix passes.
     # Primary repair model plus ordered fallbacks.
     repair_model: "gemini-3.1-flash-lite-preview"
@@ -64,6 +89,7 @@ ai:
 
 # RAG settings
 rag:
+  enabled: true
   # Summarize every N turns
   summarize_every: 10
   # Number of relevant chunks to retrieve
@@ -79,3 +105,5 @@ game:
   typewriter_effect: true
   # Typewriter speed (characters per second)
   typewriter_speed: 80
+  # Expose /thoughts to inspect NPC private thoughts
+  visible_private_thoughts: true
