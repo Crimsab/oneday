@@ -621,6 +621,33 @@ Plans:
 
 ---
 
+### Phase 27: Product Hardening and Friend Packaging
+
+**Goal:** Finish the operator polish pass with command smoke CI, smarter RAG maintenance commands, config migrations, machine-readable diagnostics, friend-safe export packaging, and story-pack selection foundations.
+**Requirements**: HARDEN-01–HARDEN-08
+**Depends on:** Phase 26
+**UI hint:** no
+
+### Success Criteria
+
+1. GitHub Actions runs non-live command smoke checks for config, RAG, and story pack commands.
+2. `oneday doctor --json` emits machine-readable diagnostics without leaking secrets.
+3. `oneday export --friend` creates a clean share package with binaries/docs/examples and no local secrets/data.
+4. Config has a version field and migration helpers normalize old configs into current defaults.
+5. `oneday rag reindex` offers a safe maintenance path for stale embeddings.
+6. `oneday rag benchmark` is more informative about configured model readiness and next steps.
+7. Story packs have schema validation and can be selected during setup/config scaffolding.
+8. Tests cover all new command behavior without live providers.
+
+### Plans
+
+- [ ] Plan 27.1: CI smoke, doctor JSON, and safe config migration
+- [ ] Plan 27.2: RAG reindex/benchmark maintenance commands
+- [ ] Plan 27.3: Friend-safe export package
+- [ ] Plan 27.4: Story pack schema and setup selection
+
+---
+
 ## Requirements Coverage
 
 | Phase | Requirement Count | IDs |

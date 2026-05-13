@@ -239,6 +239,19 @@
 - [x] **OPS-06**: Story pack files are discoverable via CLI from plugin directories without mixing them into tracked local config
 - [x] **OPS-07**: Non-live E2E tests cover setup/config/RAG command behavior without real external model calls
 
+## v1.8 Requirements
+
+### Product Hardening
+
+- [ ] **HARDEN-01**: GitHub Actions runs non-live smoke checks for `config show --safe`, `rag benchmark`, and `story-packs list`
+- [ ] **HARDEN-02**: `oneday doctor --json` emits machine-readable diagnostics while redacting secrets
+- [ ] **HARDEN-03**: `oneday export --friend` creates a shareable package without local config, env files, databases, story data, or generated secrets
+- [ ] **HARDEN-04**: Config includes a version field and migration helper so older config files are normalized safely
+- [ ] **HARDEN-05**: `oneday rag reindex` provides a safe command path for clearing stale embeddings when models/dimensions change
+- [ ] **HARDEN-06**: `oneday rag benchmark` explains configured provider/model readiness and recommended next steps
+- [ ] **HARDEN-07**: Story packs have lightweight schema validation and can be selected by setup/config scaffolding
+- [ ] **HARDEN-08**: All new command paths are covered by non-live tests
+
 ## v2 Requirements
 
 ### Plugin System
@@ -399,6 +412,14 @@
 | OPS-05 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
 | OPS-06 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
 | OPS-07 | Phase 26: Operator Tooling, RAG Maintenance, and Story Pack Foundations |
+| HARDEN-01 | Phase 27: Product Hardening and Friend Packaging |
+| HARDEN-02 | Phase 27: Product Hardening and Friend Packaging |
+| HARDEN-03 | Phase 27: Product Hardening and Friend Packaging |
+| HARDEN-04 | Phase 27: Product Hardening and Friend Packaging |
+| HARDEN-05 | Phase 27: Product Hardening and Friend Packaging |
+| HARDEN-06 | Phase 27: Product Hardening and Friend Packaging |
+| HARDEN-07 | Phase 27: Product Hardening and Friend Packaging |
+| HARDEN-08 | Phase 27: Product Hardening and Friend Packaging |
 
 ---
 *Last updated: 2026-05-13 after adding Phase 25 local RAG setup requirements*
