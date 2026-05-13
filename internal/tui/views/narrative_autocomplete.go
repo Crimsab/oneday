@@ -26,6 +26,7 @@ var slashCommandSpecs = []slashCommandSpec{
 	{Name: "stats", Hint: "Show character sheet", Aliases: []string{"s"}},
 	{Name: "map", Hint: "Show discovered world map", Aliases: []string{"m"}},
 	{Name: "journal", Hint: "Show chapter journal", Aliases: []string{"j"}},
+	{Name: "thoughts", Hint: "Inspect saved NPC private thoughts"},
 	{Name: "codex", Hint: "Open the story codex"},
 	{Name: "fronts", Hint: "Open the fronts and fallout tracker", Aliases: []string{"hooks"}},
 	{Name: "investigations", Hint: "Open the investigation workspace"},
@@ -76,7 +77,7 @@ func (m *NarrativeModel) buildSlashSuggestions(rawValue string) []components.Sug
 	commandBody := strings.TrimPrefix(trimmed, "/")
 	parts := strings.Fields(commandBody)
 	if len(parts) == 0 {
-		return buildCommandSuggestions("")
+		return buildCommandSuggestionsForSpecs("", m.availableSlashCommandSpecs())
 	}
 
 	query := strings.ToLower(strings.TrimSpace(parts[0]))
@@ -85,23 +86,27 @@ func (m *NarrativeModel) buildSlashSuggestions(rawValue string) []components.Sug
 
 	if canonical == "talk" {
 		if len(parts) == 1 && !trailingSpace {
-			return buildCommandSuggestions(query)
+			return buildCommandSuggestionsForSpecs(query, m.availableSlashCommandSpecs())
 		}
 		return m.buildTalkSuggestions(rawValue)
 	}
 
 	if len(parts) == 1 && !trailingSpace {
-		return buildCommandSuggestions(query)
+		return buildCommandSuggestionsForSpecs(query, m.availableSlashCommandSpecs())
 	}
 
 	return nil
 }
 
 func buildCommandSuggestions(query string) []components.SuggestionItem {
+	return buildCommandSuggestionsForSpecs(query, slashCommandSpecs)
+}
+
+func buildCommandSuggestionsForSpecs(query string, specs []slashCommandSpec) []components.SuggestionItem {
 	query = strings.ToLower(strings.TrimSpace(query))
 
-	items := make([]components.SuggestionItem, 0, len(slashCommandSpecs))
-	for _, spec := range slashCommandSpecs {
+	items := make([]components.SuggestionItem, 0, len(specs))
+	for _, spec := range specs {
 		if query != "" && !slashCommandMatches(spec, query) {
 			continue
 		}
@@ -127,6 +132,17 @@ func buildCommandSuggestions(query string) []components.SuggestionItem {
 		})
 	}
 	return items
+}
+
+func (m NarrativeModel) availableSlashCommandSpecs() []slashCommandSpec {
+	specs := make([]slashCommandSpec, 0, len(slashCommandSpecs))
+	for _, spec := range slashCommandSpecs {
+		if spec.Name == "thoughts" && !m.visiblePrivateThoughts {
+			continue
+		}
+		specs = append(specs, spec)
+	}
+	return specs
 }
 
 func slashCommandMatches(spec slashCommandSpec, query string) bool {

@@ -123,6 +123,7 @@ type NarrativeModel struct {
 	inputHistory            []string
 	inputHistoryCursor      int
 	inputHistoryDraft       string
+	visiblePrivateThoughts  bool
 
 	// Combat sub-view
 	combatView *CombatModel
@@ -152,27 +153,28 @@ type NarrativeModel struct {
 }
 
 // NewNarrativeModel creates the narrative view.
-func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int) NarrativeModel {
+func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int, visiblePrivateThoughts bool) NarrativeModel {
 	ta := newGameTextarea("Type a free action or press 1-4 to choose...", actionInputHeight)
 
 	vp := viewport.New(80, 20)
 
 	return NarrativeModel{
-		narrator:           narrator,
-		viewport:           vp,
-		typewriter:         components.NewTypewriter(typewriterSpeed),
-		statusBar:          components.NewStatusBar(),
-		choices:            components.NewChoiceList(),
-		slashSuggestions:   components.NewSuggestionList(),
-		overlay:            components.NewOverlay(),
-		achievementPopup:   components.NewAchievementPopup(),
-		input:              ta,
-		history:            &strings.Builder{},
-		streamRaw:          &strings.Builder{},
-		inputFocus:         false, // start on choice list
-		currentMood:        "neutral",
-		choiceHelp:         map[int]string{},
-		inputHistoryCursor: -1,
+		narrator:               narrator,
+		viewport:               vp,
+		typewriter:             components.NewTypewriter(typewriterSpeed),
+		statusBar:              components.NewStatusBar(),
+		choices:                components.NewChoiceList(),
+		slashSuggestions:       components.NewSuggestionList(),
+		overlay:                components.NewOverlay(),
+		achievementPopup:       components.NewAchievementPopup(),
+		input:                  ta,
+		history:                &strings.Builder{},
+		streamRaw:              &strings.Builder{},
+		inputFocus:             false, // start on choice list
+		currentMood:            "neutral",
+		choiceHelp:             map[int]string{},
+		inputHistoryCursor:     -1,
+		visiblePrivateThoughts: visiblePrivateThoughts,
 	}
 }
 
@@ -781,7 +783,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				m.input.Reset()
 				m.refreshSlashSuggestions()
 				if engine.IsCommand(text) {
-					cmd := engine.ParseCommand(text)
+					cmd := m.parseCommand(text)
 					return m.handleCommand(cmd)
 				}
 				return m, m.sendAction(text)
@@ -914,6 +916,8 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.handleTimeSkipCommand(cmd.Args)
 	case "journal":
 		return m.showJournal()
+	case "thoughts":
+		return m.showThoughts()
 	case "history":
 		return m.showHistory(cmd.Args)
 	case "hooks":
@@ -950,6 +954,27 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		}
 		return m, nil
 	}
+}
+
+func (m NarrativeModel) parseCommand(input string) *engine.Command {
+	if !engine.IsCommand(input) {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(input)
+	trimmed = strings.TrimPrefix(trimmed, "/")
+	parts := strings.Fields(trimmed)
+	if len(parts) == 0 {
+		return &engine.Command{Name: "unknown", Args: []string{"/"}}
+	}
+
+	name := strings.ToLower(strings.TrimSpace(parts[0]))
+	args := parts[1:]
+	if name == "thoughts" && m.visiblePrivateThoughts {
+		return &engine.Command{Name: "thoughts", Args: args}
+	}
+
+	return engine.ParseCommand(input)
 }
 
 // showOverlay is a helper to show the overlay with title and content.
@@ -1051,6 +1076,20 @@ func (m NarrativeModel) showJournal() (NarrativeModel, tea.Cmd) {
 	return m, nil
 }
 
+func (m NarrativeModel) showThoughts() (NarrativeModel, tea.Cmd) {
+	if !m.visiblePrivateThoughts {
+		m.errMsg = "Unknown command: /thoughts. Type /help for available commands."
+		return m, nil
+	}
+	if m.narrator == nil || m.narrator.DB() == nil || m.narrator.Story() == nil {
+		m.errMsg = "Private thoughts unavailable right now."
+		return m, nil
+	}
+	thoughtsText := engine.FormatPrivateThoughtsView(m.narrator.DB(), m.narrator.Story().ID)
+	m.showOverlay("NPC Private Thoughts", thoughtsText)
+	return m, nil
+}
+
 // showMap displays the discovered world locations overlay.
 func (m NarrativeModel) showMap() (NarrativeModel, tea.Cmd) {
 	mapText := engine.FormatMapView(m.narrator.World())
@@ -1104,96 +1143,114 @@ func (m *NarrativeModel) startNextChallenge() tea.Cmd {
 }
 
 func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
-	helpText := `Available Commands:
+	lines := []string{
+		"Available Commands:",
+		"",
+		"  /inventory    (/i)   Show your inventory",
+		"  /stats        (/s)   Open the protagonist dossier",
+		"  /characters          Browse protagonist and NPC dossiers",
+		"  /codex               Open the full story codex",
+		"  /fronts              Open the fronts and fallout tracker",
+		"  /hooks               Alias for /fronts",
+		"  /investigations      Open the dedicated investigation workspace",
+		"  /projects            Open the dedicated project workspace",
+		"  /map          (/m)   Show discovered world map",
+		"  /journal      (/j)   Show chapter journal",
+		"  h                   Open the story history browser",
+		"  /btw <question>     Ask the AI a quick contextual question without advancing the turn",
+		"  /guide <request>    Store a soft future-facing chapter wish without advancing the turn",
+		"  /advance [hint]     Move to the next meaningful beat now; free text after it is a soft target",
+		"  /timeskip [hint]    Jump ahead to a later meaningful moment; free text sets the target moment",
+	}
+	if m.visiblePrivateThoughts {
+		lines = append(lines, "  /thoughts            Inspect saved NPC private thoughts")
+	}
+	lines = append(lines,
+		"  /achievements (/a)   Show earned achievements",
+		"  /narrator     (/n)   Speak to the game master",
+		"  /craft               Open crafting station (AI-driven)",
+		"  /talk [npc] [intent] Enter nearby-NPC talk mode or send a one-shot line",
+		"  /downtime [focus]    Request a quieter downtime beat",
+		"  /save [name]         Save your game",
+		"  /load                Load a saved game",
+		"  /help                Show this help",
+		"  /quit         (/q)   Save and quit to menu",
+		"",
+		"Keyboard Shortcuts:",
+		"  s / F5              Quick save snapshot",
+		"  h                   Open searchable history browser",
+		"  P / I / F / C       Jump between projects, investigations, fronts, and codex",
+		"  Up / Down           Browse free-input history (single-line input)",
+		"  Mouse wheel         Scroll the current scene",
+		"  Ctrl+Space          Close talk mode instantly",
+		"  Esc                 Open session menu (resume, quick save, load, main menu)",
+		"  Space               Confirms the highlighted option in menus and pickers",
+		"  Left / Right        Focus metadata badges on the selected choice",
+		"  ?                   Explain the selected choice's related stats/metadata",
+		"",
+		"Narrator examples:",
+		"  /n Add a secret underground city",
+		"  /n Make Lyanna secretly jealous",
+		"  /n What factions exist in this world?",
+		"  /n I want the next area to be a haunted forest",
+		"",
+		"Guide examples:",
+		"  /guide In questo capitolo voglio una boss fight memorabile",
+		"  /guide Fammi trovare materiali rari e almeno un reward forte",
+		"  /guide Semina una scena tesa con Lyanna, ma falla arrivare quando ha senso",
+		"",
+		"Pacing examples:",
+		"  /advance",
+		"  /advance Vai oltre questa scena domestica e portami al primo vero cambiamento",
+		"  /advance una settimana dopo",
+		"  /advance la mattina seguente, quando torno al mercato",
+		"  /timeskip",
+		"  /timeskip arrivo a 6 anni",
+		"  /timeskip Tre anni dopo, quando la magia e gia parte della routine",
+		"  /timeskip al prossimo inverno",
+		"  /timeskip Alla prossima tappa davvero importante del viaggio",
+	)
+	if m.visiblePrivateThoughts {
+		lines = append(lines,
+			"",
+			"Private thoughts:",
+			"  /thoughts",
+		)
+	}
+	lines = append(lines,
+		"",
+		"Talk mode:",
+		"  /talk Lyanna",
+		"  /talk Lyanna promise",
+		"  /talk Lyanna ask What did you see at the docks?",
+		"  /talk off",
+		"",
+		"Downtime examples:",
+		"  /downtime rest by the fire",
+		"  /downtime write a letter home",
+		"  /downtime train with Lyanna",
+		"",
+		"Challenges:",
+		"  Active challenges pause first on a confirmation screen.",
+		"  Types: dice roll (d100), rock-paper-scissors, memory sequence,",
+		"         quick-time (press key in time), riddle, stat/skill/item checks.",
+		"  The game engine resolves the outcome fairly — the AI then narrates the result.",
+		"",
+		"  Footer legend:",
+		"  10.4s         total response time",
+		"  ft 5.5s       time to first token",
+		"  6016t         total tokens",
+		"  4980p/1036c   prompt/completion tokens",
+		"  r193          reasoning tokens",
+		"  cache 900p    cached prompt tokens",
+		"  99.7t/s       completion throughput",
+		"",
+		"Quick aside:",
+		"  /btw Who exactly is Dee Podale Suprema?",
+		"  /btw Remind me what this faction wants",
+	)
 
-  /inventory    (/i)   Show your inventory
-  /stats        (/s)   Open the protagonist dossier
-  /characters          Browse protagonist and NPC dossiers
-  /codex               Open the full story codex
-  /fronts              Open the fronts and fallout tracker
-  /hooks               Alias for /fronts
-  /investigations      Open the dedicated investigation workspace
-  /projects            Open the dedicated project workspace
-  /map          (/m)   Show discovered world map
-  /journal      (/j)   Show chapter journal
-  h                   Open the story history browser
-  /btw <question>     Ask the AI a quick contextual question without advancing the turn
-  /guide <request>    Store a soft future-facing chapter wish without advancing the turn
-  /advance [hint]     Move to the next meaningful beat now; free text after it is a soft target
-  /timeskip [hint]    Jump ahead to a later meaningful moment; free text sets the target moment
-  /achievements (/a)   Show earned achievements
-  /narrator     (/n)   Speak to the game master
-  /craft               Open crafting station (AI-driven)
-  /talk [npc] [intent] Enter nearby-NPC talk mode or send a one-shot line
-  /downtime [focus]    Request a quieter downtime beat
-  /save [name]         Save your game
-  /load                Load a saved game
-  /help                Show this help
-  /quit         (/q)   Save and quit to menu
-
-Keyboard Shortcuts:
-  s / F5              Quick save snapshot
-  h                   Open searchable history browser
-  P / I / F / C       Jump between projects, investigations, fronts, and codex
-  Up / Down           Browse free-input history (single-line input)
-  Mouse wheel         Scroll the current scene
-  Ctrl+Space          Close talk mode instantly
-  Esc                 Open session menu (resume, quick save, load, main menu)
-  Space               Confirms the highlighted option in menus and pickers
-  Left / Right        Focus metadata badges on the selected choice
-  ?                   Explain the selected choice's related stats/metadata
-
-Narrator examples:
-  /n Add a secret underground city
-  /n Make Lyanna secretly jealous
-  /n What factions exist in this world?
-  /n I want the next area to be a haunted forest
-
-Guide examples:
-  /guide In questo capitolo voglio una boss fight memorabile
-  /guide Fammi trovare materiali rari e almeno un reward forte
-  /guide Semina una scena tesa con Lyanna, ma falla arrivare quando ha senso
-
-Pacing examples:
-  /advance
-  /advance Vai oltre questa scena domestica e portami al primo vero cambiamento
-  /advance una settimana dopo
-  /advance la mattina seguente, quando torno al mercato
-  /timeskip
-  /timeskip arrivo a 6 anni
-  /timeskip Tre anni dopo, quando la magia e gia parte della routine
-  /timeskip al prossimo inverno
-  /timeskip Alla prossima tappa davvero importante del viaggio
-
-Talk mode:
-  /talk Lyanna
-  /talk Lyanna promise
-  /talk Lyanna ask What did you see at the docks?
-  /talk off
-
-Downtime examples:
-  /downtime rest by the fire
-  /downtime write a letter home
-  /downtime train with Lyanna
-
-Challenges:
-  Active challenges pause first on a confirmation screen.
-  Types: dice roll (d100), rock-paper-scissors, memory sequence,
-         quick-time (press key in time), riddle, stat/skill/item checks.
-  The game engine resolves the outcome fairly — the AI then narrates the result.
-
-	Footer legend:
-  10.4s         total response time
-  ft 5.5s       time to first token
-  6016t         total tokens
-  4980p/1036c   prompt/completion tokens
-  r193          reasoning tokens
-  cache 900p    cached prompt tokens
-  99.7t/s       completion throughput
-
-Quick aside:
-  /btw Who exactly is Dee Podale Suprema?
-  /btw Remind me what this faction wants`
+	helpText := strings.Join(lines, "\n")
 
 	m.showOverlay("Help", helpText)
 	return m, nil
@@ -1993,7 +2050,7 @@ func (m *NarrativeModel) applyInputCommandStyle() {
 	promptColor := theme.Secondary
 	value := strings.TrimSpace(m.input.Value())
 	if strings.HasPrefix(value, "/") {
-		if cmd := engine.ParseCommand(value); cmd != nil && cmd.Name != "unknown" {
+		if cmd := m.parseCommand(value); cmd != nil && cmd.Name != "unknown" {
 			textColor = theme.Success
 			promptColor = theme.Success
 		} else if m.slashSuggestions.HasItems() {

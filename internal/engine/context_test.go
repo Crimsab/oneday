@@ -277,6 +277,62 @@ func TestBuildContextUsesSceneProgressionJudgeGuidance(t *testing.T) {
 	}
 }
 
+func TestBuildContextAddsFreeActionHandlingForMacroInput(t *testing.T) {
+	story := &storage.Story{
+		ID:              "story-free-action",
+		Name:            "Lucernel",
+		Genre:           "fantasy",
+		SettingJSON:     `{"world_name":"Lucernel","technology_level":"mythic fantasy"}`,
+		StatsSchemaJSON: `{}`,
+		Language:        "it",
+	}
+	char := newTestChar()
+	world := newTestWorld()
+	world.CurrentLocation = "Capanna familiare"
+
+	msgs := BuildContext(
+		story,
+		char,
+		world,
+		nil,
+		nil,
+		nil,
+		"",
+		"crollo a terra, sogno un animale alato, poi dormo due anni e mi risveglio cresciuto in un altro posto",
+		nil,
+		nil,
+	)
+
+	summary := findFreeActionSummary(msgs)
+	if summary == "" {
+		t.Fatalf("expected Free Action Handling system message, got %#v", msgs)
+	}
+	if !strings.Contains(summary, "Do NOT drift into an unrelated setting or genre") {
+		t.Fatalf("free action guidance missing continuity guard:\n%s", summary)
+	}
+	if !strings.Contains(summary, "If you honor a time jump") {
+		t.Fatalf("free action guidance missing time jump handling:\n%s", summary)
+	}
+}
+
+func TestBuildContextSkipsFreeActionHandlingForSimpleInput(t *testing.T) {
+	story := &storage.Story{
+		ID:              "story-simple-free-action",
+		Name:            "Lucernel",
+		Genre:           "fantasy",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		Language:        "it",
+	}
+	char := newTestChar()
+	world := newTestWorld()
+
+	msgs := BuildContext(story, char, world, nil, nil, nil, "", "Busso alla porta.", nil, nil)
+	if summary := findFreeActionSummary(msgs); summary != "" {
+		t.Fatalf("did not expect Free Action Handling guidance for a simple local action:\n%s", summary)
+	}
+}
+
 func testAssistantTurnWithMeta(t *testing.T, turn int, narrative, location string, choices ...string) storage.ChatMessage {
 	t.Helper()
 
@@ -309,6 +365,18 @@ func findLiveMomentumSummary(msgs []ai.Message) string {
 		if strings.HasPrefix(msg.Content, "## Narrative Momentum\n") &&
 			(strings.Contains(msg.Content, "Recent turns are circling the same micro-beat.") ||
 				strings.Contains(msg.Content, "Recent turns may be drifting. Use this scene progression directive")) {
+			return msg.Content
+		}
+	}
+	return ""
+}
+
+func findFreeActionSummary(msgs []ai.Message) string {
+	for _, msg := range msgs {
+		if msg.Role != "system" {
+			continue
+		}
+		if strings.HasPrefix(msg.Content, "## Free Action Handling\n") {
 			return msg.Content
 		}
 	}
