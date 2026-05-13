@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,7 +37,7 @@ func main() {
 		return
 	}
 	if wantsDoctor(os.Args[1:]) {
-		if err := runDoctor(); err != nil {
+		if err := runDoctor(os.Args[1:]); err != nil {
 			fmt.Fprintf(os.Stderr, "Doctor failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -173,6 +174,15 @@ func wantsDoctor(args []string) bool {
 	for _, arg := range args {
 		switch arg {
 		case "doctor", "--doctor":
+			return true
+		}
+	}
+	return false
+}
+
+func wantsJSON(args []string) bool {
+	for _, arg := range args {
+		if arg == "--json" {
 			return true
 		}
 	}
@@ -499,7 +509,23 @@ func setupConfigForChoice(cfg config.Config, choice string) (config.Config, erro
 	return cfg, nil
 }
 
-func runDoctor() error {
+type doctorReport struct {
+	OS              string   `json:"os"`
+	Arch            string   `json:"arch"`
+	ConfigPath      string   `json:"config_path"`
+	EnabledProvider []string `json:"enabled_providers"`
+	CodexLogin      string   `json:"codex_login"`
+	RAGEnabled      bool     `json:"rag_enabled"`
+	EmbeddingKind   string   `json:"embedding_kind"`
+	EmbeddingModel  string   `json:"embedding_model"`
+	EmbeddingDims   int      `json:"embedding_dimensions"`
+	Warnings        []string `json:"warnings"`
+}
+
+func runDoctor(args []string) error {
+	if wantsJSON(args) {
+		return runDoctorJSON()
+	}
 	fmt.Println("OneDay doctor")
 	fmt.Printf("OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	reportCommand("go", "version")
@@ -575,6 +601,37 @@ func runDoctor() error {
 	}
 	fmt.Printf("Embedding smoke: OK: %d dimensions (%s)\n", len(embResp.Embedding), embResp.Model)
 	return nil
+}
+
+func runDoctorJSON() error {
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		// JSON mode reports config/env issues through warnings where possible.
+	}
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		return err
+	}
+	report := doctorReport{
+		OS:              runtime.GOOS,
+		Arch:            runtime.GOARCH,
+		ConfigPath:      resolveConfigPath(),
+		EnabledProvider: cfg.EnabledProviders(),
+		CodexLogin:      commandStatus("codex", "login", "status"),
+		RAGEnabled:      cfg.RAG.Enabled,
+		EmbeddingModel:  cfg.AI.Embedding.Model,
+		EmbeddingDims:   cfg.RAG.Dimensions,
+		Warnings:        providerConsistencyWarnings(cfg),
+	}
+	if spec, reason := aifactory.SelectEmbeddingProvider(cfg); reason == "" {
+		report.EmbeddingKind = spec.Kind
+		report.EmbeddingModel = spec.Model
+		report.EmbeddingDims = spec.Dimensions
+	} else if cfg.RAG.Enabled {
+		report.Warnings = append(report.Warnings, "rag unavailable: "+reason)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(report)
 }
 
 func runConfigShowSafe() error {
