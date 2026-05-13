@@ -554,7 +554,7 @@ func (n *Narrator) finalizeTurn(
 	// Parse the structured response.
 	narrative, err := parseNarrativeFromAI(resp.Content)
 	if err != nil {
-		repaired, repairErr := n.repairNarrativeResponse(ctx, resp.Content, err)
+		repaired, repairErr := n.repairNarrativeResponse(ctx, input, resp.Content, err)
 		if repairErr == nil {
 			narrative = repaired
 		} else {
@@ -570,6 +570,19 @@ func (n *Narrator) finalizeTurn(
 		}
 	}
 	normalizeNarrativeResponse(narrative)
+	if continuityErr := detectNarrativeContinuityIssue(n.story, narrative); continuityErr != nil {
+		repaired, repairErr := n.repairNarrativeResponse(ctx, input, resp.Content, continuityErr)
+		if repairErr != nil {
+			restoreState()
+			return nil, fmt.Errorf("continuity guard blocked response: %w", continuityErr)
+		}
+		narrative = repaired
+		normalizeNarrativeResponse(narrative)
+		if remaining := detectNarrativeContinuityIssue(n.story, narrative); remaining != nil {
+			restoreState()
+			return nil, fmt.Errorf("continuity guard blocked response after repair: %w", remaining)
+		}
+	}
 
 	// Apply state_changes from AI response, including NPC creation/updates.
 	var appliedChanges []StateChange

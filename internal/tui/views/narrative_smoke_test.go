@@ -203,6 +203,61 @@ func TestNarrativeActiveSystemShortcutsSwitchBetweenWorkspaces(t *testing.T) {
 	}
 }
 
+func TestNarrativeThoughtsCommandOpensOverlayWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	model := newTalkTestNarrativeModel(t)
+	model.SetSize(120, 40)
+	model.inputFocus = true
+	model.input.Focus()
+
+	npc, err := model.narrator.DB().GetNPCByName(model.StoryID(), "Lyanna")
+	if err != nil || npc == nil {
+		t.Fatalf("GetNPCByName(Lyanna): %v npc=%+v", err, npc)
+	}
+	npc.PrivateThoughts = `["Sta nascondendo qualcosa ma non ancora a me."]`
+	if err := model.narrator.DB().UpdateNPC(npc); err != nil {
+		t.Fatalf("UpdateNPC: %v", err)
+	}
+
+	model.input.SetValue("/thoughts")
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatalf("Update(/thoughts) returned unexpected cmd")
+	}
+	if !updated.overlay.Visible() {
+		t.Fatal("expected thoughts overlay to be visible")
+	}
+	if title := updated.overlay.Title; title != "NPC Private Thoughts" {
+		t.Fatalf("overlay title = %q, want NPC Private Thoughts", title)
+	}
+	if content := updated.overlay.Content; content == "" || content == "No private NPC thoughts recorded yet." {
+		t.Fatalf("overlay content missing saved thoughts: %q", content)
+	}
+}
+
+func TestNarrativeThoughtsCommandIsUnknownWhenDisabled(t *testing.T) {
+	t.Parallel()
+
+	model := newTalkTestNarrativeModel(t)
+	model.visiblePrivateThoughts = false
+	model.SetSize(120, 40)
+	model.inputFocus = true
+	model.input.Focus()
+	model.input.SetValue("/thoughts")
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd != nil {
+		t.Fatalf("Update(/thoughts) returned unexpected cmd")
+	}
+	if updated.overlay.Visible() {
+		t.Fatal("thoughts overlay should stay hidden when command is disabled")
+	}
+	if got := updated.errMsg; got != "Unknown command: /thoughts. Type /help for available commands." {
+		t.Fatalf("errMsg = %q, want unknown-command message", got)
+	}
+}
+
 func newSystemSmokeNarrativeModel(t *testing.T) NarrativeModel {
 	t.Helper()
 

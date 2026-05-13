@@ -99,6 +99,13 @@ func BuildContext(
 		})
 	}
 
+	if freeActionSummary := buildFreeActionInterpretationSummary(story, world, currentInput); freeActionSummary != "" {
+		msgs = append(msgs, ai.Message{
+			Role:    ai.RoleSystem,
+			Content: freeActionSummary,
+		})
+	}
+
 	// 3. Inject RAG chunks if provided (long-term memory from past turns).
 	if len(ragChunks) > 0 {
 		ragContent := "## Relevant Memory\n" + strings.Join(ragChunks, "\n---\n")
