@@ -10,10 +10,11 @@ import (
 
 // Config is the top-level configuration for OneDay.
 type Config struct {
-	DataDir string     `yaml:"data_dir"`
-	AI      AIConfig   `yaml:"ai"`
-	RAG     RAGConfig  `yaml:"rag"`
-	Game    GameConfig `yaml:"game"`
+	ConfigVersion int        `yaml:"config_version"`
+	DataDir       string     `yaml:"data_dir"`
+	AI            AIConfig   `yaml:"ai"`
+	RAG           RAGConfig  `yaml:"rag"`
+	Game          GameConfig `yaml:"game"`
 }
 
 // AIConfig holds all AI provider settings.
@@ -121,7 +122,8 @@ var validProviders = map[string]bool{
 // Default returns a Config with sensible defaults matching config.example.yaml.
 func Default() Config {
 	return Config{
-		DataDir: "./oneday_data",
+		ConfigVersion: 2,
+		DataDir:       "./oneday_data",
 		AI: AIConfig{
 			ProviderPriority: []string{"litellm", "openrouter", "codex", "claude-code"},
 			Codex: CodexConfig{
@@ -203,12 +205,36 @@ func Load(path string) (Config, error) {
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return cfg, fmt.Errorf("parsing config %s: %w", path, err)
 	}
+	cfg.Migrate()
 
 	if err := cfg.Validate(); err != nil {
 		return cfg, fmt.Errorf("validating config: %w", err)
 	}
 
 	return cfg, nil
+}
+
+// Migrate normalizes older config files onto current safe defaults without
+// overwriting explicit user choices.
+func (c *Config) Migrate() {
+	if c.ConfigVersion < 2 {
+		if c.AI.Embedding.Local.Type == "" {
+			c.AI.Embedding.Local.Type = "ollama"
+		}
+		if c.AI.Embedding.Local.BaseURL == "" {
+			c.AI.Embedding.Local.BaseURL = "http://127.0.0.1:11434"
+		}
+		if c.AI.Embedding.Local.Model == "" {
+			c.AI.Embedding.Local.Model = "bge-m3"
+		}
+		if c.AI.Embedding.Local.Dimensions == 0 {
+			c.AI.Embedding.Local.Dimensions = 1024
+		}
+		if c.AI.Generation.UtilityModel == "" {
+			c.AI.Generation.UtilityModel = "gpt-5.4-mini"
+		}
+	}
+	c.ConfigVersion = 2
 }
 
 // Marshal serializes config for local setup files.
