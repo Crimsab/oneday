@@ -38,6 +38,42 @@ func TestBuildCommandSuggestionsIncludesAdvanceAndTimeskip(t *testing.T) {
 	}
 }
 
+func TestAvailableSlashCommandSpecsHideThoughtsWhenDisabled(t *testing.T) {
+	model := NewNarrativeModel(nil, 0, false)
+	specs := model.availableSlashCommandSpecs()
+	for _, spec := range specs {
+		if spec.Name == "thoughts" {
+			t.Fatalf("thoughts command should be hidden when disabled: %+v", specs)
+		}
+	}
+}
+
+func TestAvailableSlashCommandSpecsShowThoughtsWhenEnabled(t *testing.T) {
+	model := NewNarrativeModel(nil, 0, true)
+	specs := model.availableSlashCommandSpecs()
+	found := false
+	for _, spec := range specs {
+		if spec.Name == "thoughts" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("thoughts command missing from available specs: %+v", specs)
+	}
+}
+
+func TestBuildCommandSuggestionsForSpecsIncludesThoughtsWhenEnabled(t *testing.T) {
+	model := NewNarrativeModel(nil, 0, true)
+	items := buildCommandSuggestionsForSpecs("tho", model.availableSlashCommandSpecs())
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(items))
+	}
+	if items[0].Value != "/thoughts" {
+		t.Fatalf("items[0].Value = %q, want /thoughts", items[0].Value)
+	}
+}
+
 func TestNearbyTalkNPCSuggestionItemsPreferRecentRoster(t *testing.T) {
 	db := openAutocompleteTestDB(t)
 	now := time.Now()
@@ -131,7 +167,7 @@ func TestParseTalkCommandDefaultsIntentForOneShot(t *testing.T) {
 }
 
 func TestNavigateInputHistoryRestoresDraft(t *testing.T) {
-	model := NewNarrativeModel(nil, 0)
+	model := NewNarrativeModel(nil, 0, true)
 	model.inputFocus = true
 	model.recordInputHistory("/talk Lyanna ask")
 	model.recordInputHistory("Ask about the lantern")
@@ -247,5 +283,5 @@ func newTalkTestNarrativeModel(t *testing.T) NarrativeModel {
 	})
 
 	narrator := engine.NewNarrator(nil, db, story, &storage.Character{StoryID: story.ID}, world, session, engine.ContextConfig{}, config.GenerationConfig{}, config.ASCIIArtConfig{}, t.TempDir(), 5)
-	return NewNarrativeModel(narrator, 0)
+	return NewNarrativeModel(narrator, 0, true)
 }

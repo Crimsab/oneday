@@ -10,11 +10,18 @@ import (
 	"github.com/crimsab/oneday/internal/ai/prompts"
 )
 
-func (n *Narrator) repairNarrativeResponse(ctx context.Context, invalidOutput string, parseErr error) (*NarrativeResponse, error) {
+func (n *Narrator) repairNarrativeResponse(ctx context.Context, currentInput, invalidOutput string, parseErr error) (*NarrativeResponse, error) {
 	baseReq := ai.Request{
 		Messages: []ai.Message{
-			{Role: ai.RoleSystem, Content: prompts.NarrativeRepairSystemPrompt()},
-			{Role: ai.RoleUser, Content: prompts.NarrativeRepairUserPrompt(invalidOutput, parseErr.Error())},
+			{Role: ai.RoleSystem, Content: prompts.NarrativeRepairSystemPrompt(
+				n.story.Name,
+				n.story.Genre,
+				n.story.Tone,
+				n.story.Language,
+				n.world.CurrentLocation,
+				n.story.SettingJSON,
+			)},
+			{Role: ai.RoleUser, Content: prompts.NarrativeRepairUserPrompt(currentInput, invalidOutput, parseErr.Error())},
 		},
 		Temperature:    0.1,
 		MaxTokens:      n.genCfg.MaxTokens,
@@ -44,7 +51,7 @@ func (n *Narrator) repairNarrativeResponse(ctx context.Context, invalidOutput st
 
 		n.lastLatency += latency
 		n.lastUsage = mergeUsage(n.lastUsage, resp.Usage)
-		if resp.Model != "" {
+		if resp.Model != "" && strings.TrimSpace(n.lastModel) == "" {
 			n.lastModel = resp.Model
 		}
 

@@ -432,9 +432,11 @@ Set "achievement_earned": null when no achievement is warranted (most turns).
 2. The narrative field contains the story text the player sees
 3. Provide 2-4 choices that make sense for the situation
 4. The player can ALSO type their own free action — your choices are suggestions, not limitations
-5. Use the player's language (match whatever language they use)
-6. Keep the mood field updated — it affects the UI theming
-7. The "player's language" rule only applies when it matches the story language or when the player is clearly asking for an out-of-band translation. Otherwise keep the story in the configured story language above.`, storyName, genreToneSection, authoringSection, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcSection)
+5. Treat free-form player input as intent or attempted action, not as already-resolved canon. If a free input bundles many beats together, translate it into one coherent next scene instead of literalizing every clause at once.
+6. Preserve story continuity. Do NOT jump to an unrelated genre, technology level, city, or setting unless the established fiction clearly supports it.
+7. Use the player's language (match whatever language they use)
+8. Keep the mood field updated — it affects the UI theming
+9. The "player's language" rule only applies when it matches the story language or when the player is clearly asking for an out-of-band translation. Otherwise keep the story in the configured story language above.`, storyName, genreToneSection, authoringSection, settingJSON, statsSchemaJSON, charName, charBackground, charStatsJSON, npcSection)
 }
 
 // FirstTurnUser is the initial user message to start the story.
