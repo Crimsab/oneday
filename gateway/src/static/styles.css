@@ -221,6 +221,12 @@ textarea:focus {
   font-weight: 750;
 }
 
+.story-card strong,
+.story-card p,
+.story-meta {
+  overflow-wrap: anywhere;
+}
+
 .story-meta,
 .muted {
   color: var(--muted);
@@ -295,6 +301,7 @@ textarea:focus {
 .state-panel {
   min-height: 0;
   min-width: 0;
+  overflow: hidden;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -514,8 +521,13 @@ textarea:focus {
     grid-template-columns: 1fr;
   }
 
-  .small-button {
+  .rail-tools .small-button {
     width: 100%;
+  }
+
+  .panel-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .tabs {
