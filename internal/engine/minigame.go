@@ -2,7 +2,6 @@ package engine
 
 import (
 	"fmt"
-	"math/rand"
 	"strings"
 	"time"
 )
@@ -26,8 +25,13 @@ type RPSResult struct {
 // ResolveRPS resolves a rock-paper-scissors challenge.
 // playerChoice is the player's pick. AI choice is random.
 func ResolveRPS(playerChoice RPSChoice) RPSResult {
+	return ResolveRPSWithRNG(playerChoice, defaultRNGService())
+}
+
+func ResolveRPSWithRNG(playerChoice RPSChoice, rng *RNGService) RPSResult {
 	choices := []RPSChoice{RPSRock, RPSPaper, RPSScissors}
-	aiChoice := choices[rand.Intn(3)]
+	roll := rng.Roll("minigame.rps", len(choices))
+	aiChoice := choices[roll.Raw-1]
 
 	outcome := rpsOutcome(playerChoice, aiChoice)
 	return RPSResult{
@@ -74,6 +78,10 @@ type MemoryChallenge struct {
 // NewMemoryChallenge creates a memory challenge from an AI-provided sequence.
 // If sequence is nil/empty, generates a random one of given length using default symbols.
 func NewMemoryChallenge(sequence []string, length int) *MemoryChallenge {
+	return NewMemoryChallengeWithRNG(sequence, length, defaultRNGService())
+}
+
+func NewMemoryChallengeWithRNG(sequence []string, length int, rng *RNGService) *MemoryChallenge {
 	if len(sequence) > 0 {
 		return &MemoryChallenge{
 			Sequence: sequence,
@@ -87,7 +95,8 @@ func NewMemoryChallenge(sequence []string, length int) *MemoryChallenge {
 	}
 	generated := make([]string, length)
 	for i := range generated {
-		generated[i] = symbols[rand.Intn(len(symbols))]
+		roll := rng.Roll("minigame.memory", len(symbols))
+		generated[i] = symbols[roll.Raw-1]
 	}
 	return &MemoryChallenge{
 		Sequence: generated,
@@ -177,20 +186,24 @@ func NewRiddleChallenge(riddle, answer string) *RiddleChallenge {
 }
 
 // CheckRiddle validates the player's answer (case-insensitive, trimmed).
-// Also accepts partial match (player answer contained in correct answer or vice versa).
+// It accepts exact matches and meaningful partial matches, but never empty or
+// tiny one-letter guesses.
 func (rc *RiddleChallenge) CheckRiddle(playerAnswer string) *ChallengeResult {
 	normalized := strings.TrimSpace(strings.ToLower(playerAnswer))
 	expected := strings.TrimSpace(strings.ToLower(rc.Answer))
 
-	passed := normalized == expected ||
-		strings.Contains(expected, normalized) ||
-		strings.Contains(normalized, expected)
+	passed := false
+	if normalized != "" && expected != "" {
+		passed = normalized == expected ||
+			(len(normalized) >= 3 && strings.Contains(expected, normalized)) ||
+			(len(expected) >= 3 && strings.Contains(normalized, expected))
+	}
 
 	outcome := "PASS"
 	if !passed {
 		outcome = "FAIL"
 	}
-	detail := fmt.Sprintf("Riddle: your answer %q vs expected %q → %s", playerAnswer, rc.Answer, outcome)
+	detail := fmt.Sprintf("Riddle: your answer %q → %s", playerAnswer, outcome)
 	return &ChallengeResult{
 		Passed: passed,
 		Detail: detail,

@@ -15,11 +15,7 @@ func (db *DB) CreateNPC(npc *NPC) error {
 	if npc.NemesisJSON == "" {
 		npc.NemesisJSON = "{}"
 	}
-	_, err := db.conn.Exec(
-		`INSERT INTO npcs (id, story_id, name, role, appearance, personality_json, private_thoughts,
-         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive, first_appeared_turn,
-         last_seen_turn, can_help, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := db.conn.Exec(createNPCSQL,
 		npc.ID, npc.StoryID, npc.Name, npc.Role, npc.Appearance, npc.PersonalityJSON,
 		npc.PrivateThoughts, npc.RelationshipJSON, npc.NemesisJSON, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
 		npc.IsAlive, npc.FirstAppearedTurn, npc.LastSeenTurn, npc.CanHelp,
@@ -27,6 +23,79 @@ func (db *DB) CreateNPC(npc *NPC) error {
 	)
 	if err != nil {
 		return fmt.Errorf("inserting npc: %w", err)
+	}
+	return nil
+}
+
+// CreateNPCTx inserts a new NPC inside an existing transaction.
+func (db *DB) CreateNPCTx(tx *sql.Tx, npc *NPC) error {
+	if npc.RelationshipJSON == "" {
+		npc.RelationshipJSON = "{}"
+	}
+	if npc.NemesisJSON == "" {
+		npc.NemesisJSON = "{}"
+	}
+	_, err := tx.Exec(createNPCSQL,
+		npc.ID, npc.StoryID, npc.Name, npc.Role, npc.Appearance, npc.PersonalityJSON,
+		npc.PrivateThoughts, npc.RelationshipJSON, npc.NemesisJSON, npc.NotesOnProtagonist, npc.Desires, npc.Disposition,
+		npc.IsAlive, npc.FirstAppearedTurn, npc.LastSeenTurn, npc.CanHelp,
+		npc.CreatedAt, npc.UpdatedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("inserting npc: %w", err)
+	}
+	return nil
+}
+
+const createNPCSQL = `
+		INSERT INTO npcs (id, story_id, name, role, appearance, personality_json, private_thoughts,
+         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive, first_appeared_turn,
+         last_seen_turn, can_help, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+// GetNPCByNameTx retrieves an NPC by name within a story inside an existing transaction.
+// Returns nil, nil if not found.
+func (db *DB) GetNPCByNameTx(tx *sql.Tx, storyID, name string) (*NPC, error) {
+	npc := &NPC{}
+	err := tx.QueryRow(
+		`SELECT id, story_id, name, role, appearance, personality_json, private_thoughts,
+         relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive,
+         first_appeared_turn, last_seen_turn, can_help, created_at, updated_at
+         FROM npcs WHERE story_id = ? AND LOWER(name) = LOWER(?) AND is_alive = 1`, storyID, name,
+	).Scan(
+		&npc.ID, &npc.StoryID, &npc.Name, &npc.Role, &npc.Appearance, &npc.PersonalityJSON,
+		&npc.PrivateThoughts, &npc.RelationshipJSON, &npc.NemesisJSON, &npc.NotesOnProtagonist, &npc.Desires, &npc.Disposition,
+		&npc.IsAlive, &npc.FirstAppearedTurn, &npc.LastSeenTurn, &npc.CanHelp,
+		&npc.CreatedAt, &npc.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting npc by name %q in story %s: %w", name, storyID, err)
+	}
+	return npc, nil
+}
+
+func (db *DB) updateNPCWithExec(exec interface {
+	Exec(string, ...any) (sql.Result, error)
+}, npc *NPC) error {
+	if npc.RelationshipJSON == "" {
+		npc.RelationshipJSON = "{}"
+	}
+	if npc.NemesisJSON == "" {
+		npc.NemesisJSON = "{}"
+	}
+	_, err := exec.Exec(
+		`UPDATE npcs SET personality_json = ?, private_thoughts = ?, relationship_json = ?, nemesis_json = ?,
+         notes_on_protagonist = ?, desires = ?, disposition = ?, is_alive = ?, can_help = ?, last_seen_turn = ?,
+         updated_at = ? WHERE id = ?`,
+		npc.PersonalityJSON, npc.PrivateThoughts, npc.RelationshipJSON, npc.NemesisJSON, npc.NotesOnProtagonist,
+		npc.Desires, npc.Disposition, npc.IsAlive, npc.CanHelp, npc.LastSeenTurn,
+		time.Now(), npc.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("updating npc %s: %w", npc.ID, err)
 	}
 	return nil
 }
@@ -137,24 +206,12 @@ func (db *DB) ListRecentNPCs(storyID string, currentTurn, withinTurns int) ([]NP
 
 // UpdateNPC updates all mutable NPC fields.
 func (db *DB) UpdateNPC(npc *NPC) error {
-	if npc.RelationshipJSON == "" {
-		npc.RelationshipJSON = "{}"
-	}
-	if npc.NemesisJSON == "" {
-		npc.NemesisJSON = "{}"
-	}
-	_, err := db.conn.Exec(
-		`UPDATE npcs SET personality_json = ?, private_thoughts = ?, relationship_json = ?, nemesis_json = ?,
-         notes_on_protagonist = ?, desires = ?, disposition = ?, is_alive = ?, can_help = ?, last_seen_turn = ?,
-         updated_at = ? WHERE id = ?`,
-		npc.PersonalityJSON, npc.PrivateThoughts, npc.RelationshipJSON, npc.NemesisJSON, npc.NotesOnProtagonist,
-		npc.Desires, npc.Disposition, npc.IsAlive, npc.CanHelp, npc.LastSeenTurn,
-		time.Now(), npc.ID,
-	)
-	if err != nil {
-		return fmt.Errorf("updating npc %s: %w", npc.ID, err)
-	}
-	return nil
+	return db.updateNPCWithExec(db.conn, npc)
+}
+
+// UpdateNPCTx updates all mutable NPC fields inside an existing transaction.
+func (db *DB) UpdateNPCTx(tx *sql.Tx, npc *NPC) error {
+	return db.updateNPCWithExec(tx, npc)
 }
 
 // UpdateNPCDisposition updates only the disposition and updated_at.

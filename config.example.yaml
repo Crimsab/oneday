@@ -106,5 +106,7 @@ game:
   typewriter_effect: true
   # Typewriter speed (characters per second)
   typewriter_speed: 80
-  # Expose /thoughts to inspect NPC private thoughts
-  visible_private_thoughts: true
+  # Expose /thoughts to inspect NPC private thoughts (debug/storyteller mode)
+  visible_private_thoughts: false
+  # Reward economy: generous, balanced, or harsh
+  reward_budget: balanced

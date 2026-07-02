@@ -106,4 +106,3 @@ func (db *DB) UpdateChapterTitle(storyID string, chapterNumber int, title string
 	}
 	return nil
 }
-

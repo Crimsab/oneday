@@ -1,0 +1,125 @@
+package contracts
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+type ActionKind string
+
+const (
+	ActionKindChoice   ActionKind = "choice"
+	ActionKindFreeText ActionKind = "free_text"
+	ActionKindCommand  ActionKind = "command"
+)
+
+type PlayerAction struct {
+	Kind     ActionKind `json:"kind"`
+	Text     string     `json:"text,omitempty"`
+	ChoiceID int        `json:"choice_id,omitempty"`
+}
+
+type ClientCapabilities struct {
+	Images  bool `json:"images,omitempty"`
+	ASCII   bool `json:"ascii,omitempty"`
+	RollLog bool `json:"roll_log,omitempty"`
+}
+
+type SubmitActionRequest struct {
+	StoryID        string             `json:"story_id"`
+	SessionID      string             `json:"session_id"`
+	ClientTurn     int                `json:"client_turn"`
+	IdempotencyKey string             `json:"idempotency_key"`
+	Action         PlayerAction       `json:"action"`
+	Stream         bool               `json:"stream,omitempty"`
+	Capabilities   ClientCapabilities `json:"capabilities,omitempty"`
+}
+
+func (r SubmitActionRequest) Validate(currentTurn int) error {
+	if strings.TrimSpace(r.StoryID) == "" {
+		return errors.New("story_id is required")
+	}
+	if strings.TrimSpace(r.SessionID) == "" {
+		return errors.New("session_id is required")
+	}
+	if strings.TrimSpace(r.IdempotencyKey) == "" {
+		return errors.New("idempotency_key is required")
+	}
+	if r.ClientTurn != currentTurn {
+		return fmt.Errorf("stale client_turn %d, current turn is %d", r.ClientTurn, currentTurn)
+	}
+	if strings.TrimSpace(r.Action.Text) == "" && r.Action.ChoiceID == 0 {
+		return errors.New("action text or choice_id is required")
+	}
+	return nil
+}
+
+type TurnEventType string
+
+const (
+	EventTurnStarted       TurnEventType = "turn.started"
+	EventNarrativeDelta    TurnEventType = "narrative.delta"
+	EventNarrativeFinal    TurnEventType = "narrative.final"
+	EventChoicesUpdated    TurnEventType = "choices.updated"
+	EventStateDelta        TurnEventType = "state.delta"
+	EventRollResolved      TurnEventType = "roll.resolved"
+	EventChallengeStarted  TurnEventType = "challenge.started"
+	EventChallengeResolved TurnEventType = "challenge.resolved"
+	EventCombatStarted     TurnEventType = "combat.started"
+	EventCombatUpdated     TurnEventType = "combat.updated"
+	EventSocialStarted     TurnEventType = "social.started"
+	EventSocialUpdated     TurnEventType = "social.updated"
+	EventAssetQueued       TurnEventType = "asset.queued"
+	EventAssetReady        TurnEventType = "asset.ready"
+	EventAssetFailed       TurnEventType = "asset.failed"
+	EventTurnCommitted     TurnEventType = "turn.committed"
+	EventError             TurnEventType = "error"
+)
+
+type TurnEvent struct {
+	ID        string          `json:"id"`
+	StoryID   string          `json:"story_id"`
+	SessionID string          `json:"session_id"`
+	Turn      int             `json:"turn"`
+	Type      TurnEventType   `json:"type"`
+	CreatedAt time.Time       `json:"created_at"`
+	Payload   json.RawMessage `json:"payload,omitempty"`
+}
+
+func NewTurnEvent(id, storyID, sessionID string, turn int, eventType TurnEventType, payload any) (TurnEvent, error) {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return TurnEvent{}, err
+	}
+	return TurnEvent{
+		ID:        id,
+		StoryID:   storyID,
+		SessionID: sessionID,
+		Turn:      turn,
+		Type:      eventType,
+		CreatedAt: time.Now().UTC(),
+		Payload:   raw,
+	}, nil
+}
+
+type ChoiceView struct {
+	ID   int    `json:"id"`
+	Text string `json:"text"`
+}
+
+type StateDelta struct {
+	Target      string `json:"target"`
+	Field       string `json:"field"`
+	Description string `json:"description,omitempty"`
+}
+
+type GameSnapshot struct {
+	StoryID   string       `json:"story_id"`
+	SessionID string       `json:"session_id"`
+	Turn      int          `json:"turn"`
+	Location  string       `json:"location,omitempty"`
+	Choices   []ChoiceView `json:"choices,omitempty"`
+}

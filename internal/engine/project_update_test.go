@@ -112,6 +112,36 @@ func TestApplyStateChangesProjectUpdateSetbackCreatesFailForward(t *testing.T) {
 	}
 }
 
+func TestProjectAdvanceWithoutCostBecomesNoteOrRejected(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"project_update": map[string]interface{}{
+			"action":   "advance",
+			"title":    "Train with Lyanna",
+			"kind":     "training",
+			"segments": 4,
+			"amount":   1,
+			"summary":  "You think about training, but do not commit resources or risk.",
+		},
+	}, char, world, nil, "test-story", 6)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+	if len(applied) == 0 || !strings.Contains(applied[0].Description, "without progress") {
+		t.Fatalf("applied = %+v, want note without progress", applied)
+	}
+
+	board := loadProjectBoard(world)
+	if len(board.Projects) != 1 {
+		t.Fatalf("projects = %+v, want 1 project note", board.Projects)
+	}
+	if board.Projects[0].Progress != 0 {
+		t.Fatalf("progress = %d, want 0 without cost/risk", board.Projects[0].Progress)
+	}
+}
+
 func TestApplyStateChangesProjectUpdateCompleteAppliesDurableRewards(t *testing.T) {
 	db, _ := newSaveTestDB(t)
 	now := time.Now()
@@ -152,13 +182,16 @@ func TestApplyStateChangesProjectUpdateCompleteAppliesDurableRewards(t *testing.
 
 	applied, err := ApplyStateChanges(map[string]interface{}{
 		"project_update": map[string]interface{}{
-			"action":   "complete",
-			"title":    "Train with Lyanna",
-			"kind":     "relationship",
-			"segments": 4,
-			"summary":  "Your drills finally stop looking clumsy.",
-			"outcome":  "Lyanna begins treating you like a real student.",
-			"owner":    "Lyanna",
+			"action":          "complete",
+			"title":           "Train with Lyanna",
+			"kind":            "relationship",
+			"segments":        4,
+			"summary":         "Your drills finally stop looking clumsy.",
+			"outcome":         "Lyanna begins treating you like a real student.",
+			"owner":           "Lyanna",
+			"pressure_region": "Training Yard",
+			"pressure_kind":   "fatigue",
+			"pressure_change": 10,
 			"links": []interface{}{
 				map[string]interface{}{"kind": "npc", "label": "Lyanna"},
 			},

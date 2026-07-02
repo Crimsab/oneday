@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -35,6 +36,22 @@ func ApplyStateChanges(
 	storyID string,
 	currentTurn int,
 ) ([]StateChange, error) {
+	var npcs npcStateStore
+	if db != nil {
+		npcs = directNPCStore{db: db}
+	}
+	return applyStateChangesWithNPCStore(changes, char, world, db, npcs, storyID, currentTurn)
+}
+
+func applyStateChangesWithNPCStore(
+	changes map[string]interface{},
+	char *storage.Character,
+	world *storage.WorldState,
+	db *storage.DB,
+	npcs npcStateStore,
+	storyID string,
+	currentTurn int,
+) ([]StateChange, error) {
 	if len(changes) == 0 {
 		return nil, nil
 	}
@@ -50,7 +67,11 @@ func ApplyStateChanges(
 	// the full item objects (name, type, rarity, effects, description) survive.
 	var invItems []interface{}
 	if char.InventoryJSON != "" && char.InventoryJSON != "null" {
-		_ = json.Unmarshal([]byte(char.InventoryJSON), &invItems)
+		parsedItems, err := parseInventoryItems(char.InventoryJSON)
+		if err != nil {
+			return nil, fmt.Errorf("parsing character inventory: %w", err)
+		}
+		invItems = parsedItems
 	}
 	if invItems == nil {
 		invItems = []interface{}{}
@@ -360,7 +381,23 @@ func ApplyStateChanges(
 			skills := toSkillsMap(stats["skills"])
 			skill, exists := skills[skillName]
 			if !exists {
-				skill = map[string]interface{}{"level": 1, "xp": 0}
+				pending := toSkillsMap(stats["pending_skill_discovery"])
+				pendingSkill, _ := pending[skillName].(map[string]interface{})
+				if pendingSkill == nil {
+					pendingSkill = map[string]interface{}{"xp": 0, "evidence": 0}
+				}
+				pendingSkill["xp"] = int(toFloat(pendingSkill["xp"])) + xpGain
+				pendingSkill["evidence"] = int(toFloat(pendingSkill["evidence"])) + 1
+				pending[skillName] = pendingSkill
+				stats["pending_skill_discovery"] = pending
+				applied = append(applied, StateChange{
+					Target:      "character",
+					Field:       fmt.Sprintf("pending_skill_discovery.%s", skillName),
+					Old:         nil,
+					New:         pendingSkill,
+					Description: fmt.Sprintf("Skill discovery progressed: %s", skillName),
+				})
+				continue
 			}
 			skillMap, _ := skill.(map[string]interface{})
 			if skillMap == nil {
@@ -398,7 +435,7 @@ func ApplyStateChanges(
 
 		case "new_npc":
 			npcRaw, ok := toStringMap(val)
-			if !ok || db == nil {
+			if !ok || npcs == nil {
 				continue
 			}
 			npcData, err := ParseNPCData(npcRaw)
@@ -412,14 +449,14 @@ func ApplyStateChanges(
 				continue
 			}
 			// Check if NPC already exists
-			existing, err := db.GetNPCByName(storyID, npcData.Name)
+			existing, err := npcs.GetNPCByName(storyID, npcData.Name)
 			if err != nil {
 				continue
 			}
 			if existing != nil {
 				// Update last_seen_turn and persist
 				existing.LastSeenTurn = currentTurn
-				_ = db.UpdateNPC(existing)
+				_ = npcs.UpdateNPC(existing)
 				applied = append(applied, StateChange{
 					Target:      "world",
 					Field:       "npc",
@@ -432,7 +469,7 @@ func ApplyStateChanges(
 				if err != nil {
 					continue
 				}
-				if err := db.CreateNPC(npc); err != nil {
+				if err := npcs.CreateNPC(npc); err != nil {
 					continue
 				}
 				applied = append(applied, StateChange{
@@ -445,14 +482,14 @@ func ApplyStateChanges(
 
 		case "npc_disposition":
 			dispMap, ok := toStringMap(val)
-			if !ok || db == nil {
+			if !ok || npcs == nil {
 				continue
 			}
 			npcName, _ := dispMap["name"].(string)
 			if npcName == "" {
 				continue
 			}
-			npc, err := db.GetNPCByName(storyID, npcName)
+			npc, err := npcs.GetNPCByName(storyID, npcName)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -471,7 +508,8 @@ func ApplyStateChanges(
 			} else if newDisp < -100 {
 				newDisp = -100
 			}
-			_ = db.UpdateNPCDisposition(npc.ID, newDisp)
+			npc.Disposition = newDisp
+			_ = npcs.UpdateNPC(npc)
 			diff := newDisp - oldDisp
 			sign := "+"
 			if diff < 0 {
@@ -487,7 +525,7 @@ func ApplyStateChanges(
 
 		case "npc_thoughts":
 			thoughtMap, ok := toStringMap(val)
-			if !ok || db == nil {
+			if !ok || npcs == nil {
 				continue
 			}
 			npcName, _ := thoughtMap["name"].(string)
@@ -495,7 +533,7 @@ func ApplyStateChanges(
 			if npcName == "" || thought == "" {
 				continue
 			}
-			npc, err := db.GetNPCByName(storyID, npcName)
+			npc, err := npcs.GetNPCByName(storyID, npcName)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -505,7 +543,7 @@ func ApplyStateChanges(
 			if tb, err := json.Marshal(thoughts); err == nil {
 				npc.PrivateThoughts = string(tb)
 			}
-			_ = db.UpdateNPC(npc)
+			_ = npcs.UpdateNPC(npc)
 			applied = append(applied, StateChange{
 				Target:      "world",
 				Field:       fmt.Sprintf("npc.%s.private_thoughts", npcName),
@@ -515,7 +553,7 @@ func ApplyStateChanges(
 
 		case "npc_notes":
 			noteMap, ok := toStringMap(val)
-			if !ok || db == nil {
+			if !ok || npcs == nil {
 				continue
 			}
 			npcName, _ := noteMap["name"].(string)
@@ -523,7 +561,7 @@ func ApplyStateChanges(
 			if npcName == "" || note == "" {
 				continue
 			}
-			npc, err := db.GetNPCByName(storyID, npcName)
+			npc, err := npcs.GetNPCByName(storyID, npcName)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -533,7 +571,7 @@ func ApplyStateChanges(
 			if nb, err := json.Marshal(notes); err == nil {
 				npc.NotesOnProtagonist = string(nb)
 			}
-			_ = db.UpdateNPC(npc)
+			_ = npcs.UpdateNPC(npc)
 			applied = append(applied, StateChange{
 				Target:      "world",
 				Field:       fmt.Sprintf("npc.%s.notes_on_protagonist", npcName),
@@ -544,7 +582,7 @@ func ApplyStateChanges(
 		// npc_desire_update and npc_desires both update an NPC's desires text.
 		case "npc_desire_update", "npc_desires":
 			desireMap, ok := toStringMap(val)
-			if !ok || db == nil {
+			if !ok || npcs == nil {
 				continue
 			}
 			npcName, _ := desireMap["name"].(string)
@@ -552,7 +590,7 @@ func ApplyStateChanges(
 			if npcName == "" || desire == "" {
 				continue
 			}
-			npc, err := db.GetNPCByName(storyID, npcName)
+			npc, err := npcs.GetNPCByName(storyID, npcName)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -561,7 +599,7 @@ func ApplyStateChanges(
 			} else {
 				npc.Desires = desire
 			}
-			_ = db.UpdateNPC(npc)
+			_ = npcs.UpdateNPC(npc)
 			applied = append(applied, StateChange{
 				Target:      "world",
 				Field:       fmt.Sprintf("npc.%s.desires", npcName),
@@ -570,7 +608,7 @@ func ApplyStateChanges(
 			})
 
 		case "npc_relationship":
-			if db == nil {
+			if npcs == nil {
 				continue
 			}
 			for _, relMap := range toObjectMaps(val) {
@@ -578,7 +616,7 @@ func ApplyStateChanges(
 				if npcName == "" {
 					continue
 				}
-				npc, err := db.GetNPCByName(storyID, npcName)
+				npc, err := npcs.GetNPCByName(storyID, npcName)
 				if err != nil || npc == nil {
 					continue
 				}
@@ -617,7 +655,7 @@ func ApplyStateChanges(
 				}
 				if changed {
 					storeRelationshipAxes(npc, axes)
-					_ = db.UpdateNPC(npc)
+					_ = npcs.UpdateNPC(npc)
 				}
 			}
 
@@ -890,6 +928,14 @@ func ApplyStateChanges(
 				New:         val,
 				Description: "Crafting session initiated",
 			})
+
+		default:
+			applied = append(applied, StateChange{
+				Target:      "system",
+				Field:       "unknown_state_change",
+				New:         key,
+				Description: fmt.Sprintf("Unknown state change ignored: %s", key),
+			})
 		}
 	}
 
@@ -943,6 +989,44 @@ func toObjectMaps(val interface{}) []map[string]interface{} {
 		}
 	}
 	return out
+}
+
+func parseInventoryItems(raw string) ([]interface{}, error) {
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
+		return nil, err
+	}
+	return inventoryItemsFromValue(decoded), nil
+}
+
+func inventoryItemsFromValue(value interface{}) []interface{} {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case []interface{}:
+		return append([]interface{}{}, typed...)
+	case map[string]interface{}:
+		if _, hasName := typed["name"]; hasName {
+			return []interface{}{typed}
+		}
+		if _, hasID := typed["id"]; hasID {
+			return []interface{}{typed}
+		}
+		var out []interface{}
+		for _, key := range []string{"backpack", "items", "equipped", "quest", "inventory"} {
+			if nested, ok := typed[key]; ok {
+				out = append(out, inventoryItemsFromValue(nested)...)
+			}
+		}
+		return out
+	case string:
+		if strings.TrimSpace(typed) == "" {
+			return nil
+		}
+		return []interface{}{typed}
+	default:
+		return nil
+	}
 }
 
 func toObjectMapsOrStrings(val interface{}, stringKey string) []map[string]interface{} {
@@ -1037,6 +1121,11 @@ func toFloat(val interface{}) float64 {
 	case json.Number:
 		f, _ := v.Float64()
 		return f
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err == nil {
+			return f
+		}
 	}
 	return 0
 }

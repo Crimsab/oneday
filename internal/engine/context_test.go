@@ -333,6 +333,23 @@ func TestBuildContextSkipsFreeActionHandlingForSimpleInput(t *testing.T) {
 	}
 }
 
+func TestAppendRewardBudgetGuidanceBeforeCurrentInput(t *testing.T) {
+	msgs := []ai.Message{
+		{Role: ai.RoleSystem, Content: "system"},
+		{Role: ai.RoleUser, Content: "I open the sealed door."},
+	}
+	got := appendRewardBudgetGuidance(msgs, "harsh")
+	if len(got) != 3 {
+		t.Fatalf("message count = %d, want 3", len(got))
+	}
+	if got[1].Role != ai.RoleSystem || !strings.Contains(got[1].Content, "Preset: harsh") {
+		t.Fatalf("budget guidance message = %+v", got[1])
+	}
+	if got[2].Content != "I open the sealed door." {
+		t.Fatalf("last message = %q, want current input preserved last", got[2].Content)
+	}
+}
+
 func testAssistantTurnWithMeta(t *testing.T, turn int, narrative, location string, choices ...string) storage.ChatMessage {
 	t.Helper()
 

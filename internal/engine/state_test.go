@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"database/sql"
 	"encoding/json"
 	"testing"
 	"time"
@@ -34,16 +35,16 @@ func baseStatsJSON() string {
 func newTestChar() *storage.Character {
 	now := time.Now()
 	return &storage.Character{
-		ID:          "test-char-id",
-		StoryID:     "test-story-id",
-		Name:        "Test Hero",
-		Background:  "A test background",
-		StatsJSON:   baseStatsJSON(),
-		TraitsJSON:  "[]",
-		SkillsJSON:  "{}",
+		ID:            "test-char-id",
+		StoryID:       "test-story-id",
+		Name:          "Test Hero",
+		Background:    "A test background",
+		StatsJSON:     baseStatsJSON(),
+		TraitsJSON:    "[]",
+		SkillsJSON:    "{}",
 		InventoryJSON: "[]",
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 }
 
@@ -143,6 +144,78 @@ func TestApplyStateChanges_DuplicateTrait_CaseInsensitive(t *testing.T) {
 	stats := parseStats(t, char)
 	if len(toStringSlice(stats["traits"])) != 1 {
 		t.Errorf("expected exactly 1 trait, got %v", toStringSlice(stats["traits"]))
+	}
+}
+
+func TestNPCMutationRecorderStagesUntilCommit(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+	story := &storage.Story{
+		ID:              "story-npc-stage",
+		Name:            "NPC Stage",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+	if err := db.CreateNPC(&storage.NPC{
+		ID:                "npc-stage-lyanna",
+		StoryID:           story.ID,
+		Name:              "Lyanna",
+		Role:              "scout",
+		PersonalityJSON:   `{}`,
+		RelationshipJSON:  `{}`,
+		Disposition:       0,
+		IsAlive:           true,
+		FirstAppearedTurn: 1,
+		LastSeenTurn:      1,
+		CreatedAt:         now,
+		UpdatedAt:         now,
+	}); err != nil {
+		t.Fatalf("CreateNPC: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	world := newTestWorld()
+	world.StoryID = story.ID
+	recorder := newNPCMutationRecorder(directNPCStore{db: db})
+
+	applied, err := applyStateChangesWithNPCStore(map[string]interface{}{
+		"npc_relationship": map[string]interface{}{
+			"name":  "Lyanna",
+			"trust": map[string]interface{}{"change": 8},
+		},
+	}, char, world, db, recorder, story.ID, 2)
+	if err != nil {
+		t.Fatalf("applyStateChangesWithNPCStore: %v", err)
+	}
+	if len(applied) == 0 {
+		t.Fatal("expected staged relationship change")
+	}
+
+	before, err := db.GetNPCByName(story.ID, "Lyanna")
+	if err != nil || before == nil {
+		t.Fatalf("GetNPCByName before: %v, npc=%+v", err, before)
+	}
+	if axes := loadRelationshipAxes(before); axes.Trust != 0 {
+		t.Fatalf("trust before commit = %d, want 0", axes.Trust)
+	}
+
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		return recorder.Commit(txNPCStore{db: db, tx: tx})
+	}); err != nil {
+		t.Fatalf("Commit recorder: %v", err)
+	}
+	after, err := db.GetNPCByName(story.ID, "Lyanna")
+	if err != nil || after == nil {
+		t.Fatalf("GetNPCByName after: %v, npc=%+v", err, after)
+	}
+	if axes := loadRelationshipAxes(after); axes.Trust != 8 {
+		t.Fatalf("trust after commit = %d, want 8", axes.Trust)
 	}
 }
 
@@ -324,12 +397,10 @@ func TestApplyStateChanges_SkillLevelUp_MultiLevel(t *testing.T) {
 	}
 }
 
-// TestApplyStateChanges_SkillXP_AutoLearn verifies XP grant on unknown skill creates it at level 1.
-func TestApplyStateChanges_SkillXP_AutoLearn(t *testing.T) {
+func TestApplyStateChanges_SkillXP_UnknownSkillGoesToPendingDiscovery(t *testing.T) {
 	char := newTestChar()
 	world := newTestWorld()
 
-	// Grant XP to a skill that was never explicitly learned.
 	changes := map[string]interface{}{
 		"skill_xp": map[string]interface{}{
 			"skill": "Stealth",
@@ -343,15 +414,64 @@ func TestApplyStateChanges_SkillXP_AutoLearn(t *testing.T) {
 
 	stats := parseStats(t, char)
 	skills := toSkillsMap(stats["skills"])
-	skill, ok := skills["Stealth"].(map[string]interface{})
+	if _, ok := skills["Stealth"]; ok {
+		t.Fatalf("Stealth should not be auto-created from first XP grant: %+v", skills)
+	}
+	pending := toSkillsMap(stats["pending_skill_discovery"])
+	discovery, ok := pending["Stealth"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected Stealth to be auto-created, got nil")
+		t.Fatalf("expected Stealth pending discovery, got %+v", pending)
 	}
-	if testToInt(skill["level"]) != 1 {
-		t.Errorf("expected level=1 for auto-created skill, got %v", skill["level"])
+	if testToInt(discovery["xp"]) != 25 {
+		t.Errorf("pending xp = %v, want 25", discovery["xp"])
 	}
-	if testToInt(skill["xp"]) != 25 {
-		t.Errorf("expected xp=25, got %v", skill["xp"])
+	if testToInt(discovery["evidence"]) != 1 {
+		t.Errorf("pending evidence = %v, want 1", discovery["evidence"])
+	}
+}
+
+func TestApplyStateChangesStringNumberDoesNotBecomeZero(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+
+	_, err := ApplyStateChanges(map[string]interface{}{"currency": "10"}, char, world, nil, "test-story-id", 1)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges error: %v", err)
+	}
+
+	stats := parseStats(t, char)
+	if got := testToInt(stats["currency"]); got != 10 {
+		t.Fatalf("currency = %d, want 10", got)
+	}
+}
+
+func TestApplyStateChangesInvalidInventoryDoesNotWipeInventory(t *testing.T) {
+	char := newTestChar()
+	char.InventoryJSON = `{"items": [`
+	world := newTestWorld()
+
+	_, err := ApplyStateChanges(map[string]interface{}{"inventory_add": "Rope"}, char, world, nil, "test-story-id", 1)
+	if err == nil {
+		t.Fatal("ApplyStateChanges error = nil, want invalid inventory error")
+	}
+	if char.InventoryJSON != `{"items": [` {
+		t.Fatalf("InventoryJSON = %q, want original corrupt inventory preserved", char.InventoryJSON)
+	}
+}
+
+func TestApplyStateChangesReportsUnknownKeysInDiagnostics(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+
+	applied, err := ApplyStateChanges(map[string]interface{}{"skil_xp": map[string]interface{}{"skill": "Stealth", "xp": 25}}, char, world, nil, "test-story-id", 1)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges error: %v", err)
+	}
+	if len(applied) != 1 {
+		t.Fatalf("applied len = %d, want 1 diagnostic", len(applied))
+	}
+	if applied[0].Field != "unknown_state_change" || applied[0].New != "skil_xp" {
+		t.Fatalf("diagnostic = %+v, want unknown_state_change for skil_xp", applied[0])
 	}
 }
 

@@ -12,7 +12,7 @@ import (
 
 var renderer *glamour.TermRenderer
 var (
-	calloutTagPattern = regexp.MustCompile(`\[(NPC|RELATIONSHIP|ALLIANCE|ITEM|LOCATION|SKILL|FACTION|WORLD|CHAPTER)\]`)
+	calloutTagPattern   = regexp.MustCompile(`\[(NPC|RELATIONSHIP|ALLIANCE|ITEM|LOCATION|SKILL|FACTION|WORLD|CHAPTER)\]`)
 	dialogueLinePattern = regexp.MustCompile(`^(\s*[│>\s]*)([^:\n]{2,48}:)\s+(.+)$`)
 )
 

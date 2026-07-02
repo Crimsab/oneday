@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -494,6 +495,7 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 		earnedAchievements,
 		sceneProgression,
 	)
+	messages = appendRewardBudgetGuidance(messages, n.contextCfg.RewardBudget)
 
 	return &preparedTurn{
 		inputType:        inputType,
@@ -586,19 +588,26 @@ func (n *Narrator) finalizeTurn(
 
 	// Apply state_changes from AI response, including NPC creation/updates.
 	var appliedChanges []StateChange
+	var npcRecorder *npcMutationRecorder
 	if len(narrative.StateChanges) > 0 {
 		var applyErr error
-		appliedChanges, applyErr = ApplyStateChanges(
+		var npcStore npcStateStore
+		if n.db != nil {
+			npcRecorder = newNPCMutationRecorder(directNPCStore{db: n.db})
+			npcStore = npcRecorder
+		}
+		appliedChanges, applyErr = applyStateChangesWithNPCStore(
 			narrative.StateChanges,
 			n.character,
 			n.world,
 			n.db,
+			npcStore,
 			n.story.ID,
 			prep.currentTurn,
 		)
 		if applyErr != nil {
-			// Non-fatal: log but continue.
-			_ = applyErr
+			restoreState()
+			return nil, fmt.Errorf("applying state changes: %w", applyErr)
 		} else {
 			narrative.AppliedStateChanges = appliedChanges
 			narrative.EventCallouts = MergeEventCallouts(
@@ -680,7 +689,13 @@ func (n *Narrator) finalizeTurn(
 		AIUsage:    n.lastUsage,
 		AIStreamed: n.lastStreamed,
 	}
-	if err := n.session.CommitTurn(n.db, n.character, n.world, entry); err != nil {
+	var beforeCommit func(*sql.Tx) error
+	if npcRecorder != nil {
+		beforeCommit = func(tx *sql.Tx) error {
+			return npcRecorder.Commit(txNPCStore{db: n.db, tx: tx})
+		}
+	}
+	if err := n.session.CommitTurnWithSideEffects(n.db, n.character, n.world, entry, beforeCommit); err != nil {
 		if IsMirrorSyncError(err) {
 			log.Printf("oneday: canonical turn %d committed but jsonl mirror failed: %v", prep.currentTurn, err)
 		} else {

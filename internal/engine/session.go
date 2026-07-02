@@ -54,6 +54,7 @@ type ChatOutput struct {
 	OpenHooks         []StoryHook            `json:"open_hooks,omitempty"`
 	WorldReactions    []WorldReaction        `json:"world_reactions,omitempty"`
 	SocialDuel        *SocialDuelCue         `json:"social_duel,omitempty"`
+	RollLog           []RollRecord           `json:"roll_log,omitempty"`
 	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
 }
 
@@ -220,6 +221,16 @@ func (gs *GameSession) AppendHistoryEntry(db *storage.DB, entry ChatEntry) error
 // mirrors the result to JSONL. The world must already contain the next turn
 // number that should become canonical on success.
 func (gs *GameSession) CommitTurn(db *storage.DB, char *storage.Character, world *storage.WorldState, entry ChatEntry) error {
+	return gs.CommitTurnWithSideEffects(db, char, world, entry, nil)
+}
+
+func (gs *GameSession) CommitTurnWithSideEffects(
+	db *storage.DB,
+	char *storage.Character,
+	world *storage.WorldState,
+	entry ChatEntry,
+	beforeCommit func(*sql.Tx) error,
+) error {
 	if db == nil {
 		return fmt.Errorf("committing turn: db is nil")
 	}
@@ -236,15 +247,17 @@ func (gs *GameSession) CommitTurn(db *storage.DB, char *storage.Character, world
 		return fmt.Errorf("committing turn %d: world current turn %d does not match expected next turn %d", entry.Turn, world.CurrentTurn, expectedNextTurn)
 	}
 
-	committed, err := gs.commitTurn(db, char, world, entry)
+	committed, err := gs.commitTurn(db, char, world, entry, beforeCommit)
 	if committed {
 		gs.turn = expectedNextTurn
 	}
 	return err
 }
 
-// Close flushes and closes the JSONL file, all sub-session files, and marks the session as ended in DB.
-func (gs *GameSession) Close(db *storage.DB) error {
+// CloseMirrors flushes and closes the JSONL mirror files without ending the
+// canonical DB session. This is useful for short-lived in-process clients that
+// reopen the active session on each request.
+func (gs *GameSession) CloseMirrors() error {
 	var closeErr error
 
 	// Close all open sub-session files.
@@ -261,6 +274,13 @@ func (gs *GameSession) Close(db *storage.DB) error {
 		}
 		gs.jsonlFile = nil
 	}
+
+	return closeErr
+}
+
+// Close flushes and closes the JSONL file, all sub-session files, and marks the session as ended in DB.
+func (gs *GameSession) Close(db *storage.DB) error {
+	closeErr := gs.CloseMirrors()
 
 	if db != nil {
 		if err := db.CloseSession(gs.session.ID); err != nil {
@@ -311,12 +331,17 @@ func (gs *GameSession) appendEntry(db *storage.DB, entry ChatEntry) (bool, error
 	return true, nil
 }
 
-func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world *storage.WorldState, entry ChatEntry) (bool, error) {
+func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world *storage.WorldState, entry ChatEntry, beforeCommit func(*sql.Tx) error) (bool, error) {
 	if entry.Timestamp.IsZero() {
 		entry.Timestamp = time.Now()
 	}
 
 	if err := db.WithTx(func(tx *sql.Tx) error {
+		if beforeCommit != nil {
+			if err := beforeCommit(tx); err != nil {
+				return err
+			}
+		}
 		if err := db.UpdateCharacterFullTx(tx, char); err != nil {
 			return fmt.Errorf("saving character state: %w", err)
 		}
