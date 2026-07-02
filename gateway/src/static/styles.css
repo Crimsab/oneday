@@ -1,13 +1,13 @@
 :root {
   color-scheme: light dark;
-  --bg: #f4f2ec;
-  --surface: #fcfbf7;
-  --surface-2: #ece8dd;
-  --line: #d2cbbc;
-  --text: #211f1b;
-  --muted: #686156;
-  --accent: #8c5a16;
-  --accent-strong: #5d3a0d;
+  --bg: #edf1f4;
+  --surface: #fbfcfd;
+  --surface-2: #e1e8ee;
+  --line: #c6d0da;
+  --text: #18212a;
+  --muted: #5f6d7a;
+  --accent: #0f766e;
+  --accent-strong: #0b4f4a;
   --danger: #9f2f2f;
   --radius: 8px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
@@ -15,14 +15,14 @@
 }
 
 [data-theme="dark"] {
-  --bg: #141413;
-  --surface: #1d1d1b;
-  --surface-2: #27251f;
-  --line: #3a372f;
-  --text: #f5f0e5;
-  --muted: #b1aa9c;
-  --accent: #d29a3d;
-  --accent-strong: #f0c16b;
+  --bg: #10151b;
+  --surface: #151d25;
+  --surface-2: #1d2732;
+  --line: #334352;
+  --text: #edf5fb;
+  --muted: #a7b4c1;
+  --accent: #2dd4bf;
+  --accent-strong: #99f6e4;
   --danger: #e06c6c;
 }
 
@@ -33,6 +33,7 @@
 html,
 body {
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -74,10 +75,13 @@ button:disabled {
 .app-shell {
   display: grid;
   grid-template-columns: minmax(260px, 330px) minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
   min-height: 100dvh;
 }
 
 .story-rail {
+  min-width: 0;
   border-right: 1px solid var(--line);
   background: var(--surface-2);
   padding: 16px;
@@ -95,6 +99,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .brand-row,
@@ -155,7 +160,7 @@ h3 {
 .primary-button {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fffaf0;
+  color: #f8fffd;
   font-weight: 700;
 }
 
@@ -186,6 +191,7 @@ textarea:focus {
 }
 
 .story-list {
+  min-width: 0;
   overflow: auto;
   display: grid;
   align-content: start;
@@ -194,11 +200,13 @@ textarea:focus {
 }
 
 .story-card {
+  min-width: 0;
   width: 100%;
   text-align: left;
   padding: 11px;
   display: grid;
   gap: 5px;
+  overflow-wrap: anywhere;
 }
 
 .story-card.active {
@@ -240,6 +248,7 @@ textarea:focus {
 .top-strip {
   min-height: 70px;
   padding: 12px 14px;
+  min-width: 0;
 }
 
 .status-grid {
@@ -273,6 +282,7 @@ textarea:focus {
 
 .content-grid {
   min-height: 0;
+  min-width: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.45fr) minmax(360px, .85fr);
   gap: 12px;
@@ -281,6 +291,7 @@ textarea:focus {
 .transcript-panel,
 .state-panel {
   min-height: 0;
+  min-width: 0;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
@@ -288,6 +299,7 @@ textarea:focus {
 .panel-head {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
+  min-width: 0;
 }
 
 .transcript {
@@ -299,6 +311,7 @@ textarea:focus {
 }
 
 .message {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 12px;
@@ -328,6 +341,7 @@ textarea:focus {
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px;
+  min-width: 0;
 }
 
 .tabs button {
@@ -406,6 +420,7 @@ textarea:focus {
 .composer {
   padding: 10px;
   align-items: stretch;
+  min-width: 0;
 }
 
 .composer textarea {
@@ -442,6 +457,7 @@ textarea:focus {
     border-right: 0;
     border-bottom: 1px solid var(--line);
     max-height: 280px;
+    overflow: hidden;
   }
 
   .play-area {
@@ -458,6 +474,11 @@ textarea:focus {
 }
 
 @media (max-width: 720px) {
+  .rail-tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .top-strip {
     display: grid;
   }
