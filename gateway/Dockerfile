@@ -16,7 +16,7 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates iproute2 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/gateway/target/release/oneday-gateway /usr/local/bin/oneday-gateway
 EXPOSE 8788
