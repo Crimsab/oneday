@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"time"
 
@@ -324,6 +325,12 @@ func (n *Narrator) loadPreviousChapterSummary() string {
 }
 
 func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeResponse, error) {
+	lock, err := n.acquireTurnLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = lock.Release() }()
+
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
 		return nil, err
@@ -338,8 +345,14 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 }
 
 func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan NarrativeStreamChunk, error) {
+	lock, err := n.acquireTurnLock(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
+		_ = lock.Release()
 		return nil, err
 	}
 
@@ -347,6 +360,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 		out := make(chan NarrativeStreamChunk, 4)
 		go func() {
 			defer close(out)
+			defer func() { _ = lock.Release() }()
 
 			resp, err := n.completeTurnResponse(ctx, prep)
 			if err != nil {
@@ -370,12 +384,14 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 
 	stream, providerName, err := n.router.Stream(ctx, prep.req)
 	if err != nil {
+		_ = lock.Release()
 		return nil, err
 	}
 
 	out := make(chan NarrativeStreamChunk, 32)
 	go func() {
 		defer close(out)
+		defer func() { _ = lock.Release() }()
 
 		start := time.Now()
 		var builder strings.Builder
@@ -424,6 +440,17 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 	}()
 
 	return out, nil
+}
+
+func (n *Narrator) acquireTurnLock(ctx context.Context) (*storage.StoryTurnLock, error) {
+	if n == nil || n.db == nil || n.story == nil {
+		return nil, fmt.Errorf("acquiring turn lock: narrator is not fully initialized")
+	}
+	owner := fmt.Sprintf("oneday:%d", os.Getpid())
+	if sessionID := strings.TrimSpace(n.SessionID()); sessionID != "" {
+		owner = fmt.Sprintf("oneday:%s:%d", sessionID, os.Getpid())
+	}
+	return n.db.AcquireStoryTurnLock(ctx, n.story.ID, owner, 3*time.Minute)
 }
 
 type preparedTurn struct {
