@@ -53,6 +53,12 @@ type narratorMetaResponseMsg struct {
 // clearStatusMsg is sent to clear the temporary status message.
 type clearStatusMsg struct{}
 
+type storyRealtimeSyncMsg struct {
+	messageID int64
+	response  *engine.NarrativeResponse
+	err       error
+}
+
 // SaveCompleteMsg is sent when a manual save finishes.
 type SaveCompleteMsg struct {
 	Name string
@@ -124,6 +130,8 @@ type NarrativeModel struct {
 	inputHistoryCursor      int
 	inputHistoryDraft       string
 	visiblePrivateThoughts  bool
+	realtimeSyncStarted     bool
+	lastSyncedMessageID     int64
 
 	// Combat sub-view
 	combatView *CombatModel
@@ -203,6 +211,10 @@ func (m *NarrativeModel) ResumeNarration() tea.Cmd {
 
 func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 	var cmds []tea.Cmd
+
+	if syncMsg, ok := msg.(storyRealtimeSyncMsg); ok {
+		return m.handleRealtimeSyncMsg(syncMsg)
+	}
 
 	// --- Delegate to combat sub-view when in combat ---
 	if m.inCombat && m.combatView != nil {
@@ -1743,6 +1755,95 @@ func waitNarrativeStreamChunk(stream <-chan engine.NarrativeStreamChunk) tea.Cmd
 	}
 }
 
+func (m NarrativeModel) RealtimeSyncCmd() tea.Cmd {
+	if m.narrator == nil || m.narrator.DB() == nil || m.narrator.Story() == nil {
+		return nil
+	}
+	storyID := m.narrator.Story().ID
+	defaultLocation := ""
+	currentTurn := 0
+	if world := m.narrator.World(); world != nil {
+		defaultLocation = world.CurrentLocation
+		currentTurn = world.CurrentTurn
+	}
+	seenID := m.lastSyncedMessageID
+	busy := m.waiting ||
+		m.streaming ||
+		m.scenePlaybackActive() ||
+		m.inCombat ||
+		m.inCrafting ||
+		m.inChallenge ||
+		m.inSocialDuel
+	db := m.narrator.DB()
+
+	return tea.Tick(time.Second, func(time.Time) tea.Msg {
+		if busy {
+			return storyRealtimeSyncMsg{}
+		}
+		msg, err := db.GetLatestAssistantMessageByStory(storyID)
+		if err != nil || msg == nil {
+			return storyRealtimeSyncMsg{err: err}
+		}
+		if msg.ID <= seenID {
+			return storyRealtimeSyncMsg{messageID: msg.ID}
+		}
+		if msg.Turn < currentTurn {
+			return storyRealtimeSyncMsg{messageID: msg.ID}
+		}
+		response := engine.NarrativeResponseFromStoredMessage(*msg, defaultLocation)
+		return storyRealtimeSyncMsg{messageID: msg.ID, response: response}
+	})
+}
+
+func (m NarrativeModel) handleRealtimeSyncMsg(msg storyRealtimeSyncMsg) (NarrativeModel, tea.Cmd) {
+	cmd := m.RealtimeSyncCmd()
+	if msg.err != nil {
+		m.statusMsg = "Realtime sync paused"
+		m.statusExpiry = time.Now().Add(2 * time.Second)
+		return m, cmd
+	}
+	if msg.messageID > m.lastSyncedMessageID {
+		m.lastSyncedMessageID = msg.messageID
+	}
+	if msg.response == nil {
+		return m, cmd
+	}
+	if err := m.narrator.RefreshFromDB(); err != nil {
+		m.errMsg = fmt.Sprintf("Sync Error: %v", err)
+		return m, cmd
+	}
+	m.SetStatusMsg("Synced external turn")
+	applyCmd := m.applyNarrativeResponse(msg.response, true)
+	return m, tea.Batch(applyCmd, cmd)
+}
+
+func (m *NarrativeModel) startRealtimeSyncCmd() tea.Cmd {
+	if m.realtimeSyncStarted {
+		return nil
+	}
+	m.realtimeSyncStarted = true
+	return m.RealtimeSyncCmd()
+}
+
+func (m *NarrativeModel) batchTurnCommands(cmds ...tea.Cmd) tea.Cmd {
+	filtered := make([]tea.Cmd, 0, len(cmds)+1)
+	for _, cmd := range cmds {
+		if cmd != nil {
+			filtered = append(filtered, cmd)
+		}
+	}
+	if syncCmd := m.startRealtimeSyncCmd(); syncCmd != nil {
+		filtered = append(filtered, syncCmd)
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	if len(filtered) == 1 {
+		return filtered[0]
+	}
+	return tea.Batch(filtered...)
+}
+
 func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, streamed bool) tea.Cmd {
 	m.waiting = false
 	m.errMsg = ""
@@ -1842,7 +1943,7 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 			combatView := NewCombatModel(combatEngine, m.narrator, m.width, m.height)
 			m.combatView = &combatView
 			m.inCombat = true
-			return nil
+			return m.batchTurnCommands(cmds...)
 		}
 		m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
 	}
@@ -1851,7 +1952,7 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 		m.pendingChallenges = nr.Challenges
 		if nextCmd := m.startNextChallenge(); nextCmd != nil {
 			cmds = append(cmds, nextCmd)
-			return tea.Batch(cmds...)
+			return m.batchTurnCommands(cmds...)
 		}
 	}
 
@@ -1876,10 +1977,7 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 		cmds = append(cmds, asciiCmd)
 	}
 
-	if len(cmds) == 0 {
-		return nil
-	}
-	return tea.Batch(cmds...)
+	return m.batchTurnCommands(cmds...)
 }
 
 func (m NarrativeModel) requestAmbientASCII(sceneID, turn int, nr *engine.NarrativeResponse) tea.Cmd {

@@ -3,11 +3,14 @@ package views
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/crimsab/oneday/internal/engine"
+	"github.com/crimsab/oneday/internal/storage"
 )
 
 func TestNarrativeSlashCommandsOpenCodexBrowsers(t *testing.T) {
@@ -200,6 +203,66 @@ func TestNarrativeActiveSystemShortcutsSwitchBetweenWorkspaces(t *testing.T) {
 	}
 	if updated.frontTracker == nil || !updated.frontTracker.Visible() {
 		t.Fatal("front tracker not visible after F shortcut")
+	}
+}
+
+func TestNarrativeRealtimeSyncAppliesExternalTurn(t *testing.T) {
+	t.Parallel()
+
+	model := newSystemSmokeNarrativeModel(t)
+	db := model.narrator.DB()
+	storyID := model.StoryID()
+	now := time.Now().UTC()
+	if err := db.CreateCharacter(&storage.Character{
+		ID:               "char-sync",
+		StoryID:          storyID,
+		Name:             "Sync Hero",
+		StatsJSON:        "{}",
+		TraitsJSON:       "[]",
+		SkillsJSON:       "[]",
+		InventoryJSON:    "[]",
+		KnownRecipesJSON: "[]",
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}); err != nil {
+		t.Fatalf("CreateCharacter: %v", err)
+	}
+
+	world := *model.narrator.World()
+	world.CurrentTurn = 11
+	world.CurrentLocation = "Market"
+	world.UpdatedAt = now
+	if err := db.UpdateWorldState(&world); err != nil {
+		t.Fatalf("UpdateWorldState: %v", err)
+	}
+
+	msg := &storage.ChatMessage{
+		SessionID:    model.narrator.SessionID(),
+		StoryID:      storyID,
+		Turn:         10,
+		Role:         "assistant",
+		Content:      "A bell rings once.",
+		MessageType:  "narrative",
+		MetadataJSON: `{"mood":"tense","location":"Market","output":{"narrative":"A bell rings once.","choices":["Follow the sound"]}}`,
+		CreatedAt:    now,
+	}
+	if err := db.AppendChatMessage(msg); err != nil {
+		t.Fatalf("AppendChatMessage: %v", err)
+	}
+
+	response := engine.NarrativeResponseFromStoredMessage(*msg, "Harbor")
+	updated, _ := model.Update(storyRealtimeSyncMsg{messageID: msg.ID, response: response})
+	if updated.lastSyncedMessageID != msg.ID {
+		t.Fatalf("lastSyncedMessageID = %d, want %d", updated.lastSyncedMessageID, msg.ID)
+	}
+	if got := updated.narrator.World().CurrentTurn; got != 11 {
+		t.Fatalf("world turn = %d, want 11", got)
+	}
+	if !strings.Contains(updated.history.String(), "A bell rings once.") {
+		t.Fatalf("history missing external narrative: %q", updated.history.String())
+	}
+	if !updated.choices.HasChoices() {
+		t.Fatal("expected synced choices to be visible")
 	}
 }
 
