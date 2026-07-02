@@ -219,6 +219,34 @@ func (n *Narrator) CloseSession() {
 	}
 }
 
+// RefreshFromDB updates the narrator's in-memory pointers from canonical DB
+// state. Browser and terminal clients use this to stay coherent after another
+// client commits a turn.
+func (n *Narrator) RefreshFromDB() error {
+	if n == nil || n.db == nil || n.story == nil {
+		return fmt.Errorf("refreshing narrator: narrator is not fully initialized")
+	}
+	story, err := n.db.GetStory(n.story.ID)
+	if err != nil {
+		return fmt.Errorf("refreshing story: %w", err)
+	}
+	character, err := n.db.GetCharacterByStory(n.story.ID)
+	if err != nil {
+		return fmt.Errorf("refreshing character: %w", err)
+	}
+	world, err := n.db.GetWorldState(n.story.ID)
+	if err != nil {
+		return fmt.Errorf("refreshing world: %w", err)
+	}
+	*n.story = *story
+	*n.character = *character
+	*n.world = *world
+	if n.session != nil {
+		n.session.SetTurn(world.CurrentTurn)
+	}
+	return nil
+}
+
 // StartNarration sends the first turn to begin the story.
 // Only call this for brand-new stories. For existing stories use ResumeNarration.
 // Returns the parsed narrative response.
@@ -949,6 +977,12 @@ func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation s
 
 	normalizeNarrativeResponse(nr)
 	return nr
+}
+
+// NarrativeResponseFromStoredMessage reconstructs the renderable response from
+// a persisted assistant message.
+func NarrativeResponseFromStoredMessage(msg storage.ChatMessage, defaultLocation string) *NarrativeResponse {
+	return resumeNarrativeFromStoredMessage(msg, defaultLocation)
 }
 
 func normalizeNarrativeResponse(nr *NarrativeResponse) {

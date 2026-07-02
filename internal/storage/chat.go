@@ -167,6 +167,32 @@ func (db *DB) GetStoryMessages(storyID string) ([]ChatMessage, error) {
 	return msgs, rows.Err()
 }
 
+// GetLatestAssistantMessageByStory returns the latest committed assistant
+// narrative message for a story, ignoring meta-only entries.
+func (db *DB) GetLatestAssistantMessageByStory(storyID string) (*ChatMessage, error) {
+	row := db.conn.QueryRow(
+		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at
+         FROM chat_messages
+         WHERE story_id = ?
+           AND role = 'assistant'
+           AND message_type NOT IN ('narrator', 'combat_summary')
+         ORDER BY turn DESC, id DESC
+         LIMIT 1`,
+		storyID,
+	)
+	var m ChatMessage
+	if err := row.Scan(
+		&m.ID, &m.SessionID, &m.StoryID, &m.Turn, &m.Role,
+		&m.Content, &m.MessageType, &m.MetadataJSON, &m.CreatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("getting latest assistant message for story %s: %w", storyID, err)
+	}
+	return &m, nil
+}
+
 // GetStoryMessagesByTurnRange returns all messages for a story within a turn range [turnStart, turnEnd],
 // ordered chronologically. Used by the RAG summarizer to fetch unsummarized turns.
 func (db *DB) GetStoryMessagesByTurnRange(storyID string, turnStart, turnEnd int) ([]ChatMessage, error) {
