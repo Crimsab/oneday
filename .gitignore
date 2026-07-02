@@ -23,6 +23,7 @@ release/
 
 # Data
 /oneday_data/
+.gsd/
 *.db
 *.sqlite
 *.sqlite3
