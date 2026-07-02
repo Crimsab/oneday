@@ -125,6 +125,25 @@ type ASCIIArtCue struct {
 	Placement string `json:"placement,omitempty"` // scene_header, inline
 }
 
+// VisualCue requests optional async generated imagery for a scene.
+type VisualCue struct {
+	Kind          string         `json:"kind"`
+	Subject       string         `json:"subject"`
+	Mood          string         `json:"mood,omitempty"`
+	Composition   string         `json:"composition,omitempty"`
+	StylePreset   string         `json:"style_preset,omitempty"`
+	Importance    string         `json:"importance,omitempty"`
+	SpoilerPolicy string         `json:"spoiler_policy,omitempty"`
+	Negative      string         `json:"negative,omitempty"`
+	Entities      []VisualEntity `json:"entities,omitempty"`
+}
+
+type VisualEntity struct {
+	Name      string `json:"name"`
+	Type      string `json:"type,omitempty"`
+	VisualRef string `json:"visual_ref,omitempty"`
+}
+
 // NarrativeResponse is the standard AI response format during gameplay (AI-02).
 type NarrativeResponse struct {
 	Narrative            string                 `json:"narrative"`
@@ -138,6 +157,7 @@ type NarrativeResponse struct {
 	EntitiesMentioned    []EntityMention        `json:"entities_mentioned,omitempty"`
 	EventCallouts        []EventCallout         `json:"event_callouts,omitempty"`
 	ASCIICue             *ASCIIArtCue           `json:"ascii_cue,omitempty"`
+	VisualCue            *VisualCue             `json:"visual_cue,omitempty"`
 	ASCIIArt             string                 `json:"ascii_art,omitempty"`
 	OpenHooks            []StoryHook            `json:"open_hooks,omitempty"`
 	WorldReactions       []WorldReaction        `json:"world_reactions,omitempty"`
@@ -239,12 +259,13 @@ type Modifier struct {
 
 // ChallengeResult is the engine's resolution of a challenge.
 type ChallengeResult struct {
-	Passed     bool       `json:"passed"`
-	Roll       int        `json:"roll,omitempty"`  // the raw d100 roll (for dice_roll)
-	Total      int        `json:"total,omitempty"` // roll + modifiers
-	Difficulty int        `json:"difficulty,omitempty"`
-	Modifiers  []Modifier `json:"modifiers,omitempty"`
-	Detail     string     `json:"detail"` // human-readable summary
+	Passed     bool         `json:"passed"`
+	Roll       int          `json:"roll,omitempty"`  // the raw d100 roll (for dice_roll)
+	Total      int          `json:"total,omitempty"` // roll + modifiers
+	Difficulty int          `json:"difficulty,omitempty"`
+	Modifiers  []Modifier   `json:"modifiers,omitempty"`
+	Detail     string       `json:"detail"` // human-readable summary
+	RollLog    []RollRecord `json:"roll_log,omitempty"`
 }
 
 // --- Combat Types ---
@@ -300,6 +321,7 @@ type CombatTurnResult struct {
 	DefeatOutcome string // only set if CombatOver && !Victory
 	Summary       string // only set if CombatOver
 	Mood          string
+	RollLog       []RollRecord
 }
 
 // MiniGameType identifies a specific mini-game.

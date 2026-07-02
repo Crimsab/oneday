@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"strings"
 	"time"
 
@@ -20,6 +19,7 @@ type CombatEngine struct {
 	narrator  *Narrator
 	session   *GameSession
 	challenge *ChallengeEngine
+	rng       *RNGService
 }
 
 // NewCombatEngine starts a combat encounter.
@@ -52,6 +52,7 @@ func NewCombatEngine(narrator *Narrator, enemy *EnemyStats) (*CombatEngine, erro
 		narrator:  narrator,
 		session:   narrator.session,
 		challenge: NewChallengeEngine(),
+		rng:       defaultRNGService(),
 	}, nil
 }
 
@@ -93,97 +94,59 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		return nil, fmt.Errorf("combat is already resolved")
 	}
 
-	// Build combat context for AI.
-	enemyJSON, _ := json.Marshal(ce.state.Enemy)
-	settingJSON := ce.narrator.story.SettingJSON
-
-	systemPrompt := prompts.CombatSystem(
-		ce.narrator.story.Name,
-		ce.narrator.story.Language,
-		ce.narrator.story.WritingStyle,
-		ce.narrator.story.PromptDirectives,
-		settingJSON,
-		ce.narrator.character.Name,
-		ce.narrator.character.StatsJSON,
-		string(enemyJSON),
-		ce.state.Turn,
-	)
-
-	// Build messages: system + recent combat turns + player action.
-	messages := []ai.Message{
-		{Role: ai.RoleSystem, Content: systemPrompt},
-		{Role: "user", Content: fmt.Sprintf("[Combat Turn %d] Player action: %s", ce.state.Turn, action)},
-	}
-
-	start := time.Now()
-	req := ai.Request{
-		Messages:       messages,
-		Temperature:    0.85,
-		MaxTokens:      1024,
-		ResponseFormat: ai.NarrativeResponseFormat(),
-	}
-
-	resp, err := ce.narrator.router.Complete(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("AI combat response: %w", err)
-	}
-	latency := time.Since(start).Milliseconds()
-
-	// Parse AI narrative response.
-	narrative, parseErr := parseNarrativeFromAI(resp.Content)
-	if parseErr != nil {
-		// Fall back to minimal narrative.
-		narrative = &NarrativeResponse{
-			Narrative: resp.Content,
-			Choices: []Choice{
-				{ID: 1, Text: "Attack"},
-				{ID: 2, Text: "Defend"},
-				{ID: 3, Text: "Try to flee"},
-				{ID: 4, Text: "Try talking"},
-			},
-			Mood: "tense",
-		}
-	}
-
 	result := &CombatTurnResult{
-		Narrative: narrative.Narrative,
-		Choices:   narrative.Choices,
-		Mood:      narrative.Mood,
+		Choices: defaultCombatChoices(),
+		Mood:    "tense",
 	}
+	var resp ai.Response
+	var latency int64
+	var mechanicalNote string
 
 	// --- Engine calculates player damage (if action is attack-like) ---
 	isAttack := isAttackAction(action)
 	if isAttack {
 		weaponBase := getWeaponBase(ce.narrator.character)
 		attrBonus := getAttributeBonus(ce.narrator.character, "str")
-		d20 := RollD20()
+		playerRoll := ce.rng.Roll("combat.player_attack", 20)
+		d20 := playerRoll.Raw
 		rawDamage := weaponBase + attrBonus + d20
+		playerRoll.Modifiers = []Modifier{{Source: "Weapon", Value: weaponBase}, {Source: "STR", Value: attrBonus}}
+		playerRoll.Total = rawDamage
+		playerRoll.Target = ce.state.Enemy.Defense
 		actualDamage := rawDamage - ce.state.Enemy.Defense
 		if actualDamage < 0 {
 			actualDamage = 0
 		}
+		playerRoll.Outcome = fmt.Sprintf("damage:%d", actualDamage)
 		ce.state.Enemy.HP -= actualDamage
 		if ce.state.Enemy.HP < 0 {
 			ce.state.Enemy.HP = 0
 		}
 		result.EnemyDamage = actualDamage
+		result.RollLog = append(result.RollLog, playerRoll)
 	}
 
 	// --- Enemy counter-attack (unless combat is already over) ---
 	playerDamage := 0
-	if ce.state.Enemy.HP > 0 && !isFleeing(action) {
+	if ce.state.Enemy.HP > 0 && shouldEnemyCounterAction(action) {
 		enemyAttack := ce.state.Enemy.Attack + behaviorModifier(ce.state.Enemy.Behavior, ce.state.Turn, ce.state.PlayerHP, ce.state.PlayerMaxHP, ce.state.Enemy.HP, ce.state.Enemy.MaxHP)
-		d20 := RollD20()
+		enemyRoll := ce.rng.Roll("combat.enemy_attack", 20)
+		d20 := enemyRoll.Raw
 		playerDefense := getPlayerDefense(ce.narrator.character)
 		rawPlayerDamage := enemyAttack + d20 - playerDefense
+		enemyRoll.Modifiers = []Modifier{{Source: "Enemy attack", Value: enemyAttack}, {Source: "Player defense", Value: -playerDefense}}
+		enemyRoll.Total = rawPlayerDamage
+		enemyRoll.Target = playerDefense
 		if rawPlayerDamage < 0 {
 			rawPlayerDamage = 0
 		}
+		enemyRoll.Outcome = fmt.Sprintf("damage:%d", rawPlayerDamage)
 		ce.state.PlayerHP -= rawPlayerDamage
 		if ce.state.PlayerHP < 0 {
 			ce.state.PlayerHP = 0
 		}
 		playerDamage = rawPlayerDamage
+		result.RollLog = append(result.RollLog, enemyRoll)
 	}
 
 	result.PlayerDamage = playerDamage
@@ -247,8 +210,11 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		// Combat continues: check flee action.
 		if isFleeing(action) {
 			// Dice roll to determine if flee succeeds.
-			fleeRoll := RollD100()
+			fleeRecord := ce.rng.Roll("combat.flee", 100)
+			fleeRoll := fleeRecord.Raw
+			fleeRecord.Target = 50
 			if fleeRoll >= 50 {
+				fleeRecord.Outcome = "success"
 				// Flee succeeds.
 				ce.state.Resolved = true
 				ce.state.Victory = false
@@ -260,13 +226,30 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 				result.CombatOver = true
 				result.Victory = false
 				result.DefeatOutcome = "retreat"
-				result.Narrative += fmt.Sprintf("\n\n[You managed to escape! (fled on roll %d/100)]", fleeRoll)
+				mechanicalNote = fmt.Sprintf("[You managed to escape! (fled on roll %d/100)]", fleeRoll)
 				ce.syncPlayerHP()
 				_ = ce.session.CloseSubSession(ce.state.SubSessionID)
 			} else {
-				result.Narrative += fmt.Sprintf("\n\n[Escape failed! (rolled %d/100, needed 50+)]", fleeRoll)
+				fleeRecord.Outcome = "failure"
+				mechanicalNote = fmt.Sprintf("[Escape failed! (rolled %d/100, needed 50+)]", fleeRoll)
 			}
+			result.RollLog = append(result.RollLog, fleeRecord)
 		}
+	}
+
+	if result.Narrative == "" {
+		narrative, aiResp, aiLatency, err := ce.narrateResolvedCombatTurn(ctx, action, result)
+		if err != nil {
+			return nil, err
+		}
+		resp = aiResp
+		latency = aiLatency
+		result.Narrative = narrative.Narrative
+		result.Choices = narrative.Choices
+		result.Mood = narrative.Mood
+	}
+	if mechanicalNote != "" {
+		result.Narrative += "\n\n" + mechanicalNote
 	}
 
 	// Log this turn to sub-session JSONL (only if not resolved, or if just resolved).
@@ -281,6 +264,7 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 			Output: &ChatOutput{
 				Narrative: result.Narrative,
 				Mood:      result.Mood,
+				RollLog:   result.RollLog,
 			},
 			AIModel:   resp.Model,
 			AILatency: latency,
@@ -297,6 +281,93 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 	}
 
 	return result, nil
+}
+
+func defaultCombatChoices() []Choice {
+	return []Choice{
+		{ID: 1, Text: "Attack"},
+		{ID: 2, Text: "Defend"},
+		{ID: 3, Text: "Try to flee"},
+		{ID: 4, Text: "Try talking"},
+	}
+}
+
+func (ce *CombatEngine) narrateResolvedCombatTurn(ctx context.Context, action string, result *CombatTurnResult) (*NarrativeResponse, ai.Response, int64, error) {
+	enemyJSON, _ := json.Marshal(ce.state.Enemy)
+	settingJSON := ce.narrator.story.SettingJSON
+
+	systemPrompt := prompts.CombatSystem(
+		ce.narrator.story.Name,
+		ce.narrator.story.Language,
+		ce.narrator.story.WritingStyle,
+		ce.narrator.story.PromptDirectives,
+		settingJSON,
+		ce.narrator.character.Name,
+		ce.narrator.character.StatsJSON,
+		string(enemyJSON),
+		ce.state.Turn,
+	)
+
+	messages := []ai.Message{
+		{Role: ai.RoleSystem, Content: systemPrompt},
+		{Role: ai.RoleUser, Content: fmt.Sprintf(
+			"[Combat Turn %d] Player action: %s\n\nEngine resolution already happened. Narrate these facts without contradicting them:\n%s",
+			ce.state.Turn,
+			action,
+			combatResolutionForPrompt(result),
+		)},
+	}
+
+	start := time.Now()
+	req := ai.Request{
+		Messages:       messages,
+		Temperature:    0.85,
+		MaxTokens:      1024,
+		ResponseFormat: ai.NarrativeResponseFormat(),
+	}
+
+	resp, err := ce.narrator.router.Complete(ctx, req)
+	if err != nil {
+		return nil, resp, 0, fmt.Errorf("AI combat response: %w", err)
+	}
+	latency := time.Since(start).Milliseconds()
+
+	narrative, parseErr := parseNarrativeFromAI(resp.Content)
+	if parseErr != nil {
+		narrative = &NarrativeResponse{
+			Narrative: resp.Content,
+			Choices:   defaultCombatChoices(),
+			Mood:      "tense",
+		}
+	}
+	return narrative, resp, latency, nil
+}
+
+func combatResolutionForPrompt(result *CombatTurnResult) string {
+	var lines []string
+	if result.EnemyDamage > 0 {
+		lines = append(lines, fmt.Sprintf("- Player dealt %d damage to the enemy.", result.EnemyDamage))
+	} else {
+		lines = append(lines, "- Player dealt no direct damage to the enemy.")
+	}
+	if result.PlayerDamage > 0 {
+		lines = append(lines, fmt.Sprintf("- Enemy dealt %d damage to the player.", result.PlayerDamage))
+	} else {
+		lines = append(lines, "- Enemy dealt no direct damage to the player.")
+	}
+	lines = append(lines, fmt.Sprintf("- Player HP is now %d.", result.PlayerHP))
+	lines = append(lines, fmt.Sprintf("- Enemy HP is now %d.", result.EnemyHP))
+	for _, roll := range result.RollLog {
+		lines = append(lines, fmt.Sprintf("- %s: %s raw %d total %d outcome %s.", roll.Source, roll.Die, roll.Raw, roll.Total, roll.Outcome))
+	}
+	if result.CombatOver {
+		if result.Victory {
+			lines = append(lines, "- Combat is over: player victory.")
+		} else {
+			lines = append(lines, fmt.Sprintf("- Combat is over: %s.", result.DefeatOutcome))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // narrateVictory asks AI to narrate the victory moment.
@@ -461,35 +532,11 @@ func getPlayerVitals(char *storage.Character) (currentHP, maxHP int) {
 // getWeaponBase checks the equipped weapon for a base damage value.
 // Returns 1 if no weapon is equipped (fist fighting).
 func getWeaponBase(char *storage.Character) int {
-	// Parse inventory to find equipped weapon.
-	var inventory map[string]interface{}
-	if err := json.Unmarshal([]byte(char.InventoryJSON), &inventory); err != nil {
-		return 1
+	if damage := maxEquippedItemStat(char.InventoryJSON, "weapon", "damage"); damage > 0 {
+		return damage
 	}
-	equipped, ok := inventory["equipped"].(map[string]interface{})
-	if !ok {
-		return 1
-	}
-	weapon, ok := equipped["weapon"].(map[string]interface{})
-	if !ok {
-		return 1
-	}
-	if damage, ok := weapon["damage"].(float64); ok {
-		return int(damage)
-	}
-	// Check stats_json for equipped weapon if not in inventory.
-	var stats map[string]interface{}
-	if err := json.Unmarshal([]byte(char.StatsJSON), &stats); err != nil {
-		return 1
-	}
-	if inv, ok := stats["inventory"].(map[string]interface{}); ok {
-		if eq, ok := inv["equipped"].(map[string]interface{}); ok {
-			if w, ok := eq["weapon"].(map[string]interface{}); ok {
-				if d, ok := w["damage"].(float64); ok {
-					return int(d)
-				}
-			}
-		}
+	if damage := maxEquippedItemStat(char.StatsJSON, "weapon", "damage"); damage > 0 {
+		return damage
 	}
 	return 1
 }
@@ -505,25 +552,108 @@ func getAttributeBonus(char *storage.Character, attr string) int {
 
 // getPlayerDefense returns the player's defense value from armor + endurance bonus.
 func getPlayerDefense(char *storage.Character) int {
-	defense := 0
-
-	// Check equipped armor.
-	var inventory map[string]interface{}
-	if err := json.Unmarshal([]byte(char.InventoryJSON), &inventory); err == nil {
-		if equipped, ok := inventory["equipped"].(map[string]interface{}); ok {
-			if armor, ok := equipped["armor"].(map[string]interface{}); ok {
-				if def, ok := armor["defense"].(float64); ok {
-					defense += int(def)
-				}
-			}
-		}
-	}
+	defense := sumEquippedItemStat(char.InventoryJSON, "armor", "defense")
+	defense += sumEquippedItemStat(char.StatsJSON, "armor", "defense")
 
 	// Add endurance bonus.
 	endBonus := getAttributeBonus(char, "end")
 	defense += endBonus
 
 	return defense
+}
+
+func maxEquippedItemStat(jsonData, slot, stat string) int {
+	values := collectEquippedItemStats(jsonData, slot, stat)
+	maxValue := 0
+	for _, value := range values {
+		if value > maxValue {
+			maxValue = value
+		}
+	}
+	return maxValue
+}
+
+func sumEquippedItemStat(jsonData, slot, stat string) int {
+	total := 0
+	for _, value := range collectEquippedItemStats(jsonData, slot, stat) {
+		total += value
+	}
+	return total
+}
+
+func collectEquippedItemStats(jsonData, slot, stat string) []int {
+	if strings.TrimSpace(jsonData) == "" || strings.TrimSpace(jsonData) == "null" {
+		return nil
+	}
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(jsonData), &decoded); err != nil {
+		return nil
+	}
+	return collectEquippedItemStatsFromValue(decoded, normalizeItemLookupKey(slot), stat)
+}
+
+func collectEquippedItemStatsFromValue(value interface{}, slot, stat string) []int {
+	var values []int
+	switch typed := value.(type) {
+	case []interface{}:
+		for _, item := range typed {
+			values = append(values, collectEquippedItemStatsFromValue(item, slot, stat)...)
+		}
+	case map[string]interface{}:
+		if statValue, ok := equippedItemStat(typed, slot, stat); ok {
+			values = append(values, statValue)
+		}
+		if equipped, ok := typed["equipped"]; ok {
+			switch eq := equipped.(type) {
+			case []interface{}:
+				for _, item := range eq {
+					values = append(values, collectEquippedItemStatsFromValue(item, slot, stat)...)
+				}
+			case map[string]interface{}:
+				if item, ok := eq[slot].(map[string]interface{}); ok {
+					if statValue, ok := itemNumericStat(item, stat); ok {
+						values = append(values, statValue)
+					}
+				}
+				values = append(values, collectEquippedItemStatsFromValue(eq, slot, stat)...)
+			}
+		}
+		for _, key := range []string{"inventory", "items", "backpack"} {
+			if nested, ok := typed[key]; ok {
+				values = append(values, collectEquippedItemStatsFromValue(nested, slot, stat)...)
+			}
+		}
+	}
+	return values
+}
+
+func equippedItemStat(item map[string]interface{}, slot, stat string) (int, bool) {
+	equipped, _ := item["equipped"].(bool)
+	if !equipped {
+		return 0, false
+	}
+	itemSlot := normalizeItemLookupKey(stringValue(item["slot"]))
+	itemType := normalizeItemLookupKey(stringValue(item["type"]))
+	if itemSlot != slot && itemType != slot {
+		return 0, false
+	}
+	return itemNumericStat(item, stat)
+}
+
+func itemNumericStat(item map[string]interface{}, stat string) (int, bool) {
+	if value, ok := item[stat]; ok {
+		statValue := int(toFloat(value))
+		if statValue > 0 {
+			return statValue, true
+		}
+	}
+	if statsMap, ok := item["stats"].(map[string]interface{}); ok {
+		statValue := int(toFloat(statsMap[stat]))
+		if statValue > 0 {
+			return statValue, true
+		}
+	}
+	return 0, false
 }
 
 // behaviorModifier adjusts enemy attack power based on behavior pattern, turn, and HP.
@@ -589,8 +719,27 @@ func isAttackAction(action string) bool {
 			return false
 		}
 	}
-	// Default: treat unknown actions as attacks.
-	return true
+	attackWords := []string{"attack", "hit", "strike", "slash", "stab", "punch", "kick", "shoot", "fire", "cast", "spell", "magic", "blast", "smash", "cut", "bite"}
+	for _, w := range attackWords {
+		if strings.Contains(lower, w) {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldEnemyCounterAction(action string) bool {
+	lower := strings.ToLower(action)
+	if isFleeing(action) {
+		return false
+	}
+	nonCounterWords := []string{"talk", "negotiate", "surrender", "wait"}
+	for _, w := range nonCounterWords {
+		if strings.Contains(lower, w) {
+			return false
+		}
+	}
+	return isAttackAction(action) || strings.Contains(lower, "defend") || strings.Contains(lower, "guard") || strings.Contains(lower, "block")
 }
 
 // isFleeing returns true if the player is trying to flee combat.
@@ -625,12 +774,13 @@ func (ce *CombatEngine) LogCombatResult(db *storage.DB, storyID string) error {
 // RandomEnemyStats creates a placeholder enemy for testing.
 // In production, enemies always come from AI.
 func RandomEnemyStats(name string) *EnemyStats {
+	rng := defaultRNGService()
 	return &EnemyStats{
 		Name:     name,
-		HP:       rand.Intn(40) + 10,
+		HP:       rng.Roll("combat.random_enemy.hp", 40).Raw + 9,
 		MaxHP:    0, // ValidateEnemy will set this
-		Attack:   rand.Intn(10) + 3,
-		Defense:  rand.Intn(5),
+		Attack:   rng.Roll("combat.random_enemy.attack", 10).Raw + 2,
+		Defense:  rng.Roll("combat.random_enemy.defense", 5).Raw - 1,
 		Behavior: BehaviorAggressive,
 	}
 }

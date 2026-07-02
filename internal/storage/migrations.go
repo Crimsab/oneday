@@ -35,6 +35,8 @@ func (db *DB) migrate() error {
 		{15, migrationV15},
 		{16, migrationV16},
 		{17, migrationV17},
+		{18, migrationV18},
+		{19, migrationV19},
 	}
 
 	for _, m := range migrations {
@@ -323,4 +325,22 @@ ALTER TABLE world_state ADD COLUMN project_clocks_json TEXT NOT NULL DEFAULT '{}
 const migrationV17 = `
 -- Canonical protagonist timeline for age, life stage, and major growth milestones.
 ALTER TABLE world_state ADD COLUMN character_timeline_json TEXT NOT NULL DEFAULT '{}';
+`
+
+const migrationV18 = `
+-- Browser/API idempotency cache for committed turn submissions.
+CREATE TABLE IF NOT EXISTS turn_idempotency (
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	idempotency_key TEXT NOT NULL,
+	events_json TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY (story_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS idx_turn_idempotency_created_at
+	ON turn_idempotency(created_at);
+`
+
+const migrationV19 = `
+-- Optional persisted scene progression contract for anti-loop/runtime guidance.
+ALTER TABLE world_state ADD COLUMN scene_contract_json TEXT NOT NULL DEFAULT '{}';
 `

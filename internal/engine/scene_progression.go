@@ -269,17 +269,7 @@ func buildAssistantBeatFromNarrativeResponse(narrative *NarrativeResponse, fallb
 }
 
 func narrativeHasStructuralMovement(narrative *NarrativeResponse) bool {
-	if narrative == nil {
-		return false
-	}
-	return len(narrative.EventCallouts) > 0 ||
-		len(narrative.OpenHooks) > 0 ||
-		len(narrative.WorldReactions) > 0 ||
-		len(narrative.StateChanges) > 0 ||
-		len(narrative.Challenges) > 0 ||
-		narrative.SocialDuel != nil ||
-		narrative.CombatStart != nil ||
-		narrative.ChapterEnd
+	return narrativeHasValidatedSceneDelta(narrative)
 }
 
 func narrativeSatisfiesProgressionStrategy(

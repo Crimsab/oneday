@@ -60,6 +60,10 @@ type StoryCreator struct {
 	charName     string
 }
 
+type storyDefinitionParseOptions struct {
+	ForceDisableCombat bool
+}
+
 // NewStoryCreator initializes the story creation flow.
 func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.GenerationConfig) *StoryCreator {
 	if genCfg.Temperature == 0 {
@@ -292,11 +296,15 @@ func (sc *StoryCreator) handleBrief(ctx context.Context, input string) (string, 
 }
 
 func (sc *StoryCreator) handleRevision(ctx context.Context, section, input string) (string, error) {
+	return sc.handleRevisionWithOptions(ctx, section, input, storyDefinitionParseOptions{})
+}
+
+func (sc *StoryCreator) handleRevisionWithOptions(ctx context.Context, section, input string, opts storyDefinitionParseOptions) (string, error) {
 	if sc.definition == nil {
 		return "", fmt.Errorf("no story draft to revise")
 	}
 
-	def, err := sc.reviseDraft(ctx, section, input)
+	def, err := sc.reviseDraftWithOptions(ctx, section, input, opts)
 	if err != nil {
 		return "", err
 	}
@@ -389,7 +397,7 @@ func (sc *StoryCreator) executeStatsAction(ctx context.Context, actionKey string
 	case "crunchier_stats":
 		return sc.handleRevision(ctx, "stats", "Keep the same story identity, but make the stats schema more tactical, crunchy, and game-like.")
 	case "no_combat":
-		return sc.handleRevision(ctx, "stats", "Disable combat. Build a schema centered on narrative tension, social pressure, travel, investigation, or survival instead.")
+		return sc.handleRevisionWithOptions(ctx, "stats", "Disable combat. Build a schema centered on narrative tension, social pressure, travel, investigation, or survival instead.", storyDefinitionParseOptions{ForceDisableCombat: true})
 	case "edit_stats":
 		sc.lastModel = "system"
 		sc.lastLatency = 0
@@ -428,6 +436,10 @@ func (sc *StoryCreator) generateDraft(ctx context.Context, brief string) (*Story
 }
 
 func (sc *StoryCreator) reviseDraft(ctx context.Context, section, feedback string) (*StoryDefinition, error) {
+	return sc.reviseDraftWithOptions(ctx, section, feedback, storyDefinitionParseOptions{})
+}
+
+func (sc *StoryCreator) reviseDraftWithOptions(ctx context.Context, section, feedback string, opts storyDefinitionParseOptions) (*StoryDefinition, error) {
 	if sc.definition == nil {
 		return nil, fmt.Errorf("no story draft to revise")
 	}
@@ -437,13 +449,17 @@ func (sc *StoryCreator) reviseDraft(ctx context.Context, section, feedback strin
 		return nil, fmt.Errorf("marshaling story draft: %w", err)
 	}
 
-	return sc.requestStoryDefinition(ctx, []ai.Message{
+	return sc.requestStoryDefinitionWithOptions(ctx, []ai.Message{
 		{Role: ai.RoleSystem, Content: prompts.StoryRevisionSystemPrompt()},
 		{Role: ai.RoleUser, Content: prompts.StoryRevisionUserPrompt(section, string(draftJSON), feedback)},
-	})
+	}, opts)
 }
 
 func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Message) (*StoryDefinition, error) {
+	return sc.requestStoryDefinitionWithOptions(ctx, msgs, storyDefinitionParseOptions{})
+}
+
+func (sc *StoryCreator) requestStoryDefinitionWithOptions(ctx context.Context, msgs []ai.Message, opts storyDefinitionParseOptions) (*StoryDefinition, error) {
 	req := ai.Request{
 		Messages:       msgs,
 		Temperature:    sc.genCfg.Temperature,
@@ -465,7 +481,7 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 	sc.lastModel = resp.Model
 	sc.lastLatency = time.Since(start).Milliseconds()
 
-	def, parseErr := parseStoryDefinitionWithFallback(resp.Content, sc.initialBrief, sc.definition)
+	def, parseErr := parseStoryDefinitionWithFallbackWithOptions(resp.Content, sc.initialBrief, sc.definition, opts)
 	if parseErr == nil {
 		return def, nil
 	}
@@ -488,7 +504,7 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 			MaxTokens:      sc.genCfg.MaxTokens,
 			ResponseFormat: repairFormats[attempt],
 		}
-		def, repairResp, repairErr := sc.runRepairModels(ctx, repairReq)
+		def, repairResp, repairErr := sc.runRepairModelsWithOptions(ctx, repairReq, opts)
 		if repairErr == nil {
 			sc.lastModel = repairResp.Model
 			sc.lastLatency += repairResp.LatencyMs
@@ -501,6 +517,10 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 }
 
 func (sc *StoryCreator) runRepairModels(ctx context.Context, req ai.Request) (*StoryDefinition, ai.Response, error) {
+	return sc.runRepairModelsWithOptions(ctx, req, storyDefinitionParseOptions{})
+}
+
+func (sc *StoryCreator) runRepairModelsWithOptions(ctx context.Context, req ai.Request, opts storyDefinitionParseOptions) (*StoryDefinition, ai.Response, error) {
 	candidates := sc.genCfg.RepairModelCandidates()
 	if len(candidates) == 0 {
 		candidates = []string{""}
@@ -524,7 +544,7 @@ func (sc *StoryCreator) runRepairModels(ctx context.Context, req ai.Request) (*S
 		}
 		resp.LatencyMs = latency
 
-		def, parseErr := parseStoryDefinitionWithFallback(resp.Content, sc.initialBrief, sc.definition)
+		def, parseErr := parseStoryDefinitionWithFallbackWithOptions(resp.Content, sc.initialBrief, sc.definition, opts)
 		if parseErr == nil {
 			return def, resp, nil
 		}
@@ -818,6 +838,10 @@ func parseStoryDefinition(text string) (*StoryDefinition, error) {
 }
 
 func parseStoryDefinitionWithFallback(text, brief string, previous *StoryDefinition) (*StoryDefinition, error) {
+	return parseStoryDefinitionWithFallbackWithOptions(text, brief, previous, storyDefinitionParseOptions{})
+}
+
+func parseStoryDefinitionWithFallbackWithOptions(text, brief string, previous *StoryDefinition, opts storyDefinitionParseOptions) (*StoryDefinition, error) {
 	raw, err := ai.ExtractJSONPayload(text)
 	if err != nil {
 		return nil, fmt.Errorf("extracting JSON payload: %w", err)
@@ -829,7 +853,7 @@ func parseStoryDefinitionWithFallback(text, brief string, previous *StoryDefinit
 	if err := decodeStoryDefinitionJSON(raw, &def); err != nil {
 		return nil, err
 	}
-	normalizeStoryDefinition(&def, brief, previous)
+	normalizeStoryDefinitionWithOptions(&def, brief, previous, opts)
 	if err := validateStoryDefinition(&def); err != nil {
 		return nil, err
 	}
@@ -1107,6 +1131,10 @@ func intFromAny(value any) (int, bool) {
 }
 
 func normalizeStoryDefinition(def *StoryDefinition, _ string, previous *StoryDefinition) {
+	normalizeStoryDefinitionWithOptions(def, "", previous, storyDefinitionParseOptions{})
+}
+
+func normalizeStoryDefinitionWithOptions(def *StoryDefinition, _ string, previous *StoryDefinition, opts storyDefinitionParseOptions) {
 	if def == nil {
 		return
 	}
@@ -1150,7 +1178,9 @@ func normalizeStoryDefinition(def *StoryDefinition, _ string, previous *StoryDef
 		currency := *previous.StatsSchema.Currency
 		def.StatsSchema.Currency = &currency
 	}
-	if previous != nil && !def.StatsSchema.HasCombat && previous.StatsSchema.HasCombat {
+	if opts.ForceDisableCombat {
+		def.StatsSchema.HasCombat = false
+	} else if previous != nil && !def.StatsSchema.HasCombat && previous.StatsSchema.HasCombat {
 		def.StatsSchema.HasCombat = true
 	}
 }

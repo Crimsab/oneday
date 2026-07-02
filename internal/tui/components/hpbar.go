@@ -50,7 +50,7 @@ func (h HPBar) View() string {
 	// Fixed parts: "Label: [" + "]" + " XX/XX"
 	counterStr := fmt.Sprintf(" %d/%d", h.Current, h.Max)
 	// prefix: "Label: [", suffix: "]" + counterStr
-	prefixLen := len(h.Label) + 3 // "Label: ["
+	prefixLen := len(h.Label) + 3    // "Label: ["
 	suffixLen := 1 + len(counterStr) // "]" + " 15/20"
 	barWidth := h.Width - prefixLen - suffixLen
 	if barWidth < 4 {

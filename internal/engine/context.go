@@ -16,6 +16,7 @@ type ContextConfig struct {
 	RecentMessageCount int      // how many recent messages to include (default 20)
 	RAGChunks          []string // placeholder for Phase 5 RAG — empty for now
 	NPCLookbackTurns   int      // how many turns back to load NPCs for context (default 20)
+	RewardBudget       string   // generous, balanced, or harsh reward economy guidance
 }
 
 // DefaultContextConfig returns sensible defaults.
@@ -24,6 +25,7 @@ func DefaultContextConfig() ContextConfig {
 		RecentMessageCount: 20,
 		RAGChunks:          nil,
 		NPCLookbackTurns:   20,
+		RewardBudget:       "balanced",
 	}
 }
 
@@ -150,6 +152,35 @@ func BuildContext(
 	})
 
 	return msgs
+}
+
+func appendRewardBudgetGuidance(msgs []ai.Message, budget string) []ai.Message {
+	content := buildRewardBudgetGuidance(budget)
+	if content == "" {
+		return msgs
+	}
+	msg := ai.Message{Role: ai.RoleSystem, Content: content}
+	if len(msgs) == 0 || msgs[len(msgs)-1].Role != ai.RoleUser {
+		return append(msgs, msg)
+	}
+	out := make([]ai.Message, 0, len(msgs)+1)
+	out = append(out, msgs[:len(msgs)-1]...)
+	out = append(out, msg)
+	out = append(out, msgs[len(msgs)-1])
+	return out
+}
+
+func buildRewardBudgetGuidance(budget string) string {
+	switch strings.ToLower(strings.TrimSpace(budget)) {
+	case "generous":
+		return "## Reward Budget\nPreset: generous. Reward meaningful progress often, but keep rewards earned, specific, and tied to cost/risk. Avoid free major power jumps."
+	case "harsh":
+		return "## Reward Budget\nPreset: harsh. Give durable rewards rarely. Prefer information, complications, partial progress, debts, and costs unless the player clearly paid for a win."
+	case "", "balanced":
+		return "## Reward Budget\nPreset: balanced. Give modest, earned rewards for meaningful progress. Major skills/items/titles require setup, cost, risk, or project completion."
+	default:
+		return ""
+	}
 }
 
 // buildStateSummary composes a concise state message with current character and world info.

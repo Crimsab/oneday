@@ -30,6 +30,21 @@ func ApplyProjectUpdate(char *storage.Character, stats map[string]interface{}, i
 		amount = 1
 	}
 
+	if (action == "advance" || action == "complete") && !projectUpdateHasCostOrRisk(raw) {
+		project.Status = firstNonEmpty(strings.TrimSpace(stringValue(raw["status"])), project.Status, "active")
+		project.UpdatedTurn = currentTurn
+		if summary := strings.TrimSpace(stringValue(raw["summary"])); summary != "" {
+			project.Summary = summary
+		}
+		storeProjectBoard(world, board)
+		return []StateChange{{
+			Target:      "world",
+			Field:       fmt.Sprintf("project.%s", project.Title),
+			New:         fmt.Sprintf("%d/%d", project.Progress, project.Segments),
+			Description: fmt.Sprintf("Project noted without progress: %s", project.Title),
+		}}
+	}
+
 	switch action {
 	case "advance":
 		project.Progress = clampRange(project.Progress+amount, 0, project.Segments)
@@ -100,6 +115,32 @@ func ApplyProjectUpdate(char *storage.Character, stats map[string]interface{}, i
 		Description: fmt.Sprintf("Project %s: %s", action, project.Title),
 	}}, changes...)
 	return changes
+}
+
+func projectUpdateHasCostOrRisk(raw map[string]interface{}) bool {
+	if int(toFloat(raw["currency_cost"])) > 0 {
+		return true
+	}
+	if int(toFloat(raw["time_cost"])) > 0 {
+		return true
+	}
+	if strings.TrimSpace(stringValue(raw["resource_cost"])) != "" {
+		return true
+	}
+	if strings.TrimSpace(stringValue(raw["risk"])) != "" {
+		return true
+	}
+	if int(toFloat(raw["front_advance"])) > 0 {
+		return true
+	}
+	if int(toFloat(raw["pressure_change"])) != 0 {
+		return true
+	}
+	if strings.TrimSpace(stringValue(raw["fail_forward_title"])) != "" ||
+		strings.TrimSpace(stringValue(raw["fail_forward_detail"])) != "" {
+		return true
+	}
+	return false
 }
 
 func ensureProjectClock(board *ProjectBoard, raw map[string]interface{}, currentTurn int) int {

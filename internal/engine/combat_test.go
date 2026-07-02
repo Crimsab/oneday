@@ -199,11 +199,32 @@ func TestIsAttackAction(t *testing.T) {
 		"Surrender",
 		"Defend yourself",
 		"Wait and see",
+		"Throw sand in their eyes",
+		"Topple the brazier and step behind the pillar",
 	}
 	for _, a := range nonAttacks {
 		if isAttackAction(a) {
 			t.Errorf("expected %q to NOT be an attack action", a)
 		}
+	}
+}
+
+func TestEquippedWeaponFromCanonicalInventoryAffectsDamage(t *testing.T) {
+	char := &storage.Character{
+		InventoryJSON: `[{"name":"Practice Blade","slot":"weapon","equipped":true,"stats":{"damage":4}}]`,
+	}
+	if got := getWeaponBase(char); got != 4 {
+		t.Fatalf("getWeaponBase = %d, want 4", got)
+	}
+}
+
+func TestEquippedArmorFromCanonicalInventoryAffectsDefense(t *testing.T) {
+	char := &storage.Character{
+		InventoryJSON: `[{"name":"Padded Coat","slot":"armor","equipped":true,"stats":{"defense":3}}]`,
+		StatsJSON:     `{"attributes":{"end":6}}`,
+	}
+	if got := getPlayerDefense(char); got != 5 {
+		t.Fatalf("getPlayerDefense = %d, want 5", got)
 	}
 }
 
@@ -229,6 +250,15 @@ func TestIsFleeingAction(t *testing.T) {
 		if isFleeing(a) {
 			t.Errorf("expected %q to NOT be a flee action", a)
 		}
+	}
+}
+
+func TestCombatTalkActionDoesNotTriggerEnemyDamageByDefault(t *testing.T) {
+	if shouldEnemyCounterAction("Try to talk to the enemy") {
+		t.Fatal("talk action should not trigger automatic enemy counter damage")
+	}
+	if !shouldEnemyCounterAction("Defend yourself") {
+		t.Fatal("defend action should still leave the enemy able to act")
 	}
 }
 

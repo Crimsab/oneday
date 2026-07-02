@@ -90,6 +90,55 @@ func TestDiceRollDeterministic(t *testing.T) {
 	}
 }
 
+func TestSeededRNGReplayProducesSameRollLog(t *testing.T) {
+	char := &storage.Character{StatsJSON: "{}"}
+	spec := &ChallengeSpec{
+		Type:       ChallengeDiceRoll,
+		Difficulty: 50,
+		Modifiers:  []Modifier{{Source: "Lucky Charm", Value: 10}},
+	}
+
+	first, err := NewChallengeEngineWithRNG(NewRNGService(1234)).Resolve(spec, char, nil, "")
+	if err != nil {
+		t.Fatalf("first Resolve: %v", err)
+	}
+	second, err := NewChallengeEngineWithRNG(NewRNGService(1234)).Resolve(spec, char, nil, "")
+	if err != nil {
+		t.Fatalf("second Resolve: %v", err)
+	}
+
+	if first.Roll != second.Roll || first.Total != second.Total {
+		t.Fatalf("seeded rolls differ: first=%+v second=%+v", first, second)
+	}
+	if len(first.RollLog) != 1 || len(second.RollLog) != 1 {
+		t.Fatalf("roll logs len = %d/%d, want 1/1", len(first.RollLog), len(second.RollLog))
+	}
+	if first.RollLog[0].Raw != second.RollLog[0].Raw || first.RollLog[0].Seed != 1234 {
+		t.Fatalf("roll log not reproducible: first=%+v second=%+v", first.RollLog[0], second.RollLog[0])
+	}
+}
+
+func TestChallengeRollUsesInjectedRNGNotGlobalRand(t *testing.T) {
+	char := &storage.Character{StatsJSON: "{}"}
+	spec := &ChallengeSpec{Type: ChallengeDiceRoll, Difficulty: 50}
+
+	rand.Seed(1)
+	first, err := NewChallengeEngineWithRNG(NewRNGService(99)).Resolve(spec, char, nil, "")
+	if err != nil {
+		t.Fatalf("first Resolve: %v", err)
+	}
+
+	rand.Seed(999)
+	second, err := NewChallengeEngineWithRNG(NewRNGService(99)).Resolve(spec, char, nil, "")
+	if err != nil {
+		t.Fatalf("second Resolve: %v", err)
+	}
+
+	if first.Roll != second.Roll {
+		t.Fatalf("global rand affected injected RNG: first=%d second=%d", first.Roll, second.Roll)
+	}
+}
+
 func TestDiceRollCriticalSuccess(t *testing.T) {
 	// A roll of 96-100 should always be critical success (pass regardless of difficulty).
 	ce := NewChallengeEngine()
@@ -180,6 +229,39 @@ func TestItemCheckAbsent(t *testing.T) {
 	}
 	if result.Passed {
 		t.Errorf("magic sword absent should fail, got: %s", result.Detail)
+	}
+}
+
+func TestHasItemDoesNotMatchDescriptionSubstring(t *testing.T) {
+	ce := NewChallengeEngine()
+	char := &storage.Character{
+		InventoryJSON: `{"backpack":[{"name":"Monkey Wrench","description":"The handle has a small key charm."}]}`,
+	}
+	result, err := ce.Resolve(&ChallengeSpec{Type: ChallengeItemCheck, Item: "key"}, char, nil, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Passed {
+		t.Fatalf("description substring should not satisfy item check: %s", result.Detail)
+	}
+}
+
+func TestHasItemMatchesCanonicalIDSlugOrName(t *testing.T) {
+	ce := NewChallengeEngine()
+	char := &storage.Character{
+		InventoryJSON: `[
+			{"id":"iron-key-01","slug":"iron_key","name":"Iron Key"},
+			{"id":"torch-01","slug":"old_torch","name":"Old Torch"}
+		]`,
+	}
+	for _, item := range []string{"iron-key-01", "iron key", "Iron Key"} {
+		result, err := ce.Resolve(&ChallengeSpec{Type: ChallengeItemCheck, Item: item}, char, nil, "")
+		if err != nil {
+			t.Fatalf("unexpected error for %q: %v", item, err)
+		}
+		if !result.Passed {
+			t.Fatalf("%q should match canonical inventory item, got: %s", item, result.Detail)
+		}
 	}
 }
 

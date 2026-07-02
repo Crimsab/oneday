@@ -484,9 +484,11 @@ func (a *App) mountNarrativeView(
 	save *storage.SaveSnapshot,
 	legacy bool,
 ) {
+	contextCfg := engine.DefaultContextConfig()
+	contextCfg.RewardBudget = a.cfg.Game.RewardBudget
 	narrator := engine.NewNarrator(
 		a.router, a.db, story, char, world, session,
-		engine.DefaultContextConfig(),
+		contextCfg,
 		a.cfg.AI.Generation,
 		a.cfg.AI.ASCIIArt,
 		a.cfg.DataDir,

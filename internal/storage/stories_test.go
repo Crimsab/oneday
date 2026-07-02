@@ -51,3 +51,48 @@ func TestCreateAndGetStoryPreservesAuthoringFields(t *testing.T) {
 		t.Fatalf("PromptDirectives = %q, want %q", got.PromptDirectives, input.PromptDirectives)
 	}
 }
+
+func TestWorldStatePreservesSceneContractJSON(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "world.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	story := &Story{ID: "story-scene-contract", Name: "Scene Contract", CreatedAt: now, UpdatedAt: now}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+	world := &WorldState{
+		ID:                "world-scene-contract",
+		StoryID:           story.ID,
+		CurrentLocation:   "Harbor",
+		CurrentChapter:    1,
+		SceneContractJSON: `{"required_delta":"location_change"}`,
+		UpdatedAt:         now,
+	}
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatalf("CreateWorldState: %v", err)
+	}
+	got, err := db.GetWorldState(story.ID)
+	if err != nil {
+		t.Fatalf("GetWorldState: %v", err)
+	}
+	if got.SceneContractJSON != world.SceneContractJSON {
+		t.Fatalf("SceneContractJSON = %q, want %q", got.SceneContractJSON, world.SceneContractJSON)
+	}
+
+	got.SceneContractJSON = `{"required_delta":"front_pressure"}`
+	if err := db.UpdateWorldState(got); err != nil {
+		t.Fatalf("UpdateWorldState: %v", err)
+	}
+	updated, err := db.GetWorldState(story.ID)
+	if err != nil {
+		t.Fatalf("GetWorldState updated: %v", err)
+	}
+	if updated.SceneContractJSON != got.SceneContractJSON {
+		t.Fatalf("updated SceneContractJSON = %q, want %q", updated.SceneContractJSON, got.SceneContractJSON)
+	}
+}

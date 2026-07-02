@@ -34,11 +34,11 @@ type ChoiceItem struct {
 
 // ChoiceListModel displays AI-suggested choices and handles selection.
 type ChoiceListModel struct {
-	choices []ChoiceItem
-	cursor  int
+	choices    []ChoiceItem
+	cursor     int
 	metaCursor int
-	width   int
-	mood    string
+	width      int
+	mood       string
 }
 
 // NewChoiceList creates a choice list.
@@ -94,7 +94,7 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 					}
 				}
 			}
-			case "left":
+		case "left":
 			if len(c.choices) > 0 {
 				badges := choiceBadges(c.choices[c.cursor], c.mood)
 				if len(badges) > 0 {

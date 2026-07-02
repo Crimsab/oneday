@@ -24,11 +24,11 @@ var (
 
 // Challenge-specific colors.
 var (
-	DiceGold         = lipgloss.Color("#FFD700")
-	RPSPurple        = lipgloss.Color("#9B59B6")
-	MemoryTeal       = lipgloss.Color("#1ABC9C")
-	QuickTimeOrange  = lipgloss.Color("#E67E22")
-	RiddleCyan       = lipgloss.Color("#3498DB")
+	DiceGold        = lipgloss.Color("#FFD700")
+	RPSPurple       = lipgloss.Color("#9B59B6")
+	MemoryTeal      = lipgloss.Color("#1ABC9C")
+	QuickTimeOrange = lipgloss.Color("#E67E22")
+	RiddleCyan      = lipgloss.Color("#3498DB")
 )
 
 // Challenge styles.
@@ -59,9 +59,9 @@ var (
 			Foreground(Danger)
 
 	QuickTimePrompt = lipgloss.NewStyle().
-				Foreground(QuickTimeOrange).
-				Bold(true).
-				Blink(true)
+			Foreground(QuickTimeOrange).
+			Bold(true).
+			Blink(true)
 
 	QuickTimeBar = lipgloss.NewStyle().
 			Foreground(QuickTimeOrange)
@@ -118,31 +118,31 @@ var (
 
 	// Subtitle for secondary headers (chapter, location).
 	Subtitle = lipgloss.NewStyle().
-		Foreground(Secondary).
-		Italic(true)
+			Foreground(Secondary).
+			Italic(true)
 
 	// NormalText for narrative body.
 	NormalText = lipgloss.NewStyle().
-		Foreground(Text)
+			Foreground(Text)
 
 	// MutedText for hints, placeholders.
 	MutedText = lipgloss.NewStyle().
-		Foreground(Muted)
+			Foreground(Muted)
 
 	// SelectedItem for highlighted menu/choice items.
 	SelectedItem = lipgloss.NewStyle().
-		Foreground(Highlight).
-		Bold(true)
+			Foreground(Highlight).
+			Bold(true)
 
 	// UnselectedItem for non-highlighted items.
 	UnselectedItem = lipgloss.NewStyle().
-		Foreground(Text)
+			Foreground(Text)
 
 	// StatusBar for the bottom status bar.
 	StatusBar = lipgloss.NewStyle().
-		Foreground(Text).
-		Background(lipgloss.Color("#2A2A2A")).
-		Padding(0, 1)
+			Foreground(Text).
+			Background(lipgloss.Color("#2A2A2A")).
+			Padding(0, 1)
 
 	// Border style for the main frame.
 	Border = lipgloss.NewStyle().
@@ -156,11 +156,11 @@ var (
 
 	// DangerText for HP warnings, errors.
 	DangerText = lipgloss.NewStyle().
-		Foreground(Danger)
+			Foreground(Danger)
 
 	// SuccessText for positive feedback.
 	SuccessText = lipgloss.NewStyle().
-		Foreground(Success)
+			Foreground(Success)
 )
 
 // Rarity colors for achievement popup.

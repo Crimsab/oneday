@@ -46,6 +46,25 @@ type ASCIIArtCue struct {
 	Placement string `json:"placement,omitempty"`
 }
 
+// VisualCue requests optional async generated imagery for a scene.
+type VisualCue struct {
+	Kind          string         `json:"kind"`
+	Subject       string         `json:"subject"`
+	Mood          string         `json:"mood,omitempty"`
+	Composition   string         `json:"composition,omitempty"`
+	StylePreset   string         `json:"style_preset,omitempty"`
+	Importance    string         `json:"importance,omitempty"`
+	SpoilerPolicy string         `json:"spoiler_policy,omitempty"`
+	Negative      string         `json:"negative,omitempty"`
+	Entities      []VisualEntity `json:"entities,omitempty"`
+}
+
+type VisualEntity struct {
+	Name      string `json:"name"`
+	Type      string `json:"type,omitempty"`
+	VisualRef string `json:"visual_ref,omitempty"`
+}
+
 // NarrativeResponse is the structured JSON payload the AI embeds in its reply.
 // Fields mirror the game engine's NarrativeResponse in internal/engine/types.go
 // but are redeclared here so the ai package stays self-contained.
@@ -60,6 +79,7 @@ type NarrativeResponse struct {
 	EntitiesMentioned []EntityMention        `json:"entities_mentioned,omitempty"`
 	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
 	ASCIICue          *ASCIIArtCue           `json:"ascii_cue,omitempty"`
+	VisualCue         *VisualCue             `json:"visual_cue,omitempty"`
 	ASCIIArt          string                 `json:"ascii_art,omitempty"`
 	AchievementEarned *AchievementPayload    `json:"achievement_earned,omitempty"`
 	Challenge         string                 `json:"challenge,omitempty"`

@@ -108,3 +108,27 @@ func TestDetectStalledNarrativeDraftAcceptsMeaningfulTimeSkip(t *testing.T) {
 		t.Fatalf("expected time skip draft to pass, got %+v", issue)
 	}
 }
+
+func TestSceneContractIgnoresUnknownStateChangesAsMovement(t *testing.T) {
+	narrative := &NarrativeResponse{
+		Narrative: "La scena resta ferma, ma il modello emette una chiave sbagliata.",
+		StateChanges: map[string]interface{}{
+			"skil_xp": map[string]interface{}{"skill": "Stealth", "xp": 25},
+		},
+	}
+	if narrativeHasStructuralMovement(narrative) {
+		t.Fatal("unknown state_changes key should not count as validated scene movement")
+	}
+}
+
+func TestSceneContractAcceptsKnownStateChangeAsMovement(t *testing.T) {
+	narrative := &NarrativeResponse{
+		Narrative: "La scena cambia: paghi un costo concreto.",
+		StateChanges: map[string]interface{}{
+			"currency": -2,
+		},
+	}
+	if !narrativeHasStructuralMovement(narrative) {
+		t.Fatal("known meaningful state change should count as scene movement")
+	}
+}
