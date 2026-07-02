@@ -8,9 +8,9 @@ services:
     restart: unless-stopped
     working_dir: /opt/oneday
     environment:
-      TZ: Europe/Rome
-      ONEDAY_ROOT: /opt/oneday
-      ONEDAY_GATEWAY_ADDR: 0.0.0.0:8788
+      - TZ=Europe/Rome
+      - ONEDAY_ROOT=/opt/oneday
+      - ONEDAY_GATEWAY_ADDR=0.0.0.0:8788
     volumes:
       - .:/opt/oneday
     dns:
