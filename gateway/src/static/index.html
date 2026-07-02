@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OneDay</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="story-rail">
+      <div class="brand-row">
+        <div>
+          <h1>OneDay</h1>
+          <p id="healthLine">Gateway starting</p>
+        </div>
+        <button id="themeToggle" class="icon-button" type="button" title="Toggle theme">T</button>
+      </div>
+      <div class="rail-tools">
+        <input id="storySearch" class="search-input" type="search" placeholder="Filter stories">
+        <button id="refreshStories" class="small-button" type="button">Refresh</button>
+      </div>
+      <div id="storyList" class="story-list"></div>
+    </aside>
+
+    <main class="play-area">
+      <header class="top-strip">
+        <div>
+          <p class="section-label">Active Story</p>
+          <h2 id="storyTitle">Select a story</h2>
+        </div>
+        <div class="status-grid">
+          <div><span>Turn</span><strong id="turnValue">-</strong></div>
+          <div><span>Location</span><strong id="locationValue">-</strong></div>
+          <div><span>Chapter</span><strong id="chapterValue">-</strong></div>
+          <div><span>Sync</span><strong id="syncValue">Idle</strong></div>
+        </div>
+      </header>
+
+      <section class="content-grid">
+        <section class="transcript-panel" aria-label="Narrative transcript">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">Transcript</p>
+              <h3>Narrative</h3>
+            </div>
+            <button id="jumpBottom" class="small-button" type="button">Bottom</button>
+          </div>
+          <div id="transcript" class="transcript empty-state">Choose a story to load the canonical transcript.</div>
+        </section>
+
+        <aside class="state-panel" aria-label="Canonical state">
+          <nav class="tabs" id="tabs">
+            <button data-tab="overview" class="active" type="button">Overview</button>
+            <button data-tab="inventory" type="button">Inventory</button>
+            <button data-tab="stats" type="button">Stats</button>
+            <button data-tab="codex" type="button">Codex</button>
+            <button data-tab="fronts" type="button">Fronts</button>
+            <button data-tab="investigations" type="button">Investigations</button>
+            <button data-tab="projects" type="button">Projects</button>
+            <button data-tab="history" type="button">History</button>
+            <button data-tab="saves" type="button">Saves</button>
+          </nav>
+          <div id="panelBody" class="panel-body empty-state">State panels appear after selecting a story.</div>
+        </aside>
+      </section>
+
+      <section class="choice-strip" aria-label="Choices">
+        <div id="choices" class="choices empty-state">Choices will appear here.</div>
+      </section>
+
+      <form id="composer" class="composer">
+        <textarea id="actionInput" placeholder="Write an action or command. Example: /advance next morning"></textarea>
+        <div class="composer-actions">
+          <button id="sendAction" class="primary-button" type="submit">Send</button>
+          <button id="clearAction" class="small-button" type="button">Clear</button>
+        </div>
+      </form>
+    </main>
+  </div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
