@@ -64,6 +64,7 @@ func (m SettingsModel) View() string {
 		fmt.Sprintf("Typewriter effect: %t", m.cfg.Game.TypewriterEffect),
 		fmt.Sprintf("Typewriter speed: %d cps", m.cfg.Game.TypewriterSpeed),
 		fmt.Sprintf("visible_private_thoughts: %t", m.cfg.Game.VisiblePrivateThoughts),
+		fmt.Sprintf("reward_budget: %s", m.cfg.Game.RewardBudget),
 		"",
 		theme.Subtitle.Render("Config"),
 		"Read-only for now. Edit config.yaml to change providers, keys, and defaults.",

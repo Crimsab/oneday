@@ -71,6 +71,7 @@ type WorldState struct {
 	PlayerGuidanceJSON     string    `json:"player_guidance_json"`
 	FrontsJSON             string    `json:"fronts_json"`
 	CharacterTimelineJSON  string    `json:"character_timeline_json"`
+	SceneContractJSON      string    `json:"scene_contract_json"`
 	CurrentChapter         int       `json:"current_chapter"`
 	CurrentTurn            int       `json:"current_turn"`
 	UpdatedAt              time.Time `json:"updated_at"`

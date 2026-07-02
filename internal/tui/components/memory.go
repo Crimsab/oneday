@@ -27,8 +27,8 @@ type MemoryModel struct {
 	showIndex   int      // which symbol to show during "show" phase
 	playerInput []string // what the player has entered so far
 	result      *engine.ChallengeResult
-	failed      bool   // true if player made a wrong input
-	wrongAt     int    // index of wrong input
+	failed      bool // true if player made a wrong input
+	wrongAt     int  // index of wrong input
 	width       int
 	height      int
 }

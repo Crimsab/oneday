@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -108,6 +109,14 @@ func TestMemoryGeneratesRandomSequence(t *testing.T) {
 	}
 }
 
+func TestMinigameMemoryUsesInjectedRNG(t *testing.T) {
+	first := NewMemoryChallengeWithRNG(nil, 6, NewRNGService(42))
+	second := NewMemoryChallengeWithRNG(nil, 6, NewRNGService(42))
+	if strings.Join(first.Sequence, ",") != strings.Join(second.Sequence, ",") {
+		t.Fatalf("seeded memory sequences differ: %v vs %v", first.Sequence, second.Sequence)
+	}
+}
+
 // --- QuickTime Tests ---
 
 func TestQuickTimeWithinLimit(t *testing.T) {
@@ -171,5 +180,29 @@ func TestRiddleWithExtraWhitespace(t *testing.T) {
 	result := rc.CheckRiddle("  a mountain  ")
 	if !result.Passed {
 		t.Errorf("trimmed match should pass, got: %s", result.Detail)
+	}
+}
+
+func TestRiddleEmptyAnswerFails(t *testing.T) {
+	rc := NewRiddleChallenge("What has roots as nobody sees?", "a mountain")
+	result := rc.CheckRiddle("")
+	if result.Passed {
+		t.Errorf("empty answer should fail, got: %s", result.Detail)
+	}
+}
+
+func TestRiddleFailureDoesNotRevealExpectedAnswer(t *testing.T) {
+	rc := NewRiddleChallenge("What has roots as nobody sees?", "a mountain")
+	result := rc.CheckRiddle("a river")
+	if strings.Contains(strings.ToLower(result.Detail), "mountain") {
+		t.Errorf("failure detail leaked expected answer: %s", result.Detail)
+	}
+}
+
+func TestRiddleOneLetterPartialDoesNotPass(t *testing.T) {
+	rc := NewRiddleChallenge("What has roots as nobody sees?", "a mountain")
+	result := rc.CheckRiddle("a")
+	if result.Passed {
+		t.Errorf("one-letter partial answer should fail, got: %s", result.Detail)
 	}
 }

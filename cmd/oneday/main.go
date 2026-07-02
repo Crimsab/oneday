@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -21,7 +22,9 @@ import (
 	"github.com/crimsab/oneday/internal/aifactory"
 	"github.com/crimsab/oneday/internal/buildinfo"
 	"github.com/crimsab/oneday/internal/config"
+	gameservice "github.com/crimsab/oneday/internal/game/service"
 	"github.com/crimsab/oneday/internal/rag"
+	"github.com/crimsab/oneday/internal/server"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui"
 )
@@ -105,6 +108,17 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating AI router: %v\n", err)
 		os.Exit(1)
+	}
+
+	if wantsServe(os.Args[1:]) {
+		addr := serveAddr(os.Args[1:])
+		turns := gameservice.NewInProcessTurnService(cfg, db, router)
+		fmt.Printf("OneDay browser server listening at %s\n", server.ServeURL(addr))
+		if err := server.NewWithTurnService(db, turns).ListenAndServe(context.Background(), addr); err != nil && !errors.Is(err, context.Canceled) {
+			fmt.Fprintf(os.Stderr, "Server failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	// Start TUI
@@ -223,6 +237,22 @@ func wantsStoryPacksList(args []string) bool {
 
 func wantsExport(args []string) bool {
 	return len(args) >= 1 && args[0] == "export"
+}
+
+func wantsServe(args []string) bool {
+	return len(args) >= 1 && args[0] == "serve"
+}
+
+func serveAddr(args []string) string {
+	for i, arg := range args {
+		if arg == "--addr" && i+1 < len(args) {
+			return args[i+1]
+		}
+		if strings.HasPrefix(arg, "--addr=") {
+			return strings.TrimPrefix(arg, "--addr=")
+		}
+	}
+	return "127.0.0.1:8787"
 }
 
 type localEmbeddingModel struct {

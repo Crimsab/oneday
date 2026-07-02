@@ -387,6 +387,29 @@ func TestStoryCreatorCoercesCurrencyArray(t *testing.T) {
 	}
 }
 
+func TestNoCombatQuickActionCanDisablePreviousCombat(t *testing.T) {
+	previous := &StoryDefinition{
+		StatsSchema: StatsSchema{
+			Vitals:     []StatDef{{Key: "hp", Label: "HP", Starting: 10}},
+			Attributes: []StatDef{{Key: "wit", Label: "Wit", Starting: 5}},
+			HasCombat:  true,
+		},
+	}
+	def := &StoryDefinition{
+		StatsSchema: StatsSchema{
+			Vitals:     []StatDef{{Key: "focus", Label: "Focus", Starting: 10}},
+			Attributes: []StatDef{{Key: "heart", Label: "Heart", Starting: 5}},
+			HasCombat:  false,
+		},
+	}
+
+	normalizeStoryDefinitionWithOptions(def, "", previous, storyDefinitionParseOptions{ForceDisableCombat: true})
+
+	if def.StatsSchema.HasCombat {
+		t.Fatal("HasCombat = true, want false after explicit no_combat action")
+	}
+}
+
 func TestStoryCreatorCoercesSettingObjectLists(t *testing.T) {
 	partial := `{
 	  "name": "Le Ciminiere di Nerofumo",

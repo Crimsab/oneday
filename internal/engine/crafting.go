@@ -36,7 +36,7 @@ type CraftingResponse struct {
 
 // CraftingGuidance is local QoL data derived from inventory + known recipes.
 type CraftingGuidance struct {
-	Materials   []string
+	Materials    []string
 	MaterialTags []string
 	CraftableNow []string
 	NearMisses   []string

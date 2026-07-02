@@ -3,28 +3,26 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
-	"math/rand"
 	"strings"
 
 	"github.com/crimsab/oneday/internal/storage"
 )
 
 // ChallengeEngine resolves challenges mechanically.
-type ChallengeEngine struct{}
+type ChallengeEngine struct {
+	rng *RNGService
+}
 
 // NewChallengeEngine creates a new ChallengeEngine.
 func NewChallengeEngine() *ChallengeEngine {
-	return &ChallengeEngine{}
+	return NewChallengeEngineWithRNG(defaultRNGService())
 }
 
-// RollD100 rolls a 100-sided die. Returns a value in [1, 100].
-func RollD100() int {
-	return rand.Intn(100) + 1
-}
-
-// RollD20 rolls a 20-sided die. Returns a value in [1, 20].
-func RollD20() int {
-	return rand.Intn(20) + 1
+func NewChallengeEngineWithRNG(rng *RNGService) *ChallengeEngine {
+	if rng == nil {
+		rng = defaultRNGService()
+	}
+	return &ChallengeEngine{rng: rng}
 }
 
 // Resolve executes a challenge spec against the current game state.
@@ -84,7 +82,8 @@ func (ce *ChallengeEngine) resolveStatCheck(spec *ChallengeSpec, char *storage.C
 
 // resolveDiceRoll performs a d100 roll with modifiers against a difficulty.
 func (ce *ChallengeEngine) resolveDiceRoll(spec *ChallengeSpec) (*ChallengeResult, error) {
-	roll := RollD100()
+	rollRecord := ce.rng.Roll("challenge.dice_roll", 100)
+	roll := rollRecord.Raw
 
 	// Critical on raw roll before modifiers.
 	isCriticalSuccess := roll >= 96
@@ -95,6 +94,9 @@ func (ce *ChallengeEngine) resolveDiceRoll(spec *ChallengeSpec) (*ChallengeResul
 		modSum += m.Value
 	}
 	total := roll + modSum
+	rollRecord.Modifiers = spec.Modifiers
+	rollRecord.Total = total
+	rollRecord.Target = spec.Difficulty
 
 	passed := total >= spec.Difficulty
 	// Critical overrides everything.
@@ -115,6 +117,7 @@ func (ce *ChallengeEngine) resolveDiceRoll(spec *ChallengeSpec) (*ChallengeResul
 	if isCriticalFailure {
 		outcome = "CRITICAL FAILURE"
 	}
+	rollRecord.Outcome = outcome
 
 	detail := fmt.Sprintf("rolled %d + modifiers %+d = %d vs difficulty %d → %s",
 		roll, modSum, total, spec.Difficulty, outcome)
@@ -126,6 +129,7 @@ func (ce *ChallengeEngine) resolveDiceRoll(spec *ChallengeSpec) (*ChallengeResul
 		Difficulty: spec.Difficulty,
 		Modifiers:  spec.Modifiers,
 		Detail:     detail,
+		RollLog:    []RollRecord{rollRecord},
 	}, nil
 }
 
@@ -268,46 +272,63 @@ func getStatValue(statsJSON string, path string) (float64, error) {
 	return getStatValue(string(nestedJSON), parts[1])
 }
 
-// hasItem checks if an item name appears in inventory JSON (case-insensitive substring match).
+// hasItem checks canonical item identifiers in inventory JSON.
+// It matches id, slug, or name after normalization; descriptions and raw JSON
+// text are intentionally ignored so challenge requirements cannot pass through
+// accidental substring matches.
 func hasItem(jsonData string, itemName string) bool {
 	if jsonData == "" || itemName == "" {
 		return false
 	}
 
-	needle := strings.ToLower(itemName)
-
-	// Try structured inventory: {"backpack": [{"name": "..."}]}
-	var invMap map[string]interface{}
-	if err := json.Unmarshal([]byte(jsonData), &invMap); err == nil {
-		// Check "backpack" array
-		if backpack, ok := invMap["backpack"]; ok {
-			if items, ok := backpack.([]interface{}); ok {
-				for _, item := range items {
-					switch i := item.(type) {
-					case string:
-						if strings.Contains(strings.ToLower(i), needle) {
-							return true
-						}
-					case map[string]interface{}:
-						if name, ok := i["name"].(string); ok {
-							if strings.Contains(strings.ToLower(name), needle) {
-								return true
-							}
-						}
-					}
-				}
-			}
-		}
-
-		// Also check inside a nested "inventory" key (stats.json format)
-		if inv, ok := invMap["inventory"]; ok {
-			invJSON, _ := json.Marshal(inv)
-			return hasItem(string(invJSON), itemName)
-		}
+	needle := normalizeItemLookupKey(itemName)
+	if needle == "" {
+		return false
 	}
 
-	// Fallback: raw string search (handles various formats)
-	return strings.Contains(strings.ToLower(jsonData), needle)
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(jsonData), &decoded); err != nil {
+		return false
+	}
+	return inventoryValueHasItem(decoded, needle)
+}
+
+func inventoryValueHasItem(value interface{}, needle string) bool {
+	switch typed := value.(type) {
+	case []interface{}:
+		for _, item := range typed {
+			if inventoryValueHasItem(item, needle) {
+				return true
+			}
+		}
+	case map[string]interface{}:
+		if inventoryMapItemMatches(typed, needle) {
+			return true
+		}
+		for _, key := range []string{"backpack", "inventory", "items", "equipped", "quest"} {
+			if nested, ok := typed[key]; ok && inventoryValueHasItem(nested, needle) {
+				return true
+			}
+		}
+	case string:
+		return normalizeItemLookupKey(typed) == needle
+	}
+	return false
+}
+
+func inventoryMapItemMatches(item map[string]interface{}, needle string) bool {
+	for _, key := range []string{"id", "slug", "name"} {
+		if value, ok := item[key].(string); ok && normalizeItemLookupKey(value) == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeItemLookupKey(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.NewReplacer("_", " ", "-", " ").Replace(value)
+	return strings.Join(strings.Fields(value), " ")
 }
 
 // getSkillLevel looks up a skill by name and returns its level.

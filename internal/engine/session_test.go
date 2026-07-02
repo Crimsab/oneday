@@ -3,6 +3,7 @@ package engine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -119,6 +120,51 @@ func TestAppendHistoryEntryDoesNotAdvanceTurn(t *testing.T) {
 	}
 }
 
+func TestAppendSubTurnPersistsRollLogToJSONL(t *testing.T) {
+	root := t.TempDir()
+	db, err := storage.Open(filepath.Join(root, "oneday-test.db"))
+	if err != nil {
+		t.Fatalf("storage.Open: %v", err)
+	}
+	defer db.Close()
+
+	createSessionTestStory(t, db, "story-roll-log", 0)
+	session, err := NewGameSession(db, "story-roll-log", filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatalf("NewGameSession: %v", err)
+	}
+	defer session.Close(db)
+
+	subID, err := session.OpenSubSession("combat")
+	if err != nil {
+		t.Fatalf("OpenSubSession: %v", err)
+	}
+	if err := session.AppendSubTurn(subID, ChatEntry{
+		Timestamp:   time.Now(),
+		MessageType: "combat",
+		Output: &ChatOutput{
+			Narrative: "The blade hits.",
+			RollLog: []RollRecord{
+				{Source: "combat.player_attack", Sides: 20, Raw: 17, Total: 21, Target: 8, Outcome: "damage:13", Seed: 42},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("AppendSubTurn: %v", err)
+	}
+	if err := session.CloseSubSession(subID); err != nil {
+		t.Fatalf("CloseSubSession: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(root, "data", "stories", "story-roll-log", "sessions", session.SessionID(), subID+".jsonl"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, `"roll_log"`) || !strings.Contains(text, `"combat.player_attack"`) {
+		t.Fatalf("sub-session JSONL = %s, want roll_log with combat label", text)
+	}
+}
+
 func TestNewGameSessionUsesCanonicalTurnInsteadOfJSONLMirror(t *testing.T) {
 	root := t.TempDir()
 	db, err := storage.Open(filepath.Join(root, "oneday-test.db"))
@@ -153,6 +199,33 @@ func TestNewGameSessionUsesCanonicalTurnInsteadOfJSONLMirror(t *testing.T) {
 
 	if got := session.Turn(); got != 2 {
 		t.Fatalf("session turn = %d, want 2 from canonical DB state", got)
+	}
+}
+
+func TestCloseMirrorsLeavesDBSessionActive(t *testing.T) {
+	root := t.TempDir()
+	db, err := storage.Open(filepath.Join(root, "oneday-test.db"))
+	if err != nil {
+		t.Fatalf("storage.Open: %v", err)
+	}
+	defer db.Close()
+
+	createSessionTestStory(t, db, "story-close-mirrors", 0)
+	session, err := NewGameSession(db, "story-close-mirrors", filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatalf("NewGameSession: %v", err)
+	}
+	sessionID := session.SessionID()
+	if err := session.CloseMirrors(); err != nil {
+		t.Fatalf("CloseMirrors: %v", err)
+	}
+
+	active, err := db.GetActiveSession("story-close-mirrors")
+	if err != nil {
+		t.Fatalf("GetActiveSession: %v", err)
+	}
+	if active == nil || active.ID != sessionID {
+		t.Fatalf("active session = %#v, want %s", active, sessionID)
 	}
 }
 

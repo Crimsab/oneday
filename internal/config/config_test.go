@@ -51,6 +51,12 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.Embedding.Provider != "auto" {
 		t.Errorf("Embedding.Provider = %q, want auto", cfg.AI.Embedding.Provider)
 	}
+	if cfg.Game.VisiblePrivateThoughts {
+		t.Error("VisiblePrivateThoughts = true, want false in player mode defaults")
+	}
+	if cfg.Game.RewardBudget != "balanced" {
+		t.Errorf("RewardBudget = %q, want balanced", cfg.Game.RewardBudget)
+	}
 }
 
 func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
@@ -61,6 +67,7 @@ func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
 	cfg.AI.Embedding.Local.Model = ""
 	cfg.AI.Embedding.Local.Dimensions = 0
 	cfg.AI.Generation.UtilityModel = ""
+	cfg.Game.RewardBudget = ""
 
 	cfg.Migrate()
 
@@ -72,6 +79,9 @@ func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
 	}
 	if cfg.AI.Generation.UtilityModel != "gpt-5.4-mini" {
 		t.Fatalf("UtilityModel = %q", cfg.AI.Generation.UtilityModel)
+	}
+	if cfg.Game.RewardBudget != "balanced" {
+		t.Fatalf("RewardBudget = %q, want balanced", cfg.Game.RewardBudget)
 	}
 }
 
@@ -208,6 +218,16 @@ func TestValidateEmptyUtilityModel(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil {
 		t.Error("expected validation error for empty utility model")
+	}
+}
+
+func TestValidateInvalidRewardBudget(t *testing.T) {
+	cfg := Default()
+	cfg.Game.RewardBudget = "shower-of-gold"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("expected validation error for invalid reward budget")
 	}
 }
 

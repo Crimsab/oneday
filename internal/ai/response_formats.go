@@ -305,6 +305,7 @@ func narrativeSchema() map[string]any {
 			},
 			"turn_delta": nullableObjectSchema(turnDeltaSchema()),
 			"ascii_cue":  nullableObjectSchema(asciiCueSchema()),
+			"visual_cue": nullableObjectSchema(visualCueSchema()),
 			"state_changes": map[string]any{
 				"type":                 "object",
 				"additionalProperties": true,
@@ -360,6 +361,37 @@ func asciiCueSchema() map[string]any {
 			"subject":   stringSchema(),
 			"detail":    stringSchema(),
 			"placement": stringSchema(),
+		},
+	}
+}
+
+func visualCueSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"kind", "subject"},
+		"properties": map[string]any{
+			"kind":           stringSchema(),
+			"subject":        stringSchema(),
+			"mood":           stringSchema(),
+			"composition":    stringSchema(),
+			"style_preset":   stringSchema(),
+			"importance":     stringSchema(),
+			"spoiler_policy": stringSchema(),
+			"negative":       stringSchema(),
+			"entities": map[string]any{
+				"type": "array",
+				"items": map[string]any{
+					"type":                 "object",
+					"additionalProperties": false,
+					"required":             []string{"name"},
+					"properties": map[string]any{
+						"name":       stringSchema(),
+						"type":       stringSchema(),
+						"visual_ref": stringSchema(),
+					},
+				},
+			},
 		},
 	}
 }

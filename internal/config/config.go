@@ -105,10 +105,11 @@ type RAGConfig struct {
 
 // GameConfig for gameplay settings.
 type GameConfig struct {
-	AutosaveEvery          int  `yaml:"autosave_every"`
-	TypewriterEffect       bool `yaml:"typewriter_effect"`
-	TypewriterSpeed        int  `yaml:"typewriter_speed"`
-	VisiblePrivateThoughts bool `yaml:"visible_private_thoughts"`
+	AutosaveEvery          int    `yaml:"autosave_every"`
+	TypewriterEffect       bool   `yaml:"typewriter_effect"`
+	TypewriterSpeed        int    `yaml:"typewriter_speed"`
+	VisiblePrivateThoughts bool   `yaml:"visible_private_thoughts"`
+	RewardBudget           string `yaml:"reward_budget"`
 }
 
 // validProviders is the set of recognized provider names.
@@ -183,7 +184,8 @@ func Default() Config {
 			AutosaveEvery:          5,
 			TypewriterEffect:       true,
 			TypewriterSpeed:        80,
-			VisiblePrivateThoughts: true,
+			VisiblePrivateThoughts: false,
+			RewardBudget:           "balanced",
 		},
 	}
 }
@@ -233,6 +235,9 @@ func (c *Config) Migrate() {
 		if c.AI.Generation.UtilityModel == "" {
 			c.AI.Generation.UtilityModel = "gpt-5.4-mini"
 		}
+	}
+	if strings.TrimSpace(c.Game.RewardBudget) == "" {
+		c.Game.RewardBudget = "balanced"
 	}
 	c.ConfigVersion = 2
 }
@@ -297,6 +302,12 @@ func (c *Config) Validate() error {
 		if c.AI.Embedding.Local.Dimensions <= 0 {
 			return fmt.Errorf("ai.embedding.local.dimensions must be positive when ai.embedding.provider is local")
 		}
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Game.RewardBudget)) {
+	case "generous", "balanced", "harsh":
+		c.Game.RewardBudget = strings.ToLower(strings.TrimSpace(c.Game.RewardBudget))
+	default:
+		return fmt.Errorf("game.reward_budget must be one of: generous, balanced, harsh")
 	}
 	return nil
 }
