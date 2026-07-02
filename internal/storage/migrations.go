@@ -37,6 +37,7 @@ func (db *DB) migrate() error {
 		{17, migrationV17},
 		{18, migrationV18},
 		{19, migrationV19},
+		{20, migrationV20},
 	}
 
 	for _, m := range migrations {
@@ -343,4 +344,16 @@ CREATE INDEX IF NOT EXISTS idx_turn_idempotency_created_at
 const migrationV19 = `
 -- Optional persisted scene progression contract for anti-loop/runtime guidance.
 ALTER TABLE world_state ADD COLUMN scene_contract_json TEXT NOT NULL DEFAULT '{}';
+`
+
+const migrationV20 = `
+-- Cross-process story turn lock shared by terminal and browser gateway clients.
+CREATE TABLE IF NOT EXISTS story_turn_locks (
+	story_id TEXT PRIMARY KEY REFERENCES stories(id) ON DELETE CASCADE,
+	owner TEXT NOT NULL,
+	acquired_at TEXT NOT NULL,
+	locked_until TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_story_turn_locks_locked_until
+	ON story_turn_locks(locked_until);
 `
