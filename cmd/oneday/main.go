@@ -110,6 +110,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	if wantsGatewayTurn(os.Args[1:]) {
+		if err := runGatewayTurn(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway turn failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if wantsServe(os.Args[1:]) {
 		addr := serveAddr(os.Args[1:])
 		turns := gameservice.NewInProcessTurnService(cfg, db, router)
@@ -241,6 +249,10 @@ func wantsExport(args []string) bool {
 
 func wantsServe(args []string) bool {
 	return len(args) >= 1 && args[0] == "serve"
+}
+
+func wantsGatewayTurn(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-turn"
 }
 
 func serveAddr(args []string) string {
