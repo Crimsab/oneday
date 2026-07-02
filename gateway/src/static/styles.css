@@ -82,6 +82,7 @@ button:disabled {
 
 .story-rail {
   min-width: 0;
+  max-width: 100%;
   border-right: 1px solid var(--line);
   background: var(--surface-2);
   padding: 16px;
@@ -228,6 +229,7 @@ textarea:focus {
 
 .play-area {
   min-width: 0;
+  max-width: 100%;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
   gap: 12px;
@@ -240,6 +242,7 @@ textarea:focus {
 .state-panel,
 .choice-strip,
 .composer {
+  max-width: 100%;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface);
@@ -342,9 +345,11 @@ textarea:focus {
   gap: 6px;
   padding: 10px;
   min-width: 0;
+  max-width: 100%;
 }
 
 .tabs button {
+  flex: 0 0 auto;
   min-height: 30px;
   padding: 0 9px;
   font-size: 12px;
@@ -496,6 +501,30 @@ textarea:focus {
   .composer-actions {
     width: auto;
     flex-direction: row;
+  }
+}
+
+@media (max-width: 520px) {
+  .story-rail,
+  .play-area {
+    padding: 14px;
+  }
+
+  .rail-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .small-button {
+    width: 100%;
+  }
+
+  .tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .panel-head button {
+    flex: 0 0 auto;
   }
 }
 
