@@ -119,9 +119,9 @@ Practical rules:
 
 Current default provider strategy:
 
-- primary: `litellm` via `http://llm.example.com/v1` with `grok-4.1-fast`
+- primary: `litellm` via `http://llm.example.com/v1` with `gpt-5.4-mini`
 - `openrouter` is available but disabled by default until you provide a real API key
-- optional experimental `codex` provider shells out to the local Codex CLI after `codex login`, defaulting to `gpt-5.5` with reasoning `off`
+- optional experimental `codex` provider shells out to the local Codex CLI after `codex login`, defaulting to `gpt-5.4-mini` with reasoning `off`
 - ancillary repair/validation work can use `ai.generation.utility_model`, defaulting to `gpt-5.4-mini` when no dedicated repair model is configured
 - final fallback: `claude-code` if enabled
 - optional ambient ASCII art uses `ai.ascii_art.*` and can target a different model from the main narrator
