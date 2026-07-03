@@ -6,6 +6,7 @@ import {
   deleteSave,
   getCommandDescriptors,
   getHealth,
+  getModelSettings,
   getSnapshot,
   getStories,
   loadSave,
@@ -31,6 +32,7 @@ import type {
   CommandDescriptor,
   MetaCommand,
   MetaResult,
+  ModelSettings,
   ModuleTab,
   OverlayKind,
   PlayerAction,
@@ -62,6 +64,7 @@ function App() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [preferences, setPreferences] = useState<AppPreferences>(() => loadPreferences());
   const [commandDescriptors, setCommandDescriptors] = useState<CommandDescriptor[]>([]);
+  const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -93,6 +96,14 @@ function App() {
     }
   }, []);
 
+  const refreshModelSettings = useCallback(async () => {
+    try {
+      setModelSettings(await getModelSettings());
+    } catch {
+      setModelSettings(null);
+    }
+  }, []);
+
   const loadSnapshot = useCallback(async (nextStoryId = storyId) => {
     if (!nextStoryId) return;
     setSync("Loading");
@@ -109,8 +120,9 @@ function App() {
   useEffect(() => {
     void refreshHealth();
     void refreshCommandDescriptors();
+    void refreshModelSettings();
     void refreshStories();
-  }, [refreshCommandDescriptors, refreshHealth, refreshStories]);
+  }, [refreshCommandDescriptors, refreshHealth, refreshModelSettings, refreshStories]);
 
   useEffect(() => {
     if (!storyId) return;
@@ -562,6 +574,7 @@ function App() {
         snapshot={snapshot}
         preferences={preferences}
         metaResult={metaResult}
+        modelSettings={modelSettings}
         selectedTab={selectedTab}
         commandDescriptors={commandDescriptors}
         busy={sending}

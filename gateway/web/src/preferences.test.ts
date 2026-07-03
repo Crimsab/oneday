@@ -13,6 +13,12 @@ describe("normalizePreferences", () => {
         showLeftRail: false,
         showInspector: false,
         wrapTranscript: false,
+        narrativeModel: "grok-4.1-fast",
+        utilityModel: "gpt-5.4-mini",
+        repairModel: "gemini-3.1-flash-lite-preview",
+        imageModel: "ascii-ambient",
+        openAIEndpoint: "http://lite.homelab.local/v1",
+        ttsVoice: "Maren",
       }),
     ).toEqual({
       density: "compact",
@@ -21,6 +27,12 @@ describe("normalizePreferences", () => {
       showLeftRail: false,
       showInspector: false,
       wrapTranscript: false,
+      narrativeModel: "grok-4.1-fast",
+      utilityModel: "gpt-5.4-mini",
+      repairModel: "gemini-3.1-flash-lite-preview",
+      imageModel: "ascii-ambient",
+      openAIEndpoint: "http://lite.homelab.local/v1",
+      ttsVoice: "Maren",
     });
 
     expect(
@@ -31,6 +43,7 @@ describe("normalizePreferences", () => {
         showLeftRail: "yes" as never,
         showInspector: "yes" as never,
         wrapTranscript: "no" as never,
+        narrativeModel: 1 as never,
       }),
     ).toEqual(defaultPreferences);
   });

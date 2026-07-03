@@ -1,4 +1,4 @@
-use crate::{db, engine, AppState};
+use crate::{config, db, engine, AppState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -18,6 +18,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/config/models", get(model_settings))
         .route("/api/contracts/commands", get(command_descriptors))
         .route("/api/stories", get(stories))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
@@ -32,6 +33,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories/:story_id/events", get(story_events))
         .fallback_service(spa)
         .with_state(state)
+}
+
+async fn model_settings(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<config::ModelSettings>, ApiError> {
+    Ok(Json(config::read_model_settings(&state.paths.config_path)?))
 }
 
 async fn command_descriptors(

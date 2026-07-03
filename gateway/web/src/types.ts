@@ -23,6 +23,24 @@ export interface AppPreferences {
   showLeftRail: boolean;
   showInspector: boolean;
   wrapTranscript: boolean;
+  narrativeModel: string;
+  utilityModel: string;
+  repairModel: string;
+  imageModel: string;
+  openAIEndpoint: string;
+  ttsVoice: string;
+}
+
+export interface ModelSettings {
+  provider_priority: string[];
+  narrative_models: string[];
+  utility_models: string[];
+  repair_models: string[];
+  image_models: string[];
+  embedding_model: string;
+  embedding_provider: string;
+  codex_reasoning: string;
+  tts_status: string;
 }
 
 export interface Health {

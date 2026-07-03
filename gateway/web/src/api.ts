@@ -9,6 +9,7 @@ import type {
   LoadResponse,
   MetaEnvelope,
   MetaResponse,
+  ModelSettings,
   SaveEnvelope,
   SaveResponse,
   StorySnapshot,
@@ -51,6 +52,10 @@ export function getSnapshot(storyId: string): Promise<StorySnapshot> {
 
 export function getCommandDescriptors(): Promise<CommandDescriptor[]> {
   return request<CommandDescriptor[]>("/api/contracts/commands");
+}
+
+export function getModelSettings(): Promise<ModelSettings> {
+  return request<ModelSettings>("/api/config/models");
 }
 
 export function submitAction(storyId: string, envelope: ActionEnvelope): Promise<ActionResponse> {
