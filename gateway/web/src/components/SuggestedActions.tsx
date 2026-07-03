@@ -35,7 +35,7 @@ export function SuggestedActions({ choices, snapshot, onChoice, onDraft }: Sugge
                 </div>
                 <strong>{choice.text}</strong>
                 <div className="choice-meta">
-                  {presentation.meta.length > 0 ? presentation.meta.map((item) => <small key={item}>{item}</small>) : <small>freeform suggestion</small>}
+                  {presentation.meta.length > 0 ? presentation.meta.map((item) => <small key={item}>{item}</small>) : <small>suggested action</small>}
                 </div>
                 <span className="choice-effect plus">{presentation.gain}</span>
                 <span className="choice-effect minus">{presentation.tradeoff}</span>

@@ -16,17 +16,27 @@ describe("commandToAction", () => {
     expect(commandToAction("/history")).toMatchObject({ handled: true, tab: "history" });
   });
 
-  it("opens overlays for help, saves, and save preparation", () => {
+  it("opens overlays for help and read-only saves", () => {
     expect(commandToAction("/help")).toMatchObject({ handled: true, overlay: "help" });
     expect(commandToAction("/load")).toMatchObject({ handled: true, tab: "saves", overlay: "saves" });
-    expect(commandToAction("/save Camp")).toMatchObject({ handled: true, tab: "saves", overlay: "saves" });
+    expect(commandToAction("/save Camp")).toMatchObject({
+      handled: true,
+      tab: "saves",
+      overlay: "saves",
+      notice: expect.stringContaining("read-only"),
+    });
   });
 
-  it("maps narrator, guide, btw, advance, timeskip, downtime, and talk commands into actions", () => {
-    expect(commandToAction("/btw what changed?")).toEqual({ text: "[BTW] what changed?" });
-    expect(commandToAction("/guide foreshadow the storm")).toEqual({ text: "[Guide] foreshadow the storm" });
-    expect(commandToAction("/narrator keep it weird")).toEqual({ text: "[Narrator] keep it weird" });
-    expect(commandToAction("/n keep it short")).toEqual({ text: "[Narrator] keep it short" });
+  it("blocks terminal-only meta commands instead of submitting narrative actions", () => {
+    for (const command of ["/btw what changed?", "/guide foreshadow the storm", "/narrator keep it weird", "/n keep it short"]) {
+      expect(commandToAction(command)).toMatchObject({
+        handled: true,
+        notice: expect.stringContaining("terminal-only"),
+      });
+    }
+  });
+
+  it("maps advance, timeskip, downtime, and talk commands into actions", () => {
     expect(commandToAction("/advance docks")).toMatchObject({ text: expect.stringContaining("[Advance Scene]") });
     expect(commandToAction("/timeskip tomorrow")).toMatchObject({ text: expect.stringContaining("[Time Skip]") });
     expect(commandToAction("/downtime train")).toEqual({ text: "[Downtime Scene] train" });
@@ -34,9 +44,9 @@ describe("commandToAction", () => {
   });
 
   it("returns usage notices for incomplete commands", () => {
-    expect(commandToAction("/btw")).toMatchObject({ handled: true, notice: expect.stringContaining("Usage") });
-    expect(commandToAction("/guide")).toMatchObject({ handled: true, notice: expect.stringContaining("Usage") });
-    expect(commandToAction("/narrator")).toMatchObject({ handled: true, notice: expect.stringContaining("Usage") });
+    expect(commandToAction("/btw")).toMatchObject({ handled: true, notice: expect.stringContaining("terminal-only") });
+    expect(commandToAction("/guide")).toMatchObject({ handled: true, notice: expect.stringContaining("terminal-only") });
+    expect(commandToAction("/narrator")).toMatchObject({ handled: true, notice: expect.stringContaining("terminal-only") });
     expect(commandToAction("/downtime")).toMatchObject({ handled: true, notice: expect.stringContaining("Usage") });
     expect(commandToAction("/talk")).toMatchObject({ handled: true, tab: "codex", notice: expect.stringContaining("/talk") });
     expect(commandToAction("/talk Maren ask")).toMatchObject({ handled: true, tab: "codex", notice: expect.stringContaining("Maren") });

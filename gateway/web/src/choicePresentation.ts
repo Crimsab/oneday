@@ -8,6 +8,7 @@ export interface ChoicePresentation {
   meta: string[];
   gain: string;
   tradeoff: string;
+  hasMetadata: boolean;
 }
 
 const forceIntents = new Set(["attack", "combat", "aggressive", "force"]);
@@ -19,7 +20,8 @@ export function choicePresentation(choice: ChoiceView, index = 0): ChoicePresent
   const scope = clean(choice.scope);
   const certainty = clean(choice.certainty);
   const stats = (choice.related_stats ?? []).map((stat) => stat.trim()).filter(Boolean);
-  const tone = toneForChoice(intent, risk, index);
+  const hasMetadata = Boolean(intent || risk || scope || certainty || stats.length > 0);
+  const tone = hasMetadata ? toneForChoice(intent, risk) : "neutral";
 
   const meta = [
     intent ? `intent:${intent}` : "",
@@ -33,12 +35,13 @@ export function choicePresentation(choice: ChoiceView, index = 0): ChoicePresent
     tone,
     title: `Choice ${choice.id}`,
     meta,
+    hasMetadata,
     gain: gainText(intent, scope, stats),
     tradeoff: tradeoffText(risk, certainty, stats.length > 0),
   };
 }
 
-export function toneForChoice(intent: string, risk: string, index = 0): ChoiceTone {
+export function toneForChoice(intent: string, risk: string): ChoiceTone {
   if (forceIntents.has(intent)) return "force";
   if (intent === "social") return "social";
   if (intent === "stealth" || intent === "flee") return "stealth";
@@ -48,8 +51,7 @@ export function toneForChoice(intent: string, risk: string, index = 0): ChoiceTo
   if (exploreIntents.has(intent)) return "explore";
   if (intent === "meta") return "meta";
   if (risk === "high" || risk === "extreme" || risk === "desperate") return "force";
-  const fallback: ChoiceTone[] = ["social", "explore", "stealth", "craft", "survive", "lore"];
-  return fallback[index % fallback.length] ?? "neutral";
+  return "neutral";
 }
 
 function gainText(intent: string, scope: string, stats: string[]): string {
@@ -79,7 +81,7 @@ function gainText(intent: string, scope: string, stats: string[]): string {
       return `Narrator framing.${statText}`;
     default:
       if (scope) return `Affects ${scope}.${statText}`;
-      return `Freeform angle.${statText}`;
+      return "No structured metadata.";
   }
 }
 
@@ -99,7 +101,7 @@ function tradeoffText(risk: string, certainty: string, hasStats: boolean): strin
       if (certainty === "safe") return `Predictable, not automatic.${statCaveat}`;
       if (certainty === "uncertain") return `Uncertain outcome.${statCaveat}`;
       if (certainty === "desperate") return `Desperate/costly.${statCaveat}`;
-      return `No risk metadata.${statCaveat}`;
+      return `Outcome depends on scene context.${statCaveat}`;
   }
 }
 
