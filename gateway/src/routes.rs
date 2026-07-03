@@ -1,4 +1,4 @@
-use crate::{db, engine, AppState};
+use crate::{db, engine, events::TurnStreamEvent, AppState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -9,6 +9,7 @@ use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::broadcast::error::RecvError;
 use tower_http::services::{ServeDir, ServeFile};
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -90,8 +91,56 @@ async fn submit_action(
     Path(story_id): Path<String>,
     Json(payload): Json<engine::ActionEnvelope>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let events = engine::submit_action(state.clone(), &story_id, payload).await?;
+    let client_turn = payload.client_turn;
+    let action_kind = payload.action.kind.clone();
+    let action_text = payload.action.text.clone();
+    emit_turn_stream(
+        &state,
+        TurnStreamEvent::status(
+            &story_id,
+            "submitted",
+            client_turn,
+            &action_kind,
+            &action_text,
+            "Action submitted to the live OneDay engine.",
+        ),
+    );
+
+    let events = match engine::submit_action(state.clone(), &story_id, payload).await {
+        Ok(events) => events,
+        Err(err) => {
+            emit_turn_stream(
+                &state,
+                TurnStreamEvent::status(
+                    &story_id,
+                    "failed",
+                    client_turn,
+                    &action_kind,
+                    &action_text,
+                    err.to_string(),
+                ),
+            );
+            return Err(err.into());
+        }
+    };
+    for event in &events.events {
+        emit_turn_stream(
+            &state,
+            TurnStreamEvent::contract(&story_id, client_turn, &action_kind, &action_text, event),
+        );
+    }
     let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    emit_turn_stream(
+        &state,
+        TurnStreamEvent::status(
+            &story_id,
+            "completed",
+            snapshot.version.turn,
+            &action_kind,
+            &action_text,
+            "Browser and terminal state are synchronized.",
+        ),
+    );
     Ok(Json(json!({
         "events": events.events,
         "snapshot": snapshot,
@@ -159,6 +208,7 @@ async fn story_events(
 ) -> Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>> {
     let stream = async_stream::stream! {
         let mut last_version = None;
+        let mut turn_rx = state.turn_events.subscribe();
         if let Ok(snapshot) = db::snapshot(&state.pool, &story_id).await {
             last_version = Some(snapshot.version.clone());
             if let Ok(data) = serde_json::to_string(&snapshot) {
@@ -168,27 +218,55 @@ async fn story_events(
 
         let mut interval = tokio::time::interval(Duration::from_millis(750));
         loop {
-            interval.tick().await;
-            match db::story_version(&state.pool, &story_id).await {
-                Ok(version) => {
-                    if last_version.as_ref() == Some(&version) {
-                        continue;
-                    }
-                    last_version = Some(version);
-                    match db::snapshot(&state.pool, &story_id).await {
-                        Ok(snapshot) => {
-                            if let Ok(data) = serde_json::to_string(&snapshot) {
-                                yield Ok(Event::default().event("snapshot").data(data));
+            tokio::select! {
+                _ = interval.tick() => {
+                    match db::story_version(&state.pool, &story_id).await {
+                        Ok(version) => {
+                            if last_version.as_ref() == Some(&version) {
+                                continue;
+                            }
+                            last_version = Some(version);
+                            match db::snapshot(&state.pool, &story_id).await {
+                                Ok(snapshot) => {
+                                    if let Ok(data) = serde_json::to_string(&TurnStreamEvent::snapshot_changed(
+                                        &story_id,
+                                        snapshot.version.turn,
+                                        snapshot.version.revision,
+                                    )) {
+                                        yield Ok(Event::default().event("turn").data(data));
+                                    }
+                                    if let Ok(data) = serde_json::to_string(&snapshot) {
+                                        yield Ok(Event::default().event("snapshot").data(data));
+                                    }
+                                }
+                                Err(err) => {
+                                    yield Ok(Event::default().event("error").data(err.to_string()));
+                                }
                             }
                         }
                         Err(err) => {
                             yield Ok(Event::default().event("error").data(err.to_string()));
                         }
                     }
-                }
-                Err(err) => {
-                    yield Ok(Event::default().event("error").data(err.to_string()));
-                }
+                },
+                message = turn_rx.recv() => {
+                    match message {
+                        Ok(turn_event) => {
+                            if turn_event.story_id != story_id {
+                                continue;
+                            }
+                            if let Ok(data) = serde_json::to_string(&turn_event) {
+                                yield Ok(Event::default().event("turn").data(data));
+                            }
+                        }
+                        Err(RecvError::Lagged(skipped)) => {
+                            if let Ok(data) = serde_json::to_string(&TurnStreamEvent::lagged(&story_id, skipped)) {
+                                yield Ok(Event::default().event("turn").data(data));
+                            }
+                        }
+                        Err(RecvError::Closed) => break,
+                    }
+                },
             }
         }
     };
@@ -198,6 +276,10 @@ async fn story_events(
             .interval(Duration::from_secs(10))
             .text("keepalive"),
     )
+}
+
+fn emit_turn_stream(state: &AppState, event: TurnStreamEvent) {
+    let _ = state.turn_events.send(event);
 }
 
 #[derive(Debug)]

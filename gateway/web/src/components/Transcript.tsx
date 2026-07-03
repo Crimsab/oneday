@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef } from "react";
 import { compactText, messageClock } from "../format";
+import { turnEventDetail, turnEventTitle } from "../turnEvents";
 import { MarkdownText } from "./MarkdownText";
-import type { MessageView, PendingTurnView } from "../types";
+import type { MessageView, PendingTurnView, TurnStreamEvent } from "../types";
 
 interface TranscriptProps {
   messages: MessageView[];
   hiddenBeforeId: number;
   pendingTurn?: PendingTurnView | null;
+  liveEvents?: TurnStreamEvent[];
 }
 
-export function Transcript({ messages, hiddenBeforeId, pendingTurn }: TranscriptProps) {
+export function Transcript({ messages, hiddenBeforeId, pendingTurn, liveEvents = [] }: TranscriptProps) {
   const ref = useRef<HTMLDivElement>(null);
   const visibleMessages = useMemo(
     () => messages.filter((message) => message.id > hiddenBeforeId),
@@ -19,7 +21,7 @@ export function Transcript({ messages, hiddenBeforeId, pendingTurn }: Transcript
   useEffect(() => {
     const node = ref.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [pendingTurn?.id, visibleMessages.length]);
+  }, [liveEvents.length, pendingTurn?.id, visibleMessages.length]);
 
   return (
     <div ref={ref} className="transcript" aria-live="polite">
@@ -31,6 +33,7 @@ export function Transcript({ messages, hiddenBeforeId, pendingTurn }: Transcript
         visibleMessages.map((message) => <TranscriptMessage key={message.id} message={message} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
+      {liveEvents.length > 0 && <TurnEventStream events={liveEvents} />}
     </div>
   );
 }
@@ -70,6 +73,23 @@ function PendingTurnMessage({ pendingTurn }: { pendingTurn: PendingTurnView }) {
         </div>
       </div>
     </article>
+  );
+}
+
+function TurnEventStream({ events }: { events: TurnStreamEvent[] }) {
+  return (
+    <aside className="turn-event-stream" aria-label="Live turn events">
+      <div className="turn-event-stream-head">
+        <span className="pending-pulse" aria-hidden="true" />
+        <strong>Live engine</strong>
+      </div>
+      {events.map((event) => (
+        <div className={`turn-event-row ${event.status}`} key={`${event.created_at}-${event.event_type ?? event.status}`}>
+          <span>{turnEventTitle(event)}</span>
+          <small>{turnEventDetail(event)}</small>
+        </div>
+      ))}
+    </aside>
   );
 }
 

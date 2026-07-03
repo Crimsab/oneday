@@ -27,6 +27,7 @@ import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
+import { appendTurnEvent, turnEventDetail, turnEventFromContract } from "./turnEvents";
 import type {
   AppPreferences,
   ChoiceView,
@@ -44,6 +45,7 @@ import type {
   StorySnapshot,
   StorySummary,
   SyncState,
+  TurnStreamEvent,
 } from "./types";
 
 function App() {
@@ -62,6 +64,7 @@ function App() {
   const [metaResult, setMetaResult] = useState<MetaResult | null>(null);
   const [sending, setSending] = useState(false);
   const [pendingTurn, setPendingTurn] = useState<PendingTurnView | null>(null);
+  const [liveTurnEvents, setLiveTurnEvents] = useState<TurnStreamEvent[]>([]);
   const [paused, setPaused] = useState(false);
   const [hiddenBeforeMessageId, setHiddenBeforeMessageId] = useState(0);
   const [localCommands, setLocalCommands] = useState<RecentCommand[]>([]);
@@ -135,6 +138,7 @@ function App() {
   useEffect(() => {
     if (!storyId) return;
     setHiddenBeforeMessageId(0);
+    setLiveTurnEvents([]);
     void loadSnapshot(storyId);
   }, [loadSnapshot, storyId]);
 
@@ -148,6 +152,29 @@ function App() {
     source.addEventListener("snapshot", (event) => {
       setSnapshot(JSON.parse(event.data) as StorySnapshot);
       setSync("Live");
+    });
+    source.addEventListener("turn", (event) => {
+      let liveEvent: TurnStreamEvent;
+      try {
+        liveEvent = JSON.parse(event.data) as TurnStreamEvent;
+      } catch {
+        setNotice("Received an unreadable live turn event.");
+        return;
+      }
+      setLiveTurnEvents((items) => appendTurnEvent(items, liveEvent));
+      setPendingTurn((pending) => (pending ? { ...pending, detail: turnEventDetail(liveEvent) } : pending));
+      if (liveEvent.status === "failed") {
+        setSync("Error");
+        setNotice(liveEvent.message);
+        return;
+      }
+      if (liveEvent.status === "completed" || liveEvent.status === "snapshot_changed") {
+        setSync(paused ? "Paused" : "Live");
+        return;
+      }
+      if (liveEvent.status === "submitted" || liveEvent.status === "event") {
+        setSync(paused ? "Paused" : "Sending");
+      }
     });
     source.addEventListener("error", () => setSync("Reconnecting"));
     return () => source.close();
@@ -223,6 +250,7 @@ function App() {
   const selectStory = (nextStoryId: string) => {
     setStoryId(nextStoryId);
     setSnapshot(null);
+    setLiveTurnEvents([]);
     setNotice("");
   };
 
@@ -455,6 +483,12 @@ function App() {
         action,
         capabilities: { images: true, ascii: true, roll_log: true },
       });
+      setLiveTurnEvents((items) =>
+        response.events.reduce(
+          (nextEvents, event) => appendTurnEvent(nextEvents, turnEventFromContract(storyId, currentTurn, action, sourceText, event)),
+          items,
+        ),
+      );
       setSnapshot(response.snapshot);
       setLocalCommands((items) => [
         { id: clientId("command"), text: sourceText.trim(), turn: response.snapshot.world.current_turn, source: "browser" as const },
@@ -590,7 +624,12 @@ function App() {
               </div>
             </div>
             <StoryPath snapshot={snapshot} />
-            <Transcript messages={snapshot?.messages ?? []} hiddenBeforeId={hiddenBeforeMessageId} pendingTurn={pendingTurn} />
+            <Transcript
+              messages={snapshot?.messages ?? []}
+              hiddenBeforeId={hiddenBeforeMessageId}
+              pendingTurn={pendingTurn}
+              liveEvents={liveTurnEvents}
+            />
           </section>
 
           <Composer

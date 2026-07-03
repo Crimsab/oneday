@@ -148,7 +148,7 @@ function OptionsContent({
       <div className="option-grid">
         <div>
           <span>Realtime bridge</span>
-          <strong>{snapshot ? "SSE snapshots active" : "No story selected"}</strong>
+          <strong>{snapshot ? "SSE snapshots + turn events" : "No story selected"}</strong>
         </div>
         <div>
           <span>Action transport</span>
