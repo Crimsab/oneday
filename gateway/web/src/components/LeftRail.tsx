@@ -68,7 +68,7 @@ export function LeftRail({
                 <span>
                   Turn {storyTurnLabel(snapshot, story.id, activeStoryId)} - {story.genre || "Story"}
                 </span>
-                <small>{compactText(story.description || story.tone || story.id, 54)}</small>
+                <small title={story.description || story.tone || story.id}>{compactText(story.description || story.tone || story.id, 54)}</small>
               </button>
             ))
           )}
