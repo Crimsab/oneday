@@ -1,7 +1,7 @@
 import { useEffect, useId, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
-import { compactText } from "../format";
+import { compactText, displayTimestamp } from "../format";
 import { draftFromModelSettings, hasModelRoutingChanges, modelRoutingIssues, promoteProvider, updateFromDraft, type ModelRoutingDraft } from "../modelRouting";
 import { ModuleContent, moduleTitle } from "./Inspector";
 import type {
@@ -528,7 +528,7 @@ function SavesContent({
                 <span>
                   Turn {save.turn} - Chapter {save.chapter} - {compactText(save.location || "Unknown", 32)}
                 </span>
-                <small>{save.created_at}</small>
+                <small>{displayTimestamp(save.created_at)}</small>
               </div>
               <div className="save-actions">
                 <button type="button" className="save-load-button" onClick={() => onLoadSave(save)} disabled={busy}>

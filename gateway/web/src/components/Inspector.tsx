@@ -6,6 +6,7 @@ import {
   compactText,
   deriveCondition,
   displayClock,
+  displayTimestamp,
   entryLabel,
   fieldRows,
   findString,
@@ -562,14 +563,14 @@ function saveCards(snapshot: StorySnapshot): CardView[] {
       ["Turn", String(save.turn)],
       ["Chapter", String(save.chapter)],
       ["Location", save.location || "-"],
-      ["Created", save.created_at || "-"],
+      ["Created", displayTimestamp(save.created_at)],
     ],
   }));
 }
 
 function sessionCards(snapshot: StorySnapshot): CardView[] {
   return snapshot.panels.sessions.slice(0, 10).map((session) => ({
-    title: session.started_at || session.id,
+    title: displayTimestamp(session.started_at || session.id),
     rows: [
       ["Status", session.ended_at ? "Ended" : "Active"],
       ["Summary", compactText(session.summary || "-", 140)],
@@ -584,7 +585,7 @@ function achievementCards(snapshot: StorySnapshot): CardView[] {
       ["Category", achievement.category || "-"],
       ["Rarity", achievement.rarity || "-"],
       ["Description", compactText(achievement.description || "-", 140)],
-      ["Earned", achievement.earned_at || "-"],
+      ["Earned", displayTimestamp(achievement.earned_at)],
     ],
   }));
 }
