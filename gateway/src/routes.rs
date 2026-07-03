@@ -24,7 +24,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(model_settings).put(update_model_settings),
         )
         .route("/api/contracts/commands", get(command_descriptors))
-        .route("/api/stories", get(stories))
+        .route("/api/stories", get(stories).post(create_story))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/actions", post(submit_action))
         .route("/api/stories/:story_id/meta", post(submit_meta))
@@ -77,6 +77,18 @@ async fn stories(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<db::StorySummary>>, ApiError> {
     Ok(Json(db::list_stories(&state.pool).await?))
+}
+
+async fn create_story(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<engine::StoryCreateEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let created = engine::create_story(state.clone(), payload).await?;
+    let snapshot = db::snapshot(&state.pool, &created.story_id).await?;
+    Ok(Json(json!({
+        "story": created,
+        "snapshot": snapshot,
+    })))
 }
 
 async fn snapshot(
@@ -318,6 +330,8 @@ impl From<anyhow::Error> for ApiError {
         let is_bad_request = message.contains("unknown provider")
             || message.contains("must be")
             || message.contains("at least one provider")
+            || message.contains("story brief is required")
+            || message.contains("character name is required")
             || message.contains("invalid gateway-model-settings-update JSON");
         let is_conflict = message.contains("stale client_turn")
             || message.contains("stale client_revision")

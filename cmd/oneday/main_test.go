@@ -50,6 +50,9 @@ func TestWantsOperatorCommands(t *testing.T) {
 	if !wantsGatewayModelSettingsUpdate([]string{"gateway-model-settings-update"}) {
 		t.Fatal("expected gateway-model-settings-update")
 	}
+	if !wantsGatewayStoryCreate([]string{"gateway-story-create"}) {
+		t.Fatal("expected gateway-story-create")
+	}
 }
 
 func TestProviderConsistencyWarnings(t *testing.T) {

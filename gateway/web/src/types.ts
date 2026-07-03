@@ -235,6 +235,26 @@ export interface StorySnapshot {
   panels: PanelsView;
 }
 
+export interface StoryCreateEnvelope {
+  brief: string;
+  character_name: string;
+  character_background: string;
+  start: boolean;
+}
+
+export interface StoryCreateResult {
+  story_id: string;
+  character_id: string;
+  session_id?: string;
+  started?: boolean;
+  start_error?: string;
+}
+
+export interface StoryCreateResponse {
+  story: StoryCreateResult;
+  snapshot: StorySnapshot;
+}
+
 export type CommandGroup = "play" | "talk" | "state" | "save" | "meta" | "system" | "debug";
 export type CommandParity = "shared" | "terminal_only" | "browser_only";
 export type CommandBehavior =

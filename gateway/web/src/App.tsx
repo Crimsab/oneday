@@ -3,6 +3,7 @@ import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
   ApiRequestError,
   createSave,
+  createStory,
   deleteSave,
   getCommandDescriptors,
   getHealth,
@@ -18,7 +19,6 @@ import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { CollapsedLeftRail, LeftRail } from "./components/LeftRail";
 import { PanelDrawer } from "./components/PanelDrawer";
-import { RecentCommands } from "./components/RecentCommands";
 import { StoryPath } from "./components/StoryPath";
 import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
@@ -42,6 +42,7 @@ import type {
   PlayerAction,
   RecentCommand,
   SaveView,
+  StoryCreateEnvelope,
   StorySnapshot,
   StorySummary,
   SyncState,
@@ -392,6 +393,33 @@ function App() {
     }
   };
 
+  const createBrowserStory = async (payload: StoryCreateEnvelope) => {
+    if (sending) return;
+    setSending(true);
+    setNotice("");
+    setSync("Sending");
+    try {
+      const response = await createStory(payload);
+      setSnapshot(response.snapshot);
+      setStoryId(response.snapshot.story.id);
+      setStories((items) => [response.snapshot.story, ...items.filter((story) => story.id !== response.snapshot.story.id)]);
+      setSelectedTab("history");
+      setOverlay(null);
+      setHiddenBeforeMessageId(0);
+      setLiveTurnEvents([]);
+      const startNotice = response.story.start_error
+        ? ` created, but first turn did not start: ${response.story.start_error}`
+        : ` created${response.story.started ? " and started" : ""}.`;
+      setNotice(`${response.snapshot.story.name}${startNotice}`);
+      setSync(paused ? "Paused" : "Live");
+    } catch (error) {
+      setSync("Error");
+      setNotice(actionErrorMessage(error));
+    } finally {
+      setSending(false);
+    }
+  };
+
   const loadManualSave = async (save: SaveView) => {
     if (!snapshot || !storyId || sending) return;
     const confirmed = window.confirm(`Load "${save.name}" from turn ${save.turn}? Current progress will roll back to that snapshot.`);
@@ -652,12 +680,6 @@ function App() {
               </div>
               <SuggestedActions choices={snapshot?.choices ?? []} snapshot={snapshot} disabled={sending || !snapshot} onChoice={sendChoice} onDraft={setDraft} />
             </section>
-            <section className="recent-panel">
-              <div className="panel-head compact">
-                <h2>Recent Commands</h2>
-              </div>
-              <RecentCommands commands={recentCommands} onDraft={setDraft} />
-            </section>
           </section>
         </main>
         {preferences.showInspector && (
@@ -684,6 +706,7 @@ function App() {
         onPreferencesChange={updatePreferences}
         onModelSettingsSave={(payload) => saveModelSettings(payload)}
         onModelSettingsReload={() => refreshModelSettings()}
+        onCreateStory={(payload) => createBrowserStory(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
         onLoadSave={(save) => void loadManualSave(save)}
         onDeleteSave={(save) => void deleteManualSave(save)}

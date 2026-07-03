@@ -94,6 +94,16 @@ pub struct DeleteSaveEnvelope {
     pub save_id: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StoryCreateEnvelope {
+    pub brief: String,
+    pub character_name: String,
+    #[serde(default)]
+    pub character_background: String,
+    #[serde(default = "default_start_story")]
+    pub start: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct GatewayTurnRequest<'a> {
     story_id: &'a str,
@@ -142,6 +152,14 @@ struct GatewayDeleteSaveRequest<'a> {
     client_turn: i64,
     client_revision: i64,
     save_id: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct GatewayStoryCreateRequest<'a> {
+    brief: &'a str,
+    character_name: &'a str,
+    character_background: &'a str,
+    start: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -200,6 +218,20 @@ pub struct GatewayLoadResponse {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GatewayDeleteSaveResponse {
     pub save: Option<GatewaySaveView>,
+    #[serde(default)]
+    pub error: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GatewayStoryCreateResponse {
+    pub story_id: String,
+    pub character_id: String,
+    #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub started: bool,
+    #[serde(default)]
+    pub start_error: String,
     #[serde(default)]
     pub error: String,
 }
@@ -431,6 +463,30 @@ pub async fn submit_action(
     Ok(parsed)
 }
 
+pub async fn create_story(
+    state: Arc<AppState>,
+    envelope: StoryCreateEnvelope,
+) -> anyhow::Result<GatewayStoryCreateResponse> {
+    let req = GatewayStoryCreateRequest {
+        brief: &envelope.brief,
+        character_name: &envelope.character_name,
+        character_background: &envelope.character_background,
+        start: envelope.start,
+    };
+    let (parsed, status_ok, stderr) =
+        call_gateway::<_, GatewayStoryCreateResponse>(state, "gateway-story-create", &req).await?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !status_ok {
+        return Err(anyhow!(
+            "gateway-story-create failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    Ok(parsed)
+}
+
 pub async fn submit_meta(
     state: Arc<AppState>,
     story_id: &str,
@@ -572,6 +628,10 @@ where
 
 fn default_save_kind() -> String {
     "manual".to_string()
+}
+
+fn default_start_story() -> bool {
+    true
 }
 
 fn compact_stderr(stderr: &str) -> String {
