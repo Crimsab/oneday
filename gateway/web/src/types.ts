@@ -49,6 +49,7 @@ export interface ModelRoutingActive {
 
 export interface ModelSettings {
   config_path: string;
+  config_revision: string;
   provider_priority: string[];
   providers: ModelProviderSetting[];
   narrative_models: string[];
@@ -68,6 +69,7 @@ export interface ModelProviderUpdate {
 }
 
 export interface ModelSettingsUpdate {
+  base_revision?: string;
   provider_priority?: string[];
   providers?: ModelProviderUpdate[];
   utility_model?: string;

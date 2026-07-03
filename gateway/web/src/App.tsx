@@ -67,6 +67,7 @@ function App() {
   const [preferences, setPreferences] = useState<AppPreferences>(() => loadPreferences());
   const [commandDescriptors, setCommandDescriptors] = useState<CommandDescriptor[]>([]);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
+  const [modelSettingsError, setModelSettingsError] = useState("");
   const [modelSaving, setModelSaving] = useState(false);
 
   const refreshHealth = useCallback(async () => {
@@ -102,8 +103,10 @@ function App() {
   const refreshModelSettings = useCallback(async () => {
     try {
       setModelSettings(await getModelSettings());
-    } catch {
+      setModelSettingsError("");
+    } catch (error) {
       setModelSettings(null);
+      setModelSettingsError(errorMessage(error));
     }
   }, []);
 
@@ -460,6 +463,9 @@ function App() {
       setSelectedTab("saves");
       setSaveFilter("");
     }
+    if (nextOverlay === "options") {
+      void refreshModelSettings();
+    }
     setOverlay(nextOverlay);
   };
 
@@ -473,9 +479,13 @@ function App() {
     try {
       const nextSettings = await updateModelSettings(payload);
       setModelSettings(nextSettings);
+      setModelSettingsError("");
       setNotice(`Model routing saved. Active provider: ${nextSettings.active.provider || "none"}.`);
     } catch (error) {
       setNotice(errorMessage(error));
+      if (error instanceof ApiRequestError && error.code === "stale_config") {
+        void refreshModelSettings();
+      }
       throw error;
     } finally {
       setModelSaving(false);
@@ -593,6 +603,7 @@ function App() {
         preferences={preferences}
         metaResult={metaResult}
         modelSettings={modelSettings}
+        modelError={modelSettingsError}
         modelBusy={modelSaving}
         selectedTab={selectedTab}
         commandDescriptors={commandDescriptors}
@@ -600,6 +611,7 @@ function App() {
         onClose={() => setOverlay(null)}
         onPreferencesChange={updatePreferences}
         onModelSettingsSave={(payload) => saveModelSettings(payload)}
+        onModelSettingsReload={() => refreshModelSettings()}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
         onLoadSave={(save) => void loadManualSave(save)}
         onDeleteSave={(save) => void deleteManualSave(save)}

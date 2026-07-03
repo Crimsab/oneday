@@ -1864,8 +1864,20 @@ input:disabled {
   font-size: 11px;
 }
 
+.model-warning {
+  display: grid;
+  gap: 5px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, #0c1519);
+  padding: 9px 11px;
+  color: #f4d08b;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .model-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
@@ -1896,6 +1908,16 @@ input:disabled {
   background: color-mix(in srgb, var(--bad) 10%, #0c1519);
   padding: 9px 11px;
   color: #f0b2ac;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.model-success {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--good) 45%, var(--line));
+  background: color-mix(in srgb, var(--good) 10%, #0c1519);
+  padding: 9px 11px;
+  color: #afd99a;
   font-size: 12px;
   line-height: 1.4;
 }

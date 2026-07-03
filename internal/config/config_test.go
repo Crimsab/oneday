@@ -1,8 +1,10 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -286,8 +288,11 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	cfg.AI.Codex.Model = "gpt-5.5"
 	cfg.AI.Generation.RepairFallbackModels = []string{"grok-4.1-fast", "grok-4.1-fast"}
 
-	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg)
+	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg, "revision-1")
 
+	if settings.ConfigRevision != "revision-1" {
+		t.Fatalf("ConfigRevision = %q", settings.ConfigRevision)
+	}
 	if settings.Active.Provider != "codex" {
 		t.Fatalf("Active.Provider = %q, want codex", settings.Active.Provider)
 	}
@@ -299,6 +304,91 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	}
 	if got := settings.RepairModels; len(got) != 3 || got[0] != "gemini-3.1-flash-lite-preview" || got[2] != "grok-4.1-fast" {
 		t.Fatalf("RepairModels = %#v", got)
+	}
+}
+
+func TestUpdateModelRoutingSettingsRequiresFreshRevision(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	data, err := Marshal(Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = UpdateModelRoutingSettings(path, ModelRoutingUpdate{BaseRevision: "stale"})
+	var routingErr ModelRoutingError
+	if !errors.As(err, &routingErr) {
+		t.Fatalf("expected ModelRoutingError, got %T %v", err, err)
+	}
+	if routingErr.Code != ModelRoutingErrorStale {
+		t.Fatalf("routing error code = %q, want %q", routingErr.Code, ModelRoutingErrorStale)
+	}
+}
+
+func TestUpdateModelRoutingSettingsPatchesModelFieldsWithoutClobberingYaml(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	raw := []byte(`# keep this top-level comment
+config_version: 2
+unknown_top: keep-me
+ai:
+  provider_priority:
+    - codex
+    - litellm
+    - openrouter
+    - claude-code
+  litellm:
+    enabled: true
+    base_url: ${LITELLM_BASE_URL}
+    default_model: grok-4.1-fast
+  codex:
+    enabled: true
+    model: gpt-5.5
+    reasoning: off
+`)
+	if err := os.WriteFile(path, raw, 0640); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := ReadModelRoutingSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nextModel := "grok-4.1-fast-updated"
+	next, err := UpdateModelRoutingSettings(path, ModelRoutingUpdate{
+		BaseRevision: settings.ConfigRevision,
+		Providers: []ModelProviderUpdate{
+			{ID: "litellm", Model: &nextModel},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.ConfigRevision == "" || next.ConfigRevision == settings.ConfigRevision {
+		t.Fatalf("revision was not updated: before=%q after=%q", settings.ConfigRevision, next.ConfigRevision)
+	}
+	out, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	for _, needle := range []string{"# keep this top-level comment", "unknown_top: keep-me", "${LITELLM_BASE_URL}", "default_model: grok-4.1-fast-updated"} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("updated config missing %q:\n%s", needle, text)
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0640 {
+		t.Fatalf("mode = %v, want 0640", got)
+	}
+	if _, err := os.Stat(path + ".bak"); err != nil {
+		t.Fatalf("expected backup file: %v", err)
 	}
 }
 
