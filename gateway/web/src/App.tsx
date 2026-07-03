@@ -149,6 +149,15 @@ function App() {
     });
   }, [localCommands, snapshot?.messages]);
 
+  const commandContext = useMemo(
+    () => ({
+      npcNames: snapshot ? npcNamesFromSnapshot(snapshot) : [],
+      saveNames: snapshot ? saveNamesFromSnapshot(snapshot) : [],
+      recentCommands: recentCommands.map((command) => command.text),
+    }),
+    [recentCommands, snapshot],
+  );
+
   useEffect(() => {
     savePreferences(preferences);
   }, [preferences]);
@@ -480,6 +489,7 @@ function App() {
             disabled={sending || !snapshot}
             notice={notice}
             commandDescriptors={commandDescriptors}
+            commandContext={commandContext}
             onDraftChange={setDraft}
             onModeChange={setMode}
             onSubmit={executeDraft}
@@ -539,6 +549,10 @@ function actionErrorMessage(error: unknown): string {
 
 function npcNamesFromSnapshot(snapshot: StorySnapshot): string[] {
   return snapshot.panels.npcs.map((npc) => npc.name).filter(Boolean);
+}
+
+function saveNamesFromSnapshot(snapshot: StorySnapshot): string[] {
+  return snapshot.panels.saves.map((save) => save.name).filter(Boolean);
 }
 
 export default App;

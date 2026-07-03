@@ -16,7 +16,16 @@ export interface CommandResult {
 export interface CommandContext {
   descriptors?: CommandDescriptor[];
   npcNames?: string[];
+  saveNames?: string[];
 }
+
+export interface CommandSuggestionContext {
+  npcNames?: string[];
+  saveNames?: string[];
+  recentCommands?: string[];
+}
+
+export type CommandSuggestionKind = "command" | "completion" | "recent";
 
 export interface SlashCommandItem {
   name: string;
@@ -24,7 +33,15 @@ export interface SlashCommandItem {
   aliases: string[];
   value: string;
   group: string;
-  descriptor: CommandDescriptor;
+  kind: CommandSuggestionKind;
+  badge?: string;
+  descriptor?: CommandDescriptor;
+}
+
+export interface CommandSuggestionGroup {
+  key: string;
+  label: string;
+  items: SlashCommandItem[];
 }
 
 export const moduleSpecs: Array<{
@@ -73,6 +90,19 @@ export const fallbackCommandDescriptors: CommandDescriptor[] = [
 ];
 
 export const slashCommands = commandDescriptorsToSlashCommands(fallbackCommandDescriptors);
+
+export const commandGroupLabels: Record<string, string> = {
+  play: "Play",
+  talk: "Talk",
+  state: "State",
+  save: "Saves",
+  meta: "Meta",
+  system: "System",
+  debug: "Debug",
+  recent: "Recent",
+};
+
+const commandGroupOrder = ["play", "talk", "state", "save", "meta", "system", "debug", "recent"];
 
 const panelByCanonical: Record<string, ModuleTab> = {
   inventory: "inventory",
@@ -151,23 +181,60 @@ export function actionModeToText(mode: string, text: string): string {
   return clean;
 }
 
-export function commandSuggestions(draft: string, descriptors?: CommandDescriptor[]): SlashCommandItem[] {
-  const trimmed = draft.trim();
+export function commandSuggestions(
+  draft: string,
+  descriptors?: CommandDescriptor[],
+  context: CommandSuggestionContext = {},
+): SlashCommandItem[] {
+  const trimmed = draft.trimStart();
   if (!trimmed.startsWith("/")) return [];
 
-  const query = trimmed.slice(1).split(/\s+/)[0]?.toLowerCase() ?? "";
-  return commandDescriptorsToSlashCommands(commandDescriptors(descriptors)).filter((command) => {
+  const parsed = parseCommandDraft(trimmed);
+  if (!parsed) return [];
+
+  const allDescriptors = commandDescriptors(descriptors);
+  const command = parsed.commandName ? findCommandDescriptor(parsed.commandName, allDescriptors) : undefined;
+  const canonical = command?.canonical ?? command?.id;
+  if (command && parsed.hasArgs && canonical === "talk") {
+    return talkCompletionSuggestions(command, parsed.argsText, context);
+  }
+  if (command && parsed.hasArgs && (canonical === "load" || canonical === "delete-save")) {
+    return saveCompletionSuggestions(command, parsed.argsText, context.saveNames ?? []);
+  }
+
+  const query = parsed.commandName.toLowerCase();
+  const commands = commandDescriptorsToSlashCommands(allDescriptors).filter((item) => {
     if (!query) return true;
+    const descriptor = item.descriptor;
     return (
-      command.name.slice(1).startsWith(query) ||
-      command.descriptor.canonical.toLowerCase().startsWith(query) ||
-      command.aliases.some((alias) => stripSlash(alias).startsWith(query))
+      item.name.slice(1).startsWith(query) ||
+      descriptor?.canonical.toLowerCase().startsWith(query) ||
+      descriptor?.title.toLowerCase().includes(query) ||
+      item.aliases.some((alias) => stripSlash(alias).startsWith(query))
     );
-  });
+  }).sort(compareSuggestions);
+
+  const recent = recentCommandSuggestions(query, context.recentCommands ?? []);
+  return [...commands, ...recent];
 }
 
 export function commandDescriptors(descriptors?: CommandDescriptor[]): CommandDescriptor[] {
   return descriptors && descriptors.length > 0 ? descriptors : fallbackCommandDescriptors;
+}
+
+export function groupCommandSuggestions(items: SlashCommandItem[]): CommandSuggestionGroup[] {
+  const groups = new Map<string, SlashCommandItem[]>();
+  for (const item of items) {
+    const key = item.group || "system";
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  }
+  return [...groups.entries()]
+    .sort(([left], [right]) => groupIndex(left) - groupIndex(right))
+    .map(([key, groupedItems]) => ({
+      key,
+      label: commandGroupLabels[key] ?? titleCase(key),
+      items: groupedItems,
+    }));
 }
 
 export function commandDescriptorsToSlashCommands(descriptors: CommandDescriptor[]): SlashCommandItem[] {
@@ -180,9 +247,107 @@ export function commandDescriptorsToSlashCommands(descriptors: CommandDescriptor
       aliases: (item.aliases ?? []).map((alias) => `/${stripSlash(alias)}`),
       value,
       group: item.group,
+      kind: "command",
+      badge: item.parity === "browser_only" ? "Browser" : item.parity === "terminal_only" ? "Terminal" : undefined,
       descriptor: item,
     };
   });
+}
+
+function talkCompletionSuggestions(
+  command: CommandDescriptor,
+  argsText: string,
+  context: CommandSuggestionContext,
+): SlashCommandItem[] {
+  const names = uniqueNames(context.npcNames ?? []);
+  const matched = matchKnownName(argsText, names);
+  if (!matched) {
+    const query = argsText.toLowerCase();
+    return names
+      .filter((name) => !query || name.toLowerCase().includes(query))
+      .slice(0, 8)
+      .map((name) => completionSuggestion({
+        command,
+        group: "talk",
+        name,
+        value: `/talk ${name} `,
+        hint: "Set talk target, then add intent and message.",
+        badge: "NPC",
+      }));
+  }
+
+  const intentQuery = firstToken(matched.rest).toLowerCase();
+  if (matched.rest && !intentQuery) return [];
+  if (matched.rest && talkIntents.has(intentQuery) && matched.rest.trim().split(/\s+/).length > 1) return [];
+
+  return [...talkIntents]
+    .filter((intent) => !intentQuery || intent.startsWith(intentQuery))
+    .map((intent) => completionSuggestion({
+      command,
+      group: "talk",
+      name: intent,
+      value: `/talk ${matched.name} ${intent} `,
+      hint: `Talk to ${matched.name} with ${intent} intent.`,
+      badge: "Intent",
+    }));
+}
+
+function saveCompletionSuggestions(command: CommandDescriptor, argsText: string, saveNames: string[]): SlashCommandItem[] {
+  const query = argsText.toLowerCase();
+  return uniqueNames(saveNames)
+    .filter((name) => !query || name.toLowerCase().includes(query))
+    .slice(0, 8)
+    .map((name) => completionSuggestion({
+      command,
+      group: "save",
+      name,
+      value: `/${stripSlash(command.id)} ${name}`,
+      hint: command.behavior === "save_delete" ? "Filter saves for deletion confirmation." : "Filter or load this saved snapshot.",
+      badge: "Save",
+    }));
+}
+
+function recentCommandSuggestions(query: string, recentCommands: string[]): SlashCommandItem[] {
+  if (recentCommands.length === 0) return [];
+  return uniqueNames(recentCommands)
+    .filter((command) => command.trim().startsWith("/") && (!query || command.toLowerCase().includes(query)))
+    .slice(0, 5)
+    .map((command) => ({
+      name: command,
+      hint: "Reuse recent command.",
+      aliases: [],
+      value: command,
+      group: "recent",
+      kind: "recent" as const,
+      badge: "Recent",
+    }));
+}
+
+function completionSuggestion({
+  command,
+  group,
+  name,
+  value,
+  hint,
+  badge,
+}: {
+  command: CommandDescriptor;
+  group: string;
+  name: string;
+  value: string;
+  hint: string;
+  badge: string;
+}): SlashCommandItem {
+  return {
+    name,
+    hint,
+    aliases: [],
+    value,
+    group,
+    kind: "completion",
+    badge,
+    descriptor: command,
+  };
 }
 
 function metaCommandToAction(canonical: string, value: string): CommandResult {
@@ -269,6 +434,18 @@ function parseSlashCommand(text: string): { name: string; argsText: string } | n
   return { name, argsText: body.slice(name.length).trim() };
 }
 
+function parseCommandDraft(text: string): { commandName: string; argsText: string; hasArgs: boolean } | null {
+  if (!text.startsWith("/")) return null;
+  const body = text.slice(1);
+  const commandName = firstToken(body);
+  const afterCommand = body.slice(commandName.length);
+  return {
+    commandName,
+    argsText: afterCommand.trimStart(),
+    hasArgs: afterCommand.length > 0,
+  };
+}
+
 function matchKnownName(argsText: string, names: string[]): { name: string; rest: string } | null {
   const lowerArgs = argsText.toLowerCase();
   let best: { name: string; rest: string } | null = null;
@@ -295,6 +472,46 @@ function slashName(descriptor: CommandDescriptor): string {
 
 function stripSlash(value: string): string {
   return value.replace(/^\/+/, "").trim().toLowerCase();
+}
+
+function groupIndex(group: string): number {
+  const index = commandGroupOrder.indexOf(group);
+  return index === -1 ? commandGroupOrder.length : index;
+}
+
+function compareSuggestions(left: SlashCommandItem, right: SlashCommandItem): number {
+  const groupDelta = groupIndex(left.group) - groupIndex(right.group);
+  if (groupDelta !== 0) return groupDelta;
+  const kindDelta = suggestionKindIndex(left.kind) - suggestionKindIndex(right.kind);
+  if (kindDelta !== 0) return kindDelta;
+  return left.name.localeCompare(right.name);
+}
+
+function suggestionKindIndex(kind: CommandSuggestionKind): number {
+  if (kind === "command") return 0;
+  if (kind === "completion") return 1;
+  return 2;
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(/[-_\s]+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function uniqueNames(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const clean = value.trim();
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    result.push(clean);
+  }
+  return result;
 }
 
 function metaUsage(kind: MetaCommand["kind"]): string {
