@@ -9,8 +9,16 @@ import (
 
 // CreateAchievement inserts a new achievement for a story.
 func (db *DB) CreateAchievement(a *Achievement) error {
+	return createAchievementExec(db.conn, a)
+}
+
+func (db *DB) CreateAchievementTx(tx *sql.Tx, a *Achievement) error {
+	return createAchievementExec(tx, a)
+}
+
+func createAchievementExec(exec sqlExecer, a *Achievement) error {
 	a.EarnedAt = time.Now()
-	result, err := db.conn.Exec(
+	result, err := exec.Exec(
 		`INSERT INTO achievements (story_id, name, description, category, rarity, context, earned_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		a.StoryID, a.Name, a.Description, a.Category, a.Rarity, a.Context, a.EarnedAt,
@@ -55,13 +63,23 @@ func (db *DB) ListAchievements(storyID string) ([]Achievement, error) {
 // AchievementExistsByName reports whether a story already contains an
 // achievement with the given name, using case-insensitive matching.
 func (db *DB) AchievementExistsByName(storyID, name string) (bool, error) {
+	return achievementExistsByNameQuery(db.conn, storyID, name)
+}
+
+func (db *DB) AchievementExistsByNameTx(tx *sql.Tx, storyID, name string) (bool, error) {
+	return achievementExistsByNameQuery(tx, storyID, name)
+}
+
+func achievementExistsByNameQuery(queryer interface {
+	QueryRow(query string, args ...any) *sql.Row
+}, storyID, name string) (bool, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return false, nil
 	}
 
 	var id int64
-	err := db.conn.QueryRow(
+	err := queryer.QueryRow(
 		`SELECT id FROM achievements
 		 WHERE story_id = ? AND name = ? COLLATE NOCASE
 		 LIMIT 1`,

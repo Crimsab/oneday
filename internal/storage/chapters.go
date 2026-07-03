@@ -8,7 +8,15 @@ import (
 
 // CreateChapter inserts a new chapter record.
 func (db *DB) CreateChapter(ch *Chapter) error {
-	result, err := db.conn.Exec(
+	return createChapterExec(db.conn, ch)
+}
+
+func (db *DB) CreateChapterTx(tx *sql.Tx, ch *Chapter) error {
+	return createChapterExec(tx, ch)
+}
+
+func createChapterExec(exec sqlExecer, ch *Chapter) error {
+	result, err := exec.Exec(
 		`INSERT INTO chapters (story_id, chapter_number, title, summary, start_turn, end_turn, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		ch.StoryID, ch.ChapterNumber, ch.Title, ch.Summary, ch.StartTurn, ch.EndTurn, ch.CreatedAt,
@@ -66,7 +74,15 @@ func (db *DB) ListChapters(storyID string) ([]Chapter, error) {
 
 // UpdateChapterEnd sets the end_turn and summary for a chapter.
 func (db *DB) UpdateChapterEnd(storyID string, chapterNumber int, endTurn int, summary string) error {
-	_, err := db.conn.Exec(
+	return updateChapterEndExec(db.conn, storyID, chapterNumber, endTurn, summary)
+}
+
+func (db *DB) UpdateChapterEndTx(tx *sql.Tx, storyID string, chapterNumber int, endTurn int, summary string) error {
+	return updateChapterEndExec(tx, storyID, chapterNumber, endTurn, summary)
+}
+
+func updateChapterEndExec(exec sqlExecer, storyID string, chapterNumber int, endTurn int, summary string) error {
+	_, err := exec.Exec(
 		`UPDATE chapters SET end_turn = ?, summary = ? WHERE story_id = ? AND chapter_number = ?`,
 		endTurn, summary, storyID, chapterNumber,
 	)
@@ -97,7 +113,15 @@ func (db *DB) GetCurrentChapter(storyID string) (*Chapter, error) {
 
 // UpdateChapterTitle updates the title of a chapter.
 func (db *DB) UpdateChapterTitle(storyID string, chapterNumber int, title string) error {
-	_, err := db.conn.Exec(
+	return updateChapterTitleExec(db.conn, storyID, chapterNumber, title)
+}
+
+func (db *DB) UpdateChapterTitleTx(tx *sql.Tx, storyID string, chapterNumber int, title string) error {
+	return updateChapterTitleExec(tx, storyID, chapterNumber, title)
+}
+
+func updateChapterTitleExec(exec sqlExecer, storyID string, chapterNumber int, title string) error {
+	_, err := exec.Exec(
 		`UPDATE chapters SET title = ? WHERE story_id = ? AND chapter_number = ?`,
 		title, storyID, chapterNumber,
 	)

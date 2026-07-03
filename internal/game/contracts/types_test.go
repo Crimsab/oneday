@@ -7,22 +7,38 @@ func TestSubmitActionRejectsStaleClientTurn(t *testing.T) {
 		StoryID:        "story-1",
 		SessionID:      "session-1",
 		ClientTurn:     3,
+		ClientRevision: 7,
 		IdempotencyKey: "idem-1",
 		Action:         PlayerAction{Kind: ActionKindFreeText, Text: "Open the door"},
 	}
-	if err := req.Validate(4); err == nil {
+	if err := req.Validate(4, 7); err == nil {
 		t.Fatal("Validate error = nil, want stale client_turn error")
+	}
+}
+
+func TestSubmitActionRejectsStaleClientRevision(t *testing.T) {
+	req := SubmitActionRequest{
+		StoryID:        "story-1",
+		SessionID:      "session-1",
+		ClientTurn:     4,
+		ClientRevision: 6,
+		IdempotencyKey: "idem-1",
+		Action:         PlayerAction{Kind: ActionKindFreeText, Text: "Open the door"},
+	}
+	if err := req.Validate(4, 7); err == nil {
+		t.Fatal("Validate error = nil, want stale client_revision error")
 	}
 }
 
 func TestSubmitActionRequiresIdempotencyKey(t *testing.T) {
 	req := SubmitActionRequest{
-		StoryID:    "story-1",
-		SessionID:  "session-1",
-		ClientTurn: 4,
-		Action:     PlayerAction{Kind: ActionKindFreeText, Text: "Open the door"},
+		StoryID:        "story-1",
+		SessionID:      "session-1",
+		ClientTurn:     4,
+		ClientRevision: 7,
+		Action:         PlayerAction{Kind: ActionKindFreeText, Text: "Open the door"},
 	}
-	if err := req.Validate(4); err == nil {
+	if err := req.Validate(4, 7); err == nil {
 		t.Fatal("Validate error = nil, want idempotency_key error")
 	}
 }

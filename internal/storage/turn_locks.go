@@ -137,12 +137,23 @@ func (l *StoryTurnLock) Renew(ttl time.Duration) error {
 		ttl = 2 * time.Minute
 	}
 	until := time.Now().UTC().Add(ttl).Format(storyTurnLockTimeFormat)
-	result, err := l.db.conn.Exec(
-		`UPDATE story_turn_locks SET locked_until = ? WHERE story_id = ? AND owner = ?`,
-		until, l.storyID, l.owner,
-	)
+	var result sql.Result
+	var err error
+	for attempt := 0; attempt < 5; attempt++ {
+		result, err = l.db.conn.Exec(
+			`UPDATE story_turn_locks SET locked_until = ? WHERE story_id = ? AND owner = ?`,
+			until, l.storyID, l.owner,
+		)
+		if err == nil {
+			break
+		}
+		if !isSQLiteBusy(err) {
+			return fmt.Errorf("renewing story turn lock for %s: %w", l.storyID, err)
+		}
+		time.Sleep(time.Duration(attempt+1) * 50 * time.Millisecond)
+	}
 	if err != nil {
-		return fmt.Errorf("renewing story turn lock for %s: %w", l.storyID, err)
+		return fmt.Errorf("renewing story turn lock for %s after busy retries: %w", l.storyID, err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {

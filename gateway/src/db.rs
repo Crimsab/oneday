@@ -139,6 +139,7 @@ pub struct StorySnapshot {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct StoryVersion {
     pub turn: i64,
+    pub revision: i64,
     pub last_message_id: i64,
     pub world_updated_at: String,
     pub achievement_count: i64,
@@ -186,6 +187,7 @@ pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Story
 pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StoryVersion> {
     let row = sqlx::query(r#"SELECT
            COALESCE((SELECT current_turn FROM world_state WHERE story_id = ?), 0) AS turn,
+           COALESCE((SELECT revision FROM stories WHERE id = ?), 0) AS revision,
            COALESCE((SELECT MAX(id) FROM chat_messages WHERE story_id = ?), 0) AS last_message_id,
            COALESCE((SELECT CAST(updated_at AS TEXT) FROM world_state WHERE story_id = ?), '') AS world_updated_at,
            COALESCE((SELECT COUNT(*) FROM achievements WHERE story_id = ?), 0) AS achievement_count,
@@ -196,10 +198,12 @@ pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<
     .bind(story_id)
     .bind(story_id)
     .bind(story_id)
+    .bind(story_id)
     .fetch_one(pool)
     .await?;
     Ok(StoryVersion {
         turn: row.try_get("turn")?,
+        revision: row.try_get("revision")?,
         last_message_id: row.try_get("last_message_id")?,
         world_updated_at: row.try_get("world_updated_at")?,
         achievement_count: row.try_get("achievement_count")?,

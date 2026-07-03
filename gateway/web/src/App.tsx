@@ -281,6 +281,7 @@ function App() {
       const response = await submitMeta(storyId, {
         session_id: readySnapshot.active_session.id,
         client_turn: readySnapshot.world.current_turn,
+        client_revision: readySnapshot.version.revision,
         kind: meta.kind,
         text: meta.text,
       });
@@ -318,6 +319,7 @@ function App() {
       const response = await createSave(storyId, {
         session_id: readySnapshot.active_session.id,
         client_turn: readySnapshot.world.current_turn,
+        client_revision: readySnapshot.version.revision,
         name: saveName,
         kind: "manual",
       });
@@ -353,6 +355,7 @@ function App() {
       const response = await loadSave(storyId, {
         session_id: readySnapshot.active_session.id,
         client_turn: readySnapshot.world.current_turn,
+        client_revision: readySnapshot.version.revision,
         save_id: save.id,
       });
       setSnapshot(response.snapshot);
@@ -385,6 +388,7 @@ function App() {
       const response = await deleteSave(storyId, {
         session_id: readySnapshot.active_session.id,
         client_turn: readySnapshot.world.current_turn,
+        client_revision: readySnapshot.version.revision,
         save_id: save.id,
       });
       setSnapshot(response.snapshot);
@@ -417,6 +421,7 @@ function App() {
       const response = await submitAction(storyId, {
         session_id: readySnapshot.active_session.id,
         client_turn: currentTurn,
+        client_revision: readySnapshot.version.revision,
         idempotency_key: clientId("turn"),
         action,
         capabilities: { images: true, ascii: true, roll_log: true },
@@ -444,6 +449,7 @@ function App() {
     if (
       latest.active_session.id !== baseSnapshot.active_session.id ||
       latest.world.current_turn !== baseSnapshot.world.current_turn ||
+      latest.version.revision !== baseSnapshot.version.revision ||
       latest.version.last_message_id !== baseSnapshot.version.last_message_id
     ) {
       setSync("Paused");
