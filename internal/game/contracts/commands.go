@@ -305,6 +305,7 @@ func CommandDescriptors() []CommandDescriptor {
 		{
 			ID:                 "load",
 			Canonical:          "load",
+			Aliases:            []string{"saves"},
 			Title:              "Load",
 			Description:        "Open or filter saved snapshots.",
 			Group:              CommandGroupSave,

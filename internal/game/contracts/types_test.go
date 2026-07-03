@@ -81,6 +81,9 @@ func TestCommandAliasRegistryExcludesBrowserOnlyCommands(t *testing.T) {
 	if got := registry["fronts"]; got != "hooks" {
 		t.Fatalf("fronts alias = %q, want hooks", got)
 	}
+	if got := registry["saves"]; got != "load" {
+		t.Fatalf("saves alias = %q, want load", got)
+	}
 	if got := registry["delete-save"]; got != "" {
 		t.Fatalf("delete-save alias = %q, want excluded browser-only command", got)
 	}

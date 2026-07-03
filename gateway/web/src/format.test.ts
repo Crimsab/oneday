@@ -10,6 +10,7 @@ import {
   findString,
   messageClock,
   numericStat,
+  readableStructuredText,
   recentFromMessages,
   titleCase,
   valueToText,
@@ -86,6 +87,24 @@ describe("snapshot derivation helpers", () => {
     ]);
     expect(fieldRows({ known_place: "Docks" })).toEqual([["Known Place", "Docks"]]);
     expect(fieldRows("raw")).toEqual([["Value", "raw"]]);
+  });
+});
+
+describe("structured text display", () => {
+  it("turns raw narrator JSON into player-readable prose", () => {
+    const readable = readableStructuredText(
+      '{"narrative":"The dock bell rings.","choices":[{"id":1,"text":"Follow the bell"},{"id":2,"text":"Wait"}],"location":"Harbor"}',
+    );
+
+    expect(readable).toContain("The dock bell rings.");
+    expect(readable).toContain("Location: Harbor");
+    expect(readable).toContain("1. Follow the bell");
+    expect(readable).not.toContain('{"narrative"');
+  });
+
+  it("supports fenced JSON while leaving normal prose unchanged", () => {
+    expect(readableStructuredText("```json\n{\"summary\":\"A short note.\"}\n```")).toBe("A short note.");
+    expect(readableStructuredText("look around")).toBe("look around");
   });
 });
 

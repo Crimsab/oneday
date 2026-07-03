@@ -1239,6 +1239,7 @@ input:disabled {
 
 .choice-row[data-active="true"],
 .choice-row:focus-visible {
+  z-index: 12;
   border-color: color-mix(in srgb, var(--choice-color, var(--accent)) 72%, var(--line));
   background:
     linear-gradient(90deg, color-mix(in srgb, var(--choice-color, var(--accent)) 14%, transparent), transparent 68%),
@@ -1384,13 +1385,19 @@ input:disabled {
 }
 
 .choice-detail {
-  grid-column: 2 / -1;
+  position: absolute;
+  left: 43px;
+  right: 9px;
+  bottom: calc(100% + 5px);
+  z-index: 18;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 0.62fr) minmax(180px, 0.78fr);
   gap: 10px;
-  margin-top: 2px;
-  border-top: 1px solid color-mix(in srgb, var(--choice-color, var(--accent)) 28%, var(--line-soft));
-  padding-top: 6px;
+  border: 1px solid color-mix(in srgb, var(--choice-color, var(--accent)) 42%, var(--line-soft));
+  background: #0a1115;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.46);
+  padding: 9px 10px;
+  pointer-events: none;
 }
 
 .choice-detail-cell {
