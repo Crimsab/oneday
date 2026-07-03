@@ -32,6 +32,22 @@ type NarrativeStreamChunk struct {
 	Response *NarrativeResponse
 }
 
+type TurnCommitHook func(*sql.Tx, TurnCommitResult) error
+
+type TurnCommitResult struct {
+	StoryID     string
+	SessionID   string
+	Turn        int
+	NextTurn    int
+	Entry       ChatEntry
+	Narrative   *NarrativeResponse
+	World       *storage.WorldState
+	Character   *storage.Character
+	Story       *storage.Story
+	AIModel     string
+	AILatencyMS int64
+}
+
 // Narrator manages the gameplay AI conversation.
 type Narrator struct {
 	router                 *ai.Router
@@ -305,13 +321,17 @@ func (n *Narrator) SendAction(ctx context.Context, action string) (*NarrativeRes
 // lease. The lease is renewed before canonical commit so an expired/lost lease
 // cannot commit a turn prepared under stale ownership.
 func (n *Narrator) SendActionWithLease(ctx context.Context, action string, lock *storage.StoryTurnLock) (*NarrativeResponse, error) {
+	return n.SendActionWithLeaseAndCommitHook(ctx, action, lock, nil)
+}
+
+func (n *Narrator) SendActionWithLeaseAndCommitHook(ctx context.Context, action string, lock *storage.StoryTurnLock, hook TurnCommitHook) (*NarrativeResponse, error) {
 	if lock == nil {
 		return nil, fmt.Errorf("story turn lock is required")
 	}
 	if n == nil || n.story == nil || lock.StoryID() != n.story.ID {
 		return nil, fmt.Errorf("story turn lock does not belong to narrator story")
 	}
-	return n.sendTurnUnlocked(ctx, action, lock)
+	return n.sendTurnUnlocked(ctx, action, lock, hook)
 }
 
 // StreamAction streams a player action and emits the final structured response
@@ -374,10 +394,10 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	defer func() { _ = heartbeat.Stop() }()
 	defer func() { _ = lock.Release() }()
 
-	return n.sendTurnUnlocked(ctx, input, lock)
+	return n.sendTurnUnlocked(ctx, input, lock, nil)
 }
 
-func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string, lock *storage.StoryTurnLock) (*NarrativeResponse, error) {
+func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string, lock *storage.StoryTurnLock, hook TurnCommitHook) (*NarrativeResponse, error) {
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
 		return nil, err
@@ -391,7 +411,7 @@ func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string, lock *sto
 	if err := lock.Renew(3 * time.Minute); err != nil {
 		return nil, fmt.Errorf("renewing turn lock before commit: %w", err)
 	}
-	return n.finalizeTurn(ctx, prep, input, resp, 0, false)
+	return n.finalizeTurn(ctx, prep, input, resp, 0, false, hook)
 }
 
 func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan NarrativeStreamChunk, error) {
@@ -425,7 +445,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 				out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
 				return
 			}
-			narrative, err := n.finalizeTurn(ctx, prep, input, resp, 0, false)
+			narrative, err := n.finalizeTurn(ctx, prep, input, resp, 0, false, nil)
 			if err != nil {
 				out <- NarrativeStreamChunk{Err: err}
 				return
@@ -488,7 +508,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 					out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
 					return
 				}
-				narrative, err := n.finalizeTurn(ctx, prep, input, resp, firstTokenMs, true)
+				narrative, err := n.finalizeTurn(ctx, prep, input, resp, firstTokenMs, true, nil)
 				if err != nil {
 					out <- NarrativeStreamChunk{Err: err}
 					return
@@ -627,6 +647,7 @@ func (n *Narrator) finalizeTurn(
 	resp ai.Response,
 	firstTokenMs int64,
 	streamed bool,
+	hook TurnCommitHook,
 ) (*NarrativeResponse, error) {
 	n.lastModel = resp.Model
 	n.lastLatency = prep.preflightLatency + resp.LatencyMs
@@ -779,11 +800,36 @@ func (n *Narrator) finalizeTurn(
 		AIUsage:    n.lastUsage,
 		AIStreamed: n.lastStreamed,
 	}
-	var beforeCommit func(*sql.Tx) error
-	if npcRecorder != nil {
-		beforeCommit = func(tx *sql.Tx) error {
-			return npcRecorder.Commit(txNPCStore{db: n.db, tx: tx})
+	settingChanged := storySnapshot.SettingJSON != n.story.SettingJSON
+	beforeCommit := func(tx *sql.Tx) error {
+		if npcRecorder != nil {
+			if err := npcRecorder.Commit(txNPCStore{db: n.db, tx: tx}); err != nil {
+				return err
+			}
 		}
+		if settingChanged {
+			if err := n.db.UpdateStorySettingTx(tx, n.story.ID, n.story.SettingJSON); err != nil {
+				return err
+			}
+		}
+		if hook != nil {
+			if err := hook(tx, TurnCommitResult{
+				StoryID:     n.story.ID,
+				SessionID:   n.session.SessionID(),
+				Turn:        prep.currentTurn,
+				NextTurn:    n.world.CurrentTurn,
+				Entry:       entry,
+				Narrative:   narrative,
+				World:       n.world,
+				Character:   n.character,
+				Story:       n.story,
+				AIModel:     resp.Model,
+				AILatencyMS: n.lastLatency,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	if err := n.session.CommitTurnWithSideEffects(n.db, n.character, n.world, entry, beforeCommit); err != nil {
 		if IsMirrorSyncError(err) {
@@ -791,12 +837,6 @@ func (n *Narrator) finalizeTurn(
 		} else {
 			restoreState()
 			return nil, fmt.Errorf("committing canonical turn %d: %w", prep.currentTurn, err)
-		}
-	}
-
-	if storySnapshot.SettingJSON != n.story.SettingJSON {
-		if err := n.db.UpdateStorySetting(n.story.ID, n.story.SettingJSON); err != nil {
-			log.Printf("oneday: story setting update failed for story %s after canonical turn %d: %v", n.story.ID, prep.currentTurn, err)
 		}
 	}
 
@@ -862,7 +902,12 @@ func (n *Narrator) AutosaveCmd() tea.Cmd {
 	meta := n.BuildSaveMetadata("autosave")
 
 	return func() tea.Msg {
-		err := AutosaveWithMetadata(db, dataDir, story, &char, &world, sessionID, meta)
+		err := WithStoryMutationLease(context.Background(), db, story.ID, "autosave", "terminal", func(lease *StoryMutationLease) error {
+			if err := lease.Renew(); err != nil {
+				return err
+			}
+			return AutosaveWithMetadata(db, dataDir, story, &char, &world, sessionID, meta)
+		})
 		return AutosaveCompleteMsg{Err: err}
 	}
 }

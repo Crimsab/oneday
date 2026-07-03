@@ -307,7 +307,16 @@ func (db *DB) UpdateStoryTimestamp(storyID string) error {
 
 // UpdateStorySetting updates the setting_json for a story and bumps updated_at.
 func (db *DB) UpdateStorySetting(storyID, settingJSON string) error {
-	_, err := db.conn.Exec(
+	return updateStorySettingExec(db.conn, storyID, settingJSON)
+}
+
+// UpdateStorySettingTx updates the setting_json inside an existing transaction.
+func (db *DB) UpdateStorySettingTx(tx *sql.Tx, storyID, settingJSON string) error {
+	return updateStorySettingExec(tx, storyID, settingJSON)
+}
+
+func updateStorySettingExec(exec sqlExecer, storyID, settingJSON string) error {
+	_, err := exec.Exec(
 		`UPDATE stories SET setting_json = ?, updated_at = ? WHERE id = ?`,
 		settingJSON, time.Now(), storyID,
 	)

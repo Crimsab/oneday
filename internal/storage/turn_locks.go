@@ -49,6 +49,14 @@ func (db *DB) AcquireStoryTurnLock(ctx context.Context, storyID, owner string, t
 	for {
 		acquired, err := db.tryAcquireStoryTurnLock(storyID, owner, ttl)
 		if err != nil {
+			if isSQLiteBusy(err) {
+				select {
+				case <-ctx.Done():
+					return nil, fmt.Errorf("acquiring story turn lock for %s: %w", storyID, ctx.Err())
+				case <-ticker.C:
+					continue
+				}
+			}
 			return nil, err
 		}
 		if acquired {
@@ -61,6 +69,14 @@ func (db *DB) AcquireStoryTurnLock(ctx context.Context, storyID, owner string, t
 		case <-ticker.C:
 		}
 	}
+}
+
+func isSQLiteBusy(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "SQLITE_BUSY") || strings.Contains(msg, "database is locked")
 }
 
 func (db *DB) tryAcquireStoryTurnLock(storyID, owner string, ttl time.Duration) (bool, error) {

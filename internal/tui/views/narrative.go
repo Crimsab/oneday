@@ -1665,11 +1665,17 @@ func (m NarrativeModel) doSave(args []string) (NarrativeModel, tea.Cmd) {
 	}
 	narrator := m.narrator
 	return m, func() tea.Msg {
-		_, err := engine.SaveGameWithMetadata(
-			narrator.DB(), narrator.DataDir(),
-			narrator.Story(), narrator.Character(), narrator.World(),
-			narrator.SessionID(), saveName, narrator.BuildSaveMetadata("manual"),
-		)
+		err := engine.WithStoryMutationLease(context.Background(), narrator.DB(), narrator.Story().ID, "save-create", "terminal", func(lease *engine.StoryMutationLease) error {
+			if err := lease.Renew(); err != nil {
+				return err
+			}
+			_, err := engine.SaveGameWithMetadata(
+				narrator.DB(), narrator.DataDir(),
+				narrator.Story(), narrator.Character(), narrator.World(),
+				narrator.SessionID(), saveName, narrator.BuildSaveMetadata("manual"),
+			)
+			return err
+		})
 		return SaveCompleteMsg{Name: saveName, Err: err}
 	}
 }
@@ -1678,11 +1684,17 @@ func (m NarrativeModel) doQuickSave() tea.Cmd {
 	saveName := fmt.Sprintf("Quicksave T%d", m.narrator.Turn())
 	narrator := m.narrator
 	return func() tea.Msg {
-		_, err := engine.SaveGameWithMetadata(
-			narrator.DB(), narrator.DataDir(),
-			narrator.Story(), narrator.Character(), narrator.World(),
-			narrator.SessionID(), saveName, narrator.BuildSaveMetadata("quicksave"),
-		)
+		err := engine.WithStoryMutationLease(context.Background(), narrator.DB(), narrator.Story().ID, "save-create", "terminal", func(lease *engine.StoryMutationLease) error {
+			if err := lease.Renew(); err != nil {
+				return err
+			}
+			_, err := engine.SaveGameWithMetadata(
+				narrator.DB(), narrator.DataDir(),
+				narrator.Story(), narrator.Character(), narrator.World(),
+				narrator.SessionID(), saveName, narrator.BuildSaveMetadata("quicksave"),
+			)
+			return err
+		})
 		return SaveCompleteMsg{Name: saveName, Err: err}
 	}
 }
@@ -1708,11 +1720,16 @@ type ShowSaveListMsg struct {
 func (m NarrativeModel) doQuit() (NarrativeModel, tea.Cmd) {
 	narrator := m.narrator
 	return m, func() tea.Msg {
-		_ = engine.AutosaveWithMetadata(
-			narrator.DB(), narrator.DataDir(),
-			narrator.Story(), narrator.Character(), narrator.World(),
-			narrator.SessionID(), narrator.BuildSaveMetadata("autosave"),
-		)
+		_ = engine.WithStoryMutationLease(context.Background(), narrator.DB(), narrator.Story().ID, "autosave", "terminal", func(lease *engine.StoryMutationLease) error {
+			if err := lease.Renew(); err != nil {
+				return err
+			}
+			return engine.AutosaveWithMetadata(
+				narrator.DB(), narrator.DataDir(),
+				narrator.Story(), narrator.Character(), narrator.World(),
+				narrator.SessionID(), narrator.BuildSaveMetadata("autosave"),
+			)
+		})
 		narrator.CloseSession()
 		return QuitToMenuMsg{}
 	}
