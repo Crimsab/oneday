@@ -660,6 +660,12 @@ function App() {
             />
           </section>
 
+          {snapshot && snapshot.choices.length > 0 && (
+            <section className="inline-choice-panel" aria-label="Suggested actions">
+              <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} onChoice={sendChoice} onDraft={setDraft} />
+            </section>
+          )}
+
           <Composer
             draft={draft}
             mode={mode}
@@ -672,15 +678,6 @@ function App() {
             onSubmit={executeDraft}
             onHistoryStep={stepCommandHistory}
           />
-
-          <section className="lower-grid">
-            <section className="suggested-panel">
-              <div className="panel-head compact">
-                <h2>Suggested Actions</h2>
-              </div>
-              <SuggestedActions choices={snapshot?.choices ?? []} snapshot={snapshot} disabled={sending || !snapshot} onChoice={sendChoice} onDraft={setDraft} />
-            </section>
-          </section>
         </main>
         {preferences.showInspector && (
           <Inspector
