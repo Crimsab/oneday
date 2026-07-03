@@ -231,7 +231,7 @@ export function commandSuggestions(
       descriptor?.title.toLowerCase().includes(query) ||
       item.aliases.some((alias) => stripSlash(alias).startsWith(query))
     );
-  }).sort(compareSuggestions);
+  }).sort((left, right) => compareSuggestions(left, right, query));
 
   const recent = recentCommandSuggestions(query, context.recentCommands ?? []);
   return [...commands, ...recent];
@@ -521,12 +521,28 @@ function groupIndex(group: string): number {
   return index === -1 ? commandGroupOrder.length : index;
 }
 
-function compareSuggestions(left: SlashCommandItem, right: SlashCommandItem): number {
+function compareSuggestions(left: SlashCommandItem, right: SlashCommandItem, query = ""): number {
+  const scoreDelta = suggestionQueryScore(left, query) - suggestionQueryScore(right, query);
+  if (scoreDelta !== 0) return scoreDelta;
   const groupDelta = groupIndex(left.group) - groupIndex(right.group);
   if (groupDelta !== 0) return groupDelta;
   const kindDelta = suggestionKindIndex(left.kind) - suggestionKindIndex(right.kind);
   if (kindDelta !== 0) return kindDelta;
   return left.name.localeCompare(right.name);
+}
+
+function suggestionQueryScore(item: SlashCommandItem, query: string): number {
+  if (!query) return 0;
+  const name = item.name.slice(1).toLowerCase();
+  const canonical = item.descriptor?.canonical.toLowerCase() ?? "";
+  const title = item.descriptor?.title.toLowerCase() ?? "";
+  const aliases = item.aliases.map((alias) => stripSlash(alias));
+  if (name === query || canonical === query || aliases.some((alias) => alias === query)) return 0;
+  if (name.startsWith(query)) return 1;
+  if (canonical.startsWith(query)) return 2;
+  if (aliases.some((alias) => alias.startsWith(query))) return 3;
+  if (title.includes(query)) return 4;
+  return 5;
 }
 
 function suggestionKindIndex(kind: CommandSuggestionKind): number {
