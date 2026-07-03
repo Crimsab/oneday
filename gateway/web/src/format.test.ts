@@ -24,7 +24,9 @@ describe("basic JSON helpers", () => {
     expect(asArray(["x"])).toEqual(["x"]);
     expect(asArray({ a: 1 })).toEqual([]);
     expect(valueToText("")).toBe("-");
-    expect(valueToText({ a: 1 })).toBe(JSON.stringify({ a: 1 }, null, 2));
+    expect(valueToText({ a: 1 })).toBe("A: 1");
+    expect(valueToText({ name: "Ledger", detail: "wet ink" })).toBe("Name: Ledger; Detail: wet ink");
+    expect(valueToText([{ name: "Moon Key", kind: "quest" }, "rope"])).toBe("Moon Key (Kind: quest), rope");
   });
 
   it("formats labels and compact text", () => {

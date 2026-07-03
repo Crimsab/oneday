@@ -5,6 +5,7 @@ import type { JsonValue, StorySnapshot } from "../types";
 describe("moduleTitle", () => {
   it("returns the visible label for module tabs", () => {
     expect(moduleTitle("inventory")).toBe("Inventory");
+    expect(moduleTitle("craft")).toBe("Craft");
     expect(moduleTitle("fronts")).toBe("Fronts");
   });
 });

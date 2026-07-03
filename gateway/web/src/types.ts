@@ -3,6 +3,7 @@ export type SyncState = "Idle" | "Loading" | "Live" | "Sending" | "Paused" | "Re
 export type ModuleTab =
   | "history"
   | "inventory"
+  | "craft"
   | "stats"
   | "codex"
   | "fronts"
