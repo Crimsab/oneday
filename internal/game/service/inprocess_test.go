@@ -315,6 +315,113 @@ func TestInProcessTurnServiceConcurrentSubmissionsSerializeAcrossInstances(t *te
 	}
 }
 
+func TestInProcessTurnServiceConcurrentSameIdempotencyReplaysCommittedTurn(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-same-idem", 0)
+
+	provider := &blockingTurnProvider{entered: make(chan struct{}), release: make(chan struct{})}
+	router, err := ai.NewRouter([]ai.Provider{provider})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+
+	svcA := NewInProcessTurnService(cfg, db, router)
+	svcB := NewInProcessTurnService(cfg, db, router)
+	snapshot, err := svcA.Snapshot(context.Background(), "story-same-idem")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	req := contracts.SubmitActionRequest{
+		StoryID:        "story-same-idem",
+		SessionID:      snapshot.SessionID,
+		ClientTurn:     snapshot.Turn,
+		IdempotencyKey: "same-key",
+		Action: contracts.PlayerAction{
+			Kind: contracts.ActionKindFreeText,
+			Text: "I test the retry path.",
+		},
+	}
+
+	type result struct {
+		events []contracts.TurnEvent
+		err    error
+	}
+	first := make(chan result, 1)
+	second := make(chan result, 1)
+	go func() {
+		stream, err := svcA.SubmitAction(context.Background(), req)
+		if err != nil {
+			first <- result{err: err}
+			return
+		}
+		first <- result{events: collectTurnEvents(stream)}
+	}()
+	select {
+	case <-provider.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first provider call did not start")
+	}
+	go func() {
+		stream, err := svcB.SubmitAction(context.Background(), req)
+		if err != nil {
+			second <- result{err: err}
+			return
+		}
+		second <- result{events: collectTurnEvents(stream)}
+	}()
+	close(provider.release)
+
+	var got []result
+	for i := 0; i < 2; i++ {
+		select {
+		case res := <-first:
+			got = append(got, res)
+			first = nil
+		case res := <-second:
+			got = append(got, res)
+			second = nil
+		case <-time.After(5 * time.Second):
+			t.Fatal("same-key submissions did not finish")
+		}
+	}
+	for _, res := range got {
+		if res.err != nil {
+			t.Fatalf("same-key submit error: %v", res.err)
+		}
+		if len(res.events) == 0 {
+			t.Fatalf("same-key submit returned no events")
+		}
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("provider calls = %d, want 1", provider.callCount())
+	}
+	if len(got[0].events) != len(got[1].events) {
+		t.Fatalf("event counts = %d/%d, want equal", len(got[0].events), len(got[1].events))
+	}
+	for i := range got[0].events {
+		if got[0].events[i].ID != got[1].events[i].ID || got[0].events[i].Type != got[1].events[i].Type {
+			t.Fatalf("event[%d] mismatch: %+v vs %+v", i, got[0].events[i], got[1].events[i])
+		}
+	}
+
+	restarted := NewInProcessTurnService(cfg, db, router)
+	replay, err := restarted.SubmitAction(context.Background(), req)
+	if err != nil {
+		t.Fatalf("persistent same-key replay: %v", err)
+	}
+	if events := collectTurnEvents(replay); len(events) != len(got[0].events) {
+		t.Fatalf("persistent replay event count = %d, want %d", len(events), len(got[0].events))
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("provider calls after persistent replay = %d, want 1", provider.callCount())
+	}
+}
+
 func TestInProcessTurnServiceMetaCommandsDoNotAdvanceTurnForUsagePrompts(t *testing.T) {
 	root := t.TempDir()
 	db := newTurnServiceTestDB(t, root)
