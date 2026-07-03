@@ -11,7 +11,8 @@ export function asArray(value: JsonValue | undefined): JsonValue[] {
 export function valueToText(value: JsonValue | undefined, fallback = "-"): string {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
-  return JSON.stringify(value, null, 2);
+  if (Array.isArray(value)) return arrayToText(value, fallback);
+  return objectToText(value as JsonObject, fallback);
 }
 
 export function titleCase(value: string): string {
@@ -128,4 +129,79 @@ export function fieldRows(value: JsonValue | undefined): Array<[string, string]>
   }
   if (value !== undefined && value !== null) return [["Value", valueToText(value)]];
   return [];
+}
+
+function arrayToText(value: JsonValue[], fallback: string): string {
+  if (value.length === 0) return fallback;
+  const primitive = value.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item));
+  if (primitive) return value.map((item) => valueToText(item, fallback)).join(", ");
+
+  const labels = value.slice(0, 4).map((item, index) => {
+    if (item && typeof item === "object" && !Array.isArray(item)) {
+      const object = item as JsonObject;
+      const label = entryLabel(item, index);
+      const summary = objectSummary(object, ["name", "title", "label", "id"]);
+      return summary ? `${label} (${summary})` : label;
+    }
+    return valueToText(item, fallback);
+  });
+  const suffix = value.length > labels.length ? `, +${value.length - labels.length} more` : "";
+  return `${labels.join(", ")}${suffix}`;
+}
+
+function objectToText(value: JsonObject, fallback: string): string {
+  const summary = objectSummary(value);
+  if (summary) return summary;
+  const keys = Object.keys(value);
+  if (keys.length === 0) return fallback;
+  return keys.slice(0, 5).map((key) => titleCase(key)).join(", ");
+}
+
+function objectSummary(value: JsonObject, skipKeys: string[] = []): string {
+  const skip = new Set(skipKeys.map((key) => key.toLowerCase()));
+  const preferred = [
+    "name",
+    "title",
+    "label",
+    "status",
+    "type",
+    "kind",
+    "summary",
+    "description",
+    "detail",
+    "details",
+    "note",
+    "value",
+    "amount",
+    "current",
+    "max",
+    "progress",
+    "outcome",
+    "risk",
+    "intent",
+  ];
+  const pieces: string[] = [];
+  for (const key of preferred) {
+    if (skip.has(key.toLowerCase())) continue;
+    const child = value[key] ?? value[titleCase(key)];
+    if (child === undefined || child === null || child === "") continue;
+    if (typeof child === "object") {
+      if (Array.isArray(child) && child.length > 0 && child.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item))) {
+        pieces.push(`${titleCase(key)}: ${arrayToText(child, "-")}`);
+      }
+      continue;
+    }
+    pieces.push(`${titleCase(key)}: ${String(child)}`);
+    if (pieces.length >= 4) break;
+  }
+  if (pieces.length > 0) return pieces.join("; ");
+
+  for (const [key, child] of Object.entries(value)) {
+    if (skip.has(key.toLowerCase())) continue;
+    if (child === undefined || child === null || child === "") continue;
+    if (typeof child === "object") continue;
+    pieces.push(`${titleCase(key)}: ${String(child)}`);
+    if (pieces.length >= 4) break;
+  }
+  return pieces.join("; ");
 }

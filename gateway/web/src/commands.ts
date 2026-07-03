@@ -1,10 +1,10 @@
-import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Search } from "lucide-react";
-import type { CommandDescriptor, MetaCommand, ModuleTab } from "./types";
+import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Hammer, Search } from "lucide-react";
+import type { CommandDescriptor, MetaCommand, ModuleTab, OverlayKind } from "./types";
 
 export interface CommandResult {
   handled?: boolean;
   tab?: ModuleTab;
-  overlay?: "help" | "saves";
+  overlay?: Exclude<OverlayKind, null>;
   text?: string;
   notice?: string;
   meta?: MetaCommand;
@@ -55,6 +55,7 @@ export const moduleSpecs: Array<{
 }> = [
   { tab: "history", label: "History", hotkey: "H", command: "/history", Icon: Clock3 },
   { tab: "inventory", label: "Inventory", hotkey: "I", command: "/inventory", Icon: Archive },
+  { tab: "craft", label: "Craft", hotkey: "R", command: "/craft", Icon: Hammer },
   { tab: "stats", label: "Stats", hotkey: "S", command: "/stats", Icon: BarChart3 },
   { tab: "codex", label: "Codex", hotkey: "C", command: "/codex", Icon: BookOpen },
   { tab: "fronts", label: "Fronts", hotkey: "F", command: "/fronts", Icon: Flag },
@@ -129,7 +130,7 @@ const panelByCanonical: Record<string, ModuleTab> = {
   fronts: "fronts",
   investigations: "investigations",
   projects: "projects",
-  craft: "inventory",
+  craft: "craft",
   history: "history",
   achievements: "saves",
   map: "history",
@@ -163,6 +164,7 @@ export function commandToAction(rawText: string, context: CommandContext = {}): 
   switch (command.behavior) {
     case "open_panel": {
       const tab = panelByCanonical[canonical] ?? panelByCanonical[command.id];
+      if (tab === "craft") return { handled: true, tab, overlay: "module" };
       return tab ? { handled: true, tab } : { handled: true };
     }
     case "save_load":
