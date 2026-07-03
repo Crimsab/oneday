@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { commandToAction, actionModeToText, tabHotkeys } from "./commands";
-import { ApiRequestError, createSave, getHealth, getSnapshot, getStories, loadSave, submitAction, submitMeta } from "./api";
+import { ApiRequestError, createSave, deleteSave, getHealth, getSnapshot, getStories, loadSave, submitAction, submitMeta } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LeftRail } from "./components/LeftRail";
@@ -37,6 +37,7 @@ function App() {
   const [filter, setFilter] = useState("");
   const [selectedTab, setSelectedTab] = useState<ModuleTab>("history");
   const [overlay, setOverlay] = useState<OverlayKind>(null);
+  const [saveFilter, setSaveFilter] = useState("");
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState("action");
   const [notice, setNotice] = useState("");
@@ -168,6 +169,7 @@ function App() {
     const commandResult = commandToAction(draft);
     if (commandResult.tab) setSelectedTab(commandResult.tab);
     if (commandResult.overlay) setOverlay(commandResult.overlay);
+    if (commandResult.saveFilter !== undefined) setSaveFilter(commandResult.saveFilter);
     if (commandResult.notice) setNotice(commandResult.notice);
     if (commandResult.meta) {
       await sendMetaCommand(commandResult.meta, draft);
@@ -258,6 +260,7 @@ function App() {
       setSnapshot(response.snapshot);
       setSelectedTab("saves");
       setOverlay("saves");
+      setSaveFilter("");
       setNotice(`Saved ${response.save?.name ?? saveName}.`);
       setLocalCommands((items) => [
         { id: clientId("command"), text: sourceText.trim() || `/save ${saveName}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
@@ -293,6 +296,39 @@ function App() {
       setNotice(`${response.legacy ? "Legacy save loaded" : "Loaded"} ${response.save?.name ?? save.name}.`);
       setLocalCommands((items) => [
         { id: clientId("command"), text: `/load ${save.name}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
+        ...items,
+      ].slice(0, 10));
+      setSync(paused ? "Paused" : "Live");
+    } catch (error) {
+      setSync("Error");
+      setNotice(actionErrorMessage(error));
+      await loadSnapshot().catch(() => undefined);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const deleteManualSave = async (save: SaveView) => {
+    if (!snapshot || !storyId || sending) return;
+    const confirmed = window.confirm(`Delete "${save.name}" from turn ${save.turn}? This removes only the saved snapshot.`);
+    if (!confirmed) return;
+    setSending(true);
+    const baseSnapshot = snapshot;
+    try {
+      const readySnapshot = await snapshotForSubmit(baseSnapshot);
+      if (!readySnapshot) return;
+      setSync("Sending");
+      const response = await deleteSave(storyId, {
+        session_id: readySnapshot.active_session.id,
+        client_turn: readySnapshot.world.current_turn,
+        save_id: save.id,
+      });
+      setSnapshot(response.snapshot);
+      setSelectedTab("saves");
+      setOverlay("saves");
+      setNotice(`Deleted ${response.save?.name ?? save.name}.`);
+      setLocalCommands((items) => [
+        { id: clientId("command"), text: `/delete-save ${save.name}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
         ...items,
       ].slice(0, 10));
       setSync(paused ? "Paused" : "Live");
@@ -359,7 +395,10 @@ function App() {
   };
 
   const openOverlay = (nextOverlay: OverlayKind) => {
-    if (nextOverlay === "saves") setSelectedTab("saves");
+    if (nextOverlay === "saves") {
+      setSelectedTab("saves");
+      setSaveFilter("");
+    }
     setOverlay(nextOverlay);
   };
 
@@ -447,6 +486,9 @@ function App() {
         onPreferencesChange={updatePreferences}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
         onLoadSave={(save) => void loadManualSave(save)}
+        onDeleteSave={(save) => void deleteManualSave(save)}
+        saveFilter={saveFilter}
+        onSaveFilterChange={setSaveFilter}
       />
     </div>
   );

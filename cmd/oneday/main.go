@@ -135,6 +135,13 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayDeleteSave(os.Args[1:]) {
+		if err := runGatewayDeleteSave(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway delete save failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Start TUI
 	app := tui.New(cfg, db, router)
@@ -268,6 +275,10 @@ func wantsGatewaySave(args []string) bool {
 
 func wantsGatewayLoad(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-load"
+}
+
+func wantsGatewayDeleteSave(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-delete-save"
 }
 
 type localEmbeddingModel struct {

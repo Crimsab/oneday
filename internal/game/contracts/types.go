@@ -120,6 +120,23 @@ func (r BrowserLoadRequest) Validate(currentTurn int) error {
 	return nil
 }
 
+type BrowserDeleteSaveRequest struct {
+	StoryID    string `json:"story_id"`
+	SessionID  string `json:"session_id"`
+	ClientTurn int    `json:"client_turn"`
+	SaveID     string `json:"save_id"`
+}
+
+func (r BrowserDeleteSaveRequest) Validate(currentTurn int) error {
+	if err := validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn); err != nil {
+		return err
+	}
+	if strings.TrimSpace(r.SaveID) == "" {
+		return errors.New("save_id is required")
+	}
+	return nil
+}
+
 type BrowserSaveView struct {
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
@@ -138,6 +155,10 @@ type BrowserSaveResponse struct {
 type BrowserLoadResponse struct {
 	Save   BrowserSaveView `json:"save"`
 	Legacy bool            `json:"legacy,omitempty"`
+}
+
+type BrowserDeleteSaveResponse struct {
+	Save BrowserSaveView `json:"save"`
 }
 
 func validateStorySessionTurn(storyID, sessionID string, clientTurn, currentTurn int) error {

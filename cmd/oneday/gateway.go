@@ -34,6 +34,11 @@ type gatewayLoadResponse struct {
 	Error  string                     `json:"error,omitempty"`
 }
 
+type gatewayDeleteSaveResponse struct {
+	Save  *contracts.BrowserSaveView `json:"save,omitempty"`
+	Error string                     `json:"error,omitempty"`
+}
+
 func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.SubmitActionRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
@@ -107,6 +112,23 @@ func runGatewayLoad(ctx context.Context, cfg config.Config, db *storage.DB, rout
 	return nil
 }
 
+func runGatewayDeleteSave(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
+	var req contracts.BrowserDeleteSaveRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return writeGatewayDeleteSaveError(out, fmt.Errorf("invalid gateway-delete-save JSON: %w", err))
+	}
+
+	turns := gameservice.NewInProcessTurnService(cfg, db, router)
+	resp, err := turns.DeleteSave(ctx, req)
+	if err != nil {
+		return writeGatewayDeleteSaveError(out, err)
+	}
+	if err := json.NewEncoder(out).Encode(gatewayDeleteSaveResponse{Save: &resp.Save}); err != nil {
+		return fmt.Errorf("writing gateway-delete-save response: %w", err)
+	}
+	return nil
+}
+
 func writeGatewayTurnError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{Error: err.Error()})
 	return err
@@ -124,5 +146,10 @@ func writeGatewaySaveError(out io.Writer, err error) error {
 
 func writeGatewayLoadError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayLoadResponse{Error: err.Error()})
+	return err
+}
+
+func writeGatewayDeleteSaveError(out io.Writer, err error) error {
+	_ = json.NewEncoder(out).Encode(gatewayDeleteSaveResponse{Error: err.Error()})
 	return err
 }
