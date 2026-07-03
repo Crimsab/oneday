@@ -13,6 +13,8 @@ import type {
   ModelSettingsUpdate,
   SaveEnvelope,
   SaveResponse,
+  StoryCreateEnvelope,
+  StoryCreateResponse,
   StorySnapshot,
   StorySummary,
 } from "./types";
@@ -57,6 +59,14 @@ export function getHealth(): Promise<Health> {
 
 export function getStories(): Promise<StorySummary[]> {
   return request<StorySummary[]>("/api/stories");
+}
+
+export function createStory(envelope: StoryCreateEnvelope): Promise<StoryCreateResponse> {
+  return request<StoryCreateResponse>("/api/stories", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(envelope),
+  });
 }
 
 export function getSnapshot(storyId: string): Promise<StorySnapshot> {

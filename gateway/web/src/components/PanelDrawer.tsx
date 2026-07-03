@@ -1,10 +1,21 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
 import { compactText } from "../format";
 import { draftFromModelSettings, hasModelRoutingChanges, modelRoutingIssues, promoteProvider, updateFromDraft, type ModelRoutingDraft } from "../modelRouting";
 import { ModuleContent, moduleTitle } from "./Inspector";
-import type { AppPreferences, CommandDescriptor, MetaResult, ModelSettings, ModelSettingsUpdate, ModuleTab, OverlayKind, SaveView, StorySnapshot } from "../types";
+import type {
+  AppPreferences,
+  CommandDescriptor,
+  MetaResult,
+  ModelSettings,
+  ModelSettingsUpdate,
+  ModuleTab,
+  OverlayKind,
+  SaveView,
+  StoryCreateEnvelope,
+  StorySnapshot,
+} from "../types";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -21,6 +32,7 @@ interface PanelDrawerProps {
   onPreferencesChange: (preferences: AppPreferences) => void;
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
+  onCreateStory: (payload: StoryCreateEnvelope) => Promise<void> | void;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
   onDeleteSave: (save: SaveView) => void;
@@ -43,6 +55,7 @@ export function PanelDrawer({
   onPreferencesChange,
   onModelSettingsSave,
   onModelSettingsReload,
+  onCreateStory,
   onCreateSave,
   onLoadSave,
   onDeleteSave,
@@ -88,7 +101,7 @@ export function PanelDrawer({
             onDeleteSave={onDeleteSave}
           />
         )}
-        {overlay === "new-story" && <NewStoryContent />}
+        {overlay === "new-story" && <NewStoryContent busy={busy} onCreateStory={onCreateStory} />}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
         {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={selectedTab} />}
       </section>
@@ -565,15 +578,66 @@ function ModuleOverlayContent({ snapshot, selectedTab }: { snapshot: StorySnapsh
   );
 }
 
-function NewStoryContent() {
+function NewStoryContent({
+  busy,
+  onCreateStory,
+}: {
+  busy: boolean;
+  onCreateStory: (payload: StoryCreateEnvelope) => Promise<void> | void;
+}) {
+  const [brief, setBrief] = useState(
+    "Italian mystery adventure, compact prose, practical choices, strong anti-loop rules, no lore sprawl.",
+  );
+  const [characterName, setCharacterName] = useState("Tester");
+  const [characterBackground, setCharacterBackground] = useState("Created from the browser to validate OneDay parity and UI flows.");
+  const [start, setStart] = useState(true);
+  const [error, setError] = useState("");
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!brief.trim()) {
+      setError("Story brief is required.");
+      return;
+    }
+    if (!characterName.trim()) {
+      setError("Character name is required.");
+      return;
+    }
+    setError("");
+    await onCreateStory({
+      brief: brief.trim(),
+      character_name: characterName.trim(),
+      character_background: characterBackground.trim(),
+      start,
+    });
+  };
+
   return (
-    <div className="overlay-content">
-      <p className="overlay-copy">
-        Story creation still lives in the terminal flow. The browser gateway currently reads existing stories and submits realtime turns against the same canonical session.
-      </p>
-      <p className="overlay-copy muted">
-        Keeping this disabled avoids creating a second incompatible story path before the backend exposes the same creation contract.
-      </p>
-    </div>
+    <form className="overlay-content new-story-form" onSubmit={submit}>
+      <label>
+        <span>Story brief</span>
+        <textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={5} disabled={busy} />
+      </label>
+      <div className="two-column-form">
+        <label>
+          <span>Protagonist</span>
+          <input value={characterName} onChange={(event) => setCharacterName(event.target.value)} disabled={busy} />
+        </label>
+        <label className="checkbox-line">
+          <input type="checkbox" checked={start} onChange={(event) => setStart(event.target.checked)} disabled={busy} />
+          <span>Start first turn</span>
+        </label>
+      </div>
+      <label>
+        <span>Background</span>
+        <textarea value={characterBackground} onChange={(event) => setCharacterBackground(event.target.value)} rows={3} disabled={busy} />
+      </label>
+      {error && <p className="form-error">{error}</p>}
+      <div className="drawer-actions">
+        <button type="submit" className="primary" disabled={busy}>
+          {busy ? "Creating..." : "Create Story"}
+        </button>
+      </div>
+    </form>
   );
 }
