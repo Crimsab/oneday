@@ -22,6 +22,11 @@ import (
 	"github.com/crimsab/oneday/internal/storage"
 )
 
+const (
+	storyMutationLockTTL       = 3 * time.Minute
+	storyMutationHeartbeatTick = 1 * time.Minute
+)
+
 // InProcessTurnService runs browser turns through the same Narrator pipeline as
 // the terminal UI, while serializing mutations per story.
 type InProcessTurnService struct {
@@ -99,10 +104,11 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 	lock.Lock()
 	defer lock.Unlock()
 
-	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "turn")
+	storyLock, heartbeat, err := s.acquireStoryMutationLock(ctx, req.StoryID, "turn")
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = heartbeat.Stop() }()
 	defer func() { _ = storyLock.Release() }()
 
 	if events, ok, err := s.cachedEvents(req); err != nil {
@@ -122,7 +128,7 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 		return nil, fmt.Errorf("stale session_id %q, active session is %q", req.SessionID, snapshot.SessionID)
 	}
 
-	events, err := s.runTurn(ctx, req, snapshot)
+	events, err := s.runTurn(ctx, req, snapshot, storyLock)
 	if err != nil {
 		return nil, err
 	}
@@ -142,10 +148,11 @@ func (s *InProcessTurnService) SubmitMeta(ctx context.Context, req contracts.Bro
 	lock.Lock()
 	defer lock.Unlock()
 
-	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-create")
+	storyLock, heartbeat, err := s.acquireStoryMutationLock(ctx, req.StoryID, "meta")
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = heartbeat.Stop() }()
 	defer func() { _ = storyLock.Release() }()
 
 	snapshot, err := s.Snapshot(ctx, req.StoryID)
@@ -171,16 +178,25 @@ func (s *InProcessTurnService) SubmitMeta(ctx context.Context, req contracts.Bro
 		if err != nil {
 			return nil, err
 		}
+		if err := storyLock.Renew(storyMutationLockTTL); err != nil {
+			return nil, err
+		}
 		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "By The Way", Message: message}, nil
 	case contracts.BrowserMetaKindGuide:
 		resp, err := narrator.ExecuteGuideCommand(ctx, req.Text)
 		if err != nil {
 			return nil, err
 		}
+		if err := storyLock.Renew(storyMutationLockTTL); err != nil {
+			return nil, err
+		}
 		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "Guide", Message: resp.Message}, nil
 	case contracts.BrowserMetaKindNarrator:
 		resp, err := narrator.ExecuteNarratorCommand(ctx, req.Text)
 		if err != nil {
+			return nil, err
+		}
+		if err := storyLock.Renew(storyMutationLockTTL); err != nil {
 			return nil, err
 		}
 		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "Narrator Control", Message: resp.Message}, nil
@@ -198,10 +214,11 @@ func (s *InProcessTurnService) CreateSave(ctx context.Context, req contracts.Bro
 	lock.Lock()
 	defer lock.Unlock()
 
-	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-load")
+	storyLock, heartbeat, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-create")
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = heartbeat.Stop() }()
 	defer func() { _ = storyLock.Release() }()
 
 	snapshot, err := s.Snapshot(ctx, req.StoryID)
@@ -241,6 +258,9 @@ func (s *InProcessTurnService) CreateSave(ctx context.Context, req contracts.Bro
 	if kind == "" {
 		kind = "manual"
 	}
+	if err := storyLock.Renew(storyMutationLockTTL); err != nil {
+		return nil, err
+	}
 	save, err := engine.SaveGameWithMetadata(
 		s.db,
 		s.cfg.DataDir,
@@ -266,10 +286,11 @@ func (s *InProcessTurnService) LoadSave(ctx context.Context, req contracts.Brows
 	lock.Lock()
 	defer lock.Unlock()
 
-	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-delete")
+	storyLock, heartbeat, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-load")
 	if err != nil {
 		return nil, err
 	}
+	defer func() { _ = heartbeat.Stop() }()
 	defer func() { _ = storyLock.Release() }()
 
 	snapshot, err := s.Snapshot(ctx, req.StoryID)
@@ -290,6 +311,9 @@ func (s *InProcessTurnService) LoadSave(ctx context.Context, req contracts.Brows
 		return nil, fmt.Errorf("save %s belongs to story %s, not %s", req.SaveID, save.StoryID, req.StoryID)
 	}
 
+	if err := storyLock.Renew(storyMutationLockTTL); err != nil {
+		return nil, err
+	}
 	result, err := engine.LoadGame(s.db, s.cfg.DataDir, req.SaveID)
 	if err != nil {
 		return nil, err
@@ -305,6 +329,13 @@ func (s *InProcessTurnService) DeleteSave(ctx context.Context, req contracts.Bro
 	lock := s.storyLock(req.StoryID)
 	lock.Lock()
 	defer lock.Unlock()
+
+	storyLock, heartbeat, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-delete")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = heartbeat.Stop() }()
+	defer func() { _ = storyLock.Release() }()
 
 	snapshot, err := s.Snapshot(ctx, req.StoryID)
 	if err != nil {
@@ -324,13 +355,16 @@ func (s *InProcessTurnService) DeleteSave(ctx context.Context, req contracts.Bro
 		return nil, fmt.Errorf("save %s belongs to story %s, not %s", req.SaveID, save.StoryID, req.StoryID)
 	}
 	view := saveView(save)
+	if err := storyLock.Renew(storyMutationLockTTL); err != nil {
+		return nil, err
+	}
 	if err := engine.DeleteSave(s.db, s.cfg.DataDir, req.SaveID); err != nil {
 		return nil, err
 	}
 	return &contracts.BrowserDeleteSaveResponse{Save: view}, nil
 }
 
-func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot) ([]contracts.TurnEvent, error) {
+func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot, storyLock *storage.StoryTurnLock) ([]contracts.TurnEvent, error) {
 	narrator, session, err := s.newNarrator(req.StoryID)
 	if err != nil {
 		return nil, err
@@ -364,7 +398,7 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 		return nil, err
 	}
 
-	resp, err := narrator.SendActionLocked(ctx, actionText(req.Action))
+	resp, err := narrator.SendActionWithLease(ctx, actionText(req.Action), storyLock)
 	if err != nil {
 		return nil, err
 	}
@@ -484,12 +518,16 @@ func (s *InProcessTurnService) storyLock(storyID string) *sync.Mutex {
 	return lock
 }
 
-func (s *InProcessTurnService) acquireStoryMutationLock(ctx context.Context, storyID, scope string) (*storage.StoryTurnLock, error) {
+func (s *InProcessTurnService) acquireStoryMutationLock(ctx context.Context, storyID, scope string) (*storage.StoryTurnLock, *storage.StoryTurnLockHeartbeat, error) {
 	if s.db == nil {
-		return nil, errors.New("database is not configured")
+		return nil, nil, errors.New("database is not configured")
 	}
 	owner := fmt.Sprintf("browser:%s:%d:%d", strings.TrimSpace(scope), os.Getpid(), time.Now().UnixNano())
-	return s.db.AcquireStoryTurnLock(ctx, storyID, owner, 3*time.Minute)
+	lock, err := s.db.AcquireStoryTurnLock(ctx, storyID, owner, storyMutationLockTTL)
+	if err != nil {
+		return nil, nil, err
+	}
+	return lock, lock.StartHeartbeat(ctx, storyMutationHeartbeatTick, storyMutationLockTTL), nil
 }
 
 func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest) ([]contracts.TurnEvent, bool, error) {

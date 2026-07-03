@@ -301,12 +301,17 @@ func (n *Narrator) SendAction(ctx context.Context, action string) (*NarrativeRes
 	return n.sendTurn(ctx, action)
 }
 
-// SendActionLocked sends a player action while assuming the caller already owns
-// the cross-process story turn lock. This is used by short-lived browser bridge
-// processes so they can validate the latest story state after acquiring the
-// shared SQLite lock instead of after preparing a stale turn.
-func (n *Narrator) SendActionLocked(ctx context.Context, action string) (*NarrativeResponse, error) {
-	return n.sendTurnUnlocked(ctx, action)
+// SendActionWithLease sends a player action using a caller-owned story turn
+// lease. The lease is renewed before canonical commit so an expired/lost lease
+// cannot commit a turn prepared under stale ownership.
+func (n *Narrator) SendActionWithLease(ctx context.Context, action string, lock *storage.StoryTurnLock) (*NarrativeResponse, error) {
+	if lock == nil {
+		return nil, fmt.Errorf("story turn lock is required")
+	}
+	if n == nil || n.story == nil || lock.StoryID() != n.story.ID {
+		return nil, fmt.Errorf("story turn lock does not belong to narrator story")
+	}
+	return n.sendTurnUnlocked(ctx, action, lock)
 }
 
 // StreamAction streams a player action and emits the final structured response
@@ -365,12 +370,14 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	if err != nil {
 		return nil, err
 	}
+	heartbeat := lock.StartHeartbeat(ctx, time.Minute, 3*time.Minute)
+	defer func() { _ = heartbeat.Stop() }()
 	defer func() { _ = lock.Release() }()
 
-	return n.sendTurnUnlocked(ctx, input)
+	return n.sendTurnUnlocked(ctx, input, lock)
 }
 
-func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string) (*NarrativeResponse, error) {
+func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string, lock *storage.StoryTurnLock) (*NarrativeResponse, error) {
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
 		return nil, err
@@ -381,6 +388,9 @@ func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string) (*Narrati
 		return nil, err
 	}
 
+	if err := lock.Renew(3 * time.Minute); err != nil {
+		return nil, fmt.Errorf("renewing turn lock before commit: %w", err)
+	}
 	return n.finalizeTurn(ctx, prep, input, resp, 0, false)
 }
 
@@ -389,9 +399,11 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 	if err != nil {
 		return nil, err
 	}
+	heartbeat := lock.StartHeartbeat(ctx, time.Minute, 3*time.Minute)
 
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
+		_ = heartbeat.Stop()
 		_ = lock.Release()
 		return nil, err
 	}
@@ -400,6 +412,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 		out := make(chan NarrativeStreamChunk, 4)
 		go func() {
 			defer close(out)
+			defer func() { _ = heartbeat.Stop() }()
 			defer func() { _ = lock.Release() }()
 
 			resp, err := n.completeTurnResponse(ctx, prep)
@@ -408,6 +421,10 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 				return
 			}
 
+			if err := lock.Renew(3 * time.Minute); err != nil {
+				out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
+				return
+			}
 			narrative, err := n.finalizeTurn(ctx, prep, input, resp, 0, false)
 			if err != nil {
 				out <- NarrativeStreamChunk{Err: err}
@@ -424,6 +441,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 
 	stream, providerName, err := n.router.Stream(ctx, prep.req)
 	if err != nil {
+		_ = heartbeat.Stop()
 		_ = lock.Release()
 		return nil, err
 	}
@@ -431,6 +449,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 	out := make(chan NarrativeStreamChunk, 32)
 	go func() {
 		defer close(out)
+		defer func() { _ = heartbeat.Stop() }()
 		defer func() { _ = lock.Release() }()
 
 		start := time.Now()
@@ -464,6 +483,10 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 					Provider:  providerName,
 					LatencyMs: time.Since(start).Milliseconds(),
 					Usage:     usage,
+				}
+				if err := lock.Renew(3 * time.Minute); err != nil {
+					out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
+					return
 				}
 				narrative, err := n.finalizeTurn(ctx, prep, input, resp, firstTokenMs, true)
 				if err != nil {
