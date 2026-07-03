@@ -57,6 +57,16 @@ export function displayClock(turn = 0) {
   };
 }
 
+export function displayTimestamp(value: string | undefined, fallback = "-"): string {
+  const text = (value ?? "").trim();
+  if (!text) return fallback;
+  return text
+    .replace(/\s+m=\+[0-9.]+s?$/i, "")
+    .replace(/\s+m=\+[^\s]+$/i, "")
+    .replace(/^(\d{4}-\d{2}-\d{2})T/, "$1 ")
+    .replace(/Z$/, " UTC");
+}
+
 export function messageClock(message: MessageView): string {
   const hour = (8 + Math.floor(message.turn / 2)) % 24;
   const minute = (message.turn * 7 + message.id) % 60;

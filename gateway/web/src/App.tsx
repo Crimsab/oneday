@@ -258,6 +258,7 @@ function App() {
   const executeDraft = async () => {
     if (!draft.trim() || !snapshot || !storyId || sending) return;
     setNotice("");
+    const sourceText = draft.trim();
     const commandResult = commandToAction(draft, {
       descriptors: commandDescriptors,
       npcNames: npcNamesFromSnapshot(snapshot),
@@ -282,7 +283,9 @@ function App() {
       return;
     }
     if (commandResult.handled) {
+      rememberLocalCommand(sourceText, snapshot.world.current_turn);
       setDraft("");
+      setHistoryIndex(-1);
       return;
     }
 
@@ -599,6 +602,15 @@ function App() {
     const next = stepHistoryIndex(historyIndex, direction, recentCommands);
     setHistoryIndex(next.index);
     return next.value;
+  };
+
+  const rememberLocalCommand = (text: string, turn: number) => {
+    const clean = text.trim();
+    if (!clean) return;
+    setLocalCommands((items) => [
+      { id: clientId("command"), text: clean, turn, source: "browser" as const },
+      ...items.filter((item) => item.text.trim().toLowerCase() !== clean.toLowerCase()),
+    ].slice(0, 10));
   };
 
   return (

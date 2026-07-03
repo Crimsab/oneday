@@ -1,6 +1,6 @@
 import { PanelLeftOpen, Plus, RefreshCw, Search, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
-import { asArray, compactText, entryLabel, fieldRows } from "../format";
+import { asArray, compactText, displayTimestamp, entryLabel, fieldRows } from "../format";
 import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary } from "../types";
 
 interface LeftRailProps {
@@ -175,6 +175,6 @@ function storyNotes(snapshot: StorySnapshot | null): string[] {
   if (npc) notes.push(`Key Contact: ${npc.name}`);
   const guidance = fieldRows(snapshot.world.guidance)[0];
   if (guidance) notes.push(`Next Lead: ${compactText(guidance[1], 90)}`);
-  notes.push(`Updated: ${snapshot.world.updated_at || snapshot.server_time}`);
+  notes.push(`Updated: ${displayTimestamp(snapshot.world.updated_at || snapshot.server_time)}`);
   return notes;
 }
