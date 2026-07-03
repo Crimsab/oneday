@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -119,7 +120,10 @@ func UpdateModelRoutingSettings(path string, update ModelRoutingUpdate) (ModelRo
 			raw = nil
 		}
 		revision := ConfigRevision(raw)
-		if strings.TrimSpace(update.BaseRevision) != "" && update.BaseRevision != revision {
+		if strings.TrimSpace(update.BaseRevision) == "" {
+			return ModelRoutingError{Code: ModelRoutingErrorValidation, Err: fmt.Errorf("base_revision is required; reload model settings before saving")}
+		}
+		if update.BaseRevision != revision {
 			return ModelRoutingError{Code: ModelRoutingErrorStale, Err: fmt.Errorf("config changed on disk; reload before saving")}
 		}
 
@@ -312,7 +316,14 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 func configFromEditBytes(path string, raw []byte) (Config, error) {
 	cfg := Default()
 	if len(raw) > 0 {
-		if err := yaml.Unmarshal(raw, &cfg); err != nil {
+		var doc yaml.Node
+		if err := yaml.Unmarshal(raw, &doc); err != nil {
+			return cfg, fmt.Errorf("parsing config %s: %w", path, err)
+		}
+		if err := rejectDuplicateMappingKeys(&doc, ""); err != nil {
+			return cfg, fmt.Errorf("parsing config %s: %w", path, err)
+		}
+		if err := doc.Decode(&cfg); err != nil {
 			return cfg, fmt.Errorf("parsing config %s: %w", path, err)
 		}
 	}
@@ -331,22 +342,42 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 	if err := yaml.Unmarshal(raw, &doc); err != nil {
 		return nil, fmt.Errorf("parsing YAML document: %w", err)
 	}
-	root := documentRoot(&doc)
-	setStringSlice(root, cfg.AI.ProviderPriority, "ai", "provider_priority")
-	setBool(root, cfg.AI.Codex.Enabled, "ai", "codex", "enabled")
-	setString(root, cfg.AI.Codex.Model, "ai", "codex", "model")
-	setString(root, cfg.AI.Codex.Reasoning, "ai", "codex", "reasoning")
-	setBool(root, cfg.AI.LiteLLM.Enabled, "ai", "litellm", "enabled")
-	setString(root, cfg.AI.LiteLLM.DefaultModel, "ai", "litellm", "default_model")
-	setBool(root, cfg.AI.OpenRouter.Enabled, "ai", "openrouter", "enabled")
-	setString(root, cfg.AI.OpenRouter.DefaultModel, "ai", "openrouter", "default_model")
-	setBool(root, cfg.AI.ClaudeCode.Enabled, "ai", "claude_code", "enabled")
-	setString(root, cfg.AI.Generation.UtilityModel, "ai", "generation", "utility_model")
-	setString(root, cfg.AI.Generation.RepairModel, "ai", "generation", "repair_model")
-	setStringSlice(root, cfg.AI.Generation.RepairFallbackModels, "ai", "generation", "repair_fallback_models")
-	setString(root, cfg.AI.ASCIIArt.Model, "ai", "ascii_art", "model")
-	setString(root, cfg.AI.Embedding.Provider, "ai", "embedding", "provider")
-	setString(root, cfg.AI.Embedding.Model, "ai", "embedding", "model")
+	if err := rejectDuplicateMappingKeys(&doc, ""); err != nil {
+		return nil, err
+	}
+	root, err := documentRoot(&doc)
+	if err != nil {
+		return nil, err
+	}
+	for _, apply := range []func() error{
+		func() error { return setStringSlice(root, cfg.AI.ProviderPriority, "ai", "provider_priority") },
+		func() error { return setBool(root, cfg.AI.Codex.Enabled, "ai", "codex", "enabled") },
+		func() error { return setString(root, cfg.AI.Codex.Model, "ai", "codex", "model") },
+		func() error { return setString(root, cfg.AI.Codex.Reasoning, "ai", "codex", "reasoning") },
+		func() error { return setBool(root, cfg.AI.LiteLLM.Enabled, "ai", "litellm", "enabled") },
+		func() error { return setString(root, cfg.AI.LiteLLM.DefaultModel, "ai", "litellm", "default_model") },
+		func() error { return setBool(root, cfg.AI.OpenRouter.Enabled, "ai", "openrouter", "enabled") },
+		func() error {
+			return setString(root, cfg.AI.OpenRouter.DefaultModel, "ai", "openrouter", "default_model")
+		},
+		func() error { return setBool(root, cfg.AI.ClaudeCode.Enabled, "ai", "claude_code", "enabled") },
+		func() error {
+			return setString(root, cfg.AI.Generation.UtilityModel, "ai", "generation", "utility_model")
+		},
+		func() error {
+			return setString(root, cfg.AI.Generation.RepairModel, "ai", "generation", "repair_model")
+		},
+		func() error {
+			return setStringSlice(root, cfg.AI.Generation.RepairFallbackModels, "ai", "generation", "repair_fallback_models")
+		},
+		func() error { return setString(root, cfg.AI.ASCIIArt.Model, "ai", "ascii_art", "model") },
+		func() error { return setString(root, cfg.AI.Embedding.Provider, "ai", "embedding", "provider") },
+		func() error { return setString(root, cfg.AI.Embedding.Model, "ai", "embedding", "model") },
+	} {
+		if err := apply(); err != nil {
+			return nil, err
+		}
+	}
 	var out strings.Builder
 	encoder := yaml.NewEncoder(&out)
 	encoder.SetIndent(2)
@@ -360,7 +391,7 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 	return []byte(out.String()), nil
 }
 
-func documentRoot(doc *yaml.Node) *yaml.Node {
+func documentRoot(doc *yaml.Node) (*yaml.Node, error) {
 	if doc.Kind != yaml.DocumentNode {
 		doc.Kind = yaml.DocumentNode
 	}
@@ -368,21 +399,27 @@ func documentRoot(doc *yaml.Node) *yaml.Node {
 		doc.Content = []*yaml.Node{{Kind: yaml.MappingNode}}
 	}
 	if doc.Content[0].Kind != yaml.MappingNode {
-		doc.Content[0].Kind = yaml.MappingNode
-		doc.Content[0].Content = nil
+		return nil, fmt.Errorf("YAML document root must be a mapping")
 	}
-	return doc.Content[0]
+	return doc.Content[0], nil
 }
 
-func setString(root *yaml.Node, value string, path ...string) {
-	node := ensurePath(root, path)
+func setString(root *yaml.Node, value string, path ...string) error {
+	node, err := ensurePath(root, path)
+	if err != nil {
+		return err
+	}
 	node.Kind = yaml.ScalarNode
 	node.Tag = "!!str"
 	node.Value = value
+	return nil
 }
 
-func setBool(root *yaml.Node, value bool, path ...string) {
-	node := ensurePath(root, path)
+func setBool(root *yaml.Node, value bool, path ...string) error {
+	node, err := ensurePath(root, path)
+	if err != nil {
+		return err
+	}
 	node.Kind = yaml.ScalarNode
 	node.Tag = "!!bool"
 	if value {
@@ -390,52 +427,100 @@ func setBool(root *yaml.Node, value bool, path ...string) {
 	} else {
 		node.Value = "false"
 	}
+	return nil
 }
 
-func setStringSlice(root *yaml.Node, values []string, path ...string) {
-	node := ensurePath(root, path)
+func setStringSlice(root *yaml.Node, values []string, path ...string) error {
+	node, err := ensurePath(root, path)
+	if err != nil {
+		return err
+	}
 	node.Kind = yaml.SequenceNode
 	node.Tag = "!!seq"
 	node.Content = node.Content[:0]
 	for _, value := range values {
 		node.Content = append(node.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: value})
 	}
+	return nil
 }
 
-func ensurePath(root *yaml.Node, path []string) *yaml.Node {
+func ensurePath(root *yaml.Node, path []string) (*yaml.Node, error) {
 	current := root
 	for index, key := range path {
+		if current.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("YAML path %s must be a mapping", yamlPath(path[:index]))
+		}
 		value := mappingValue(current, key)
 		if value == nil {
 			value = &yaml.Node{Kind: yaml.MappingNode}
 			current.Content = append(current.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, value)
 		}
 		if index == len(path)-1 {
-			return value
+			return value, nil
 		}
 		if value.Kind != yaml.MappingNode {
-			value.Kind = yaml.MappingNode
-			value.Tag = "!!map"
-			value.Value = ""
-			value.Content = nil
+			return nil, fmt.Errorf("YAML path %s must be a mapping, got kind %d", yamlPath(path[:index+1]), value.Kind)
 		}
 		current = value
 	}
-	return current
+	return current, nil
 }
 
 func mappingValue(node *yaml.Node, key string) *yaml.Node {
-	if node.Kind != yaml.MappingNode {
-		node.Kind = yaml.MappingNode
-		node.Tag = "!!map"
-		node.Content = nil
-	}
 	for i := 0; i+1 < len(node.Content); i += 2 {
 		if node.Content[i].Value == key {
 			return node.Content[i+1]
 		}
 	}
 	return nil
+}
+
+func rejectDuplicateMappingKeys(node *yaml.Node, path string) error {
+	if node == nil {
+		return nil
+	}
+	switch node.Kind {
+	case yaml.DocumentNode:
+		for _, child := range node.Content {
+			if err := rejectDuplicateMappingKeys(child, path); err != nil {
+				return err
+			}
+		}
+	case yaml.MappingNode:
+		seen := map[string]bool{}
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			key := node.Content[i].Value
+			keyPath := joinYAMLPath(path, key)
+			if seen[key] {
+				return fmt.Errorf("duplicate YAML key at %s", keyPath)
+			}
+			seen[key] = true
+			if err := rejectDuplicateMappingKeys(node.Content[i+1], keyPath); err != nil {
+				return err
+			}
+		}
+	case yaml.SequenceNode:
+		for index, child := range node.Content {
+			if err := rejectDuplicateMappingKeys(child, fmt.Sprintf("%s[%d]", path, index)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func yamlPath(parts []string) string {
+	if len(parts) == 0 {
+		return "<root>"
+	}
+	return strings.Join(parts, ".")
+}
+
+func joinYAMLPath(prefix, key string) string {
+	if prefix == "" {
+		return key
+	}
+	return prefix + "." + key
 }
 
 func writeConfigAtomic(path string, oldRaw, nextRaw []byte) error {
@@ -453,7 +538,9 @@ func writeConfigAtomic(path string, oldRaw, nextRaw []byte) error {
 		return fmt.Errorf("stat config %s: %w", path, err)
 	}
 	if len(oldRaw) > 0 {
-		_ = writeBackup(path+".bak", oldRaw, mode, uid, gid)
+		if err := writeBackup(path+".bak", oldRaw, mode, uid, gid); err != nil {
+			return fmt.Errorf("writing config backup: %w", err)
+		}
 	}
 	tmp, err := os.CreateTemp(dir, base+".tmp-*")
 	if err != nil {
@@ -523,7 +610,7 @@ func withConfigLock(path string, fn func() error) error {
 	for {
 		file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
 		if err == nil {
-			_, _ = fmt.Fprintf(file, "%d\n", os.Getpid())
+			_, _ = fmt.Fprintf(file, "%d %s\n", os.Getpid(), time.Now().UTC().Format(time.RFC3339Nano))
 			_ = file.Close()
 			defer os.Remove(lockPath)
 			return fn()
@@ -531,11 +618,41 @@ func withConfigLock(path string, fn func() error) error {
 		if !os.IsExist(err) {
 			return ModelRoutingError{Code: ModelRoutingErrorLocked, Err: fmt.Errorf("creating config lock: %w", err)}
 		}
+		_ = recoverStaleConfigLock(lockPath)
 		if time.Now().After(deadline) {
 			return ModelRoutingError{Code: ModelRoutingErrorLocked, Err: fmt.Errorf("config lock is held: %s", lockPath)}
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func recoverStaleConfigLock(lockPath string) error {
+	info, err := os.Stat(lockPath)
+	if err != nil {
+		return err
+	}
+	if time.Since(info.ModTime()) < 2*time.Minute {
+		return nil
+	}
+	data, err := os.ReadFile(lockPath)
+	if err != nil {
+		return err
+	}
+	fields := strings.Fields(string(data))
+	if len(fields) == 0 {
+		return os.Remove(lockPath)
+	}
+	pid, err := strconv.Atoi(fields[0])
+	if err != nil || pid <= 0 {
+		return os.Remove(lockPath)
+	}
+	if err := syscall.Kill(pid, 0); err == nil {
+		return nil
+	}
+	if err == syscall.EPERM {
+		return nil
+	}
+	return os.Remove(lockPath)
 }
 
 func cleanProviderPriority(values []string) ([]string, error) {
