@@ -811,6 +811,10 @@ button {
   --choice-color: #cbd5df;
 }
 
+.choice-card[data-choice-tone="neutral"] {
+  --choice-color: #7b858c;
+}
+
 .choice-card-top {
   display: flex;
   align-items: center;
@@ -1208,6 +1212,16 @@ button {
   min-height: 38px;
   margin-bottom: 12px;
   color: var(--accent);
+}
+
+.inline-warning {
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, #0c1519);
+  padding: 10px 12px;
+  color: #dce2e5;
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .overlay-copy {

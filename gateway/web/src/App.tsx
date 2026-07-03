@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { commandToAction, actionModeToText, tabHotkeys } from "./commands";
-import { getHealth, getSnapshot, getStories, submitAction } from "./api";
+import { ApiRequestError, getHealth, getSnapshot, getStories, submitAction } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LeftRail } from "./components/LeftRail";
@@ -181,11 +181,14 @@ function App() {
   const sendAction = async (action: PlayerAction, sourceText: string) => {
     if (!snapshot || !storyId || sending) return;
     setSending(true);
-    setSync("Sending");
-    const currentTurn = snapshot.world.current_turn;
+    const baseSnapshot = snapshot;
     try {
+      const readySnapshot = await snapshotForSubmit(baseSnapshot);
+      if (!readySnapshot) return;
+      setSync("Sending");
+      const currentTurn = readySnapshot.world.current_turn;
       const response = await submitAction(storyId, {
-        session_id: snapshot.active_session.id,
+        session_id: readySnapshot.active_session.id,
         client_turn: currentTurn,
         idempotency_key: clientId("turn"),
         action,
@@ -193,17 +196,34 @@ function App() {
       });
       setSnapshot(response.snapshot);
       setLocalCommands((items) => [
-        { id: clientId("command"), text: sourceText.trim(), turn: currentTurn, source: "browser" as const },
+        { id: clientId("command"), text: sourceText.trim(), turn: response.snapshot.world.current_turn, source: "browser" as const },
         ...items,
       ].slice(0, 10));
       setSync(paused ? "Paused" : "Live");
     } catch (error) {
       setSync("Error");
-      setNotice(errorMessage(error));
+      setNotice(actionErrorMessage(error));
       await loadSnapshot().catch(() => undefined);
     } finally {
       setSending(false);
     }
+  };
+
+  const snapshotForSubmit = async (baseSnapshot: StorySnapshot): Promise<StorySnapshot | null> => {
+    if (!paused) return baseSnapshot;
+    setSync("Loading");
+    const latest = await getSnapshot(storyId);
+    setSnapshot(latest);
+    if (
+      latest.active_session.id !== baseSnapshot.active_session.id ||
+      latest.world.current_turn !== baseSnapshot.world.current_turn ||
+      latest.version.last_message_id !== baseSnapshot.version.last_message_id
+    ) {
+      setSync("Paused");
+      setNotice("The story changed while sync was paused. Review the latest turn before sending.");
+      return null;
+    }
+    return latest;
   };
 
   const clearTranscript = () => {
@@ -295,7 +315,6 @@ function App() {
         snapshot={snapshot}
         preferences={preferences}
         onClose={() => setOverlay(null)}
-        onDraft={setDraft}
         onPreferencesChange={updatePreferences}
       />
     </div>
@@ -304,6 +323,17 @@ function App() {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function actionErrorMessage(error: unknown): string {
+  if (error instanceof ApiRequestError && error.status === 409) {
+    return "The story advanced elsewhere. Review the latest choices before sending again.";
+  }
+  const message = errorMessage(error);
+  if (/stale|session/i.test(message)) {
+    return "The story advanced elsewhere. Review the latest choices before sending again.";
+  }
+  return message;
 }
 
 export default App;

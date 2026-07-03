@@ -1,11 +1,23 @@
 import type { ActionEnvelope, ActionResponse, Health, StorySnapshot, StorySummary } from "./types";
 
+export class ApiRequestError extends Error {
+  status: number;
+  payload: unknown;
+
+  constructor(message: string, status: number, payload: unknown) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, options);
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof payload?.error === "string" ? payload.error : response.statusText;
-    throw new Error(message);
+    throw new ApiRequestError(message, response.status, payload);
   }
   return payload as T;
 }
