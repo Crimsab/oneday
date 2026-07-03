@@ -130,7 +130,7 @@ func Default() Config {
 			Codex: CodexConfig{
 				Enabled:   false,
 				Binary:    "codex",
-				Model:     "gpt-5.5",
+				Model:     "gpt-5.4-mini",
 				Reasoning: "off",
 			},
 			ClaudeCode: ClaudeCodeConfig{
@@ -140,7 +140,7 @@ func Default() Config {
 			LiteLLM: LiteLLMConfig{
 				Enabled:      true,
 				BaseURL:      "http://lite.homelab.local/v1",
-				DefaultModel: "grok-4.1-fast",
+				DefaultModel: "gpt-5.4-mini",
 			},
 			OpenRouter: OpenRouterConfig{
 				Enabled:      false,
@@ -171,7 +171,7 @@ func Default() Config {
 				TimeoutSeconds:       60,
 				UtilityModel:         "gpt-5.4-mini",
 				RepairModel:          "gemini-3.1-flash-lite-preview",
-				RepairFallbackModels: []string{"grok-4.1-fast"},
+				RepairFallbackModels: []string{"gpt-5.4-mini"},
 			},
 		},
 		RAG: RAGConfig{
