@@ -10,7 +10,7 @@ export type ModuleTab =
   | "projects"
   | "saves";
 
-export type OverlayKind = "help" | "options" | "saves" | "new-story" | "meta" | null;
+export type OverlayKind = "help" | "options" | "saves" | "new-story" | "meta" | "module" | null;
 
 export type DensityPreference = "compact" | "balanced" | "comfortable";
 export type FontSizePreference = "small" | "base" | "large";

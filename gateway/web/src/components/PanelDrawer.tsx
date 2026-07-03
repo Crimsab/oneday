@@ -2,13 +2,15 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
 import { compactText } from "../format";
-import type { AppPreferences, CommandDescriptor, MetaResult, OverlayKind, SaveView, StorySnapshot } from "../types";
+import { ModuleContent, moduleTitle } from "./Inspector";
+import type { AppPreferences, CommandDescriptor, MetaResult, ModuleTab, OverlayKind, SaveView, StorySnapshot } from "../types";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
   metaResult: MetaResult | null;
+  selectedTab: ModuleTab;
   commandDescriptors: CommandDescriptor[];
   busy: boolean;
   onClose: () => void;
@@ -25,6 +27,7 @@ export function PanelDrawer({
   snapshot,
   preferences,
   metaResult,
+  selectedTab,
   commandDescriptors,
   busy,
   onClose,
@@ -38,9 +41,14 @@ export function PanelDrawer({
   if (!overlay) return null;
   return (
     <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="overlay-panel" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+      <section
+        className={`overlay-panel ${overlay === "module" ? "module-overlay" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className="overlay-head">
-          <h2>{overlayTitle(overlay)}</h2>
+          <h2>{overlayTitle(overlay, selectedTab)}</h2>
           <button type="button" className="square-button" onClick={onClose} title="Close">
             <X size={16} />
           </button>
@@ -60,16 +68,18 @@ export function PanelDrawer({
         )}
         {overlay === "new-story" && <NewStoryContent />}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
+        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={selectedTab} />}
       </section>
     </div>
   );
 }
 
-function overlayTitle(overlay: OverlayKind): string {
+function overlayTitle(overlay: OverlayKind, selectedTab: ModuleTab): string {
   if (overlay === "help") return "Help";
   if (overlay === "options") return "Options";
   if (overlay === "saves") return "Saves";
   if (overlay === "meta") return "Meta Command";
+  if (overlay === "module") return moduleTitle(selectedTab);
   return "New Story";
 }
 
@@ -264,6 +274,21 @@ function MetaContent({ metaResult }: { metaResult: MetaResult | null }) {
       <div className="meta-kind">{metaResult.kind}</div>
       <h3>{metaResult.title}</h3>
       <p>{metaResult.message}</p>
+    </div>
+  );
+}
+
+function ModuleOverlayContent({ snapshot, selectedTab }: { snapshot: StorySnapshot | null; selectedTab: ModuleTab }) {
+  if (!snapshot) {
+    return (
+      <div className="overlay-content">
+        <p className="overlay-copy muted">Select a story to inspect this module.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="overlay-content module-content">
+      <ModuleContent tab={selectedTab} snapshot={snapshot} expanded />
     </div>
   );
 }

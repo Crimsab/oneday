@@ -1,4 +1,4 @@
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown, Maximize2, RefreshCw } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import { asArray, asObject, compactText, deriveCondition, displayClock, entryLabel, fieldRows, findString, numericStat, titleCase, valueToText } from "../format";
 import type { JsonObject, JsonValue, ModuleTab, StorySnapshot } from "../types";
@@ -7,6 +7,7 @@ interface InspectorProps {
   snapshot: StorySnapshot | null;
   selectedTab: ModuleTab;
   onRefresh: () => void;
+  onOpenModule: () => void;
 }
 
 interface CardView {
@@ -14,7 +15,7 @@ interface CardView {
   rows: Array<[string, string]>;
 }
 
-export function Inspector({ snapshot, selectedTab, onRefresh }: InspectorProps) {
+export function Inspector({ snapshot, selectedTab, onRefresh, onOpenModule }: InspectorProps) {
   const title = moduleTitle(selectedTab);
 
   return (
@@ -22,6 +23,9 @@ export function Inspector({ snapshot, selectedTab, onRefresh }: InspectorProps) 
       <div className="inspector-head">
         <h2>Canonical State Inspector</h2>
         <span className="inspector-mode">{title}</span>
+        <button type="button" className="square-button" onClick={onOpenModule} title="Open module in modal">
+          <Maximize2 size={15} />
+        </button>
         <button type="button" className="square-button" onClick={onRefresh} title="Refresh snapshot">
           <RefreshCw size={15} />
         </button>
@@ -30,10 +34,19 @@ export function Inspector({ snapshot, selectedTab, onRefresh }: InspectorProps) 
         <div className="empty-copy inspector-empty">Select a story to inspect canonical state.</div>
       ) : (
         <div className="inspector-body">
-          {renderModule(selectedTab, snapshot)}
+          <ModuleContent tab={selectedTab} snapshot={snapshot} />
         </div>
       )}
     </aside>
+  );
+}
+
+export function ModuleContent({ tab, snapshot, expanded = false }: { tab: ModuleTab; snapshot: StorySnapshot; expanded?: boolean }) {
+  return (
+    <>
+      {renderModule(tab, snapshot)}
+      {expanded && <RawStateSection tab={tab} snapshot={snapshot} />}
+    </>
   );
 }
 
@@ -46,6 +59,78 @@ function renderModule(tab: ModuleTab, snapshot: StorySnapshot) {
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
   return <HistoryModule snapshot={snapshot} />;
+}
+
+function RawStateSection({ tab, snapshot }: { tab: ModuleTab; snapshot: StorySnapshot }) {
+  return (
+    <details className="inspector-section raw-state-section" open>
+      <summary>
+        <span>Raw Structured State</span>
+        <ChevronDown size={14} />
+      </summary>
+      <pre>{JSON.stringify(rawStateForModule(tab, snapshot), null, 2)}</pre>
+    </details>
+  );
+}
+
+function rawStateForModule(tab: ModuleTab, snapshot: StorySnapshot): Record<string, unknown> {
+  if (tab === "inventory") {
+    return {
+      inventory: snapshot.character.fields.inventory,
+      known_recipes: snapshot.character.fields.known_recipes,
+      equipment: snapshot.character.fields.equipment,
+      character: snapshot.character,
+    };
+  }
+  if (tab === "stats") {
+    return {
+      stats: snapshot.character.fields.stats,
+      traits: snapshot.character.fields.traits,
+      character: snapshot.character,
+    };
+  }
+  if (tab === "codex") {
+    return {
+      chapters: snapshot.panels.chapters,
+      npcs: snapshot.panels.npcs,
+      known_locations: snapshot.world.known_locations,
+      global_events: snapshot.world.global_events,
+    };
+  }
+  if (tab === "fronts") {
+    return {
+      fronts: snapshot.world.fronts,
+      story_hooks: snapshot.world.story_hooks,
+      world_reactions: snapshot.world.world_reactions,
+      scene_contract: snapshot.world.scene_contract,
+    };
+  }
+  if (tab === "investigations") {
+    return {
+      investigations: snapshot.world.investigations,
+      scene_contract: snapshot.world.scene_contract,
+      story_hooks: snapshot.world.story_hooks,
+    };
+  }
+  if (tab === "projects") {
+    return {
+      projects: snapshot.world.projects,
+      guidance: snapshot.world.guidance,
+      faction_standings: snapshot.world.faction_standings,
+    };
+  }
+  if (tab === "saves") {
+    return {
+      saves: snapshot.panels.saves,
+      sessions: snapshot.panels.sessions,
+      achievements: snapshot.panels.achievements,
+    };
+  }
+  return {
+    world: snapshot.world,
+    recent_messages: snapshot.messages.slice(-8),
+    npcs: snapshot.panels.npcs,
+  };
 }
 
 function HistoryModule({ snapshot }: { snapshot: StorySnapshot }) {
