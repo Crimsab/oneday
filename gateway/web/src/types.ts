@@ -145,6 +145,14 @@ export interface MessageView {
   created_at: string;
 }
 
+export interface PendingTurnView {
+  id: string;
+  turn: number;
+  source: string;
+  detail: string;
+  kind: "choice" | "free_text" | "command" | "meta";
+}
+
 export interface ChoiceView {
   id: number;
   text: string;

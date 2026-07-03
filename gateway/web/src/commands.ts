@@ -17,12 +17,14 @@ export interface CommandContext {
   descriptors?: CommandDescriptor[];
   npcNames?: string[];
   saveNames?: string[];
+  visiblePrivateThoughts?: boolean;
 }
 
 export interface CommandSuggestionContext {
   npcNames?: string[];
   saveNames?: string[];
   recentCommands?: string[];
+  visiblePrivateThoughts?: boolean;
 }
 
 export type CommandSuggestionKind = "command" | "completion" | "recent";
@@ -66,7 +68,19 @@ export const fallbackCommandDescriptors: CommandDescriptor[] = [
   descriptor("stats", "stats", "Stats", "Open the character sheet.", "state", "shared", "open_panel", ["s"]),
   descriptor("map", "map", "Map", "Open known locations and travel context.", "state", "shared", "open_panel", ["m"]),
   descriptor("journal", "journal", "Journal", "Open chapter journal and story notes.", "state", "shared", "open_panel", ["j"]),
-  descriptor("thoughts", "thoughts", "Thoughts", "Inspect saved NPC private thoughts when enabled.", "debug", "shared", "open_panel"),
+  descriptor(
+    "thoughts",
+    "thoughts",
+    "Thoughts",
+    "Inspect saved NPC private thoughts when enabled.",
+    "debug",
+    "shared",
+    "open_panel",
+    [],
+    false,
+    "",
+    "visible_private_thoughts",
+  ),
   descriptor("codex", "codex", "Codex", "Open the story codex.", "state", "shared", "open_panel"),
   descriptor("characters", "characters", "Characters", "Open character records.", "state", "shared", "open_panel"),
   descriptor("fronts", "hooks", "Fronts", "Open fronts, hooks, fallout, and pressure clocks.", "state", "shared", "open_panel", ["hooks", "fronts", "front"]),
@@ -141,6 +155,9 @@ export function commandToAction(rawText: string, context: CommandContext = {}): 
   const descriptors = commandDescriptors(context.descriptors);
   const command = findCommandDescriptor(parsed.name, descriptors);
   if (!command) return {};
+  if (!isCommandEnabled(command, context)) {
+    return { handled: true, notice: disabledCommandNotice(command) };
+  }
 
   const canonical = command.canonical || command.id;
   switch (command.behavior) {
@@ -192,7 +209,7 @@ export function commandSuggestions(
   const parsed = parseCommandDraft(trimmed);
   if (!parsed) return [];
 
-  const allDescriptors = commandDescriptors(descriptors);
+  const allDescriptors = commandDescriptors(descriptors).filter((descriptor) => isCommandEnabled(descriptor, context));
   const command = parsed.commandName ? findCommandDescriptor(parsed.commandName, allDescriptors) : undefined;
   const canonical = command?.canonical ?? command?.id;
   if (command && parsed.hasArgs && canonical === "talk") {
@@ -220,6 +237,15 @@ export function commandSuggestions(
 
 export function commandDescriptors(descriptors?: CommandDescriptor[]): CommandDescriptor[] {
   return descriptors && descriptors.length > 0 ? descriptors : fallbackCommandDescriptors;
+}
+
+export function isCommandEnabled(descriptor: CommandDescriptor, context: CommandSuggestionContext = {}): boolean {
+  const requirement = descriptor.enabled_when?.trim();
+  if (!requirement) return true;
+  if (requirement === "nearby_npcs") return (context.npcNames ?? []).length > 0;
+  if (requirement === "saves") return (context.saveNames ?? []).length > 0;
+  if (requirement === "visible_private_thoughts") return context.visiblePrivateThoughts === true;
+  return false;
 }
 
 export function groupCommandSuggestions(items: SlashCommandItem[]): CommandSuggestionGroup[] {
@@ -378,6 +404,20 @@ function localCommandToAction(canonical: string, id: string): CommandResult {
   return { handled: true };
 }
 
+function disabledCommandNotice(command: CommandDescriptor): string {
+  const name = slashName(command);
+  if (command.enabled_when === "visible_private_thoughts") {
+    return `${name} is disabled in player-safe browser mode. Enable visible_private_thoughts only for debug runs.`;
+  }
+  if (command.enabled_when === "nearby_npcs") {
+    return `${name} needs at least one known nearby character. Open Codex or continue the scene first.`;
+  }
+  if (command.enabled_when === "saves") {
+    return `${name} needs a saved snapshot. Use /save <name> first.`;
+  }
+  return `${name} is not available in the current browser state.`;
+}
+
 function talkCommandToAction(argsText: string, context: CommandContext): CommandResult {
   if (!argsText) {
     return { handled: true, tab: "codex", notice: "Use /talk <npc> [intent] [message]. Known NPCs are in Codex." };
@@ -531,6 +571,7 @@ function descriptor(
   aliases: string[] = [],
   trailingSpace = false,
   completionProvider = "",
+  enabledWhen = "",
 ): CommandDescriptor {
   return {
     id,
@@ -543,5 +584,6 @@ function descriptor(
     aliases,
     trailing_space: trailingSpace,
     completion_provider: completionProvider,
+    enabled_when: enabledWhen || undefined,
   };
 }

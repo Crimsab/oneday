@@ -385,8 +385,8 @@ async fn load_achievements(
 }
 
 async fn load_npcs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<RecordView>> {
-    let rows = sqlx::query(r#"SELECT id, name, role, appearance, personality_json, relationship_json, nemesis_json,
-                private_thoughts, notes_on_protagonist, desires, disposition, is_alive,
+    let rows = sqlx::query(r#"SELECT id, name, role, appearance, personality_json, relationship_json,
+                disposition, is_alive,
                 first_appeared_turn, last_seen_turn, can_help, CAST(updated_at AS TEXT) AS updated_at
          FROM npcs WHERE story_id = ? ORDER BY last_seen_turn DESC, name ASC"#,
     )
@@ -403,10 +403,6 @@ async fn load_npcs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Reco
                 "appearance": row_string(&row, "appearance"),
                 "personality": json_field(&row, "personality_json", json!({})),
                 "relationship": json_field(&row, "relationship_json", json!({})),
-                "nemesis": json_field(&row, "nemesis_json", json!({})),
-                "private_thoughts": row_string(&row, "private_thoughts"),
-                "notes_on_protagonist": row_string(&row, "notes_on_protagonist"),
-                "desires": row_string(&row, "desires"),
                 "disposition": row.try_get::<i64, _>("disposition").unwrap_or_default(),
                 "is_alive": row.try_get::<i64, _>("is_alive").unwrap_or(1) != 0,
                 "first_appeared_turn": row.try_get::<i64, _>("first_appeared_turn").unwrap_or_default(),

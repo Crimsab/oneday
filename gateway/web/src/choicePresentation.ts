@@ -36,8 +36,8 @@ export function choicePresentation(choice: ChoiceView, index = 0): ChoicePresent
     title: `Choice ${choice.id}`,
     meta,
     hasMetadata,
-    gain: gainText(intent, scope, stats),
-    tradeoff: tradeoffText(risk, certainty, stats.length > 0),
+    gain: hasMetadata ? gainText(intent, scope, stats) : "",
+    tradeoff: hasMetadata ? tradeoffText(risk, certainty, stats.length > 0) : "",
   };
 }
 
@@ -81,7 +81,8 @@ function gainText(intent: string, scope: string, stats: string[]): string {
       return `Narrator framing.${statText}`;
     default:
       if (scope) return `Affects ${scope}.${statText}`;
-      return "No structured metadata.";
+      if (stats.length) return `Uses ${stats.map((stat) => stat.toUpperCase()).join(", ")}.`;
+      return "";
   }
 }
 
@@ -101,7 +102,7 @@ function tradeoffText(risk: string, certainty: string, hasStats: boolean): strin
       if (certainty === "safe") return `Predictable, not automatic.${statCaveat}`;
       if (certainty === "uncertain") return `Uncertain outcome.${statCaveat}`;
       if (certainty === "desperate") return `Desperate/costly.${statCaveat}`;
-      return `Outcome depends on scene context.${statCaveat}`;
+      return "";
   }
 }
 

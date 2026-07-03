@@ -68,7 +68,7 @@ function RawStateSection({ tab, snapshot }: { tab: ModuleTab; snapshot: StorySna
         <span>Raw Structured State</span>
         <ChevronDown size={14} />
       </summary>
-      <pre>{JSON.stringify(rawStateForModule(tab, snapshot), null, 2)}</pre>
+      <pre>{JSON.stringify(sanitizePlayerVisibleValue(rawStateForModule(tab, snapshot)), null, 2)}</pre>
     </details>
   );
 }
@@ -486,7 +486,7 @@ function npcCards(snapshot: StorySnapshot): CardView[] {
     title: npc.name,
     rows: [
       ...fieldRows(npc.fields)
-        .filter(([key]) => !["Name", "Id"].includes(key))
+        .filter(([key]) => !["Name", "Id"].includes(key) && !isPlayerHiddenField(key))
         .map(([key, value]) => [key, compactText(value, 100)] as [string, string])
         .slice(0, 7),
     ],
@@ -548,18 +548,58 @@ export function cardsFromValue(value: JsonValue | undefined, fallbackTitle: stri
   return [
     {
       title: fallbackTitle,
-      rows: entries.slice(0, 12).map(([key, child]) => [titleCase(key), compactText(valueToText(child), 120)]),
+      rows: entries
+        .filter(([key]) => !isPlayerHiddenField(key))
+        .slice(0, 12)
+        .map(([key, child]) => [titleCase(key), compactText(valueToText(child), 120)]),
     },
   ];
 }
 
 function cardFromEntry(value: JsonValue, title: string, index: number): CardView {
   const rows = fieldRows(value)
-    .filter(([key]) => !["Name", "Title", "Id"].includes(key))
+    .filter(([key]) => !["Name", "Title", "Id"].includes(key) && !isPlayerHiddenField(key))
     .map(([key, child]) => [key, compactText(child, 120)] as [string, string])
     .slice(0, 8);
   return {
     title: compactText(title || `${index + 1}`, 70),
     rows,
   };
+}
+
+const playerHiddenFieldKeys = new Set([
+  "private_thoughts",
+  "notes_on_protagonist",
+  "desires",
+  "npc_desires",
+  "nemesis",
+  "nemesis_json",
+  "hidden_truth",
+  "hidden_truths",
+  "gm_notes",
+  "gm_only",
+  "private_notes",
+]);
+
+export function isPlayerHiddenField(label: string): boolean {
+  return playerHiddenFieldKeys.has(normalizeFieldKey(label));
+}
+
+export function sanitizePlayerVisibleValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => sanitizePlayerVisibleValue(item));
+  if (!value || typeof value !== "object") return value;
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !isPlayerHiddenField(key))
+    .map(([key, child]) => [key, sanitizePlayerVisibleValue(child)]);
+  return Object.fromEntries(entries);
+}
+
+function normalizeFieldKey(label: string): string {
+  return label
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
