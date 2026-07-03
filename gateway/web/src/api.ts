@@ -38,7 +38,12 @@ export class ApiRequestError extends Error {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, options);
-  const payload = (await response.json().catch(() => ({}))) as ErrorPayload;
+  const payload = (await response.json().catch(() => {
+    if (response.ok) {
+      throw new ApiRequestError("Gateway returned a non-JSON response.", response.status, {});
+    }
+    return {};
+  })) as ErrorPayload;
   if (!response.ok) {
     const message = typeof payload?.error === "string" ? payload.error : response.statusText;
     throw new ApiRequestError(message, response.status, payload);

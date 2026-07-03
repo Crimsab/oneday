@@ -38,12 +38,12 @@ describe("choicePresentation", () => {
     expect(presentation.tradeoff).toContain("Medium risk");
   });
 
-  it("is explicit when metadata is missing", () => {
+  it("keeps fallback debug copy out of choices without metadata", () => {
     const presentation = choicePresentation({ id: 1, text: "Do something" }, 1);
     expect(presentation.tone).toBe("neutral");
     expect(presentation.hasMetadata).toBe(false);
     expect(presentation.meta).toEqual([]);
-    expect(presentation.gain).toContain("No structured metadata");
-    expect(presentation.tradeoff).toContain("Outcome depends on scene context");
+    expect(presentation.gain).toBe("");
+    expect(presentation.tradeoff).toBe("");
   });
 });

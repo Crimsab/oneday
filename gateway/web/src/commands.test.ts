@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionModeToText, commandSuggestions, commandToAction, groupCommandSuggestions, moduleSpecs, tabHotkeys } from "./commands";
+import { actionModeToText, commandSuggestions, commandToAction, groupCommandSuggestions, isCommandEnabled, moduleSpecs, tabHotkeys } from "./commands";
 
 describe("commandToAction", () => {
   it("ignores normal prose", () => {
@@ -71,6 +71,14 @@ describe("commandToAction", () => {
     expect(result.handled).toBe(true);
     expect(result.saveDeleteFilter).toBe("Before docks");
   });
+
+  it("honors player-safe enabled_when gates before opening debug panels", () => {
+    expect(commandToAction("/thoughts")).toMatchObject({
+      handled: true,
+      notice: expect.stringContaining("player-safe browser mode"),
+    });
+    expect(commandToAction("/thoughts", { visiblePrivateThoughts: true })).toMatchObject({ handled: true, tab: "codex" });
+  });
 });
 
 describe("actionModeToText", () => {
@@ -125,4 +133,31 @@ describe("commandSuggestions", () => {
     expect(groups.map((group) => group.key)).toContain("play");
     expect(groups.at(-1)).toMatchObject({ key: "recent", label: "Recent" });
   });
+
+  it("hides disabled debug commands from the browser palette", () => {
+    expect(commandSuggestions("/tho").map((command) => command.name)).not.toContain("/thoughts");
+    expect(commandSuggestions("/tho", undefined, { visiblePrivateThoughts: true }).map((command) => command.name)).toContain("/thoughts");
+  });
 });
+
+describe("isCommandEnabled", () => {
+  it("supports the enabled_when requirements exposed by the terminal contract", () => {
+    expect(isCommandEnabled({ ...moduleCommand("thoughts"), enabled_when: "visible_private_thoughts" })).toBe(false);
+    expect(isCommandEnabled({ ...moduleCommand("thoughts"), enabled_when: "visible_private_thoughts" }, { visiblePrivateThoughts: true })).toBe(true);
+    expect(isCommandEnabled({ ...moduleCommand("talk"), enabled_when: "nearby_npcs" }, { npcNames: ["Maren"] })).toBe(true);
+    expect(isCommandEnabled({ ...moduleCommand("load"), enabled_when: "saves" }, { saveNames: [] })).toBe(false);
+  });
+});
+
+function moduleCommand(id: string) {
+  return {
+    id,
+    canonical: id,
+    aliases: [],
+    title: id,
+    description: "",
+    group: "state" as const,
+    parity: "shared" as const,
+    behavior: "open_panel" as const,
+  };
+}
