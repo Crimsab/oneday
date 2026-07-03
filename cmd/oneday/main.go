@@ -114,6 +114,27 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayMeta(os.Args[1:]) {
+		if err := runGatewayMeta(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway meta failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewaySave(os.Args[1:]) {
+		if err := runGatewaySave(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway save failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayLoad(os.Args[1:]) {
+		if err := runGatewayLoad(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway load failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Start TUI
 	app := tui.New(cfg, db, router)
@@ -235,6 +256,18 @@ func wantsExport(args []string) bool {
 
 func wantsGatewayTurn(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-turn"
+}
+
+func wantsGatewayMeta(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-meta"
+}
+
+func wantsGatewaySave(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-save"
+}
+
+func wantsGatewayLoad(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-load"
 }
 
 type localEmbeddingModel struct {

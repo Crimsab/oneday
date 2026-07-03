@@ -57,6 +57,102 @@ func (r SubmitActionRequest) Validate(currentTurn int) error {
 	return nil
 }
 
+type BrowserMetaKind string
+
+const (
+	BrowserMetaKindBTW      BrowserMetaKind = "btw"
+	BrowserMetaKindGuide    BrowserMetaKind = "guide"
+	BrowserMetaKindNarrator BrowserMetaKind = "narrator"
+)
+
+type BrowserMetaRequest struct {
+	StoryID    string          `json:"story_id"`
+	SessionID  string          `json:"session_id"`
+	ClientTurn int             `json:"client_turn"`
+	Kind       BrowserMetaKind `json:"kind"`
+	Text       string          `json:"text,omitempty"`
+}
+
+func (r BrowserMetaRequest) Validate(currentTurn int) error {
+	if err := validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn); err != nil {
+		return err
+	}
+	switch r.Kind {
+	case BrowserMetaKindBTW, BrowserMetaKindGuide, BrowserMetaKindNarrator:
+		return nil
+	default:
+		return fmt.Errorf("unsupported browser meta kind %q", r.Kind)
+	}
+}
+
+type BrowserMetaResponse struct {
+	Kind    BrowserMetaKind `json:"kind"`
+	Title   string          `json:"title"`
+	Message string          `json:"message"`
+}
+
+type BrowserSaveRequest struct {
+	StoryID    string `json:"story_id"`
+	SessionID  string `json:"session_id"`
+	ClientTurn int    `json:"client_turn"`
+	Name       string `json:"name,omitempty"`
+	Kind       string `json:"kind,omitempty"`
+}
+
+func (r BrowserSaveRequest) Validate(currentTurn int) error {
+	return validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn)
+}
+
+type BrowserLoadRequest struct {
+	StoryID    string `json:"story_id"`
+	SessionID  string `json:"session_id"`
+	ClientTurn int    `json:"client_turn"`
+	SaveID     string `json:"save_id"`
+}
+
+func (r BrowserLoadRequest) Validate(currentTurn int) error {
+	if err := validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn); err != nil {
+		return err
+	}
+	if strings.TrimSpace(r.SaveID) == "" {
+		return errors.New("save_id is required")
+	}
+	return nil
+}
+
+type BrowserSaveView struct {
+	ID        string          `json:"id"`
+	Name      string          `json:"name"`
+	Turn      int             `json:"turn"`
+	Chapter   int             `json:"chapter"`
+	Location  string          `json:"location,omitempty"`
+	SessionID string          `json:"session_id,omitempty"`
+	Metadata  json.RawMessage `json:"metadata,omitempty"`
+	CreatedAt time.Time       `json:"created_at"`
+}
+
+type BrowserSaveResponse struct {
+	Save BrowserSaveView `json:"save"`
+}
+
+type BrowserLoadResponse struct {
+	Save   BrowserSaveView `json:"save"`
+	Legacy bool            `json:"legacy,omitempty"`
+}
+
+func validateStorySessionTurn(storyID, sessionID string, clientTurn, currentTurn int) error {
+	if strings.TrimSpace(storyID) == "" {
+		return errors.New("story_id is required")
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		return errors.New("session_id is required")
+	}
+	if clientTurn != currentTurn {
+		return fmt.Errorf("stale client_turn %d, current turn is %d", clientTurn, currentTurn)
+	}
+	return nil
+}
+
 type TurnEventType string
 
 const (
