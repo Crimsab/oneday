@@ -31,6 +31,7 @@ export function LeftRail({
   onOpen,
 }: LeftRailProps) {
   const notes = storyNotes(snapshot);
+  const chapters = snapshot?.panels.chapters.slice(-5).reverse() ?? [];
 
   return (
     <aside className="left-rail">
@@ -94,15 +95,31 @@ export function LeftRail({
           <span>Story Notes</span>
           <Users size={15} />
         </div>
-        {notes.length === 0 ? (
-          <div className="empty-copy">Select a story to see hooks, contacts, and next leads.</div>
-        ) : (
-          <div className="notes-copy">
-            {notes.map((note) => (
-              <p key={note}>{note}</p>
-            ))}
-          </div>
-        )}
+        <div className="notes-content">
+          {chapters.length > 0 && (
+            <div className="chapter-trail">
+              {chapters.map((chapter) => (
+                <button type="button" key={chapter.id} title={chapter.summary || chapter.title}>
+                  <strong>Chapter {chapter.chapter_number}</strong>
+                  <span>{chapter.title || "Untitled"}</span>
+                  <small>
+                    Turn {chapter.start_turn}
+                    {chapter.end_turn ? `-${chapter.end_turn}` : "+"}
+                  </small>
+                </button>
+              ))}
+            </div>
+          )}
+          {notes.length === 0 ? (
+            <div className="empty-copy">Select a story to see hooks, contacts, and next leads.</div>
+          ) : (
+            <div className="notes-copy">
+              {notes.map((note) => (
+                <p key={note}>{note}</p>
+              ))}
+            </div>
+          )}
+        </div>
       </section>
     </aside>
   );
