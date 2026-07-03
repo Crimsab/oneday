@@ -53,53 +53,53 @@ export function toneForChoice(intent: string, risk: string, index = 0): ChoiceTo
 }
 
 function gainText(intent: string, scope: string, stats: string[]): string {
-  const statText = stats.length ? ` Uses ${stats.map((stat) => stat.toUpperCase()).join(", ")}.` : "";
+  const statText = stats.length ? ` Stats: ${stats.map((stat) => stat.toUpperCase()).join(", ")}.` : "";
   switch (intent) {
     case "social":
-      return `Builds rapport, pressure, or information through a character.${statText}`;
+      return `Social leverage, rapport, or information.${statText}`;
     case "stealth":
-      return `Keeps attention low and tries to preserve initiative.${statText}`;
+      return `Low-profile move; preserves initiative.${statText}`;
     case "flee":
-      return `Prioritizes escape and survival over control of the scene.${statText}`;
+      return `Escape/safety over scene control.${statText}`;
     case "attack":
     case "combat":
     case "aggressive":
-      return `Pushes for direct leverage or confrontation.${statText}`;
+      return `Direct pressure or confrontation.${statText}`;
     case "explore":
     case "observe":
-      return `Looks for new context, clues, routes, or scene details.${statText}`;
+      return `Finds clues, routes, or scene context.${statText}`;
     case "craft":
     case "use_item":
-      return `Uses resources or preparation to change the situation.${statText}`;
+      return `Uses resources or preparation.${statText}`;
     case "survive":
-      return `Protects core resources and tries to stay in the scene.${statText}`;
+      return `Protects core resources and position.${statText}`;
     case "lore":
-      return `Trades tempo for world knowledge or hidden context.${statText}`;
+      return `World knowledge or hidden context.${statText}`;
     case "meta":
-      return `Asks the narrator to steer framing or pacing.${statText}`;
+      return `Narrator framing or pacing.${statText}`;
     default:
-      if (scope) return `Affects ${scope}; exact payoff depends on narration.${statText}`;
-      return `Narrative suggestion; the exact payoff is not guaranteed.${statText}`;
+      if (scope) return `Affects ${scope}; payoff depends on narration.${statText}`;
+      return `Freeform narrative angle; payoff depends on scene.${statText}`;
   }
 }
 
 function tradeoffText(risk: string, certainty: string, hasStats: boolean): string {
-  const statCaveat = hasStats ? " Related stats may influence outcome, but do not guarantee success." : " No related stat metadata was provided.";
+  const statCaveat = hasStats ? " Stats influence, not guarantee." : " No stat metadata.";
   switch (risk) {
     case "low":
-      return `Lower danger, usually lower immediate upside.${statCaveat}`;
+      return `Lower danger, usually lower upside.${statCaveat}`;
     case "medium":
-      return `Balanced upside and downside; consequences can still branch.${statCaveat}`;
+      return `Balanced upside/downside.${statCaveat}`;
     case "high":
     case "extreme":
-      return `High danger or cost; stronger payoff if it lands.${statCaveat}`;
+      return `High danger/cost; bigger payoff if it lands.${statCaveat}`;
     case "unknown":
-      return `Risk is intentionally unclear; expect hidden information.${statCaveat}`;
+      return `Risk unclear; expect hidden information.${statCaveat}`;
     default:
-      if (certainty === "safe") return `Likely predictable, but not an automatic reward.${statCaveat}`;
-      if (certainty === "uncertain") return `Outcome is uncertain and may reveal complications.${statCaveat}`;
-      if (certainty === "desperate") return `Desperate move; likely costly even on success.${statCaveat}`;
-      return `No explicit risk metadata; judge from the scene text.${statCaveat}`;
+      if (certainty === "safe") return `Predictable, not automatic reward.${statCaveat}`;
+      if (certainty === "uncertain") return `Uncertain; may reveal complications.${statCaveat}`;
+      if (certainty === "desperate") return `Desperate; likely costly even on success.${statCaveat}`;
+      return `No risk metadata; judge from scene text.${statCaveat}`;
   }
 }
 
