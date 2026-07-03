@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context};
 use clap::Parser;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Parser)]
@@ -43,60 +43,6 @@ pub struct ResolvedPaths {
 #[derive(Debug, Deserialize)]
 struct OneDayConfig {
     data_dir: Option<String>,
-    ai: Option<AIConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AIConfig {
-    provider_priority: Option<Vec<String>>,
-    codex: Option<CodexConfig>,
-    litellm: Option<OpenAICompatConfig>,
-    openrouter: Option<OpenAICompatConfig>,
-    embedding: Option<EmbeddingConfig>,
-    ascii_art: Option<AsciiArtConfig>,
-    generation: Option<GenerationConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CodexConfig {
-    model: Option<String>,
-    reasoning: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenAICompatConfig {
-    default_model: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct EmbeddingConfig {
-    model: Option<String>,
-    provider: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AsciiArtConfig {
-    model: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct GenerationConfig {
-    utility_model: Option<String>,
-    repair_model: Option<String>,
-    repair_fallback_models: Option<Vec<String>>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-pub struct ModelSettings {
-    pub provider_priority: Vec<String>,
-    pub narrative_models: Vec<String>,
-    pub utility_models: Vec<String>,
-    pub repair_models: Vec<String>,
-    pub image_models: Vec<String>,
-    pub embedding_model: String,
-    pub embedding_provider: String,
-    pub codex_reasoning: String,
-    pub tts_status: String,
 }
 
 pub fn resolve_paths(args: &Args) -> anyhow::Result<ResolvedPaths> {
@@ -158,109 +104,6 @@ fn read_data_dir(config_path: &Path) -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(
         cfg.data_dir.unwrap_or_else(|| "./oneday_data".to_string()),
     ))
-}
-
-pub fn read_model_settings(config_path: &Path) -> anyhow::Result<ModelSettings> {
-    let raw = std::fs::read_to_string(config_path)
-        .with_context(|| format!("reading {}", config_path.display()))?;
-    let cfg: OneDayConfig =
-        serde_yaml::from_str(&raw).with_context(|| format!("parsing {}", config_path.display()))?;
-    let ai = cfg.ai;
-    let provider_priority = ai
-        .as_ref()
-        .and_then(|value| value.provider_priority.clone())
-        .unwrap_or_default();
-    let mut narrative_models = Vec::new();
-    push_opt(
-        &mut narrative_models,
-        ai.as_ref()
-            .and_then(|value| value.litellm.as_ref())
-            .and_then(|value| value.default_model.clone()),
-    );
-    push_opt(
-        &mut narrative_models,
-        ai.as_ref()
-            .and_then(|value| value.openrouter.as_ref())
-            .and_then(|value| value.default_model.clone()),
-    );
-    push_opt(
-        &mut narrative_models,
-        ai.as_ref()
-            .and_then(|value| value.codex.as_ref())
-            .and_then(|value| value.model.clone()),
-    );
-
-    let mut utility_models = Vec::new();
-    push_opt(
-        &mut utility_models,
-        ai.as_ref()
-            .and_then(|value| value.generation.as_ref())
-            .and_then(|value| value.utility_model.clone()),
-    );
-
-    let mut repair_models = Vec::new();
-    push_opt(
-        &mut repair_models,
-        ai.as_ref()
-            .and_then(|value| value.generation.as_ref())
-            .and_then(|value| value.repair_model.clone()),
-    );
-    if let Some(fallbacks) = ai
-        .as_ref()
-        .and_then(|value| value.generation.as_ref())
-        .and_then(|value| value.repair_fallback_models.clone())
-    {
-        for model in fallbacks {
-            push_opt(&mut repair_models, Some(model));
-        }
-    }
-
-    let mut image_models = Vec::new();
-    push_opt(
-        &mut image_models,
-        ai.as_ref()
-            .and_then(|value| value.ascii_art.as_ref())
-            .and_then(|value| value.model.clone()),
-    );
-
-    let embedding_model = ai
-        .as_ref()
-        .and_then(|value| value.embedding.as_ref())
-        .and_then(|value| value.model.clone())
-        .unwrap_or_default();
-    let embedding_provider = ai
-        .as_ref()
-        .and_then(|value| value.embedding.as_ref())
-        .and_then(|value| value.provider.clone())
-        .unwrap_or_else(|| "auto".to_string());
-    let codex_reasoning = ai
-        .as_ref()
-        .and_then(|value| value.codex.as_ref())
-        .and_then(|value| value.reasoning.clone())
-        .unwrap_or_else(|| "off".to_string());
-
-    Ok(ModelSettings {
-        provider_priority,
-        narrative_models,
-        utility_models,
-        repair_models,
-        image_models,
-        embedding_model,
-        embedding_provider,
-        codex_reasoning,
-        tts_status: "planned".to_string(),
-    })
-}
-
-fn push_opt(values: &mut Vec<String>, value: Option<String>) {
-    let Some(value) = value else {
-        return;
-    };
-    let clean = value.trim();
-    if clean.is_empty() || values.iter().any(|item| item == clean) {
-        return;
-    }
-    values.push(clean.to_string());
 }
 
 fn absolute_path(path: &Path) -> anyhow::Result<PathBuf> {

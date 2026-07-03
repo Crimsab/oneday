@@ -17,21 +17,28 @@ import type {
   StorySummary,
 } from "./types";
 
+interface ErrorPayload {
+  error?: string;
+  code?: string;
+}
+
 export class ApiRequestError extends Error {
   status: number;
+  code: string;
   payload: unknown;
 
-  constructor(message: string, status: number, payload: unknown) {
+  constructor(message: string, status: number, payload: ErrorPayload) {
     super(message);
     this.name = "ApiRequestError";
     this.status = status;
+    this.code = typeof payload?.code === "string" ? payload.code : "";
     this.payload = payload;
   }
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, options);
-  const payload = await response.json().catch(() => ({}));
+  const payload = (await response.json().catch(() => ({}))) as ErrorPayload;
   if (!response.ok) {
     const message = typeof payload?.error === "string" ? payload.error : response.statusText;
     throw new ApiRequestError(message, response.status, payload);

@@ -204,16 +204,34 @@ async fn story_events(
 struct ApiError {
     status: StatusCode,
     message: String,
+    code: Option<String>,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(json!({ "error": self.message }))).into_response()
+        let body = match self.code {
+            Some(code) => json!({ "error": self.message, "code": code }),
+            None => json!({ "error": self.message }),
+        };
+        (self.status, Json(body)).into_response()
     }
 }
 
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
+        if let Some(bridge) = err.downcast_ref::<engine::BridgeError>() {
+            let status = match bridge.code.as_str() {
+                "validation_failed" => StatusCode::BAD_REQUEST,
+                "stale_config" | "config_locked" => StatusCode::CONFLICT,
+                "write_failed" => StatusCode::INTERNAL_SERVER_ERROR,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            return Self {
+                status,
+                message: bridge.message.clone(),
+                code: Some(bridge.code.clone()),
+            };
+        }
         let message = err.to_string();
         let is_bad_request = message.contains("unknown provider")
             || message.contains("must be")
@@ -234,7 +252,11 @@ impl From<anyhow::Error> for ApiError {
         } else {
             StatusCode::INTERNAL_SERVER_ERROR
         };
-        Self { status, message }
+        Self {
+            status,
+            message,
+            code: None,
+        }
     }
 }
 
@@ -243,6 +265,7 @@ impl From<sqlx::Error> for ApiError {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: err.to_string(),
+            code: None,
         }
     }
 }

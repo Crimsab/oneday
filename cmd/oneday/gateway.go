@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -45,8 +46,9 @@ type gatewayCommandDescriptorsResponse struct {
 }
 
 type gatewayModelSettingsResponse struct {
-	Settings *config.ModelRoutingSettings `json:"settings,omitempty"`
-	Error    string                       `json:"error,omitempty"`
+	Settings  *config.ModelRoutingSettings `json:"settings,omitempty"`
+	Error     string                       `json:"error,omitempty"`
+	ErrorCode string                       `json:"error_code,omitempty"`
 }
 
 func runGatewayCommandDescriptors(out io.Writer) error {
@@ -57,11 +59,10 @@ func runGatewayCommandDescriptors(out io.Writer) error {
 }
 
 func runGatewayModelSettings(configPath string, out io.Writer) error {
-	cfg, err := config.LoadForEdit(configPath)
+	settings, err := config.ReadModelRoutingSettings(configPath)
 	if err != nil {
 		return writeGatewayModelSettingsError(out, err)
 	}
-	settings := config.BuildModelRoutingSettings(configPath, cfg)
 	if err := json.NewEncoder(out).Encode(gatewayModelSettingsResponse{Settings: &settings}); err != nil {
 		return fmt.Errorf("writing gateway-model-settings response: %w", err)
 	}
@@ -73,17 +74,10 @@ func runGatewayModelSettingsUpdate(configPath string, in io.Reader, out io.Write
 	if err := json.NewDecoder(in).Decode(&update); err != nil {
 		return writeGatewayModelSettingsError(out, fmt.Errorf("invalid gateway-model-settings-update JSON: %w", err))
 	}
-	cfg, err := config.LoadForEdit(configPath)
+	settings, err := config.UpdateModelRoutingSettings(configPath, update)
 	if err != nil {
 		return writeGatewayModelSettingsError(out, err)
 	}
-	if err := config.ApplyModelRoutingUpdate(&cfg, update); err != nil {
-		return writeGatewayModelSettingsError(out, err)
-	}
-	if err := config.SaveForEdit(configPath, cfg); err != nil {
-		return writeGatewayModelSettingsError(out, err)
-	}
-	settings := config.BuildModelRoutingSettings(configPath, cfg)
 	if err := json.NewEncoder(out).Encode(gatewayModelSettingsResponse{Settings: &settings}); err != nil {
 		return fmt.Errorf("writing gateway-model-settings-update response: %w", err)
 	}
@@ -206,6 +200,13 @@ func writeGatewayDeleteSaveError(out io.Writer, err error) error {
 }
 
 func writeGatewayModelSettingsError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayModelSettingsResponse{Error: err.Error()})
+	code := config.ModelRoutingErrorWrite
+	var routingErr config.ModelRoutingError
+	if errors.As(err, &routingErr) && routingErr.Code != "" {
+		code = routingErr.Code
+	} else if err != nil && errors.Is(err, context.Canceled) {
+		code = "cancelled"
+	}
+	_ = json.NewEncoder(out).Encode(gatewayModelSettingsResponse{Error: err.Error(), ErrorCode: code})
 	return err
 }
