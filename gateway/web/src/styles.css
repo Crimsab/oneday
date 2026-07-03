@@ -850,17 +850,31 @@ button {
 }
 
 .choice-effect {
-  display: block;
+  display: -webkit-box;
+  overflow: hidden;
+  text-overflow: clip;
   white-space: normal;
   line-height: 1.35;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .choice-effect.plus {
   color: #d7ead0;
 }
 
+.choice-effect.plus::before {
+  content: "Signals: ";
+  color: #9dd084;
+}
+
 .choice-effect.minus {
   color: #d5b0ad;
+}
+
+.choice-effect.minus::before {
+  content: "Doesn't guarantee: ";
+  color: #d88983;
 }
 
 .recent-list {
