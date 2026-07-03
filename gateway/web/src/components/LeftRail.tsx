@@ -1,16 +1,5 @@
-import {
-  Archive,
-  BarChart3,
-  BookOpen,
-  BriefcaseBusiness,
-  Clock3,
-  FileText,
-  Flag,
-  Plus,
-  RefreshCw,
-  Search,
-  Users,
-} from "lucide-react";
+import { Plus, RefreshCw, Search, Users } from "lucide-react";
+import { moduleSpecs } from "../commands";
 import { asArray, compactText, entryLabel, fieldRows } from "../format";
 import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary } from "../types";
 
@@ -27,17 +16,6 @@ interface LeftRailProps {
   onRefreshStories: () => void;
   onOpen: (overlay: OverlayKind) => void;
 }
-
-const modules: Array<{ tab: ModuleTab; label: string; Icon: typeof Clock3 }> = [
-  { tab: "history", label: "History", Icon: Clock3 },
-  { tab: "inventory", label: "Inventory", Icon: Archive },
-  { tab: "stats", label: "Stats", Icon: BarChart3 },
-  { tab: "codex", label: "Codex", Icon: BookOpen },
-  { tab: "fronts", label: "Fronts", Icon: Flag },
-  { tab: "investigations", label: "Investigations", Icon: Search },
-  { tab: "projects", label: "Projects", Icon: BriefcaseBusiness },
-  { tab: "saves", label: "Saves", Icon: FileText },
-];
 
 export function LeftRail({
   stories,
@@ -97,7 +75,7 @@ export function LeftRail({
       </section>
 
       <nav className="module-nav" aria-label="Story modules">
-        {modules.map(({ tab, label, Icon }) => (
+        {moduleSpecs.map(({ tab, label, hotkey, Icon }) => (
           <button
             type="button"
             key={tab}
@@ -105,7 +83,8 @@ export function LeftRail({
             onClick={() => onSelectTab(tab)}
           >
             <Icon size={17} />
-            {label}
+            <span>{label}</span>
+            <kbd>{hotkey}</kbd>
           </button>
         ))}
       </nav>
