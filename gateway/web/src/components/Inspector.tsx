@@ -1,6 +1,19 @@
 import { ChevronDown, Maximize2, RefreshCw } from "lucide-react";
 import { moduleSpecs } from "../commands";
-import { asArray, asObject, compactText, deriveCondition, displayClock, entryLabel, fieldRows, findString, numericStat, titleCase, valueToText } from "../format";
+import {
+  asArray,
+  asObject,
+  compactText,
+  deriveCondition,
+  displayClock,
+  entryLabel,
+  fieldRows,
+  findString,
+  numericStat,
+  readableStructuredText,
+  titleCase,
+  valueToText,
+} from "../format";
 import type { JsonObject, JsonValue, ModuleTab, StorySnapshot } from "../types";
 
 interface InspectorProps {
@@ -64,7 +77,7 @@ function renderModule(tab: ModuleTab, snapshot: StorySnapshot) {
 
 function RawStateSection({ tab, snapshot }: { tab: ModuleTab; snapshot: StorySnapshot }) {
   return (
-    <details className="inspector-section raw-state-section" open>
+    <details className="inspector-section raw-state-section">
       <summary>
         <span>Raw Structured State</span>
         <ChevronDown size={14} />
@@ -263,7 +276,7 @@ function InspectorSection({ title, rows }: { title: string; rows: Array<[string,
           rows.map(([label, value]) => (
             <div className="kv-row" key={`${title}-${label}`}>
               <span>{label}</span>
-              <strong>{value}</strong>
+              <strong title={value}>{value}</strong>
             </div>
           ))
         )}
@@ -285,13 +298,13 @@ function CardsSection({ title, cards, emptyLabel }: { title: string; cards: Card
         ) : (
           cards.map((card, index) => (
             <article className="inspector-card" key={`${title}-${card.title}-${index}`}>
-              <h3>{card.title}</h3>
+              <h3 title={card.title}>{card.title}</h3>
               {card.rows.length > 0 && (
                 <div className="kv-list compact">
                   {card.rows.map(([label, value]) => (
                     <div className="kv-row" key={`${card.title}-${label}`}>
                       <span>{label}</span>
-                      <strong>{value}</strong>
+                      <strong title={value}>{value}</strong>
                     </div>
                   ))}
                 </div>
@@ -514,7 +527,7 @@ function messageCards(snapshot: StorySnapshot, keywords: string[] = []): CardVie
       title: `${message.role} - Turn ${message.turn}`,
       rows: [
         ["Type", message.message_type || message.role],
-        ["Text", compactText(message.content, 160)],
+        ["Text", compactText(readableStructuredText(message.content), 160)],
       ],
     }));
 }
