@@ -158,6 +158,43 @@ export interface StorySnapshot {
   panels: PanelsView;
 }
 
+export type CommandGroup = "play" | "talk" | "state" | "save" | "meta" | "system" | "debug";
+export type CommandParity = "shared" | "terminal_only" | "browser_only";
+export type CommandBehavior =
+  | "submit_action"
+  | "submit_meta"
+  | "open_panel"
+  | "save_create"
+  | "save_load"
+  | "save_delete"
+  | "insert_template"
+  | "local_only";
+
+export interface CommandArgDescriptor {
+  name: string;
+  label?: string;
+  required?: boolean;
+  variadic?: boolean;
+  placeholder?: string;
+  description?: string;
+}
+
+export interface CommandDescriptor {
+  id: string;
+  canonical: string;
+  aliases?: string[];
+  title: string;
+  description: string;
+  group: CommandGroup;
+  parity: CommandParity;
+  behavior: CommandBehavior;
+  args?: CommandArgDescriptor[];
+  completion_provider?: string;
+  trailing_space?: boolean;
+  examples?: string[];
+  enabled_when?: string;
+}
+
 export interface PlayerAction {
   kind: "choice" | "free_text" | "command";
   text?: string;

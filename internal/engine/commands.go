@@ -2,6 +2,8 @@ package engine
 
 import (
 	"strings"
+
+	"github.com/crimsab/oneday/internal/game/contracts"
 )
 
 // Command represents a parsed chat command.
@@ -11,43 +13,7 @@ type Command struct {
 }
 
 // CommandRegistry maps command names (including aliases) to canonical names.
-var CommandRegistry = map[string]string{
-	"inventory":      "inventory",
-	"i":              "inventory",
-	"stats":          "stats",
-	"s":              "stats",
-	"save":           "save",
-	"load":           "load",
-	"help":           "help",
-	"quit":           "quit",
-	"q":              "quit",
-	"narrator":       "narrator",
-	"n":              "narrator",
-	"journal":        "journal",
-	"j":              "journal",
-	"history":        "history",
-	"hooks":          "hooks",
-	"fronts":         "hooks",
-	"front":          "hooks",
-	"btw":            "btw",
-	"guide":          "guide",
-	"advance":        "advance",
-	"timeskip":       "timeskip",
-	"map":            "map",
-	"m":              "map",
-	"craft":          "craft",
-	"crafting":       "craft",
-	"talk":           "talk",
-	"downtime":       "downtime",
-	"achievements":   "achievements",
-	"a":              "achievements",
-	"codex":          "codex",
-	"investigations": "investigations",
-	"investigation":  "investigations",
-	"projects":       "projects",
-	"project":        "projects",
-	"characters":     "characters",
-}
+var CommandRegistry = contracts.CommandAliasRegistry()
 
 // IsCommand returns true if the input starts with "/".
 func IsCommand(input string) bool {
