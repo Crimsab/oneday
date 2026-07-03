@@ -546,13 +546,21 @@ function App() {
             </section>
           </section>
         </main>
-        {preferences.showInspector && <Inspector snapshot={snapshot} selectedTab={selectedTab} onRefresh={() => void loadSnapshot()} />}
+        {preferences.showInspector && (
+          <Inspector
+            snapshot={snapshot}
+            selectedTab={selectedTab}
+            onRefresh={() => void loadSnapshot()}
+            onOpenModule={() => setOverlay("module")}
+          />
+        )}
       </div>
       <PanelDrawer
         overlay={overlay}
         snapshot={snapshot}
         preferences={preferences}
         metaResult={metaResult}
+        selectedTab={selectedTab}
         commandDescriptors={commandDescriptors}
         busy={sending}
         onClose={() => setOverlay(null)}
