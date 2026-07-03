@@ -301,6 +301,14 @@ func (n *Narrator) SendAction(ctx context.Context, action string) (*NarrativeRes
 	return n.sendTurn(ctx, action)
 }
 
+// SendActionLocked sends a player action while assuming the caller already owns
+// the cross-process story turn lock. This is used by short-lived browser bridge
+// processes so they can validate the latest story state after acquiring the
+// shared SQLite lock instead of after preparing a stale turn.
+func (n *Narrator) SendActionLocked(ctx context.Context, action string) (*NarrativeResponse, error) {
+	return n.sendTurnUnlocked(ctx, action)
+}
+
 // StreamAction streams a player action and emits the final structured response
 // once the upstream provider finishes.
 func (n *Narrator) StreamAction(ctx context.Context, action string) (<-chan NarrativeStreamChunk, error) {
@@ -359,6 +367,10 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 	}
 	defer func() { _ = lock.Release() }()
 
+	return n.sendTurnUnlocked(ctx, input)
+}
+
+func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string) (*NarrativeResponse, error) {
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
 		return nil, err

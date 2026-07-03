@@ -2,9 +2,12 @@ package storage
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
+
+var ErrStaleWorldTurn = errors.New("stale world turn")
 
 // CreateStory inserts a new story.
 func (db *DB) CreateStory(s *Story) error {
@@ -214,7 +217,18 @@ func (db *DB) UpdateWorldStateTx(tx *sql.Tx, ws *WorldState) error {
 	return updateWorldStateExec(tx, ws)
 }
 
+// UpdateWorldStateExpectedTurnTx updates the world state only if the canonical
+// turn still matches expectedTurn. It is the DB-level compare-and-swap guard for
+// browser/terminal turn races.
+func (db *DB) UpdateWorldStateExpectedTurnTx(tx *sql.Tx, ws *WorldState, expectedTurn int) error {
+	return updateWorldStateExpectedTurnExec(tx, ws, expectedTurn)
+}
+
 func updateWorldStateExec(exec sqlExecer, ws *WorldState) error {
+	return updateWorldStateExpectedTurnExec(exec, ws, -1)
+}
+
+func updateWorldStateExpectedTurnExec(exec sqlExecer, ws *WorldState, expectedTurn int) error {
 	if ws.KnownLocationsJSON == "" {
 		ws.KnownLocationsJSON = "[]"
 	}
@@ -248,19 +262,33 @@ func updateWorldStateExec(exec sqlExecer, ws *WorldState) error {
 	if ws.SceneContractJSON == "" {
 		ws.SceneContractJSON = "{}"
 	}
-	_, err := exec.Exec(
-		`UPDATE world_state SET current_location = ?, known_locations_json = ?,
+	query := `UPDATE world_state SET current_location = ?, known_locations_json = ?,
          global_events_json = ?, faction_standings_json = ?, story_hooks_json = ?,
          world_reactions_json = ?, investigation_board_json = ?, project_clocks_json = ?, player_guidance_json = ?, fronts_json = ?, character_timeline_json = ?, scene_contract_json = ?, current_chapter = ?, current_turn = ?, updated_at = ?
-         WHERE id = ?`,
+         WHERE id = ?`
+	args := []any{
 		ws.CurrentLocation, ws.KnownLocationsJSON,
 		ws.GlobalEventsJSON, ws.FactionStandingsJSON, ws.StoryHooksJSON, ws.WorldReactionsJSON,
 		ws.InvestigationBoardJSON, ws.ProjectClocksJSON, ws.PlayerGuidanceJSON, ws.FrontsJSON, ws.CharacterTimelineJSON, ws.SceneContractJSON,
 		ws.CurrentChapter, ws.CurrentTurn, time.Now(),
 		ws.ID,
-	)
+	}
+	if expectedTurn >= 0 {
+		query += ` AND current_turn = ?`
+		args = append(args, expectedTurn)
+	}
+	result, err := exec.Exec(query, args...)
 	if err != nil {
 		return fmt.Errorf("updating world state: %w", err)
+	}
+	if expectedTurn >= 0 {
+		rows, err := result.RowsAffected()
+		if err != nil {
+			return fmt.Errorf("checking world state turn compare-and-swap: %w", err)
+		}
+		if rows == 0 {
+			return fmt.Errorf("%w: expected current turn %d before writing turn %d", ErrStaleWorldTurn, expectedTurn, ws.CurrentTurn)
+		}
 	}
 	return nil
 }

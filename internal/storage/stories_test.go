@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -49,6 +51,55 @@ func TestCreateAndGetStoryPreservesAuthoringFields(t *testing.T) {
 	}
 	if got.PromptDirectives != input.PromptDirectives {
 		t.Fatalf("PromptDirectives = %q, want %q", got.PromptDirectives, input.PromptDirectives)
+	}
+}
+
+func TestUpdateWorldStateExpectedTurnTxRejectsStaleWriter(t *testing.T) {
+	dir := t.TempDir()
+	db, err := Open(filepath.Join(dir, "world-cas.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	now := time.Now().UTC().Truncate(time.Second)
+	story := &Story{ID: "story-world-cas", Name: "World CAS", CreatedAt: now, UpdatedAt: now}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+	world := &WorldState{
+		ID:              "world-cas",
+		StoryID:         story.ID,
+		CurrentLocation: "Harbor",
+		CurrentChapter:  1,
+		CurrentTurn:     2,
+		UpdatedAt:       now,
+	}
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatalf("CreateWorldState: %v", err)
+	}
+
+	world.CurrentLocation = "Market"
+	world.CurrentTurn = 3
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		return db.UpdateWorldStateExpectedTurnTx(tx, world, 2)
+	}); err != nil {
+		t.Fatalf("UpdateWorldStateExpectedTurnTx success: %v", err)
+	}
+	world.CurrentLocation = "Overwritten Road"
+	world.CurrentTurn = 4
+	err = db.WithTx(func(tx *sql.Tx) error {
+		return db.UpdateWorldStateExpectedTurnTx(tx, world, 2)
+	})
+	if !errors.Is(err, ErrStaleWorldTurn) {
+		t.Fatalf("stale update error = %v, want ErrStaleWorldTurn", err)
+	}
+	got, err := db.GetWorldState(story.ID)
+	if err != nil {
+		t.Fatalf("GetWorldState: %v", err)
+	}
+	if got.CurrentTurn != 3 || got.CurrentLocation != "Market" {
+		t.Fatalf("world after stale update = turn %d location %q, want turn 3 Market", got.CurrentTurn, got.CurrentLocation)
 	}
 }
 

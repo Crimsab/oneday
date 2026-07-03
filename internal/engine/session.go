@@ -345,7 +345,7 @@ func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world
 		if err := db.UpdateCharacterFullTx(tx, char); err != nil {
 			return fmt.Errorf("saving character state: %w", err)
 		}
-		if err := db.UpdateWorldStateTx(tx, world); err != nil {
+		if err := db.UpdateWorldStateExpectedTurnTx(tx, world, entry.Turn); err != nil {
 			return fmt.Errorf("saving world state: %w", err)
 		}
 		return gs.appendEntryToDB(tx, db, entry)
