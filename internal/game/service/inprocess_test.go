@@ -162,6 +162,125 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 	}
 }
 
+func TestInProcessTurnServiceMetaCommandsDoNotAdvanceTurnForUsagePrompts(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-meta", 7)
+
+	provider := &fakeTurnProvider{}
+	router, err := ai.NewRouter([]ai.Provider{provider})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+	svc := NewInProcessTurnService(cfg, db, router)
+
+	snapshot, err := svc.Snapshot(context.Background(), "story-meta")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	tests := []struct {
+		kind contracts.BrowserMetaKind
+		want string
+	}{
+		{kind: contracts.BrowserMetaKindBTW, want: "Ask anything"},
+		{kind: contracts.BrowserMetaKindGuide, want: "Tell me what you want"},
+		{kind: contracts.BrowserMetaKindNarrator, want: "I'm listening"},
+	}
+	for _, tc := range tests {
+		resp, err := svc.SubmitMeta(context.Background(), contracts.BrowserMetaRequest{
+			StoryID:    "story-meta",
+			SessionID:  snapshot.SessionID,
+			ClientTurn: snapshot.Turn,
+			Kind:       tc.kind,
+		})
+		if err != nil {
+			t.Fatalf("SubmitMeta(%s): %v", tc.kind, err)
+		}
+		if resp.Kind != tc.kind || resp.Message == "" {
+			t.Fatalf("SubmitMeta(%s) response = %+v", tc.kind, resp)
+		}
+		if got := resp.Message; len(got) < len(tc.want) || got[:len(tc.want)] != tc.want {
+			t.Fatalf("SubmitMeta(%s) message = %q, want prefix %q", tc.kind, got, tc.want)
+		}
+	}
+	world, err := db.GetWorldState("story-meta")
+	if err != nil {
+		t.Fatalf("GetWorldState: %v", err)
+	}
+	if world.CurrentTurn != 7 {
+		t.Fatalf("world turn = %d, want 7", world.CurrentTurn)
+	}
+	if provider.calls != 0 {
+		t.Fatalf("provider calls = %d, want 0 for usage prompts", provider.calls)
+	}
+}
+
+func TestInProcessTurnServiceCreateAndLoadSave(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-save", 3)
+
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	svc := NewInProcessTurnService(cfg, db, nil)
+
+	snapshot, err := svc.Snapshot(context.Background(), "story-save")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	saveResp, err := svc.CreateSave(context.Background(), contracts.BrowserSaveRequest{
+		StoryID:    "story-save",
+		SessionID:  snapshot.SessionID,
+		ClientTurn: snapshot.Turn,
+		Name:       "Browser Slot",
+		Kind:       "manual",
+	})
+	if err != nil {
+		t.Fatalf("CreateSave: %v", err)
+	}
+	if saveResp.Save.Name != "Browser Slot" || saveResp.Save.Turn != 3 {
+		t.Fatalf("save response = %+v, want Browser Slot at turn 3", saveResp.Save)
+	}
+
+	world, err := db.GetWorldState("story-save")
+	if err != nil {
+		t.Fatalf("GetWorldState before mutate: %v", err)
+	}
+	world.CurrentLocation = "Changed Road"
+	world.CurrentTurn = 4
+	if err := db.UpdateWorldState(world); err != nil {
+		t.Fatalf("UpdateWorldState: %v", err)
+	}
+	latest, err := svc.Snapshot(context.Background(), "story-save")
+	if err != nil {
+		t.Fatalf("Snapshot after mutate: %v", err)
+	}
+	loadResp, err := svc.LoadSave(context.Background(), contracts.BrowserLoadRequest{
+		StoryID:    "story-save",
+		SessionID:  latest.SessionID,
+		ClientTurn: latest.Turn,
+		SaveID:     saveResp.Save.ID,
+	})
+	if err != nil {
+		t.Fatalf("LoadSave: %v", err)
+	}
+	if loadResp.Save.ID != saveResp.Save.ID {
+		t.Fatalf("loaded save id = %q, want %q", loadResp.Save.ID, saveResp.Save.ID)
+	}
+	restored, err := db.GetWorldState("story-save")
+	if err != nil {
+		t.Fatalf("GetWorldState after load: %v", err)
+	}
+	if restored.CurrentTurn != 3 || restored.CurrentLocation != "Harbor" {
+		t.Fatalf("restored world = turn %d location %q, want turn 3 Harbor", restored.CurrentTurn, restored.CurrentLocation)
+	}
+}
+
 func collectTurnEvents(stream <-chan contracts.TurnEvent) []contracts.TurnEvent {
 	var events []contracts.TurnEvent
 	for event := range stream {

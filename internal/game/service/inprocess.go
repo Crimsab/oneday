@@ -123,7 +123,79 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 	return eventsChannel(events), nil
 }
 
-func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot) ([]contracts.TurnEvent, error) {
+func (s *InProcessTurnService) SubmitMeta(ctx context.Context, req contracts.BrowserMetaRequest) (*contracts.BrowserMetaResponse, error) {
+	if s.router == nil {
+		return nil, errors.New("AI router is not configured")
+	}
+	if s.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	lock := s.storyLock(req.StoryID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	snapshot, err := s.Snapshot(ctx, req.StoryID)
+	if err != nil {
+		return nil, err
+	}
+	if err := req.Validate(snapshot.Turn); err != nil {
+		return nil, err
+	}
+	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
+		return nil, fmt.Errorf("stale session_id %q, active session is %q", req.SessionID, snapshot.SessionID)
+	}
+
+	narrator, session, err := s.newNarrator(req.StoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = session.CloseMirrors() }()
+
+	switch req.Kind {
+	case contracts.BrowserMetaKindBTW:
+		message, err := narrator.ExecuteAsideQuestion(ctx, req.Text)
+		if err != nil {
+			return nil, err
+		}
+		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "By The Way", Message: message}, nil
+	case contracts.BrowserMetaKindGuide:
+		resp, err := narrator.ExecuteGuideCommand(ctx, req.Text)
+		if err != nil {
+			return nil, err
+		}
+		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "Guide", Message: resp.Message}, nil
+	case contracts.BrowserMetaKindNarrator:
+		resp, err := narrator.ExecuteNarratorCommand(ctx, req.Text)
+		if err != nil {
+			return nil, err
+		}
+		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "Game Master", Message: resp.Message}, nil
+	default:
+		return nil, fmt.Errorf("unsupported browser meta kind %q", req.Kind)
+	}
+}
+
+func (s *InProcessTurnService) CreateSave(ctx context.Context, req contracts.BrowserSaveRequest) (*contracts.BrowserSaveResponse, error) {
+	if s.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	lock := s.storyLock(req.StoryID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	snapshot, err := s.Snapshot(ctx, req.StoryID)
+	if err != nil {
+		return nil, err
+	}
+	if err := req.Validate(snapshot.Turn); err != nil {
+		return nil, err
+	}
+	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
+		return nil, fmt.Errorf("stale session_id %q, active session is %q", req.SessionID, snapshot.SessionID)
+	}
+
 	story, err := s.db.GetStory(req.StoryID)
 	if err != nil {
 		return nil, err
@@ -142,23 +214,73 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 	}
 	defer func() { _ = session.CloseMirrors() }()
 
-	contextCfg := engine.DefaultContextConfig()
-	contextCfg.RewardBudget = s.cfg.Game.RewardBudget
-	narrator := engine.NewNarrator(
-		s.router,
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "Manual Save"
+	}
+	kind := strings.TrimSpace(req.Kind)
+	if kind == "" {
+		kind = "manual"
+	}
+	save, err := engine.SaveGameWithMetadata(
 		s.db,
+		s.cfg.DataDir,
 		story,
 		character,
 		world,
-		session,
-		contextCfg,
-		s.cfg.AI.Generation,
-		s.cfg.AI.ASCIIArt,
-		s.cfg.DataDir,
-		s.cfg.Game.AutosaveEvery,
+		session.SessionID(),
+		name,
+		&storage.SaveMetadata{Kind: kind},
 	)
-	narrator.SetRAG(s.buildRAG(req.StoryID))
+	if err != nil {
+		return nil, err
+	}
+	return &contracts.BrowserSaveResponse{Save: saveView(save)}, nil
+}
+
+func (s *InProcessTurnService) LoadSave(ctx context.Context, req contracts.BrowserLoadRequest) (*contracts.BrowserLoadResponse, error) {
+	if s.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	lock := s.storyLock(req.StoryID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	snapshot, err := s.Snapshot(ctx, req.StoryID)
+	if err != nil {
+		return nil, err
+	}
+	if err := req.Validate(snapshot.Turn); err != nil {
+		return nil, err
+	}
+	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
+		return nil, fmt.Errorf("stale session_id %q, active session is %q", req.SessionID, snapshot.SessionID)
+	}
+	save, err := s.db.GetSave(req.SaveID)
+	if err != nil {
+		return nil, err
+	}
+	if save.StoryID != req.StoryID {
+		return nil, fmt.Errorf("save %s belongs to story %s, not %s", req.SaveID, save.StoryID, req.StoryID)
+	}
+
+	result, err := engine.LoadGame(s.db, s.cfg.DataDir, req.SaveID)
+	if err != nil {
+		return nil, err
+	}
+	return &contracts.BrowserLoadResponse{Save: saveView(result.Save), Legacy: result.Legacy}, nil
+}
+
+func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot) ([]contracts.TurnEvent, error) {
+	narrator, session, err := s.newNarrator(req.StoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = session.CloseMirrors() }()
 	sessionID := session.SessionID()
+
+	world := narrator.World()
 
 	events := make([]contracts.TurnEvent, 0, 6)
 	appendEvent := func(eventType contracts.TurnEventType, payload any) error {
@@ -233,6 +355,63 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 	}
 
 	return events, nil
+}
+
+func (s *InProcessTurnService) newNarrator(storyID string) (*engine.Narrator, *engine.GameSession, error) {
+	story, err := s.db.GetStory(storyID)
+	if err != nil {
+		return nil, nil, err
+	}
+	character, err := s.db.GetCharacterByStory(storyID)
+	if err != nil {
+		return nil, nil, err
+	}
+	world, err := s.db.GetWorldState(storyID)
+	if err != nil {
+		return nil, nil, err
+	}
+	session, err := engine.NewGameSession(s.db, storyID, s.cfg.DataDir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating game session: %w", err)
+	}
+
+	contextCfg := engine.DefaultContextConfig()
+	contextCfg.RewardBudget = s.cfg.Game.RewardBudget
+	narrator := engine.NewNarrator(
+		s.router,
+		s.db,
+		story,
+		character,
+		world,
+		session,
+		contextCfg,
+		s.cfg.AI.Generation,
+		s.cfg.AI.ASCIIArt,
+		s.cfg.DataDir,
+		s.cfg.Game.AutosaveEvery,
+	)
+	narrator.SetRAG(s.buildRAG(storyID))
+	return narrator, session, nil
+}
+
+func saveView(save *storage.SaveSnapshot) contracts.BrowserSaveView {
+	if save == nil {
+		return contracts.BrowserSaveView{}
+	}
+	metadata := json.RawMessage(save.MetadataJSON)
+	if len(metadata) == 0 {
+		metadata = json.RawMessage(`{}`)
+	}
+	return contracts.BrowserSaveView{
+		ID:        save.ID,
+		Name:      save.Name,
+		Turn:      save.Turn,
+		Chapter:   save.Chapter,
+		Location:  save.Location,
+		SessionID: save.SessionID,
+		Metadata:  metadata,
+		CreatedAt: save.CreatedAt,
+	}
 }
 
 func (s *InProcessTurnService) storyLock(storyID string) *sync.Mutex {
