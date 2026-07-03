@@ -1772,6 +1772,84 @@ input:disabled {
   font-weight: 500;
 }
 
+.model-active-strip {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 8px;
+}
+
+.model-active-strip > div,
+.provider-card {
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  background: #0c1519;
+  padding: 10px 12px;
+}
+
+.model-active-strip span,
+.provider-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.model-active-strip strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #edf1f2;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.provider-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.provider-card {
+  display: grid;
+  gap: 10px;
+}
+
+.provider-card.enabled {
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
+  background: color-mix(in srgb, var(--accent) 5%, #0c1519);
+}
+
+.provider-card label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.provider-card .toggle-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.provider-card input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+
+.provider-card select,
+.provider-card input:not([type]) {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  outline: 0;
+  background: #0a1115;
+  color: var(--text);
+  padding: 0 10px;
+}
+
 .model-note {
   margin: 0;
   color: var(--muted);
@@ -1784,6 +1862,42 @@ input:disabled {
   gap: 5px;
   color: var(--faint);
   font-size: 11px;
+}
+
+.model-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.model-actions button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #111b20;
+  padding: 0 12px;
+}
+
+.model-actions .primary-action {
+  border-color: var(--accent-2);
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  color: #111;
+  font-weight: 700;
+}
+
+.model-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.model-error {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--bad) 45%, var(--line));
+  background: color-mix(in srgb, var(--bad) 10%, #0c1519);
+  padding: 9px 11px;
+  color: #f0b2ac;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .wide-action {
@@ -1994,6 +2108,8 @@ input:disabled {
 
   .settings-grid,
   .option-grid,
+  .model-active-strip,
+  .provider-editor-grid,
   .save-create {
     grid-template-columns: minmax(0, 1fr);
   }

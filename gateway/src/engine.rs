@@ -187,6 +187,82 @@ pub struct GatewayCommandDescriptorsResponse {
     pub error: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelProviderSetting {
+    pub id: String,
+    pub label: String,
+    pub enabled: bool,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub reasoning: String,
+    pub supports_model: bool,
+    pub supports_reasoning: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelRoutingActive {
+    pub provider: String,
+    pub narrative_model: String,
+    pub utility_model: String,
+    pub repair_model: String,
+    #[serde(default)]
+    pub repair_fallback_models: Vec<String>,
+    pub image_model: String,
+    pub embedding_provider: String,
+    pub embedding_model: String,
+    pub codex_reasoning: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelRoutingSettings {
+    pub config_path: String,
+    #[serde(default)]
+    pub provider_priority: Vec<String>,
+    #[serde(default)]
+    pub providers: Vec<ModelProviderSetting>,
+    #[serde(default)]
+    pub narrative_models: Vec<String>,
+    #[serde(default)]
+    pub utility_models: Vec<String>,
+    #[serde(default)]
+    pub repair_models: Vec<String>,
+    #[serde(default)]
+    pub image_models: Vec<String>,
+    #[serde(default)]
+    pub embedding_providers: Vec<String>,
+    pub active: ModelRoutingActive,
+    pub tts_status: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelProviderUpdate {
+    pub id: String,
+    pub enabled: Option<bool>,
+    pub model: Option<String>,
+    pub reasoning: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelRoutingUpdate {
+    pub provider_priority: Option<Vec<String>>,
+    #[serde(default)]
+    pub providers: Vec<ModelProviderUpdate>,
+    pub utility_model: Option<String>,
+    pub repair_model: Option<String>,
+    pub repair_fallback_models: Option<Vec<String>>,
+    pub image_model: Option<String>,
+    pub embedding_provider: Option<String>,
+    pub embedding_model: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GatewayModelSettingsResponse {
+    pub settings: Option<ModelRoutingSettings>,
+    #[serde(default)]
+    pub error: String,
+}
+
 pub async fn command_descriptors(
     state: Arc<AppState>,
 ) -> anyhow::Result<GatewayCommandDescriptorsResponse> {
@@ -194,6 +270,7 @@ pub async fn command_descriptors(
         Duration::from_secs(30),
         Command::new(&state.paths.oneday_bin)
             .arg("gateway-command-descriptors")
+            .env("ONEDAY_CONFIG", &state.paths.config_path)
             .current_dir(&state.paths.oneday_root)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -226,6 +303,72 @@ pub async fn command_descriptors(
         ));
     }
     Ok(parsed)
+}
+
+pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<ModelRoutingSettings> {
+    let output = tokio::time::timeout(
+        Duration::from_secs(30),
+        Command::new(&state.paths.oneday_bin)
+            .arg("gateway-model-settings")
+            .env("ONEDAY_CONFIG", &state.paths.config_path)
+            .current_dir(&state.paths.oneday_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output(),
+    )
+    .await
+    .context("gateway-model-settings timed out")?
+    .with_context(|| {
+        format!(
+            "starting {} gateway-model-settings",
+            state.paths.oneday_bin.display()
+        )
+    })?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let parsed = serde_json::from_slice::<GatewayModelSettingsResponse>(&output.stdout)
+        .with_context(|| {
+            format!(
+                "decoding gateway-model-settings stdout; stderr={}",
+                compact_stderr(&stderr)
+            )
+        })?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !output.status.success() {
+        return Err(anyhow!(
+            "gateway-model-settings failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    parsed
+        .settings
+        .ok_or_else(|| anyhow!("gateway-model-settings returned no settings"))
+}
+
+pub async fn update_model_settings(
+    state: Arc<AppState>,
+    update: ModelRoutingUpdate,
+) -> anyhow::Result<ModelRoutingSettings> {
+    let (parsed, status_ok, stderr) = call_gateway::<_, GatewayModelSettingsResponse>(
+        state,
+        "gateway-model-settings-update",
+        &update,
+    )
+    .await?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !status_ok {
+        return Err(anyhow!(
+            "gateway-model-settings-update failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    parsed
+        .settings
+        .ok_or_else(|| anyhow!("gateway-model-settings-update returned no settings"))
 }
 
 pub async fn submit_action(
@@ -363,6 +506,7 @@ where
     let input = serde_json::to_vec(req).with_context(|| format!("encoding {command} request"))?;
     let mut child = Command::new(&state.paths.oneday_bin)
         .arg(command)
+        .env("ONEDAY_CONFIG", &state.paths.config_path)
         .current_dir(&state.paths.oneday_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

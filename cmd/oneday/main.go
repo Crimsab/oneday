@@ -87,6 +87,20 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayModelSettings(os.Args[1:]) {
+		if err := runGatewayModelSettings(resolveConfigPath(), os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway model settings failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayModelSettingsUpdate(os.Args[1:]) {
+		if err := runGatewayModelSettingsUpdate(resolveConfigPath(), os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway model settings update failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not load .env: %v\n", err)
@@ -182,6 +196,10 @@ func resolveDotEnvPath() string {
 func resolveConfigPath() string {
 	const configName = "config.yaml"
 
+	if fromEnv := strings.TrimSpace(os.Getenv("ONEDAY_CONFIG")); fromEnv != "" {
+		return fromEnv
+	}
+
 	if _, err := os.Stat(configName); err == nil {
 		return configName
 	}
@@ -270,6 +288,14 @@ func wantsExport(args []string) bool {
 
 func wantsGatewayCommandDescriptors(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-command-descriptors"
+}
+
+func wantsGatewayModelSettings(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-model-settings"
+}
+
+func wantsGatewayModelSettingsUpdate(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-model-settings-update"
 }
 
 func wantsGatewayTurn(args []string) bool {

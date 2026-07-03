@@ -23,24 +23,59 @@ export interface AppPreferences {
   showLeftRail: boolean;
   showInspector: boolean;
   wrapTranscript: boolean;
-  narrativeModel: string;
-  utilityModel: string;
-  repairModel: string;
-  imageModel: string;
-  openAIEndpoint: string;
-  ttsVoice: string;
+}
+
+export interface ModelProviderSetting {
+  id: string;
+  label: string;
+  enabled: boolean;
+  model?: string;
+  reasoning?: string;
+  supports_model: boolean;
+  supports_reasoning: boolean;
+}
+
+export interface ModelRoutingActive {
+  provider: string;
+  narrative_model: string;
+  utility_model: string;
+  repair_model: string;
+  repair_fallback_models: string[];
+  image_model: string;
+  embedding_provider: string;
+  embedding_model: string;
+  codex_reasoning: string;
 }
 
 export interface ModelSettings {
+  config_path: string;
   provider_priority: string[];
+  providers: ModelProviderSetting[];
   narrative_models: string[];
   utility_models: string[];
   repair_models: string[];
   image_models: string[];
-  embedding_model: string;
-  embedding_provider: string;
-  codex_reasoning: string;
+  embedding_providers: string[];
+  active: ModelRoutingActive;
   tts_status: string;
+}
+
+export interface ModelProviderUpdate {
+  id: string;
+  enabled?: boolean;
+  model?: string;
+  reasoning?: string;
+}
+
+export interface ModelSettingsUpdate {
+  provider_priority?: string[];
+  providers?: ModelProviderUpdate[];
+  utility_model?: string;
+  repair_model?: string;
+  repair_fallback_models?: string[];
+  image_model?: string;
+  embedding_model?: string;
+  embedding_provider?: string;
 }
 
 export interface Health {
