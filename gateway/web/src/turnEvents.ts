@@ -1,0 +1,89 @@
+import type { JsonObject, JsonValue, PlayerAction, TurnStreamEvent } from "./types";
+
+export function appendTurnEvent(events: TurnStreamEvent[], next: TurnStreamEvent, limit = 8): TurnStreamEvent[] {
+  const key = turnEventKey(next);
+  const withoutDuplicate = events.filter((event) => turnEventKey(event) !== key);
+  return [...withoutDuplicate, next].slice(-limit);
+}
+
+export function turnEventDetail(event: TurnStreamEvent): string {
+  if (event.status === "submitted") return "Action accepted by the Rust gateway; waiting for OneDay...";
+  if (event.status === "completed") return "Turn committed. Syncing the canonical snapshot...";
+  if (event.status === "failed") return event.message || "The live engine failed.";
+  if (event.status === "snapshot_changed") return event.message || "Canonical state changed from another client.";
+  if (event.status === "lagged") return event.message || "Live events were skipped; snapshot sync will recover.";
+
+  switch (event.event_type) {
+    case "turn.started":
+      return "Engine started resolving the turn.";
+    case "narrative.final":
+      return "Narrative generated; applying state updates.";
+    case "state.delta":
+      return "State delta received.";
+    case "choices.updated":
+      return "Choices refreshed.";
+    case "asset.queued":
+      return "Image generation cue queued.";
+    case "turn.committed":
+      return "Turn committed to the shared story.";
+    default:
+      return event.message || event.event_type || "Live engine event received.";
+  }
+}
+
+export function turnEventTitle(event: TurnStreamEvent): string {
+  if (event.event_type) return event.event_type;
+  return event.status.replace(/_/g, " ");
+}
+
+export function turnEventFromContract(
+  storyId: string,
+  clientTurn: number,
+  action: PlayerAction,
+  sourceText: string,
+  event: JsonValue,
+): TurnStreamEvent {
+  const eventObject = isObject(event) ? event : {};
+  const eventType = typeof eventObject.type === "string" ? eventObject.type : "turn.event";
+  return {
+    story_id: storyId,
+    status: "event",
+    client_turn: clientTurn,
+    action_kind: action.kind,
+    action_text: action.text ?? sourceText,
+    event_type: eventType,
+    event,
+    message: messageForEventType(eventType),
+    created_at: new Date().toISOString(),
+  };
+}
+
+function turnEventKey(event: TurnStreamEvent): string {
+  const eventObject = isObject(event.event) ? event.event : {};
+  const id = typeof eventObject.id === "string" ? eventObject.id : "";
+  if (id) return `id:${id}`;
+  return [event.story_id, event.status, event.event_type ?? "", event.client_turn ?? "", event.created_at].join(":");
+}
+
+function messageForEventType(eventType: string): string {
+  switch (eventType) {
+    case "turn.started":
+      return "Turn accepted by the live engine.";
+    case "narrative.final":
+      return "Narrative generated; applying state changes.";
+    case "choices.updated":
+      return "Choices refreshed from the engine.";
+    case "state.delta":
+      return "Canonical state changed.";
+    case "asset.queued":
+      return "Visual asset request queued.";
+    case "turn.committed":
+      return "Turn committed to the shared story.";
+    default:
+      return `Engine event: ${eventType}.`;
+  }
+}
+
+function isObject(value: JsonValue | undefined): value is JsonObject {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}

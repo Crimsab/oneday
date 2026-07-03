@@ -153,6 +153,18 @@ export interface PendingTurnView {
   kind: "choice" | "free_text" | "command" | "meta";
 }
 
+export interface TurnStreamEvent {
+  story_id: string;
+  status: "submitted" | "event" | "completed" | "failed" | "snapshot_changed" | "lagged" | string;
+  client_turn?: number | null;
+  action_kind?: string | null;
+  action_text?: string | null;
+  event_type?: string | null;
+  event?: JsonValue;
+  message: string;
+  created_at: string;
+}
+
 export interface ChoiceView {
   id: number;
   text: string;
