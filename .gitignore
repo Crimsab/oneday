@@ -38,6 +38,11 @@ vendor/
 coverage.out
 coverage.html
 
+# JS / frontend
+node_modules/
+gateway/web/node_modules/
+gateway/web/dist/
+
 # Rust
 target/
 gateway/target/

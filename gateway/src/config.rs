@@ -20,6 +20,9 @@ pub struct Args {
 
     #[arg(long, env = "ONEDAY_BIN")]
     pub oneday_bin: Option<PathBuf>,
+
+    #[arg(long, env = "ONEDAY_GATEWAY_STATIC_DIR")]
+    pub static_dir: Option<PathBuf>,
 }
 
 impl Args {
@@ -34,6 +37,7 @@ pub struct ResolvedPaths {
     pub config_path: PathBuf,
     pub db_path: PathBuf,
     pub oneday_bin: PathBuf,
+    pub static_dir: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -53,6 +57,11 @@ pub fn resolve_paths(args: &Args) -> anyhow::Result<ResolvedPaths> {
         .clone()
         .unwrap_or_else(|| oneday_root.join("oneday"));
     let oneday_bin = absolute_path_relative(&oneday_root, &oneday_bin)?;
+    let static_dir = args
+        .static_dir
+        .clone()
+        .unwrap_or_else(|| oneday_root.join("gateway/web/dist"));
+    let static_dir = absolute_path_relative(&oneday_root, &static_dir)?;
 
     let db_path = if let Some(path) = &args.db_path {
         absolute_path_relative(&oneday_root, path)?
@@ -71,12 +80,19 @@ pub fn resolve_paths(args: &Args) -> anyhow::Result<ResolvedPaths> {
             oneday_bin.display()
         ));
     }
+    if !static_dir.join("index.html").exists() {
+        return Err(anyhow!(
+            "gateway static index does not exist: {}",
+            static_dir.join("index.html").display()
+        ));
+    }
 
     Ok(ResolvedPaths {
         oneday_root,
         config_path,
         db_path,
         oneday_bin,
+        static_dir,
     })
 }
 
