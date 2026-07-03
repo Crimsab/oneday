@@ -20,6 +20,7 @@ export interface AppPreferences {
   density: DensityPreference;
   fontSize: FontSizePreference;
   accent: AccentPreference;
+  showLeftRail: boolean;
   showInspector: boolean;
   wrapTranscript: boolean;
 }

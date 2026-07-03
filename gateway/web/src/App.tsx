@@ -14,7 +14,7 @@ import {
 } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
-import { LeftRail } from "./components/LeftRail";
+import { CollapsedLeftRail, LeftRail } from "./components/LeftRail";
 import { PanelDrawer } from "./components/PanelDrawer";
 import { RecentCommands } from "./components/RecentCommands";
 import { SuggestedActions } from "./components/SuggestedActions";
@@ -176,6 +176,16 @@ function App() {
       if (event.key.toLowerCase() === "o") {
         event.preventDefault();
         setOverlay("options");
+        return;
+      }
+      if (event.key === "[") {
+        event.preventDefault();
+        setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
+        return;
+      }
+      if (event.key === "]") {
+        event.preventDefault();
+        setPreferences((value) => ({ ...defaultPreferences, ...value, showInspector: !value.showInspector }));
         return;
       }
       const tab = tabHotkeys[event.key.toLowerCase()];
@@ -441,6 +451,14 @@ function App() {
     setPreferences({ ...defaultPreferences, ...nextPreferences });
   };
 
+  const toggleLeftRail = () => {
+    setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
+  };
+
+  const toggleInspector = () => {
+    setPreferences((value) => ({ ...defaultPreferences, ...value, showInspector: !value.showInspector }));
+  };
+
   const stepCommandHistory = (direction: -1 | 1): string | null => {
     const next = stepHistoryIndex(historyIndex, direction, recentCommands);
     setHistoryIndex(next.index);
@@ -449,26 +467,43 @@ function App() {
 
   return (
     <div
-      className={`app-shell ${preferences.showInspector ? "" : "inspector-hidden"} ${preferences.wrapTranscript ? "" : "transcript-nowrap"}`}
+      className={`app-shell ${preferences.showLeftRail ? "" : "left-rail-hidden"} ${preferences.showInspector ? "" : "inspector-hidden"} ${preferences.wrapTranscript ? "" : "transcript-nowrap"}`}
       data-density={preferences.density}
       data-font-size={preferences.fontSize}
       data-accent={preferences.accent}
     >
-      <TopBar snapshot={snapshot} sync={sync} onOpen={openOverlay} />
+      <TopBar
+        snapshot={snapshot}
+        sync={sync}
+        showLeftRail={preferences.showLeftRail}
+        showInspector={preferences.showInspector}
+        onToggleLeftRail={toggleLeftRail}
+        onToggleInspector={toggleInspector}
+        onOpen={openOverlay}
+      />
       <div className="workspace">
-        <LeftRail
-          stories={filteredStories}
-          activeStoryId={storyId}
-          filter={filter}
-          snapshot={snapshot}
-          selectedTab={selectedTab}
-          healthText={healthText}
-          onFilterChange={setFilter}
-          onSelectStory={selectStory}
-          onSelectTab={setSelectedTab}
-          onRefreshStories={refreshStories}
-          onOpen={openOverlay}
-        />
+        {preferences.showLeftRail ? (
+          <LeftRail
+            stories={filteredStories}
+            activeStoryId={storyId}
+            filter={filter}
+            snapshot={snapshot}
+            selectedTab={selectedTab}
+            healthText={healthText}
+            onFilterChange={setFilter}
+            onSelectStory={selectStory}
+            onSelectTab={setSelectedTab}
+            onRefreshStories={refreshStories}
+            onOpen={openOverlay}
+          />
+        ) : (
+          <CollapsedLeftRail
+            selectedTab={selectedTab}
+            onSelectTab={setSelectedTab}
+            onExpand={toggleLeftRail}
+            onOpen={openOverlay}
+          />
+        )}
         <main className="center-stage">
           <section className="transcript-panel">
             <div className="panel-head">
