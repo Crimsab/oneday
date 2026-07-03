@@ -15,10 +15,11 @@ game state.
 - The Go game contract owns browser-facing slash command descriptors. The Rust
   gateway exposes them at `/api/contracts/commands`; React may present them, but
   should not maintain a separate command truth.
-- The Rust gateway exposes redacted model routing metadata at
-  `/api/config/models`. Browser model selectors are currently local staged
-  preferences; live turn generation still follows `config.yaml` until a shared
-  `model_routing` request contract is added to the Go bridge.
+- The Go CLI owns model routing semantics. Rust proxies `GET /api/config/models`
+  to `oneday gateway-model-settings` and `PUT /api/config/models` to
+  `oneday gateway-model-settings-update`. The update command writes the shared
+  `config.yaml`, preserving secret placeholders by using an edit-safe config
+  load path that does not expand environment variables.
 - The Rust gateway serves HTTP, JSON APIs, the browser UI, and SSE realtime
   streams.
 - Both clients must observe the same active session and turn cursor.
@@ -54,8 +55,9 @@ game state.
 - Realtime updates through SSE for terminal-to-browser and browser-to-browser.
 - Browser-to-terminal coherence through terminal polling of canonical turn
   state.
-- Redacted model/provider inventory for Options, including narrative, utility,
-  repair, image/ascii, embedding, and planned TTS status.
+- Shared model/provider editor for Options, including provider priority,
+  provider enablement, narrative/provider models, utility, repair, image/ascii,
+  embedding, Codex reasoning, and planned TTS status.
 
 ## Non-Goals
 

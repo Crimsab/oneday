@@ -166,6 +166,33 @@ ai:
 	}
 }
 
+func TestLoadForEditDoesNotExpandEnvironmentVariables(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	t.Setenv("ONEDAY_TEST_API_KEY", "test-secret-key")
+
+	yaml := `
+ai:
+  provider_priority:
+    - litellm
+  litellm:
+    enabled: true
+    api_key: "${ONEDAY_TEST_API_KEY}"
+`
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadForEdit(path)
+	if err != nil {
+		t.Fatalf("LoadForEdit: %v", err)
+	}
+	if cfg.AI.LiteLLM.APIKey != "${ONEDAY_TEST_API_KEY}" {
+		t.Errorf("LiteLLM.APIKey = %q, want placeholder preserved", cfg.AI.LiteLLM.APIKey)
+	}
+}
+
 func TestLoadDotEnvDoesNotOverwriteExistingEnv(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".env")
@@ -249,6 +276,84 @@ func TestRepairModelCandidatesUsesUtilityOnlyWhenRepairMissing(t *testing.T) {
 	candidates = withoutRepair.RepairModelCandidates()
 	if len(candidates) != 2 || candidates[0] != "gpt-5.4-mini" || candidates[1] != "repair-fallback" {
 		t.Fatalf("RepairModelCandidates without repair = %#v", candidates)
+	}
+}
+
+func TestBuildModelRoutingSettings(t *testing.T) {
+	cfg := Default()
+	cfg.AI.ProviderPriority = []string{"codex", "litellm", "openrouter", "claude-code"}
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = "gpt-5.5"
+	cfg.AI.Generation.RepairFallbackModels = []string{"grok-4.1-fast", "grok-4.1-fast"}
+
+	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg)
+
+	if settings.Active.Provider != "codex" {
+		t.Fatalf("Active.Provider = %q, want codex", settings.Active.Provider)
+	}
+	if settings.Active.NarrativeModel != "gpt-5.5" {
+		t.Fatalf("Active.NarrativeModel = %q", settings.Active.NarrativeModel)
+	}
+	if len(settings.Providers) != 4 {
+		t.Fatalf("Providers length = %d, want 4", len(settings.Providers))
+	}
+	if got := settings.RepairModels; len(got) != 3 || got[0] != "gemini-3.1-flash-lite-preview" || got[2] != "grok-4.1-fast" {
+		t.Fatalf("RepairModels = %#v", got)
+	}
+}
+
+func TestApplyModelRoutingUpdate(t *testing.T) {
+	cfg := Default()
+	priority := []string{"openrouter", "litellm", "codex", "claude-code"}
+	openRouterEnabled := true
+	openRouterModel := "anthropic/claude-sonnet-4.6"
+	codexEnabled := false
+	utility := "gpt-5.4-mini-fast"
+	repair := "gemini-3.1-pro"
+	fallbacks := []string{"grok-4.1-fast", "gpt-5.5"}
+	image := "ascii-ambient-v2"
+
+	err := ApplyModelRoutingUpdate(&cfg, ModelRoutingUpdate{
+		ProviderPriority: &priority,
+		Providers: []ModelProviderUpdate{
+			{ID: "openrouter", Enabled: &openRouterEnabled, Model: &openRouterModel},
+			{ID: "codex", Enabled: &codexEnabled},
+		},
+		UtilityModel:         &utility,
+		RepairModel:          &repair,
+		RepairFallbackModels: &fallbacks,
+		ImageModel:           &image,
+	})
+	if err != nil {
+		t.Fatalf("ApplyModelRoutingUpdate: %v", err)
+	}
+	if got := cfg.EnabledProviders(); len(got) != 2 || got[0] != "openrouter" || got[1] != "litellm" {
+		t.Fatalf("EnabledProviders = %#v", got)
+	}
+	if cfg.AI.OpenRouter.DefaultModel != openRouterModel {
+		t.Fatalf("OpenRouter.DefaultModel = %q", cfg.AI.OpenRouter.DefaultModel)
+	}
+	if cfg.AI.Generation.UtilityModel != utility || cfg.AI.Generation.RepairModel != repair {
+		t.Fatalf("generation models not updated: %#v", cfg.AI.Generation)
+	}
+	if cfg.AI.ASCIIArt.Model != image {
+		t.Fatalf("ASCIIArt.Model = %q", cfg.AI.ASCIIArt.Model)
+	}
+}
+
+func TestApplyModelRoutingUpdateRejectsNoEnabledProviders(t *testing.T) {
+	cfg := Default()
+	disabled := false
+	err := ApplyModelRoutingUpdate(&cfg, ModelRoutingUpdate{
+		Providers: []ModelProviderUpdate{
+			{ID: "litellm", Enabled: &disabled},
+			{ID: "openrouter", Enabled: &disabled},
+			{ID: "codex", Enabled: &disabled},
+			{ID: "claude-code", Enabled: &disabled},
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error when all providers are disabled")
 	}
 }
 

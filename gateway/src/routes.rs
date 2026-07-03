@@ -1,4 +1,4 @@
-use crate::{config, db, engine, AppState};
+use crate::{db, engine, AppState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -18,7 +18,10 @@ pub fn router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/api/health", get(health))
-        .route("/api/config/models", get(model_settings))
+        .route(
+            "/api/config/models",
+            get(model_settings).put(update_model_settings),
+        )
         .route("/api/contracts/commands", get(command_descriptors))
         .route("/api/stories", get(stories))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
@@ -37,8 +40,15 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 async fn model_settings(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<config::ModelSettings>, ApiError> {
-    Ok(Json(config::read_model_settings(&state.paths.config_path)?))
+) -> Result<Json<engine::ModelRoutingSettings>, ApiError> {
+    Ok(Json(engine::model_settings(state).await?))
+}
+
+async fn update_model_settings(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<engine::ModelRoutingUpdate>,
+) -> Result<Json<engine::ModelRoutingSettings>, ApiError> {
+    Ok(Json(engine::update_model_settings(state, payload).await?))
 }
 
 async fn command_descriptors(
@@ -205,13 +215,19 @@ impl IntoResponse for ApiError {
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
         let message = err.to_string();
+        let is_bad_request = message.contains("unknown provider")
+            || message.contains("must be")
+            || message.contains("at least one provider")
+            || message.contains("invalid gateway-model-settings-update JSON");
         let is_conflict = message.contains("stale client_turn")
             || message.contains("stale session_id")
             || message.contains("is required")
             || message.contains("belongs to story");
         let is_not_found =
             message.contains("no rows returned") || message.contains("no rows in result set");
-        let status = if is_conflict {
+        let status = if is_bad_request {
+            StatusCode::BAD_REQUEST
+        } else if is_conflict {
             StatusCode::CONFLICT
         } else if is_not_found {
             StatusCode::NOT_FOUND

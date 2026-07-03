@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { X } from "lucide-react";
 import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
 import { compactText } from "../format";
+import { draftFromModelSettings, promoteProvider, updateFromDraft, type ModelRoutingDraft } from "../modelRouting";
 import { ModuleContent, moduleTitle } from "./Inspector";
-import type { AppPreferences, CommandDescriptor, MetaResult, ModelSettings, ModuleTab, OverlayKind, SaveView, StorySnapshot } from "../types";
+import type { AppPreferences, CommandDescriptor, MetaResult, ModelSettings, ModelSettingsUpdate, ModuleTab, OverlayKind, SaveView, StorySnapshot } from "../types";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -11,11 +12,13 @@ interface PanelDrawerProps {
   preferences: AppPreferences;
   metaResult: MetaResult | null;
   modelSettings: ModelSettings | null;
+  modelBusy: boolean;
   selectedTab: ModuleTab;
   commandDescriptors: CommandDescriptor[];
   busy: boolean;
   onClose: () => void;
   onPreferencesChange: (preferences: AppPreferences) => void;
+  onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
   onDeleteSave: (save: SaveView) => void;
@@ -29,11 +32,13 @@ export function PanelDrawer({
   preferences,
   metaResult,
   modelSettings,
+  modelBusy,
   selectedTab,
   commandDescriptors,
   busy,
   onClose,
   onPreferencesChange,
+  onModelSettingsSave,
   onCreateSave,
   onLoadSave,
   onDeleteSave,
@@ -61,7 +66,9 @@ export function PanelDrawer({
             snapshot={snapshot}
             preferences={preferences}
             modelSettings={modelSettings}
+            modelBusy={modelBusy}
             onPreferencesChange={onPreferencesChange}
+            onModelSettingsSave={onModelSettingsSave}
           />
         )}
         {overlay === "saves" && (
@@ -111,12 +118,16 @@ function OptionsContent({
   snapshot,
   preferences,
   modelSettings,
+  modelBusy,
   onPreferencesChange,
+  onModelSettingsSave,
 }: {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
   modelSettings: ModelSettings | null;
+  modelBusy: boolean;
   onPreferencesChange: (preferences: AppPreferences) => void;
+  onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
 }) {
   const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
     onPreferencesChange({ ...preferences, [key]: value });
@@ -181,95 +192,210 @@ function OptionsContent({
           <input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} />
         </label>
       </div>
-      <ModelRoutingSettings preferences={preferences} modelSettings={modelSettings} onUpdate={update} />
+      <ModelRoutingSettings modelSettings={modelSettings} busy={modelBusy} onSave={onModelSettingsSave} />
     </div>
   );
 }
 
 function ModelRoutingSettings({
-  preferences,
   modelSettings,
-  onUpdate,
+  busy,
+  onSave,
 }: {
-  preferences: AppPreferences;
   modelSettings: ModelSettings | null;
-  onUpdate: <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => void;
+  busy: boolean;
+  onSave: (payload: ModelSettingsUpdate) => Promise<void>;
 }) {
+  const [draft, setDraft] = useState<ModelRoutingDraft | null>(() => (modelSettings ? draftFromModelSettings(modelSettings) : null));
+  const [saveError, setSaveError] = useState("");
+
+  useEffect(() => {
+    setDraft(modelSettings ? draftFromModelSettings(modelSettings) : null);
+    setSaveError("");
+  }, [modelSettings]);
+
+  const providerIds = modelSettings?.providers.map((provider) => provider.id) ?? [];
+  const activeProvider = draft?.providerPriority[0] ?? modelSettings?.active.provider ?? "";
+
+  const updateDraft = (updater: (value: ModelRoutingDraft) => ModelRoutingDraft) => {
+    setSaveError("");
+    setDraft((value) => (value ? updater(value) : value));
+  };
+
+  const updateProvider = (id: string, patch: Partial<ModelRoutingDraft["providers"][string]>) => {
+    updateDraft((value) => ({
+      ...value,
+      providers: {
+        ...value.providers,
+        [id]: { ...value.providers[id], ...patch },
+      },
+    }));
+  };
+
+  const save = async () => {
+    if (!modelSettings || !draft) return;
+    setSaveError("");
+    try {
+      await onSave(updateFromDraft(modelSettings, draft));
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  if (!modelSettings || !draft) {
+    return (
+      <div className="model-routing">
+        <div className="model-routing-head">
+          <span>Model Routing</span>
+          <strong>Config unavailable</strong>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="model-routing">
       <div className="model-routing-head">
         <span>Model Routing</span>
-        <strong>{modelSettings ? "Staged only" : "Config unavailable"}</strong>
+        <strong>Shared config</strong>
+      </div>
+      <div className="model-active-strip">
+        <div>
+          <span>Active provider</span>
+          <strong>{modelSettings.active.provider || "none"}</strong>
+        </div>
+        <div>
+          <span>Narrator model</span>
+          <strong>{modelSettings.active.narrative_model || "provider default"}</strong>
+        </div>
+        <div>
+          <span>Config path</span>
+          <strong title={modelSettings.config_path}>{modelSettings.config_path}</strong>
+        </div>
       </div>
       <div className="settings-grid">
-        <ModelSelect
-          label="Narrator"
-          value={preferences.narrativeModel}
-          options={modelSettings?.narrative_models ?? []}
-          onChange={(value) => onUpdate("narrativeModel", value)}
-        />
-        <ModelSelect
-          label="Meta/utility"
-          value={preferences.utilityModel}
-          options={modelSettings?.utility_models ?? []}
-          onChange={(value) => onUpdate("utilityModel", value)}
-        />
-        <ModelSelect
-          label="Repair"
-          value={preferences.repairModel}
-          options={modelSettings?.repair_models ?? []}
-          onChange={(value) => onUpdate("repairModel", value)}
-        />
-        <ModelSelect
-          label="Images/ascii"
-          value={preferences.imageModel}
-          options={modelSettings?.image_models ?? []}
-          onChange={(value) => onUpdate("imageModel", value)}
-        />
         <label>
-          <span>OpenAI endpoint</span>
+          <span>Primary provider</span>
+          <select
+            value={activeProvider}
+            onChange={(event) =>
+              updateDraft((value) => ({
+                ...value,
+                providerPriority: promoteProvider(value.providerPriority, providerIds, event.target.value),
+              }))
+            }
+          >
+            {modelSettings.providers.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Utility model</span>
+          <ModelInput value={draft.utilityModel} options={modelSettings.utility_models} onChange={(value) => updateDraft((draft) => ({ ...draft, utilityModel: value }))} />
+        </label>
+        <label>
+          <span>Repair model</span>
+          <ModelInput value={draft.repairModel} options={modelSettings.repair_models} onChange={(value) => updateDraft((draft) => ({ ...draft, repairModel: value }))} />
+        </label>
+        <label>
+          <span>Repair fallbacks</span>
           <input
-            value={preferences.openAIEndpoint}
-            onChange={(event) => onUpdate("openAIEndpoint", event.target.value)}
-            placeholder="future /v1 endpoint override"
+            value={draft.repairFallbackModels}
+            onChange={(event) => updateDraft((draft) => ({ ...draft, repairFallbackModels: event.target.value }))}
+            placeholder="comma-separated fallback models"
           />
         </label>
         <label>
-          <span>TTS voice</span>
-          <input
-            value={preferences.ttsVoice}
-            onChange={(event) => onUpdate("ttsVoice", event.target.value)}
-            placeholder="future per-character voice"
-          />
+          <span>Images/ascii model</span>
+          <ModelInput value={draft.imageModel} options={modelSettings.image_models} onChange={(value) => updateDraft((draft) => ({ ...draft, imageModel: value }))} />
+        </label>
+        <label>
+          <span>Embedding provider</span>
+          <select value={draft.embeddingProvider} onChange={(event) => updateDraft((draft) => ({ ...draft, embeddingProvider: event.target.value }))}>
+            {modelSettings.embedding_providers.map((provider) => (
+              <option key={provider} value={provider}>
+                {provider}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Embedding model</span>
+          <input value={draft.embeddingModel} onChange={(event) => updateDraft((draft) => ({ ...draft, embeddingModel: event.target.value }))} />
         </label>
       </div>
-      <p className="model-note">
-        Browser selections are saved locally. The active terminal-compatible engine still follows config.yaml until a model_routing backend contract is added.
-      </p>
-      {modelSettings && (
-        <div className="model-facts">
-          <span>Provider chain: {modelSettings.provider_priority.join(" -> ") || "not configured"}</span>
-          <span>Embedding: {modelSettings.embedding_provider}/{modelSettings.embedding_model || "default"}</span>
-          <span>TTS: {modelSettings.tts_status}</span>
-        </div>
-      )}
+      <div className="provider-editor-grid">
+        {modelSettings.providers.map((provider) => {
+          const providerDraft = draft.providers[provider.id];
+          return (
+            <div className={`provider-card ${providerDraft?.enabled ? "enabled" : ""}`} key={provider.id}>
+              <label className="toggle-row">
+                <span>{provider.label}</span>
+                <input
+                  type="checkbox"
+                  checked={providerDraft?.enabled ?? provider.enabled}
+                  onChange={(event) => updateProvider(provider.id, { enabled: event.target.checked })}
+                />
+              </label>
+              {provider.supports_model && (
+                <label>
+                  <span>Model</span>
+                  <ModelInput
+                    value={providerDraft?.model ?? ""}
+                    options={modelSettings.narrative_models}
+                    onChange={(value) => updateProvider(provider.id, { model: value })}
+                  />
+                </label>
+              )}
+              {provider.supports_reasoning && (
+                <label>
+                  <span>Reasoning</span>
+                  <select value={providerDraft?.reasoning ?? "off"} onChange={(event) => updateProvider(provider.id, { reasoning: event.target.value })}>
+                    {["off", "none", "minimal", "low", "medium", "high", "xhigh"].map((level) => (
+                      <option key={level} value={level}>
+                        {level}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="model-facts">
+        <span>Provider chain: {draft.providerPriority.join(" -> ")}</span>
+        <span>Embedding: {draft.embeddingProvider}/{draft.embeddingModel || "default"}</span>
+        <span>TTS: {modelSettings.tts_status}</span>
+      </div>
+      <div className="model-actions">
+        <button type="button" onClick={() => setDraft(draftFromModelSettings(modelSettings))} disabled={busy}>
+          Reset
+        </button>
+        <button type="button" className="primary-action" onClick={() => void save()} disabled={busy}>
+          {busy ? "Saving..." : "Save model routing"}
+        </button>
+      </div>
+      {saveError && <p className="model-error">{saveError}</p>}
+      <p className="model-note">Saved changes write to the shared config used by the terminal and by the next browser turn bridge process.</p>
     </div>
   );
 }
 
-function ModelSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+function ModelInput({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+  const listId = useId();
   return (
-    <label>
-      <span>{label}</span>
-      <select value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="config">Config default</option>
+    <>
+      <input value={value} onChange={(event) => onChange(event.target.value)} list={listId} />
+      <datalist id={listId}>
         {options.map((option) => (
-          <option value={option} key={option}>
-            {option}
-          </option>
+          <option value={option} key={option} />
         ))}
-      </select>
-    </label>
+      </datalist>
+    </>
   );
 }
 
