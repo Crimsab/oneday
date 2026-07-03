@@ -26,8 +26,8 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.LiteLLM.BaseURL != "http://lite.homelab.local/v1" {
 		t.Errorf("LiteLLM.BaseURL = %q, want %q", cfg.AI.LiteLLM.BaseURL, "http://lite.homelab.local/v1")
 	}
-	if cfg.AI.LiteLLM.DefaultModel != "grok-4.1-fast" {
-		t.Errorf("LiteLLM.DefaultModel = %q, want %q", cfg.AI.LiteLLM.DefaultModel, "grok-4.1-fast")
+	if cfg.AI.LiteLLM.DefaultModel != "gpt-5.4-mini" {
+		t.Errorf("LiteLLM.DefaultModel = %q, want %q", cfg.AI.LiteLLM.DefaultModel, "gpt-5.4-mini")
 	}
 	if cfg.AI.OpenRouter.DefaultModel != "google/gemini-2.5-flash-lite" {
 		t.Errorf("OpenRouter.DefaultModel = %q, want %q", cfg.AI.OpenRouter.DefaultModel, "google/gemini-2.5-flash-lite")
@@ -285,8 +285,8 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	cfg := Default()
 	cfg.AI.ProviderPriority = []string{"codex", "litellm", "openrouter", "claude-code"}
 	cfg.AI.Codex.Enabled = true
-	cfg.AI.Codex.Model = "gpt-5.5"
-	cfg.AI.Generation.RepairFallbackModels = []string{"grok-4.1-fast", "grok-4.1-fast"}
+	cfg.AI.Codex.Model = "gpt-5.4-mini"
+	cfg.AI.Generation.RepairFallbackModels = []string{"gpt-5.4-mini", "gpt-5.4-mini"}
 
 	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg, "revision-1")
 
@@ -296,13 +296,13 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	if settings.Active.Provider != "codex" {
 		t.Fatalf("Active.Provider = %q, want codex", settings.Active.Provider)
 	}
-	if settings.Active.NarrativeModel != "gpt-5.5" {
+	if settings.Active.NarrativeModel != "gpt-5.4-mini" {
 		t.Fatalf("Active.NarrativeModel = %q", settings.Active.NarrativeModel)
 	}
 	if len(settings.Providers) != 4 {
 		t.Fatalf("Providers length = %d, want 4", len(settings.Providers))
 	}
-	if got := settings.RepairModels; len(got) != 3 || got[0] != "gemini-3.1-flash-lite-preview" || got[2] != "grok-4.1-fast" {
+	if got := settings.RepairModels; len(got) != 2 || got[0] != "gemini-3.1-flash-lite-preview" || got[1] != "gpt-5.4-mini" {
 		t.Fatalf("RepairModels = %#v", got)
 	}
 }
@@ -362,10 +362,10 @@ ai:
   generation: wrong-type
   litellm:
     enabled: true
-    default_model: grok-4.1-fast
+    default_model: gpt-5.4-mini
   codex:
     enabled: true
-    model: gpt-5.5
+    model: gpt-5.4-mini
     reasoning: off
 `)
 	_, err := patchModelRoutingYAML(raw, Default())
@@ -389,10 +389,10 @@ ai:
   litellm:
     enabled: true
     base_url: ${LITELLM_BASE_URL}
-    default_model: grok-4.1-fast
+    default_model: gpt-5.4-mini
   codex:
     enabled: true
-    model: gpt-5.5
+    model: gpt-5.4-mini
     reasoning: off
 `)
 	if err := os.WriteFile(path, raw, 0640); err != nil {
@@ -403,7 +403,7 @@ ai:
 		t.Fatal(err)
 	}
 
-	nextModel := "grok-4.1-fast-updated"
+	nextModel := "gpt-5.4-mini-updated"
 	next, err := UpdateModelRoutingSettings(path, ModelRoutingUpdate{
 		BaseRevision: settings.ConfigRevision,
 		Providers: []ModelProviderUpdate{
@@ -421,7 +421,7 @@ ai:
 		t.Fatal(err)
 	}
 	text := string(out)
-	for _, needle := range []string{"# keep this top-level comment", "unknown_top: keep-me", "${LITELLM_BASE_URL}", "default_model: grok-4.1-fast-updated"} {
+	for _, needle := range []string{"# keep this top-level comment", "unknown_top: keep-me", "${LITELLM_BASE_URL}", "default_model: gpt-5.4-mini-updated"} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("updated config missing %q:\n%s", needle, text)
 		}
@@ -446,7 +446,7 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 	codexEnabled := false
 	utility := "gpt-5.4-mini-fast"
 	repair := "gemini-3.1-pro"
-	fallbacks := []string{"grok-4.1-fast", "gpt-5.5"}
+	fallbacks := []string{"gpt-5.4-mini", "gpt-5.5"}
 	image := "ascii-ambient-v2"
 
 	err := ApplyModelRoutingUpdate(&cfg, ModelRoutingUpdate{

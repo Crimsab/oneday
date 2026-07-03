@@ -19,7 +19,7 @@ ai:
     enabled: false
     # Path to codex CLI binary (leave empty for PATH lookup)
     binary: ""
-    model: "gpt-5.5"
+    model: "gpt-5.4-mini"
     # Options: off, none, minimal, low, medium, high, xhigh
     reasoning: "off"
     # Codex is generation-only. RAG embeddings still require LiteLLM/OpenRouter.
@@ -37,7 +37,7 @@ ai:
     # use http://ai-proxy:4000/v1 instead.
     base_url: "http://lite.homelab.local/v1"
     api_key: "${ONEDAY_LITELLM_API_KEY}"
-    default_model: "grok-4.1-fast"
+    default_model: "gpt-5.4-mini"
 
   # OpenRouter
   openrouter:
@@ -86,7 +86,7 @@ ai:
     # Primary repair model plus ordered fallbacks.
     repair_model: "gemini-3.1-flash-lite-preview"
     repair_fallback_models:
-      - "grok-4.1-fast"
+      - "gpt-5.4-mini"
 
 # RAG settings
 rag:
