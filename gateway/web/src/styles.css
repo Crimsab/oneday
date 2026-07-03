@@ -54,9 +54,11 @@ button {
 }
 
 .app-shell {
+  height: 100dvh;
   min-height: 100dvh;
   display: grid;
   grid-template-rows: 55px minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .top-bar {
@@ -84,18 +86,20 @@ button {
 .top-status {
   min-width: 0;
   height: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: 88px minmax(176px, 204px) 158px 156px 154px 96px;
   align-items: center;
   overflow: hidden;
 }
 
 .status-cell {
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   height: 28px;
-  padding: 0 20px;
+  padding: 0 8px;
   border-right: 1px solid var(--line-soft);
   white-space: nowrap;
 }
@@ -194,6 +198,7 @@ button {
   min-height: 0;
   display: grid;
   grid-template-columns: 285px minmax(0, 1fr) 370px;
+  overflow: hidden;
 }
 
 .left-rail,
@@ -396,7 +401,7 @@ button {
 
 .center-stage {
   display: grid;
-  grid-template-rows: minmax(260px, 1fr) 138px 228px;
+  grid-template-rows: minmax(0, 1fr) 138px 228px;
   background: radial-gradient(circle at 50% 22%, rgba(12, 40, 47, 0.2), transparent 40%), #060b0d;
 }
 
@@ -940,7 +945,9 @@ button {
 
 @media (max-width: 860px) {
   .app-shell {
+    height: auto;
     grid-template-rows: auto auto;
+    overflow: visible;
   }
 
   .top-bar {
@@ -957,6 +964,7 @@ button {
   .top-status {
     overflow-x: auto;
     min-height: 42px;
+    grid-template-columns: 88px 234px 168px 158px 154px 100px;
   }
 
   .top-actions {
@@ -965,19 +973,33 @@ button {
   }
 
   .workspace {
-    grid-template-columns: minmax(0, 1fr);
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
   }
 
   .left-rail {
-    grid-template-rows: auto auto auto;
+    display: flex;
+    flex-direction: column;
     max-height: none;
   }
 
   .stories-block {
+    display: grid;
     grid-template-rows: 39px 36px 38px 220px;
   }
 
+  .module-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .notes-block {
+    min-height: 180px;
+  }
+
   .center-stage {
+    min-height: 840px;
     grid-template-rows: 420px auto auto;
   }
 
