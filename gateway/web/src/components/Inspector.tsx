@@ -52,6 +52,7 @@ export function ModuleContent({ tab, snapshot, expanded = false }: { tab: Module
 
 function renderModule(tab: ModuleTab, snapshot: StorySnapshot) {
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
+  if (tab === "craft") return <CraftModule snapshot={snapshot} />;
   if (tab === "stats") return <StatsModule snapshot={snapshot} />;
   if (tab === "codex") return <CodexModule snapshot={snapshot} />;
   if (tab === "fronts") return <FrontsModule snapshot={snapshot} />;
@@ -79,6 +80,18 @@ function rawStateForModule(tab: ModuleTab, snapshot: StorySnapshot): Record<stri
       inventory: snapshot.character.fields.inventory,
       known_recipes: snapshot.character.fields.known_recipes,
       equipment: snapshot.character.fields.equipment,
+      character: snapshot.character,
+    };
+  }
+  if (tab === "craft") {
+    return {
+      inventory: snapshot.character.fields.inventory,
+      known_recipes: snapshot.character.fields.known_recipes,
+      crafting_context: {
+        location: snapshot.world.current_location,
+        scene_contract: snapshot.world.scene_contract,
+        projects: snapshot.world.projects,
+      },
       character: snapshot.character,
     };
   }
@@ -139,9 +152,9 @@ function HistoryModule({ snapshot }: { snapshot: StorySnapshot }) {
       <InspectorSection title="Turn & Time" rows={turnRows(snapshot)} />
       <InspectorSection title="Location" rows={locationRows(snapshot)} />
       <InspectorSection title="Condition" rows={conditionRows(snapshot)} />
-      <CardsSection title="Recent Transcript" cards={messageCards(snapshot)} emptyLabel="No transcript messages." />
       <CardsSection title="Timeline" cards={cardsFromValue(snapshot.world.timeline, "Timeline")} emptyLabel="No timeline entries." />
       <InspectorSection title="Relationships" rows={relationshipRows(snapshot)} />
+      <CardsSection title="Recent Transcript" cards={messageCards(snapshot)} emptyLabel="No transcript messages." />
     </>
   );
 }
@@ -153,6 +166,18 @@ function InventoryModule({ snapshot }: { snapshot: StorySnapshot }) {
       <CardsSection title="Known Recipes" cards={cardsFromValue(snapshot.character.fields.known_recipes, "Recipe")} emptyLabel="No known recipes." />
       <CardsSection title="Equipment" cards={cardsFromValue(snapshot.character.fields.equipment, "Equipment")} emptyLabel="No dedicated equipment slot data." />
       <InspectorSection title="Useful Context" rows={inventoryContextRows(snapshot)} />
+    </>
+  );
+}
+
+function CraftModule({ snapshot }: { snapshot: StorySnapshot }) {
+  return (
+    <>
+      <InspectorSection title="Crafting Station" rows={craftingStationRows(snapshot)} />
+      <CardsSection title="Known Recipes" cards={cardsFromValue(snapshot.character.fields.known_recipes, "Recipe")} emptyLabel="No known recipes." />
+      <CardsSection title="Materials & Items" cards={cardsFromValue(snapshot.character.fields.inventory, "Material")} emptyLabel="No usable inventory items." />
+      <CardsSection title="Crafting Projects" cards={cardsFromValue(snapshot.world.projects, "Project")} emptyLabel="No crafting projects are active." />
+      <InspectorSection title="Scene Fit" rows={craftingSceneRows(snapshot)} />
     </>
   );
 }
@@ -432,6 +457,30 @@ function inventoryContextRows(snapshot: StorySnapshot): Array<[string, string]> 
     ["Character", snapshot.character.name || "-"],
     ["Location", snapshot.world.current_location || "-"],
     ["Active Front", activeFrontRows(snapshot)[0]?.[1] ?? "-"],
+  ];
+}
+
+function craftingStationRows(snapshot: StorySnapshot): Array<[string, string]> {
+  const inventory = asArray(snapshot.character.fields.inventory);
+  const recipes = asArray(snapshot.character.fields.known_recipes);
+  return [
+    ["Character", snapshot.character.name || "-"],
+    ["Location", snapshot.world.current_location || "-"],
+    ["Inventory Items", String(inventory.length)],
+    ["Known Recipes", String(recipes.length)],
+    ["Active Front", activeFrontRows(snapshot)[0]?.[1] ?? "-"],
+  ];
+}
+
+function craftingSceneRows(snapshot: StorySnapshot): Array<[string, string]> {
+  const scene = asObject(snapshot.world.scene_contract);
+  const rows = fieldRows(scene)
+    .filter(([key]) => ["Tools", "Materials", "Weather", "Light", "Pressure", "Risk", "Opportunity", "Constraint", "Details"].includes(key))
+    .slice(0, 8);
+  if (rows.length > 0) return rows;
+  return [
+    ["Weather", findString(snapshot.world.scene_contract, ["weather", "forecast", "sky"]) || "Untracked"],
+    ["Context", compactText(valueToText(snapshot.world.scene_contract), 90)],
   ];
 }
 

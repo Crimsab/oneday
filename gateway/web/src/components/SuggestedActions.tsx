@@ -18,14 +18,14 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
   const fallback = fallbackActions(snapshot);
   const visibleChoices = choices.slice(0, 6);
   const choiceKey = visibleChoices.map((choice) => choice.id).join("|");
-  const [activeChoiceId, setActiveChoiceId] = useState<number | null>(visibleChoices[0]?.id ?? null);
+  const [activeChoiceId, setActiveChoiceId] = useState<number | null>(null);
 
   useEffect(() => {
-    setActiveChoiceId(visibleChoices[0]?.id ?? null);
+    setActiveChoiceId(null);
   }, [choiceKey]);
 
   return (
-    <div className="choice-stack">
+    <div className="choice-stack" onMouseLeave={() => setActiveChoiceId(null)}>
       {visibleChoices.length > 0
         ? visibleChoices.map((choice, index) => {
             const Icon = choiceIcons[index % choiceIcons.length];

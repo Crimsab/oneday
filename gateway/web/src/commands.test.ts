@@ -14,6 +14,8 @@ describe("commandToAction", () => {
     expect(commandToAction("/front")).toMatchObject({ handled: true, tab: "fronts" });
     expect(commandToAction("/projects")).toMatchObject({ handled: true, tab: "projects" });
     expect(commandToAction("/history")).toMatchObject({ handled: true, tab: "history" });
+    expect(commandToAction("/craft")).toMatchObject({ handled: true, tab: "craft", overlay: "module" });
+    expect(commandToAction("/crafting")).toMatchObject({ handled: true, tab: "craft", overlay: "module" });
   });
 
   it("opens overlays for help and creates browser saves", () => {
