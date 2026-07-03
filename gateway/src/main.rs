@@ -1,6 +1,7 @@
 mod config;
 mod db;
 mod engine;
+mod events;
 mod routes;
 
 use anyhow::Context;
@@ -9,12 +10,14 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use std::net::SocketAddr;
 use std::process::Command;
 use std::sync::Arc;
+use tokio::sync::broadcast;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: sqlx::SqlitePool,
     pub paths: config::ResolvedPaths,
+    pub turn_events: broadcast::Sender<events::TurnStreamEvent>,
 }
 
 #[tokio::main]
@@ -39,7 +42,12 @@ async fn main() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("opening SQLite database {}", paths.db_path.display()))?;
 
-    let state = Arc::new(AppState { pool, paths });
+    let (turn_events, _) = broadcast::channel(128);
+    let state = Arc::new(AppState {
+        pool,
+        paths,
+        turn_events,
+    });
     let app: Router = routes::router(state);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
