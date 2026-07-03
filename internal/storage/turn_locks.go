@@ -6,16 +6,26 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
 const storyTurnLockTimeFormat = time.RFC3339Nano
+
+var ErrStoryTurnLockLost = errors.New("story turn lock lost")
 
 // StoryTurnLock is a cross-process lock for serializing turn commits per story.
 type StoryTurnLock struct {
 	db      *DB
 	storyID string
 	owner   string
+}
+
+type StoryTurnLockHeartbeat struct {
+	cancel context.CancelFunc
+	done   chan struct{}
+	mu     sync.Mutex
+	err    error
 }
 
 // AcquireStoryTurnLock waits until the caller owns the story turn lock or the
@@ -92,6 +102,100 @@ func (db *DB) tryAcquireStoryTurnLock(storyID, owner string, ttl time.Duration) 
 		return false, err
 	}
 	return acquired, nil
+}
+
+// StoryID returns the story protected by this lock.
+func (l *StoryTurnLock) StoryID() string {
+	if l == nil {
+		return ""
+	}
+	return l.storyID
+}
+
+// Renew extends the lock lease only if the same owner still holds it.
+func (l *StoryTurnLock) Renew(ttl time.Duration) error {
+	if l == nil || l.db == nil {
+		return nil
+	}
+	if ttl <= 0 {
+		ttl = 2 * time.Minute
+	}
+	until := time.Now().UTC().Add(ttl).Format(storyTurnLockTimeFormat)
+	result, err := l.db.conn.Exec(
+		`UPDATE story_turn_locks SET locked_until = ? WHERE story_id = ? AND owner = ?`,
+		until, l.storyID, l.owner,
+	)
+	if err != nil {
+		return fmt.Errorf("renewing story turn lock for %s: %w", l.storyID, err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking story turn lock renewal for %s: %w", l.storyID, err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: story %s owner %s", ErrStoryTurnLockLost, l.storyID, l.owner)
+	}
+	return nil
+}
+
+// StartHeartbeat renews the lease periodically until Stop is called or renewal
+// fails. Stop returns the first renewal error, if any.
+func (l *StoryTurnLock) StartHeartbeat(ctx context.Context, interval, ttl time.Duration) *StoryTurnLockHeartbeat {
+	if interval <= 0 {
+		interval = ttl / 3
+	}
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	heartbeatCtx, cancel := context.WithCancel(ctx)
+	hb := &StoryTurnLockHeartbeat{
+		cancel: cancel,
+		done:   make(chan struct{}),
+	}
+	go func() {
+		defer close(hb.done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				if err := l.Renew(ttl); err != nil {
+					hb.setErr(err)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	return hb
+}
+
+func (h *StoryTurnLockHeartbeat) setErr(err error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.err == nil {
+		h.err = err
+	}
+}
+
+func (h *StoryTurnLockHeartbeat) Err() error {
+	if h == nil {
+		return nil
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.err
+}
+
+func (h *StoryTurnLockHeartbeat) Stop() error {
+	if h == nil {
+		return nil
+	}
+	h.cancel()
+	<-h.done
+	return h.Err()
 }
 
 // Release drops the lock only if this owner still holds it.
