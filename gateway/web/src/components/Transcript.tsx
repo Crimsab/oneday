@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { compactText, messageClock } from "../format";
+import { MarkdownText } from "./MarkdownText";
 import type { MessageView } from "../types";
 
 interface TranscriptProps {
@@ -33,12 +34,9 @@ export function Transcript({ messages, hiddenBeforeId }: TranscriptProps) {
 }
 
 function TranscriptMessage({ message }: { message: MessageView }) {
-  const lines = message.content
-    .split(/\n{2,}/)
-    .map((line) => line.trim())
-    .filter(Boolean);
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
+  const content = message.content.trim() || compactText(message.content || "(empty)", 160);
 
   return (
     <article className={`transcript-message ${message.role} ${isSystem ? "system-line" : ""}`}>
@@ -49,20 +47,12 @@ function TranscriptMessage({ message }: { message: MessageView }) {
         </small>
       </div>
       <div className="message-body">
-        {lines.length ? (
-          lines.map((line, index) => (
-            <p key={`${message.id}-${index}`} className={lineLooksQuoted(line) ? "quoted" : undefined}>
-              {line}
-            </p>
-          ))
-        ) : (
-          <p>{compactText(message.content || "(empty)", 160)}</p>
-        )}
+        <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
       </div>
     </article>
   );
 }
 
-function lineLooksQuoted(line: string): boolean {
-  return line.startsWith("\"") || line.startsWith("'") || line.includes(" reads:");
+function contentLooksQuoted(content: string): boolean {
+  return content.startsWith("\"") || content.startsWith("'") || content.includes(" reads:");
 }

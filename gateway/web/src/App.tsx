@@ -17,6 +17,7 @@ import { Inspector } from "./components/Inspector";
 import { CollapsedLeftRail, LeftRail } from "./components/LeftRail";
 import { PanelDrawer } from "./components/PanelDrawer";
 import { RecentCommands } from "./components/RecentCommands";
+import { StoryPath } from "./components/StoryPath";
 import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
@@ -515,6 +516,7 @@ function App() {
                 <button type="button" onClick={clearTranscript}>Clear</button>
               </div>
             </div>
+            <StoryPath snapshot={snapshot} />
             <Transcript messages={snapshot?.messages ?? []} hiddenBeforeId={hiddenBeforeMessageId} />
           </section>
 
