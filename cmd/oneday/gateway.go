@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/game/contracts"
 	gameservice "github.com/crimsab/oneday/internal/game/service"
 	"github.com/crimsab/oneday/internal/storage"
@@ -45,6 +47,22 @@ type gatewayCommandDescriptorsResponse struct {
 	Error    string                        `json:"error,omitempty"`
 }
 
+type gatewayStoryCreateRequest struct {
+	Brief               string `json:"brief"`
+	CharacterName       string `json:"character_name"`
+	CharacterBackground string `json:"character_background"`
+	Start               bool   `json:"start"`
+}
+
+type gatewayStoryCreateResponse struct {
+	StoryID     string `json:"story_id,omitempty"`
+	CharacterID string `json:"character_id,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
+	Started     bool   `json:"started,omitempty"`
+	StartError  string `json:"start_error,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+
 type gatewayModelSettingsResponse struct {
 	Settings  *config.ModelRoutingSettings `json:"settings,omitempty"`
 	Error     string                       `json:"error,omitempty"`
@@ -67,6 +85,106 @@ func runGatewayCommandDescriptors(out io.Writer) error {
 		return fmt.Errorf("writing gateway-command-descriptors response: %w", err)
 	}
 	return nil
+}
+
+func runGatewayStoryCreate(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
+	var req gatewayStoryCreateRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return writeGatewayStoryCreateError(out, fmt.Errorf("invalid gateway-story-create JSON: %w", err))
+	}
+	req.Brief = strings.TrimSpace(req.Brief)
+	req.CharacterName = strings.TrimSpace(req.CharacterName)
+	req.CharacterBackground = strings.TrimSpace(req.CharacterBackground)
+	if req.Brief == "" {
+		return writeGatewayStoryCreateError(out, fmt.Errorf("story brief is required"))
+	}
+	if req.CharacterName == "" {
+		return writeGatewayStoryCreateError(out, fmt.Errorf("character name is required"))
+	}
+
+	creator := engine.NewStoryCreator(router, db, cfg.AI.Generation)
+	if _, err := creator.SendMessage(ctx, req.Brief); err != nil {
+		return writeGatewayStoryCreateError(out, fmt.Errorf("drafting story: %w", err))
+	}
+	for _, action := range []string{"accept_world", "accept_rules", "accept_stats", "create_story"} {
+		if _, err := creator.ExecuteAction(ctx, action); err != nil {
+			return writeGatewayStoryCreateError(out, fmt.Errorf("executing %s: %w", action, err))
+		}
+	}
+	if _, err := creator.SendMessage(ctx, req.CharacterName); err != nil {
+		return writeGatewayStoryCreateError(out, fmt.Errorf("setting protagonist name: %w", err))
+	}
+	if _, err := creator.SendMessage(ctx, req.CharacterBackground); err != nil {
+		return writeGatewayStoryCreateError(out, fmt.Errorf("saving story: %w", err))
+	}
+
+	story := creator.Story()
+	character := creator.Character()
+	resp := gatewayStoryCreateResponse{
+		StoryID:     story.ID,
+		CharacterID: character.ID,
+	}
+
+	if req.Start {
+		sessionID, err := startCreatedStory(ctx, cfg, db, router, story.ID)
+		if err != nil {
+			resp.StartError = fmt.Sprintf("starting story: %v", err)
+		} else {
+			resp.SessionID = sessionID
+			resp.Started = true
+		}
+	}
+
+	if err := json.NewEncoder(out).Encode(resp); err != nil {
+		return fmt.Errorf("writing gateway-story-create response: %w", err)
+	}
+	return nil
+}
+
+func startCreatedStory(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, storyID string) (string, error) {
+	story, err := db.GetStory(storyID)
+	if err != nil {
+		return "", err
+	}
+	character, err := db.GetCharacterByStory(storyID)
+	if err != nil {
+		return "", err
+	}
+	world, err := db.GetWorldState(storyID)
+	if err != nil {
+		return "", err
+	}
+	session, err := engine.NewGameSession(db, storyID, cfg.DataDir)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = session.CloseMirrors() }()
+
+	contextCfg := engine.DefaultContextConfig()
+	contextCfg.RewardBudget = cfg.Game.RewardBudget
+	narrator := engine.NewNarrator(
+		router,
+		db,
+		story,
+		character,
+		world,
+		session,
+		contextCfg,
+		cfg.AI.Generation,
+		cfg.AI.ASCIIArt,
+		cfg.DataDir,
+		cfg.Game.AutosaveEvery,
+	)
+	stream, err := narrator.StartNarrationStream(ctx)
+	if err != nil {
+		return "", err
+	}
+	for chunk := range stream {
+		if chunk.Err != nil {
+			return "", chunk.Err
+		}
+	}
+	return session.SessionID(), nil
 }
 
 func runGatewayModelSettings(configPath string, out io.Writer) error {
@@ -187,6 +305,11 @@ func runGatewayDeleteSave(ctx context.Context, cfg config.Config, db *storage.DB
 
 func writeGatewayTurnError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{Error: err.Error()})
+	return err
+}
+
+func writeGatewayStoryCreateError(out io.Writer, err error) error {
+	_ = json.NewEncoder(out).Encode(gatewayStoryCreateResponse{Error: err.Error()})
 	return err
 }
 
