@@ -14,6 +14,9 @@ services:
       - ONEDAY_GATEWAY_STATIC_DIR=/usr/local/share/oneday-gateway/web
     volumes:
       - .:/opt/oneday
+      - /root/.local/bin/codex:/usr/local/bin/codex:ro
+      - /root/.codex/auth.json:/root/.codex/auth.json:ro
+      - /root/.codex/config.toml:/root/.codex/config.toml:ro
     dns:
       - 192.168.50.157
     networks:
