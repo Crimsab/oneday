@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { compactText, messageClock } from "../format";
+import { compactText, messageClock, readableStructuredText } from "../format";
 import { turnEventDetail, turnEventTitle } from "../turnEvents";
 import { MarkdownText } from "./MarkdownText";
 import type { MessageView, PendingTurnView, TurnStreamEvent } from "../types";
@@ -41,7 +41,7 @@ export function Transcript({ messages, hiddenBeforeId, pendingTurn, liveEvents =
 function TranscriptMessage({ message }: { message: MessageView }) {
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
-  const content = message.content.trim() || compactText(message.content || "(empty)", 160);
+  const content = readableStructuredText(message.content) || compactText(message.content || "(empty)", 160);
 
   return (
     <article className={`transcript-message ${message.role} ${isSystem ? "system-line" : ""}`}>

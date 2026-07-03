@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { actionModeToText, commandSuggestions, commandToAction, groupCommandSuggestions, isCommandEnabled, moduleSpecs, tabHotkeys } from "./commands";
+import {
+  actionModeToText,
+  commandDescriptors as resolveCommandDescriptors,
+  commandSuggestions,
+  commandToAction,
+  fallbackCommandDescriptors,
+  groupCommandSuggestions,
+  isCommandEnabled,
+  moduleSpecs,
+  tabHotkeys,
+} from "./commands";
 
 describe("commandToAction", () => {
   it("ignores normal prose", () => {
@@ -22,6 +32,7 @@ describe("commandToAction", () => {
     expect(commandToAction("/help")).toMatchObject({ handled: true, overlay: "help" });
     expect(commandToAction("/load")).toMatchObject({ handled: true, tab: "saves", overlay: "saves", saveFilter: "" });
     expect(commandToAction("/load Camp")).toMatchObject({ handled: true, tab: "saves", overlay: "saves", saveFilter: "Camp" });
+    expect(commandToAction("/saves")).toMatchObject({ handled: true, tab: "saves", overlay: "saves", saveFilter: "" });
     expect(commandToAction("/delete-save Camp")).toMatchObject({
       handled: true,
       tab: "saves",
@@ -105,6 +116,7 @@ describe("commandSuggestions", () => {
     expect(commandSuggestions("/del").map((command) => command.name)).toContain("/delete-save");
     expect(commandSuggestions("/fro").map((command) => command.name)).toContain("/fronts");
     expect(commandSuggestions("/hooks").map((command) => command.name)).toContain("/fronts");
+    expect(commandSuggestions("/sav").find((command) => command.name === "/load")?.aliases).toContain("/saves");
   });
 
   it("completes multi-word NPC names and talk intents", () => {
@@ -151,6 +163,39 @@ describe("isCommandEnabled", () => {
   });
 });
 
+describe("browser command coverage", () => {
+  it("maps every descriptor trigger to a concrete browser result", () => {
+    const context = {
+      descriptors: fallbackCommandDescriptors,
+      npcNames: ["Maren Lo"],
+      saveNames: ["Before docks"],
+      visiblePrivateThoughts: true,
+    };
+
+    for (const descriptor of resolveCommandDescriptors(fallbackCommandDescriptors)) {
+      const triggers = new Set([descriptor.id, descriptor.canonical, ...(descriptor.aliases ?? [])].filter(Boolean));
+      for (const trigger of triggers) {
+        const result = commandToAction(commandSample(trigger, descriptor.behavior), context);
+        expect(result, `${descriptor.id} via /${trigger}`).not.toEqual({});
+        expect(
+          Boolean(
+            result.handled ||
+              result.tab ||
+              result.overlay ||
+              result.text ||
+              result.meta ||
+              result.notice ||
+              result.saveName !== undefined ||
+              result.saveFilter !== undefined ||
+              result.saveDeleteFilter !== undefined,
+          ),
+          `${descriptor.id} via /${trigger} produced no actionable browser result`,
+        ).toBe(true);
+      }
+    }
+  });
+});
+
 function moduleCommand(id: string) {
   return {
     id,
@@ -162,4 +207,15 @@ function moduleCommand(id: string) {
     parity: "shared" as const,
     behavior: "open_panel" as const,
   };
+}
+
+function commandSample(trigger: string, behavior: string): string {
+  if (behavior === "submit_meta") return `/${trigger} note`;
+  if (behavior === "submit_action") {
+    if (trigger === "talk") return "/talk Maren Lo ask about the ledger";
+    if (trigger === "downtime") return `/${trigger} repair gear`;
+    return `/${trigger} toward the next clue`;
+  }
+  if (behavior === "save_create" || behavior === "save_load" || behavior === "save_delete") return `/${trigger} Before docks`;
+  return `/${trigger}`;
 }

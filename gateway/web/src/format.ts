@@ -29,6 +29,22 @@ export function compactText(value: string, max = 120): string {
   return `${text.slice(0, max - 1).trim()}...`;
 }
 
+export function readableStructuredText(value: string, fallback = ""): string {
+  const text = value.trim();
+  if (!text) return fallback;
+
+  const jsonText = extractJSONText(text);
+  if (!jsonText) return text;
+
+  try {
+    const parsed = JSON.parse(jsonText) as JsonValue;
+    const readable = readableJSONValue(parsed);
+    return readable || fallback || text;
+  } catch {
+    return text;
+  }
+}
+
 export function displayClock(turn = 0) {
   const day = Math.max(1, Math.floor(turn / 24) + 1);
   const hour = (8 + Math.floor(turn / 2)) % 24;
@@ -204,4 +220,63 @@ function objectSummary(value: JsonObject, skipKeys: string[] = []): string {
     if (pieces.length >= 4) break;
   }
   return pieces.join("; ");
+}
+
+function extractJSONText(text: string): string | null {
+  const fenced = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const candidate = (fenced?.[1] ?? text).trim();
+  if (!candidate.startsWith("{") && !candidate.startsWith("[")) return null;
+  return candidate;
+}
+
+function readableJSONValue(value: JsonValue): string {
+  if (Array.isArray(value)) return valueToText(value, "");
+  if (!value || typeof value !== "object") return valueToText(value, "");
+
+  const object = value as JsonObject;
+  const output = asObject(object.output);
+  const lines: string[] = [];
+  const primary =
+    firstReadableString(object, ["narrative", "message", "text", "summary", "description"]) ||
+    firstReadableString(output, ["narrative", "message", "text", "summary", "description"]);
+  if (primary) lines.push(primary);
+
+  const location = firstReadableString(object, ["location", "place"]);
+  const mood = firstReadableString(object, ["mood", "tone"]);
+  if (location || mood) {
+    lines.push([location ? `Location: ${location}` : "", mood ? `Mood: ${mood}` : ""].filter(Boolean).join(" - "));
+  }
+
+  const choices = readableChoices(object.choices ?? output.choices);
+  if (choices.length > 0) lines.push(`Choices:\n${choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`);
+
+  if (lines.length > 0) return lines.join("\n\n");
+  return fieldRows(object)
+    .slice(0, 8)
+    .map(([key, child]) => `- ${key}: ${child}`)
+    .join("\n");
+}
+
+function firstReadableString(object: JsonObject, keys: string[]): string {
+  for (const key of keys) {
+    const value = object[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function readableChoices(value: JsonValue | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((choice, index) => {
+      if (typeof choice === "string") return choice.trim();
+      if (choice && typeof choice === "object" && !Array.isArray(choice)) {
+        const object = choice as JsonObject;
+        const text = firstReadableString(object, ["text", "label", "title", "description"]);
+        return text || entryLabel(choice, index);
+      }
+      return valueToText(choice, "").trim();
+    })
+    .filter(Boolean)
+    .slice(0, 6);
 }
