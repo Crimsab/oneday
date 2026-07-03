@@ -19,6 +19,15 @@ game state.
   event list.
 - A cross-process story lock serializes AI/gameplay turn commits.
 
+## Runtime Requirements
+
+- The Docker service mounts the host Codex CLI and Codex OAuth config read-only.
+  This keeps browser gameplay compatible with terminal stories configured for
+  the `codex` provider without baking auth material into the image.
+- If the host Codex installation moves, update the compose mount for
+  `/usr/local/bin/codex` and verify with `docker exec oneday-gateway codex login
+  status`.
+
 ## Browser Feature Inventory
 
 - Story list and active story/session selection.
