@@ -10,6 +10,7 @@ import type {
   MetaEnvelope,
   MetaResponse,
   ModelSettings,
+  ModelSettingsUpdate,
   SaveEnvelope,
   SaveResponse,
   StorySnapshot,
@@ -56,6 +57,14 @@ export function getCommandDescriptors(): Promise<CommandDescriptor[]> {
 
 export function getModelSettings(): Promise<ModelSettings> {
   return request<ModelSettings>("/api/config/models");
+}
+
+export function updateModelSettings(payload: ModelSettingsUpdate): Promise<ModelSettings> {
+  return request<ModelSettings>("/api/config/models", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function submitAction(storyId: string, envelope: ActionEnvelope): Promise<ActionResponse> {

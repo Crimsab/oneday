@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -41,6 +43,12 @@ func TestWantsOperatorCommands(t *testing.T) {
 	}
 	if !wantsExport([]string{"export"}) {
 		t.Fatal("expected export")
+	}
+	if !wantsGatewayModelSettings([]string{"gateway-model-settings"}) {
+		t.Fatal("expected gateway-model-settings")
+	}
+	if !wantsGatewayModelSettingsUpdate([]string{"gateway-model-settings-update"}) {
+		t.Fatal("expected gateway-model-settings-update")
 	}
 }
 
@@ -187,5 +195,65 @@ func TestWantsJSON(t *testing.T) {
 	}
 	if wantsJSON([]string{"doctor"}) {
 		t.Fatal("plain doctor should not request json")
+	}
+}
+
+func TestGatewayModelSettingsCommands(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	cfg := config.Default()
+	cfg.AI.ProviderPriority = []string{"codex", "litellm", "openrouter", "claude-code"}
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = "gpt-5.5"
+	data, err := config.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := runGatewayModelSettings(path, &out); err != nil {
+		t.Fatalf("runGatewayModelSettings: %v", err)
+	}
+	var resp gatewayModelSettingsResponse
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("decode settings: %v", err)
+	}
+	if resp.Settings == nil || resp.Settings.Active.Provider != "codex" {
+		t.Fatalf("settings response = %#v", resp)
+	}
+
+	priority := []string{"litellm", "codex", "openrouter", "claude-code"}
+	litellmEnabled := true
+	litellmModel := "grok-4.1-fast-updated"
+	update := config.ModelRoutingUpdate{
+		ProviderPriority: &priority,
+		Providers: []config.ModelProviderUpdate{
+			{ID: "litellm", Enabled: &litellmEnabled, Model: &litellmModel},
+		},
+	}
+	input, err := json.Marshal(update)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := runGatewayModelSettingsUpdate(path, bytes.NewReader(input), &out); err != nil {
+		t.Fatalf("runGatewayModelSettingsUpdate: %v", err)
+	}
+	resp = gatewayModelSettingsResponse{}
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("decode update: %v", err)
+	}
+	if resp.Settings == nil || resp.Settings.Active.Provider != "litellm" || resp.Settings.Active.NarrativeModel != litellmModel {
+		t.Fatalf("updated settings response = %#v", resp)
+	}
+	saved, err := config.LoadForEdit(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.AI.LiteLLM.DefaultModel != litellmModel {
+		t.Fatalf("saved LiteLLM model = %q", saved.AI.LiteLLM.DefaultModel)
 	}
 }

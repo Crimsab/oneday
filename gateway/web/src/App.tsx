@@ -12,6 +12,7 @@ import {
   loadSave,
   submitAction,
   submitMeta,
+  updateModelSettings,
 } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
@@ -33,6 +34,7 @@ import type {
   MetaCommand,
   MetaResult,
   ModelSettings,
+  ModelSettingsUpdate,
   ModuleTab,
   OverlayKind,
   PlayerAction,
@@ -65,6 +67,7 @@ function App() {
   const [preferences, setPreferences] = useState<AppPreferences>(() => loadPreferences());
   const [commandDescriptors, setCommandDescriptors] = useState<CommandDescriptor[]>([]);
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
+  const [modelSaving, setModelSaving] = useState(false);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -464,6 +467,21 @@ function App() {
     setPreferences({ ...defaultPreferences, ...nextPreferences });
   };
 
+  const saveModelSettings = async (payload: ModelSettingsUpdate) => {
+    setModelSaving(true);
+    setNotice("");
+    try {
+      const nextSettings = await updateModelSettings(payload);
+      setModelSettings(nextSettings);
+      setNotice(`Model routing saved. Active provider: ${nextSettings.active.provider || "none"}.`);
+    } catch (error) {
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setModelSaving(false);
+    }
+  };
+
   const toggleLeftRail = () => {
     setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
   };
@@ -575,11 +593,13 @@ function App() {
         preferences={preferences}
         metaResult={metaResult}
         modelSettings={modelSettings}
+        modelBusy={modelSaving}
         selectedTab={selectedTab}
         commandDescriptors={commandDescriptors}
         busy={sending}
         onClose={() => setOverlay(null)}
         onPreferencesChange={updatePreferences}
+        onModelSettingsSave={(payload) => saveModelSettings(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
         onLoadSave={(save) => void loadManualSave(save)}
         onDeleteSave={(save) => void deleteManualSave(save)}
