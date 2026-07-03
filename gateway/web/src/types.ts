@@ -10,7 +10,7 @@ export type ModuleTab =
   | "projects"
   | "saves";
 
-export type OverlayKind = "help" | "options" | "saves" | "new-story" | null;
+export type OverlayKind = "help" | "options" | "saves" | "new-story" | "meta" | null;
 
 export type DensityPreference = "compact" | "balanced" | "comfortable";
 export type FontSizePreference = "small" | "base" | "large";
@@ -178,6 +178,53 @@ export interface ActionEnvelope {
 
 export interface ActionResponse {
   events: JsonValue[];
+  snapshot: StorySnapshot;
+}
+
+export type BrowserMetaKind = "btw" | "guide" | "narrator";
+
+export interface MetaCommand {
+  kind: BrowserMetaKind;
+  text: string;
+}
+
+export interface MetaEnvelope extends MetaCommand {
+  session_id: string;
+  client_turn: number;
+}
+
+export interface MetaResult {
+  kind: BrowserMetaKind;
+  title: string;
+  message: string;
+}
+
+export interface MetaResponse {
+  meta?: MetaResult | null;
+  snapshot: StorySnapshot;
+}
+
+export interface SaveEnvelope {
+  session_id: string;
+  client_turn: number;
+  name: string;
+  kind: "manual" | "quicksave";
+}
+
+export interface SaveResponse {
+  save?: SaveView | null;
+  snapshot: StorySnapshot;
+}
+
+export interface LoadEnvelope {
+  session_id: string;
+  client_turn: number;
+  save_id: string;
+}
+
+export interface LoadResponse {
+  save?: SaveView | null;
+  legacy?: boolean;
   snapshot: StorySnapshot;
 }
 

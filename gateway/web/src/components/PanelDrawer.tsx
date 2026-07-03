@@ -1,17 +1,32 @@
+import { useState } from "react";
 import { X } from "lucide-react";
 import { slashCommands } from "../commands";
 import { compactText } from "../format";
-import type { AppPreferences, OverlayKind, StorySnapshot } from "../types";
+import type { AppPreferences, MetaResult, OverlayKind, SaveView, StorySnapshot } from "../types";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
+  metaResult: MetaResult | null;
+  busy: boolean;
   onClose: () => void;
   onPreferencesChange: (preferences: AppPreferences) => void;
+  onCreateSave: (name: string) => void;
+  onLoadSave: (save: SaveView) => void;
 }
 
-export function PanelDrawer({ overlay, snapshot, preferences, onClose, onPreferencesChange }: PanelDrawerProps) {
+export function PanelDrawer({
+  overlay,
+  snapshot,
+  preferences,
+  metaResult,
+  busy,
+  onClose,
+  onPreferencesChange,
+  onCreateSave,
+  onLoadSave,
+}: PanelDrawerProps) {
   if (!overlay) return null;
   return (
     <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
@@ -24,8 +39,9 @@ export function PanelDrawer({ overlay, snapshot, preferences, onClose, onPrefere
         </div>
         {overlay === "help" && <HelpContent />}
         {overlay === "options" && <OptionsContent snapshot={snapshot} preferences={preferences} onPreferencesChange={onPreferencesChange} />}
-        {overlay === "saves" && <SavesContent snapshot={snapshot} />}
+        {overlay === "saves" && <SavesContent snapshot={snapshot} busy={busy} onCreateSave={onCreateSave} onLoadSave={onLoadSave} />}
         {overlay === "new-story" && <NewStoryContent />}
+        {overlay === "meta" && <MetaContent metaResult={metaResult} />}
       </section>
     </div>
   );
@@ -35,6 +51,7 @@ function overlayTitle(overlay: OverlayKind): string {
   if (overlay === "help") return "Help";
   if (overlay === "options") return "Options";
   if (overlay === "saves") return "Saves";
+  if (overlay === "meta") return "Meta Command";
   return "New Story";
 }
 
@@ -124,12 +141,42 @@ function OptionsContent({
   );
 }
 
-function SavesContent({ snapshot }: { snapshot: StorySnapshot | null }) {
+function SavesContent({
+  snapshot,
+  busy,
+  onCreateSave,
+  onLoadSave,
+}: {
+  snapshot: StorySnapshot | null;
+  busy: boolean;
+  onCreateSave: (name: string) => void;
+  onLoadSave: (save: SaveView) => void;
+}) {
+  const [name, setName] = useState("");
   const saves = snapshot?.panels.saves ?? [];
+  const currentTurn = snapshot?.world.current_turn ?? 0;
+  const submitSave = () => {
+    onCreateSave(name);
+    setName("");
+  };
   return (
     <div className="overlay-content">
-      <div className="inline-warning">
-        Browser save writes are not exposed yet. Existing saves are read-only here; create new saves from the terminal for now.
+      <div className="save-create">
+        <label>
+          <span>Manual save name</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") submitSave();
+            }}
+            placeholder={`Browser Save T${currentTurn}`}
+            disabled={busy || !snapshot}
+          />
+        </label>
+        <button type="button" className="wide-action" onClick={submitSave} disabled={busy || !snapshot}>
+          Create Save
+        </button>
       </div>
       <div className="save-list">
         {saves.length === 0 ? (
@@ -137,15 +184,37 @@ function SavesContent({ snapshot }: { snapshot: StorySnapshot | null }) {
         ) : (
           saves.map((save) => (
             <div className="save-row" key={save.id}>
-              <strong>{save.name}</strong>
-              <span>
-                Turn {save.turn} - Chapter {save.chapter} - {compactText(save.location || "Unknown", 28)}
-              </span>
-              <small>{save.created_at}</small>
+              <div>
+                <strong>{save.name}</strong>
+                <span>
+                  Turn {save.turn} - Chapter {save.chapter} - {compactText(save.location || "Unknown", 32)}
+                </span>
+                <small>{save.created_at}</small>
+              </div>
+              <button type="button" className="save-load-button" onClick={() => onLoadSave(save)} disabled={busy}>
+                Load
+              </button>
             </div>
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+function MetaContent({ metaResult }: { metaResult: MetaResult | null }) {
+  if (!metaResult) {
+    return (
+      <div className="overlay-content">
+        <p className="overlay-copy muted">No meta response is available yet.</p>
+      </div>
+    );
+  }
+  return (
+    <div className="overlay-content meta-content">
+      <div className="meta-kind">{metaResult.kind}</div>
+      <h3>{metaResult.title}</h3>
+      <p>{metaResult.message}</p>
     </div>
   );
 }

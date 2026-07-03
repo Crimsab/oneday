@@ -221,6 +221,7 @@ button {
 .suggested-card,
 .recent-list button,
 .slash-suggestions button,
+.save-load-button,
 .wide-action {
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -245,9 +246,16 @@ button {
 .suggested-card:hover,
 .recent-list button:hover,
 .slash-suggestions button:hover,
+.save-load-button:hover,
 .wide-action:hover {
   border-color: var(--accent-2);
   color: #fff5dd;
+}
+
+button:disabled,
+input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .workspace {
@@ -1138,6 +1146,72 @@ button {
   padding: 10px 12px;
 }
 
+.save-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 146px;
+  gap: 10px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line-soft);
+  background: #0c1519;
+  padding: 10px 12px;
+}
+
+.save-create label {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+
+.save-create span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.save-create input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  outline: 0;
+  background: #0a1115;
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.save-create input:focus {
+  border-color: var(--accent-2);
+}
+
+.save-create .wide-action {
+  align-self: end;
+  margin: 0;
+}
+
+.save-row {
+  grid-template-columns: minmax(0, 1fr) 78px;
+  align-items: center;
+}
+
+.save-row > div {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.save-row strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.save-load-button {
+  min-height: 32px;
+  padding: 0 12px;
+  color: var(--accent);
+}
+
 .help-row strong {
   color: var(--accent);
 }
@@ -1222,6 +1296,36 @@ button {
   color: #dce2e5;
   font-size: 12px;
   line-height: 1.45;
+}
+
+.meta-content {
+  display: grid;
+  gap: 12px;
+}
+
+.meta-kind {
+  width: max-content;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 9%, #0c1519);
+  padding: 4px 8px;
+  color: var(--accent);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.meta-content h3 {
+  margin: 0;
+  color: #e7ecef;
+  font-size: 16px;
+}
+
+.meta-content p {
+  margin: 0;
+  color: #dce2e5;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 .overlay-copy {
@@ -1350,7 +1454,12 @@ button {
   }
 
   .settings-grid,
-  .option-grid {
+  .option-grid,
+  .save-create {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .save-create .wide-action {
+    width: 100%;
   }
 }
