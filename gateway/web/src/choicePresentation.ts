@@ -53,53 +53,53 @@ export function toneForChoice(intent: string, risk: string, index = 0): ChoiceTo
 }
 
 function gainText(intent: string, scope: string, stats: string[]): string {
-  const statText = stats.length ? ` Stats: ${stats.map((stat) => stat.toUpperCase()).join(", ")}.` : "";
+  const statText = stats.length ? ` ${stats.map((stat) => stat.toUpperCase()).join(", ")}.` : "";
   switch (intent) {
     case "social":
-      return `Social leverage, rapport, or information.${statText}`;
+      return `Social leverage.${statText}`;
     case "stealth":
-      return `Low-profile move; preserves initiative.${statText}`;
+      return `Low profile.${statText}`;
     case "flee":
-      return `Escape/safety over scene control.${statText}`;
+      return `Escape/safety.${statText}`;
     case "attack":
     case "combat":
     case "aggressive":
-      return `Direct pressure or confrontation.${statText}`;
+      return `Direct pressure.${statText}`;
     case "explore":
     case "observe":
-      return `Finds clues, routes, or scene context.${statText}`;
+      return `Clues/context.${statText}`;
     case "craft":
     case "use_item":
-      return `Uses resources or preparation.${statText}`;
+      return `Resources/prep.${statText}`;
     case "survive":
-      return `Protects core resources and position.${statText}`;
+      return `Preserve resources.${statText}`;
     case "lore":
-      return `World knowledge or hidden context.${statText}`;
+      return `World knowledge.${statText}`;
     case "meta":
-      return `Narrator framing or pacing.${statText}`;
+      return `Narrator framing.${statText}`;
     default:
-      if (scope) return `Affects ${scope}; payoff depends on narration.${statText}`;
-      return `Freeform narrative angle; payoff depends on scene.${statText}`;
+      if (scope) return `Affects ${scope}.${statText}`;
+      return `Freeform angle.${statText}`;
   }
 }
 
 function tradeoffText(risk: string, certainty: string, hasStats: boolean): string {
-  const statCaveat = hasStats ? " Stats influence, not guarantee." : " No stat metadata.";
+  const statCaveat = hasStats ? " Stats not guaranteed." : " No stat metadata.";
   switch (risk) {
     case "low":
-      return `Lower danger, usually lower upside.${statCaveat}`;
+      return `Low risk.${statCaveat}`;
     case "medium":
-      return `Balanced upside/downside.${statCaveat}`;
+      return `Medium risk.${statCaveat}`;
     case "high":
     case "extreme":
-      return `High danger/cost; bigger payoff if it lands.${statCaveat}`;
+      return `High risk/cost.${statCaveat}`;
     case "unknown":
-      return `Risk unclear; expect hidden information.${statCaveat}`;
+      return `Unknown risk.${statCaveat}`;
     default:
-      if (certainty === "safe") return `Predictable, not automatic reward.${statCaveat}`;
-      if (certainty === "uncertain") return `Uncertain; may reveal complications.${statCaveat}`;
-      if (certainty === "desperate") return `Desperate; likely costly even on success.${statCaveat}`;
-      return `No risk metadata; judge from scene text.${statCaveat}`;
+      if (certainty === "safe") return `Predictable, not automatic.${statCaveat}`;
+      if (certainty === "uncertain") return `Uncertain outcome.${statCaveat}`;
+      if (certainty === "desperate") return `Desperate/costly.${statCaveat}`;
+      return `No risk metadata.${statCaveat}`;
   }
 }
 

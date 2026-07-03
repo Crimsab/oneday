@@ -36,14 +36,14 @@ describe("choicePresentation", () => {
     expect(presentation.title).toBe("Choice 2");
     expect(presentation.meta).toEqual(["intent:social", "risk:medium", "certainty:uncertain", "scope:npc", "CHA", "WIL"]);
     expect(presentation.gain).toContain("Social leverage");
-    expect(presentation.tradeoff).toContain("Balanced upside/downside");
+    expect(presentation.tradeoff).toContain("Medium risk");
   });
 
   it("is explicit when metadata is missing", () => {
     const presentation = choicePresentation({ id: 1, text: "Do something" }, 1);
     expect(presentation.tone).toBe("explore");
     expect(presentation.meta).toEqual([]);
-    expect(presentation.gain).toContain("payoff depends on scene");
+    expect(presentation.gain).toContain("Freeform angle");
     expect(presentation.tradeoff).toContain("No risk metadata");
   });
 });
