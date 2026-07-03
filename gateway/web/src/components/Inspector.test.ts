@@ -45,13 +45,14 @@ describe("cardsFromValue", () => {
 
   it("handles empty and primitive values", () => {
     expect(cardsFromValue(undefined, "Empty")).toEqual([]);
+    expect(cardsFromValue({}, "Empty")).toEqual([]);
     expect(cardsFromValue("plain", "Value")).toEqual([{ title: "Value", rows: [["Value", "plain"]] }]);
   });
 });
 
 describe("meterRows", () => {
   it("supports vitals and scalar 0-100 stats", () => {
-    const rows = meterRows(snapshotWithStats({ vitals: { hp: { current: 15, max: 30 } }, focus: 82 }));
+    const rows = meterRows(snapshotWithStats({ vitals: { hp: { current: 15, max: 30 } }, focus: 82, currency: 10, deaths: 0 }));
     expect(rows).toEqual([
       { label: "Hp", value: 50, text: "15/30" },
       { label: "Focus", value: 82, text: "82/100" },
