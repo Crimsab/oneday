@@ -2,46 +2,28 @@ use crate::{db, engine, AppState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
+use tower_http::services::{ServeDir, ServeFile};
 
 pub fn router(state: Arc<AppState>) -> Router {
+    let static_dir = state.paths.static_dir.clone();
+    let spa =
+        ServeDir::new(&static_dir).not_found_service(ServeFile::new(static_dir.join("index.html")));
+
     Router::new()
-        .route("/", get(index))
-        .route("/assets/app.js", get(app_js))
-        .route("/assets/styles.css", get(styles_css))
         .route("/api/health", get(health))
         .route("/api/stories", get(stories))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/actions", post(submit_action))
         .route("/api/stories/:story_id/events", get(story_events))
+        .fallback_service(spa)
         .with_state(state)
-}
-
-async fn index() -> Html<&'static str> {
-    Html(include_str!("static/index.html"))
-}
-
-async fn app_js() -> impl IntoResponse {
-    (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "application/javascript; charset=utf-8",
-        )],
-        include_str!("static/app.js"),
-    )
-}
-
-async fn styles_css() -> impl IntoResponse {
-    (
-        [(axum::http::header::CONTENT_TYPE, "text/css; charset=utf-8")],
-        include_str!("static/styles.css"),
-    )
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, ApiError> {
@@ -54,6 +36,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::V
         "db_path": state.paths.db_path,
         "config_path": state.paths.config_path,
         "oneday_bin": state.paths.oneday_bin,
+        "static_dir": state.paths.static_dir,
     })))
 }
 
