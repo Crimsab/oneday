@@ -1,3 +1,4 @@
+import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Search } from "lucide-react";
 import type { ModuleTab } from "./types";
 
 export interface CommandResult {
@@ -7,6 +8,23 @@ export interface CommandResult {
   text?: string;
   notice?: string;
 }
+
+export const moduleSpecs: Array<{
+  tab: ModuleTab;
+  label: string;
+  hotkey: string;
+  command: string;
+  Icon: typeof Clock3;
+}> = [
+  { tab: "history", label: "History", hotkey: "H", command: "/history", Icon: Clock3 },
+  { tab: "inventory", label: "Inventory", hotkey: "I", command: "/inventory", Icon: Archive },
+  { tab: "stats", label: "Stats", hotkey: "S", command: "/stats", Icon: BarChart3 },
+  { tab: "codex", label: "Codex", hotkey: "C", command: "/codex", Icon: BookOpen },
+  { tab: "fronts", label: "Fronts", hotkey: "F", command: "/fronts", Icon: Flag },
+  { tab: "investigations", label: "Investigations", hotkey: "G", command: "/investigations", Icon: Search },
+  { tab: "projects", label: "Projects", hotkey: "P", command: "/projects", Icon: BriefcaseBusiness },
+  { tab: "saves", label: "Saves", hotkey: "V", command: "/load", Icon: FileText },
+];
 
 export const slashCommands = [
   { name: "/inventory", hint: "Open inventory", aliases: ["/i"] },
@@ -58,6 +76,11 @@ const tabCommands: Record<string, ModuleTab> = {
   "/map": "history",
   "/m": "history",
 };
+
+export const tabHotkeys: Record<string, ModuleTab> = moduleSpecs.reduce<Record<string, ModuleTab>>((acc, item) => {
+  acc[item.hotkey.toLowerCase()] = item.tab;
+  return acc;
+}, {});
 
 const talkIntents = new Set(["ask", "probe", "bond", "bargain", "threaten", "promise", "lie", "confess"]);
 

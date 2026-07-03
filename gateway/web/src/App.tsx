@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { commandToAction, actionModeToText } from "./commands";
+import { commandToAction, actionModeToText, tabHotkeys } from "./commands";
 import { getHealth, getSnapshot, getStories, submitAction } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
@@ -10,7 +10,9 @@ import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
 import { recentFromMessages } from "./format";
-import type { ChoiceView, ModuleTab, OverlayKind, PlayerAction, RecentCommand, StorySnapshot, StorySummary, SyncState } from "./types";
+import { stepHistoryIndex } from "./history";
+import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
+import type { AppPreferences, ChoiceView, ModuleTab, OverlayKind, PlayerAction, RecentCommand, StorySnapshot, StorySummary, SyncState } from "./types";
 
 function App() {
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -28,6 +30,8 @@ function App() {
   const [paused, setPaused] = useState(false);
   const [hiddenBeforeMessageId, setHiddenBeforeMessageId] = useState(0);
   const [localCommands, setLocalCommands] = useState<RecentCommand[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [preferences, setPreferences] = useState<AppPreferences>(() => loadPreferences());
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -107,6 +111,36 @@ function App() {
     });
   }, [localCommands, snapshot?.messages]);
 
+  useEffect(() => {
+    savePreferences(preferences);
+  }, [preferences]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT";
+      if (isEditing) return;
+
+      if (event.key === "?") {
+        event.preventDefault();
+        setOverlay("help");
+        return;
+      }
+      if (event.key.toLowerCase() === "o") {
+        event.preventDefault();
+        setOverlay("options");
+        return;
+      }
+      const tab = tabHotkeys[event.key.toLowerCase()];
+      if (tab) {
+        event.preventDefault();
+        setSelectedTab(tab);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   const selectStory = (nextStoryId: string) => {
     setStoryId(nextStoryId);
     setSnapshot(null);
@@ -129,6 +163,7 @@ function App() {
     if (!text.trim()) return;
     await sendAction({ kind: "free_text", text }, draft);
     setDraft("");
+    setHistoryIndex(-1);
   };
 
   const sendChoice = async (choice: ChoiceView) => {
@@ -180,8 +215,23 @@ function App() {
     setOverlay(nextOverlay);
   };
 
+  const updatePreferences = (nextPreferences: AppPreferences) => {
+    setPreferences({ ...defaultPreferences, ...nextPreferences });
+  };
+
+  const stepCommandHistory = (direction: -1 | 1): string | null => {
+    const next = stepHistoryIndex(historyIndex, direction, recentCommands);
+    setHistoryIndex(next.index);
+    return next.value;
+  };
+
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell ${preferences.showInspector ? "" : "inspector-hidden"} ${preferences.wrapTranscript ? "" : "transcript-nowrap"}`}
+      data-density={preferences.density}
+      data-font-size={preferences.fontSize}
+      data-accent={preferences.accent}
+    >
       <TopBar snapshot={snapshot} sync={sync} onOpen={openOverlay} />
       <div className="workspace">
         <LeftRail
@@ -219,6 +269,7 @@ function App() {
             onDraftChange={setDraft}
             onModeChange={setMode}
             onSubmit={executeDraft}
+            onHistoryStep={stepCommandHistory}
           />
 
           <section className="lower-grid">
@@ -236,9 +287,16 @@ function App() {
             </section>
           </section>
         </main>
-        <Inspector snapshot={snapshot} onRefresh={() => void loadSnapshot()} />
+        {preferences.showInspector && <Inspector snapshot={snapshot} selectedTab={selectedTab} onRefresh={() => void loadSnapshot()} />}
       </div>
-      <PanelDrawer overlay={overlay} snapshot={snapshot} onClose={() => setOverlay(null)} onDraft={setDraft} />
+      <PanelDrawer
+        overlay={overlay}
+        snapshot={snapshot}
+        preferences={preferences}
+        onClose={() => setOverlay(null)}
+        onDraft={setDraft}
+        onPreferencesChange={updatePreferences}
+      />
     </div>
   );
 }

@@ -1,16 +1,18 @@
 import { X } from "lucide-react";
 import { slashCommands } from "../commands";
 import { compactText } from "../format";
-import type { OverlayKind, StorySnapshot } from "../types";
+import type { AppPreferences, OverlayKind, StorySnapshot } from "../types";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
   snapshot: StorySnapshot | null;
+  preferences: AppPreferences;
   onClose: () => void;
   onDraft: (value: string) => void;
+  onPreferencesChange: (preferences: AppPreferences) => void;
 }
 
-export function PanelDrawer({ overlay, snapshot, onClose, onDraft }: PanelDrawerProps) {
+export function PanelDrawer({ overlay, snapshot, preferences, onClose, onDraft, onPreferencesChange }: PanelDrawerProps) {
   if (!overlay) return null;
   return (
     <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
@@ -22,7 +24,7 @@ export function PanelDrawer({ overlay, snapshot, onClose, onDraft }: PanelDrawer
           </button>
         </div>
         {overlay === "help" && <HelpContent />}
-        {overlay === "options" && <OptionsContent snapshot={snapshot} />}
+        {overlay === "options" && <OptionsContent snapshot={snapshot} preferences={preferences} onPreferencesChange={onPreferencesChange} />}
         {overlay === "saves" && <SavesContent snapshot={snapshot} onDraft={onDraft} onClose={onClose} />}
         {overlay === "new-story" && <NewStoryContent />}
       </section>
@@ -51,9 +53,21 @@ function HelpContent() {
   );
 }
 
-function OptionsContent({ snapshot }: { snapshot: StorySnapshot | null }) {
+function OptionsContent({
+  snapshot,
+  preferences,
+  onPreferencesChange,
+}: {
+  snapshot: StorySnapshot | null;
+  preferences: AppPreferences;
+  onPreferencesChange: (preferences: AppPreferences) => void;
+}) {
+  const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
+    onPreferencesChange({ ...preferences, [key]: value });
+  };
+
   return (
-    <div className="overlay-content">
+    <div className="overlay-content options-content">
       <div className="option-grid">
         <div>
           <span>Realtime bridge</span>
@@ -71,6 +85,41 @@ function OptionsContent({ snapshot }: { snapshot: StorySnapshot | null }) {
           <span>Theme</span>
           <strong>Dark cockpit</strong>
         </div>
+      </div>
+      <div className="settings-grid">
+        <label>
+          <span>Density</span>
+          <select value={preferences.density} onChange={(event) => update("density", event.target.value as AppPreferences["density"])}>
+            <option value="compact">Compact</option>
+            <option value="balanced">Balanced</option>
+            <option value="comfortable">Comfortable</option>
+          </select>
+        </label>
+        <label>
+          <span>Font size</span>
+          <select value={preferences.fontSize} onChange={(event) => update("fontSize", event.target.value as AppPreferences["fontSize"])}>
+            <option value="small">Small</option>
+            <option value="base">Base</option>
+            <option value="large">Large</option>
+          </select>
+        </label>
+        <label>
+          <span>Accent</span>
+          <select value={preferences.accent} onChange={(event) => update("accent", event.target.value as AppPreferences["accent"])}>
+            <option value="amber">Amber</option>
+            <option value="green">Green</option>
+            <option value="blue">Blue</option>
+            <option value="rose">Rose</option>
+          </select>
+        </label>
+        <label className="toggle-row">
+          <span>Inspector panel</span>
+          <input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} />
+        </label>
+        <label className="toggle-row">
+          <span>Transcript wrap</span>
+          <input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} />
+        </label>
       </div>
     </div>
   );

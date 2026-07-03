@@ -9,9 +9,10 @@ interface ComposerProps {
   onDraftChange: (value: string) => void;
   onModeChange: (value: string) => void;
   onSubmit: () => void;
+  onHistoryStep: (direction: -1 | 1) => string | null;
 }
 
-export function Composer({ draft, mode, disabled, notice, onDraftChange, onModeChange, onSubmit }: ComposerProps) {
+export function Composer({ draft, mode, disabled, notice, onDraftChange, onModeChange, onSubmit, onHistoryStep }: ComposerProps) {
   const suggestions = draft.trim().startsWith("/")
     ? slashCommands.filter((command) => {
         const query = draft.trim().slice(1).toLowerCase();
@@ -37,6 +38,20 @@ export function Composer({ draft, mode, disabled, notice, onDraftChange, onModeC
             if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
               event.preventDefault();
               onSubmit();
+            }
+            if (event.key === "ArrowUp") {
+              const next = onHistoryStep(-1);
+              if (next !== null) {
+                event.preventDefault();
+                onDraftChange(next);
+              }
+            }
+            if (event.key === "ArrowDown") {
+              const next = onHistoryStep(1);
+              if (next !== null) {
+                event.preventDefault();
+                onDraftChange(next);
+              }
             }
           }}
           placeholder="Enter command or action..."
