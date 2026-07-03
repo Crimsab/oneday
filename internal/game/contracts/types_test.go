@@ -36,3 +36,36 @@ func TestTurnEventEnvelopeCarriesPayload(t *testing.T) {
 		t.Fatalf("event envelope incomplete: %+v", evt)
 	}
 }
+
+func TestCommandDescriptorsCoverBrowserCriticalCommands(t *testing.T) {
+	descriptors := CommandDescriptors()
+	byID := map[string]CommandDescriptor{}
+	for _, descriptor := range descriptors {
+		if descriptor.ID == "" || descriptor.Canonical == "" || descriptor.Title == "" {
+			t.Fatalf("incomplete command descriptor: %+v", descriptor)
+		}
+		byID[descriptor.ID] = descriptor
+	}
+
+	for _, id := range []string{"talk", "btw", "guide", "narrator", "advance", "timeskip", "save", "load", "delete-save"} {
+		if _, ok := byID[id]; !ok {
+			t.Fatalf("missing command descriptor %q", id)
+		}
+	}
+	if got := byID["delete-save"].Behavior; got != CommandBehaviorSaveDelete {
+		t.Fatalf("delete-save behavior = %q, want %q", got, CommandBehaviorSaveDelete)
+	}
+	if got := byID["delete-save"].Parity; got != CommandParityBrowserOnly {
+		t.Fatalf("delete-save parity = %q, want %q", got, CommandParityBrowserOnly)
+	}
+}
+
+func TestCommandAliasRegistryExcludesBrowserOnlyCommands(t *testing.T) {
+	registry := CommandAliasRegistry()
+	if got := registry["fronts"]; got != "hooks" {
+		t.Fatalf("fronts alias = %q, want hooks", got)
+	}
+	if got := registry["delete-save"]; got != "" {
+		t.Fatalf("delete-save alias = %q, want excluded browser-only command", got)
+	}
+}

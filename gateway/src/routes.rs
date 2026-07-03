@@ -18,6 +18,7 @@ pub fn router(state: Arc<AppState>) -> Router {
 
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/contracts/commands", get(command_descriptors))
         .route("/api/stories", get(stories))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/actions", post(submit_action))
@@ -31,6 +32,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories/:story_id/events", get(story_events))
         .fallback_service(spa)
         .with_state(state)
+}
+
+async fn command_descriptors(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
+    let descriptors = engine::command_descriptors(state.clone()).await?;
+    Ok(Json(descriptors.commands))
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, ApiError> {

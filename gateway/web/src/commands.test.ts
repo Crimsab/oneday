@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionModeToText, commandToAction, moduleSpecs, tabHotkeys } from "./commands";
+import { actionModeToText, commandSuggestions, commandToAction, moduleSpecs, tabHotkeys } from "./commands";
 
 describe("commandToAction", () => {
   it("ignores normal prose", () => {
@@ -20,6 +20,12 @@ describe("commandToAction", () => {
     expect(commandToAction("/help")).toMatchObject({ handled: true, overlay: "help" });
     expect(commandToAction("/load")).toMatchObject({ handled: true, tab: "saves", overlay: "saves", saveFilter: "" });
     expect(commandToAction("/load Camp")).toMatchObject({ handled: true, tab: "saves", overlay: "saves", saveFilter: "Camp" });
+    expect(commandToAction("/delete-save Camp")).toMatchObject({
+      handled: true,
+      tab: "saves",
+      overlay: "saves",
+      saveDeleteFilter: "Camp",
+    });
     expect(commandToAction("/save Camp")).toMatchObject({
       tab: "saves",
       overlay: "saves",
@@ -40,6 +46,9 @@ describe("commandToAction", () => {
     expect(commandToAction("/timeskip tomorrow")).toMatchObject({ text: expect.stringContaining("[Time Skip]") });
     expect(commandToAction("/downtime train")).toEqual({ text: "[Downtime Scene] train" });
     expect(commandToAction("/talk Maren probe the ledger")).toEqual({ text: "[Talk to Maren | intent:probe] the ledger" });
+    expect(commandToAction("/talk Maren Lo probe the ledger", { npcNames: ["Maren Lo"] })).toEqual({
+      text: "[Talk to Maren Lo | intent:probe] the ledger",
+    });
   });
 
   it("returns usage notices for incomplete commands", () => {
@@ -48,8 +57,19 @@ describe("commandToAction", () => {
     expect(commandToAction("/narrator")).toMatchObject({ handled: true, notice: expect.stringContaining("Usage") });
     expect(commandToAction("/downtime")).toMatchObject({ handled: true, notice: expect.stringContaining("Usage") });
     expect(commandToAction("/talk")).toMatchObject({ handled: true, tab: "codex", notice: expect.stringContaining("/talk") });
-    expect(commandToAction("/talk Maren ask")).toMatchObject({ handled: true, tab: "codex", notice: expect.stringContaining("Maren") });
+    expect(commandToAction("/talk Maren ask", { npcNames: ["Maren"] })).toMatchObject({
+      handled: true,
+      tab: "codex",
+      notice: expect.stringContaining("Maren"),
+    });
     expect(commandToAction("/quit")).toMatchObject({ handled: true, notice: expect.stringContaining("terminal") });
+  });
+
+  it("keeps browser save deletion out of freeform action fallback", () => {
+    const result = commandToAction("/delete-save Before docks");
+    expect(result.text).toBeUndefined();
+    expect(result.handled).toBe(true);
+    expect(result.saveDeleteFilter).toBe("Before docks");
   });
 });
 
@@ -67,5 +87,13 @@ describe("module hotkeys", () => {
     for (const spec of moduleSpecs) {
       expect(tabHotkeys[spec.hotkey.toLowerCase()]).toBe(spec.tab);
     }
+  });
+});
+
+describe("commandSuggestions", () => {
+  it("lists descriptor-backed commands and aliases", () => {
+    expect(commandSuggestions("/del").map((command) => command.name)).toContain("/delete-save");
+    expect(commandSuggestions("/fro").map((command) => command.name)).toContain("/fronts");
+    expect(commandSuggestions("/hooks").map((command) => command.name)).toContain("/fronts");
   });
 });

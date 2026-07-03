@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { X } from "lucide-react";
-import { slashCommands } from "../commands";
+import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
 import { compactText } from "../format";
-import type { AppPreferences, MetaResult, OverlayKind, SaveView, StorySnapshot } from "../types";
+import type { AppPreferences, CommandDescriptor, MetaResult, OverlayKind, SaveView, StorySnapshot } from "../types";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
   metaResult: MetaResult | null;
+  commandDescriptors: CommandDescriptor[];
   busy: boolean;
   onClose: () => void;
   onPreferencesChange: (preferences: AppPreferences) => void;
@@ -24,6 +25,7 @@ export function PanelDrawer({
   snapshot,
   preferences,
   metaResult,
+  commandDescriptors,
   busy,
   onClose,
   onPreferencesChange,
@@ -43,7 +45,7 @@ export function PanelDrawer({
             <X size={16} />
           </button>
         </div>
-        {overlay === "help" && <HelpContent />}
+        {overlay === "help" && <HelpContent commandDescriptors={commandDescriptors} />}
         {overlay === "options" && <OptionsContent snapshot={snapshot} preferences={preferences} onPreferencesChange={onPreferencesChange} />}
         {overlay === "saves" && (
           <SavesContent
@@ -71,10 +73,11 @@ function overlayTitle(overlay: OverlayKind): string {
   return "New Story";
 }
 
-function HelpContent() {
+function HelpContent({ commandDescriptors }: { commandDescriptors: CommandDescriptor[] }) {
+  const commands = commandDescriptorsToSlashCommands(resolveCommandDescriptors(commandDescriptors));
   return (
     <div className="overlay-content command-help">
-      {slashCommands.map((command) => (
+      {commands.map((command) => (
         <div key={command.name} className="help-row">
           <strong>{command.name}</strong>
           <span>{command.hint}</span>

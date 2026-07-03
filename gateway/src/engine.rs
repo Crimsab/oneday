@@ -179,6 +179,55 @@ pub struct GatewayDeleteSaveResponse {
     pub error: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GatewayCommandDescriptorsResponse {
+    #[serde(default)]
+    pub commands: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub error: String,
+}
+
+pub async fn command_descriptors(
+    state: Arc<AppState>,
+) -> anyhow::Result<GatewayCommandDescriptorsResponse> {
+    let output = tokio::time::timeout(
+        Duration::from_secs(30),
+        Command::new(&state.paths.oneday_bin)
+            .arg("gateway-command-descriptors")
+            .current_dir(&state.paths.oneday_root)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .output(),
+    )
+    .await
+    .context("gateway-command-descriptors timed out")?
+    .with_context(|| {
+        format!(
+            "starting {} gateway-command-descriptors",
+            state.paths.oneday_bin.display()
+        )
+    })?;
+
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let parsed = serde_json::from_slice::<GatewayCommandDescriptorsResponse>(&output.stdout)
+        .with_context(|| {
+            format!(
+                "decoding gateway-command-descriptors stdout; stderr={}",
+                compact_stderr(&stderr)
+            )
+        })?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !output.status.success() {
+        return Err(anyhow!(
+            "gateway-command-descriptors failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    Ok(parsed)
+}
+
 pub async fn submit_action(
     state: Arc<AppState>,
     story_id: &str,

@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { commandToAction, actionModeToText, tabHotkeys } from "./commands";
-import { ApiRequestError, createSave, deleteSave, getHealth, getSnapshot, getStories, loadSave, submitAction, submitMeta } from "./api";
+import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
+import {
+  ApiRequestError,
+  createSave,
+  deleteSave,
+  getCommandDescriptors,
+  getHealth,
+  getSnapshot,
+  getStories,
+  loadSave,
+  submitAction,
+  submitMeta,
+} from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LeftRail } from "./components/LeftRail";
@@ -16,6 +27,7 @@ import { defaultPreferences, loadPreferences, savePreferences } from "./preferen
 import type {
   AppPreferences,
   ChoiceView,
+  CommandDescriptor,
   MetaCommand,
   MetaResult,
   ModuleTab,
@@ -48,6 +60,7 @@ function App() {
   const [localCommands, setLocalCommands] = useState<RecentCommand[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [preferences, setPreferences] = useState<AppPreferences>(() => loadPreferences());
+  const [commandDescriptors, setCommandDescriptors] = useState<CommandDescriptor[]>([]);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -71,6 +84,14 @@ function App() {
     }
   }, [storyId]);
 
+  const refreshCommandDescriptors = useCallback(async () => {
+    try {
+      setCommandDescriptors(await getCommandDescriptors());
+    } catch {
+      setCommandDescriptors([]);
+    }
+  }, []);
+
   const loadSnapshot = useCallback(async (nextStoryId = storyId) => {
     if (!nextStoryId) return;
     setSync("Loading");
@@ -86,8 +107,9 @@ function App() {
 
   useEffect(() => {
     void refreshHealth();
+    void refreshCommandDescriptors();
     void refreshStories();
-  }, [refreshHealth, refreshStories]);
+  }, [refreshCommandDescriptors, refreshHealth, refreshStories]);
 
   useEffect(() => {
     if (!storyId) return;
@@ -166,10 +188,14 @@ function App() {
   const executeDraft = async () => {
     if (!draft.trim() || !snapshot || !storyId || sending) return;
     setNotice("");
-    const commandResult = commandToAction(draft);
+    const commandResult = commandToAction(draft, {
+      descriptors: commandDescriptors,
+      npcNames: npcNamesFromSnapshot(snapshot),
+    });
     if (commandResult.tab) setSelectedTab(commandResult.tab);
     if (commandResult.overlay) setOverlay(commandResult.overlay);
     if (commandResult.saveFilter !== undefined) setSaveFilter(commandResult.saveFilter);
+    if (commandResult.saveDeleteFilter !== undefined) setSaveFilter(commandResult.saveDeleteFilter);
     if (commandResult.notice) setNotice(commandResult.notice);
     if (commandResult.meta) {
       await sendMetaCommand(commandResult.meta, draft);
@@ -453,6 +479,7 @@ function App() {
             mode={mode}
             disabled={sending || !snapshot}
             notice={notice}
+            commandDescriptors={commandDescriptors}
             onDraftChange={setDraft}
             onModeChange={setMode}
             onSubmit={executeDraft}
@@ -481,6 +508,7 @@ function App() {
         snapshot={snapshot}
         preferences={preferences}
         metaResult={metaResult}
+        commandDescriptors={commandDescriptors}
         busy={sending}
         onClose={() => setOverlay(null)}
         onPreferencesChange={updatePreferences}
@@ -507,6 +535,10 @@ function actionErrorMessage(error: unknown): string {
     return "The story advanced elsewhere. Review the latest choices before sending again.";
   }
   return message;
+}
+
+function npcNamesFromSnapshot(snapshot: StorySnapshot): string[] {
+  return snapshot.panels.npcs.map((npc) => npc.name).filter(Boolean);
 }
 
 export default App;
