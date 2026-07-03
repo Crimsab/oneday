@@ -12,6 +12,18 @@ export type ModuleTab =
 
 export type OverlayKind = "help" | "options" | "saves" | "new-story" | null;
 
+export type DensityPreference = "compact" | "balanced" | "comfortable";
+export type FontSizePreference = "small" | "base" | "large";
+export type AccentPreference = "amber" | "green" | "blue" | "rose";
+
+export interface AppPreferences {
+  density: DensityPreference;
+  fontSize: FontSizePreference;
+  accent: AccentPreference;
+  showInspector: boolean;
+  wrapTranscript: boolean;
+}
+
 export interface Health {
   status: string;
   stories: number;
