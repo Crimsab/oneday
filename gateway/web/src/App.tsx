@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { commandToAction, actionModeToText, tabHotkeys } from "./commands";
-import { ApiRequestError, getHealth, getSnapshot, getStories, submitAction } from "./api";
+import { ApiRequestError, createSave, getHealth, getSnapshot, getStories, loadSave, submitAction, submitMeta } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { LeftRail } from "./components/LeftRail";
@@ -13,7 +13,20 @@ import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
-import type { AppPreferences, ChoiceView, ModuleTab, OverlayKind, PlayerAction, RecentCommand, StorySnapshot, StorySummary, SyncState } from "./types";
+import type {
+  AppPreferences,
+  ChoiceView,
+  MetaCommand,
+  MetaResult,
+  ModuleTab,
+  OverlayKind,
+  PlayerAction,
+  RecentCommand,
+  SaveView,
+  StorySnapshot,
+  StorySummary,
+  SyncState,
+} from "./types";
 
 function App() {
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -27,6 +40,7 @@ function App() {
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState("action");
   const [notice, setNotice] = useState("");
+  const [metaResult, setMetaResult] = useState<MetaResult | null>(null);
   const [sending, setSending] = useState(false);
   const [paused, setPaused] = useState(false);
   const [hiddenBeforeMessageId, setHiddenBeforeMessageId] = useState(0);
@@ -155,6 +169,18 @@ function App() {
     if (commandResult.tab) setSelectedTab(commandResult.tab);
     if (commandResult.overlay) setOverlay(commandResult.overlay);
     if (commandResult.notice) setNotice(commandResult.notice);
+    if (commandResult.meta) {
+      await sendMetaCommand(commandResult.meta, draft);
+      setDraft("");
+      setHistoryIndex(-1);
+      return;
+    }
+    if (commandResult.saveName !== undefined) {
+      await createManualSave(commandResult.saveName, draft);
+      setDraft("");
+      setHistoryIndex(-1);
+      return;
+    }
     if (commandResult.handled) {
       setDraft("");
       return;
@@ -176,6 +202,107 @@ function App() {
       },
       choice.text,
     );
+  };
+
+  const sendMetaCommand = async (meta: MetaCommand, sourceText: string) => {
+    if (!snapshot || !storyId || sending) return;
+    setSending(true);
+    const baseSnapshot = snapshot;
+    try {
+      const readySnapshot = await snapshotForSubmit(baseSnapshot);
+      if (!readySnapshot) return;
+      setSync("Sending");
+      const response = await submitMeta(storyId, {
+        session_id: readySnapshot.active_session.id,
+        client_turn: readySnapshot.world.current_turn,
+        kind: meta.kind,
+        text: meta.text,
+      });
+      setSnapshot(response.snapshot);
+      if (response.meta) {
+        setMetaResult(response.meta);
+        setOverlay("meta");
+        setNotice(`${response.meta.title} answered.`);
+      } else {
+        setNotice("Meta command completed.");
+      }
+      setLocalCommands((items) => [
+        { id: clientId("command"), text: sourceText.trim(), turn: response.snapshot.world.current_turn, source: "browser" as const },
+        ...items,
+      ].slice(0, 10));
+      setSync(paused ? "Paused" : "Live");
+    } catch (error) {
+      setSync("Error");
+      setNotice(actionErrorMessage(error));
+      await loadSnapshot().catch(() => undefined);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const createManualSave = async (name: string, sourceText = "") => {
+    if (!snapshot || !storyId || sending) return;
+    setSending(true);
+    const baseSnapshot = snapshot;
+    try {
+      const readySnapshot = await snapshotForSubmit(baseSnapshot);
+      if (!readySnapshot) return;
+      setSync("Sending");
+      const saveName = name.trim() || `Browser Save T${readySnapshot.world.current_turn}`;
+      const response = await createSave(storyId, {
+        session_id: readySnapshot.active_session.id,
+        client_turn: readySnapshot.world.current_turn,
+        name: saveName,
+        kind: "manual",
+      });
+      setSnapshot(response.snapshot);
+      setSelectedTab("saves");
+      setOverlay("saves");
+      setNotice(`Saved ${response.save?.name ?? saveName}.`);
+      setLocalCommands((items) => [
+        { id: clientId("command"), text: sourceText.trim() || `/save ${saveName}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
+        ...items,
+      ].slice(0, 10));
+      setSync(paused ? "Paused" : "Live");
+    } catch (error) {
+      setSync("Error");
+      setNotice(actionErrorMessage(error));
+      await loadSnapshot().catch(() => undefined);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const loadManualSave = async (save: SaveView) => {
+    if (!snapshot || !storyId || sending) return;
+    const confirmed = window.confirm(`Load "${save.name}" from turn ${save.turn}? Current progress will roll back to that snapshot.`);
+    if (!confirmed) return;
+    setSending(true);
+    const baseSnapshot = snapshot;
+    try {
+      const readySnapshot = await snapshotForSubmit(baseSnapshot);
+      if (!readySnapshot) return;
+      setSync("Sending");
+      const response = await loadSave(storyId, {
+        session_id: readySnapshot.active_session.id,
+        client_turn: readySnapshot.world.current_turn,
+        save_id: save.id,
+      });
+      setSnapshot(response.snapshot);
+      setSelectedTab("saves");
+      setNotice(`${response.legacy ? "Legacy save loaded" : "Loaded"} ${response.save?.name ?? save.name}.`);
+      setLocalCommands((items) => [
+        { id: clientId("command"), text: `/load ${save.name}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
+        ...items,
+      ].slice(0, 10));
+      setSync(paused ? "Paused" : "Live");
+    } catch (error) {
+      setSync("Error");
+      setNotice(actionErrorMessage(error));
+      await loadSnapshot().catch(() => undefined);
+    } finally {
+      setSending(false);
+    }
   };
 
   const sendAction = async (action: PlayerAction, sourceText: string) => {
@@ -314,8 +441,12 @@ function App() {
         overlay={overlay}
         snapshot={snapshot}
         preferences={preferences}
+        metaResult={metaResult}
+        busy={sending}
         onClose={() => setOverlay(null)}
         onPreferencesChange={updatePreferences}
+        onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
+        onLoadSave={(save) => void loadManualSave(save)}
       />
     </div>
   );

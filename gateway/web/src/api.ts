@@ -1,4 +1,16 @@
-import type { ActionEnvelope, ActionResponse, Health, StorySnapshot, StorySummary } from "./types";
+import type {
+  ActionEnvelope,
+  ActionResponse,
+  Health,
+  LoadEnvelope,
+  LoadResponse,
+  MetaEnvelope,
+  MetaResponse,
+  SaveEnvelope,
+  SaveResponse,
+  StorySnapshot,
+  StorySummary,
+} from "./types";
 
 export class ApiRequestError extends Error {
   status: number;
@@ -40,4 +52,31 @@ export function submitAction(storyId: string, envelope: ActionEnvelope): Promise
     headers: { "content-type": "application/json" },
     body: JSON.stringify(envelope),
   });
+}
+
+export function submitMeta(storyId: string, envelope: MetaEnvelope): Promise<MetaResponse> {
+  return request<MetaResponse>(`/api/stories/${encodeURIComponent(storyId)}/meta`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(envelope),
+  });
+}
+
+export function createSave(storyId: string, envelope: SaveEnvelope): Promise<SaveResponse> {
+  return request<SaveResponse>(`/api/stories/${encodeURIComponent(storyId)}/saves`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(envelope),
+  });
+}
+
+export function loadSave(storyId: string, envelope: LoadEnvelope): Promise<LoadResponse> {
+  return request<LoadResponse>(
+    `/api/stories/${encodeURIComponent(storyId)}/saves/${encodeURIComponent(envelope.save_id)}/load`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(envelope),
+    },
+  );
 }

@@ -1,5 +1,5 @@
 import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Search } from "lucide-react";
-import type { ModuleTab } from "./types";
+import type { MetaCommand, ModuleTab } from "./types";
 
 export interface CommandResult {
   handled?: boolean;
@@ -7,6 +7,8 @@ export interface CommandResult {
   overlay?: "help" | "saves";
   text?: string;
   notice?: string;
+  meta?: MetaCommand;
+  saveName?: string;
 }
 
 export const moduleSpecs: Array<{
@@ -36,15 +38,15 @@ export const slashCommands = [
   { name: "/fronts", hint: "Open fronts and hooks", aliases: ["/hooks", "/front"] },
   { name: "/investigations", hint: "Open investigations", aliases: [] },
   { name: "/projects", hint: "Open projects", aliases: [] },
-  { name: "/btw", hint: "Terminal-only contextual side question", aliases: [] },
-  { name: "/guide", hint: "Terminal-only future guidance", aliases: [] },
+  { name: "/btw", hint: "Ask a contextual side question", aliases: [] },
+  { name: "/guide", hint: "Store future-facing guidance", aliases: [] },
   { name: "/advance", hint: "Push to the next meaningful beat", aliases: [] },
   { name: "/timeskip", hint: "Jump ahead to a later meaningful moment", aliases: [] },
   { name: "/downtime", hint: "Request a quieter scene", aliases: [] },
-  { name: "/narrator", hint: "Terminal-only game master note", aliases: ["/n"] },
+  { name: "/narrator", hint: "Speak to the game master", aliases: ["/n"] },
   { name: "/craft", hint: "Open crafting context", aliases: ["/crafting"] },
   { name: "/talk", hint: "Talk to an NPC: /talk <npc> [intent] [message]", aliases: [] },
-  { name: "/save", hint: "Open read-only saved snapshots", aliases: [] },
+  { name: "/save", hint: "Create a manual save", aliases: [] },
   { name: "/load", hint: "Open saved snapshots", aliases: [] },
   { name: "/help", hint: "Show browser command help", aliases: [] },
   { name: "/quit", hint: "Leave from the terminal session menu", aliases: ["/q"] },
@@ -83,9 +85,6 @@ export const tabHotkeys: Record<string, ModuleTab> = moduleSpecs.reduce<Record<s
 }, {});
 
 const talkIntents = new Set(["ask", "probe", "bond", "bargain", "threaten", "promise", "lie", "confess"]);
-const terminalOnlyMetaNotice =
-  "This meta command is terminal-only in browser mode for now, so it was not submitted as a story action.";
-
 export function commandToAction(rawText: string): CommandResult {
   const text = rawText.trim();
   const lower = text.toLowerCase();
@@ -101,24 +100,26 @@ export function commandToAction(rawText: string): CommandResult {
     return { handled: true, tab: "saves", overlay: "saves" };
   }
   if (lower.startsWith("/save")) {
-    return {
-      handled: true,
-      tab: "saves",
-      overlay: "saves",
-      notice: "Browser save writes are not exposed yet. Existing saves are read-only here; create new saves from the terminal for now.",
-    };
+    const name = text.slice("/save".length).trim();
+    return { tab: "saves", overlay: "saves", saveName: name };
   }
   if (lower === "/quit" || lower === "/q") {
     return { handled: true, notice: "Quit remains a terminal session-menu action. Browser realtime sync stays connected." };
   }
   if (lower.startsWith("/btw")) {
-    return { handled: true, notice: terminalOnlyMetaNotice };
+    const value = text.slice("/btw".length).trim();
+    if (!value) return { handled: true, notice: "Usage: /btw <quick question about the current story>" };
+    return { meta: { kind: "btw", text: value } };
   }
   if (lower.startsWith("/guide")) {
-    return { handled: true, notice: terminalOnlyMetaNotice };
+    const value = text.slice("/guide".length).trim();
+    if (!value) return { handled: true, notice: "Usage: /guide <future beat or chapter wish>" };
+    return { meta: { kind: "guide", text: value } };
   }
   if (lower.startsWith("/narrator") || lower === "/n" || lower.startsWith("/n ")) {
-    return { handled: true, notice: terminalOnlyMetaNotice };
+    const value = lower.startsWith("/narrator") ? text.slice("/narrator".length).trim() : text.slice("/n".length).trim();
+    if (!value) return { handled: true, notice: "Usage: /n <message to the game master>" };
+    return { meta: { kind: "narrator", text: value } };
   }
   if (lower.startsWith("/advance")) {
     return { text: buildAdvanceSceneAction(text.slice("/advance".length).trim()) };
