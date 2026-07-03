@@ -37,6 +37,7 @@ import type {
   ModelSettingsUpdate,
   ModuleTab,
   OverlayKind,
+  PendingTurnView,
   PlayerAction,
   RecentCommand,
   SaveView,
@@ -60,6 +61,7 @@ function App() {
   const [notice, setNotice] = useState("");
   const [metaResult, setMetaResult] = useState<MetaResult | null>(null);
   const [sending, setSending] = useState(false);
+  const [pendingTurn, setPendingTurn] = useState<PendingTurnView | null>(null);
   const [paused, setPaused] = useState(false);
   const [hiddenBeforeMessageId, setHiddenBeforeMessageId] = useState(0);
   const [localCommands, setLocalCommands] = useState<RecentCommand[]>([]);
@@ -173,6 +175,7 @@ function App() {
       npcNames: snapshot ? npcNamesFromSnapshot(snapshot) : [],
       saveNames: snapshot ? saveNamesFromSnapshot(snapshot) : [],
       recentCommands: recentCommands.map((command) => command.text),
+      visiblePrivateThoughts: false,
     }),
     [recentCommands, snapshot],
   );
@@ -229,6 +232,8 @@ function App() {
     const commandResult = commandToAction(draft, {
       descriptors: commandDescriptors,
       npcNames: npcNamesFromSnapshot(snapshot),
+      saveNames: saveNamesFromSnapshot(snapshot),
+      visiblePrivateThoughts: false,
     });
     if (commandResult.tab) setSelectedTab(commandResult.tab);
     if (commandResult.overlay) setOverlay(commandResult.overlay);
@@ -269,6 +274,23 @@ function App() {
       choice.text,
     );
   };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const isEditing = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT";
+      if (isEditing || sending || !snapshot || !/^[1-6]$/.test(event.key)) return;
+
+      const keyNumber = Number.parseInt(event.key, 10);
+      const choice = snapshot.choices.find((item) => item.id === keyNumber) ?? snapshot.choices[keyNumber - 1];
+      if (!choice) return;
+
+      event.preventDefault();
+      void sendChoice(choice);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [sending, snapshot]);
 
   const sendMetaCommand = async (meta: MetaCommand, sourceText: string) => {
     if (!snapshot || !storyId || sending) return;
@@ -418,6 +440,13 @@ function App() {
       if (!readySnapshot) return;
       setSync("Sending");
       const currentTurn = readySnapshot.world.current_turn;
+      setPendingTurn({
+        id: clientId("pending"),
+        turn: currentTurn,
+        source: action.kind === "choice" ? action.text ?? sourceText.trim() : sourceText.trim(),
+        detail: action.kind === "choice" ? "Resolving selected choice through the live engine..." : "Waiting for final bridge response from OneDay...",
+        kind: action.kind,
+      });
       const response = await submitAction(storyId, {
         session_id: readySnapshot.active_session.id,
         client_turn: currentTurn,
@@ -438,6 +467,7 @@ function App() {
       await loadSnapshot().catch(() => undefined);
     } finally {
       setSending(false);
+      setPendingTurn(null);
     }
   };
 
@@ -560,7 +590,7 @@ function App() {
               </div>
             </div>
             <StoryPath snapshot={snapshot} />
-            <Transcript messages={snapshot?.messages ?? []} hiddenBeforeId={hiddenBeforeMessageId} />
+            <Transcript messages={snapshot?.messages ?? []} hiddenBeforeId={hiddenBeforeMessageId} pendingTurn={pendingTurn} />
           </section>
 
           <Composer
@@ -581,7 +611,7 @@ function App() {
               <div className="panel-head compact">
                 <h2>Suggested Actions</h2>
               </div>
-              <SuggestedActions choices={snapshot?.choices ?? []} snapshot={snapshot} onChoice={sendChoice} onDraft={setDraft} />
+              <SuggestedActions choices={snapshot?.choices ?? []} snapshot={snapshot} disabled={sending || !snapshot} onChoice={sendChoice} onDraft={setDraft} />
             </section>
             <section className="recent-panel">
               <div className="panel-head compact">

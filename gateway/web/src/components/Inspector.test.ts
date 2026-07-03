@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardsFromValue, meterRows, moduleTitle } from "./Inspector";
+import { cardsFromValue, isPlayerHiddenField, meterRows, moduleTitle, sanitizePlayerVisibleValue } from "./Inspector";
 import type { JsonValue, StorySnapshot } from "../types";
 
 describe("moduleTitle", () => {
@@ -47,6 +47,21 @@ describe("cardsFromValue", () => {
     expect(cardsFromValue(undefined, "Empty")).toEqual([]);
     expect(cardsFromValue({}, "Empty")).toEqual([]);
     expect(cardsFromValue("plain", "Value")).toEqual([{ title: "Value", rows: [["Value", "plain"]] }]);
+  });
+
+  it("filters player-hidden fields from cards and raw state", () => {
+    expect(isPlayerHiddenField("Private Thoughts")).toBe(true);
+    expect(isPlayerHiddenField("notes_on_protagonist")).toBe(true);
+    expect(isPlayerHiddenField("Appearance")).toBe(false);
+    expect(cardsFromValue([{ name: "Maren", private_thoughts: "betray them", appearance: "orange jacket" }], "Character")).toEqual([
+      {
+        title: "Maren",
+        rows: [["Appearance", "orange jacket"]],
+      },
+    ]);
+    expect(sanitizePlayerVisibleValue({ npcs: [{ name: "Maren", desires: ["hidden"], nested: { nemesis_json: { status: "active" } } }] })).toEqual({
+      npcs: [{ name: "Maren", nested: {} }],
+    });
   });
 });
 
