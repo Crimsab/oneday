@@ -24,13 +24,14 @@ type gatewayMetaResponse struct {
 }
 
 type gatewaySaveResponse struct {
-	Save  *contracts.BrowserSaveResponse `json:"save,omitempty"`
-	Error string                         `json:"error,omitempty"`
+	Save  *contracts.BrowserSaveView `json:"save,omitempty"`
+	Error string                     `json:"error,omitempty"`
 }
 
 type gatewayLoadResponse struct {
-	Load  *contracts.BrowserLoadResponse `json:"load,omitempty"`
-	Error string                         `json:"error,omitempty"`
+	Save   *contracts.BrowserSaveView `json:"save,omitempty"`
+	Legacy bool                       `json:"legacy,omitempty"`
+	Error  string                     `json:"error,omitempty"`
 }
 
 func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
@@ -83,7 +84,7 @@ func runGatewaySave(ctx context.Context, cfg config.Config, db *storage.DB, rout
 	if err != nil {
 		return writeGatewaySaveError(out, err)
 	}
-	if err := json.NewEncoder(out).Encode(gatewaySaveResponse{Save: resp}); err != nil {
+	if err := json.NewEncoder(out).Encode(gatewaySaveResponse{Save: &resp.Save}); err != nil {
 		return fmt.Errorf("writing gateway-save response: %w", err)
 	}
 	return nil
@@ -100,7 +101,7 @@ func runGatewayLoad(ctx context.Context, cfg config.Config, db *storage.DB, rout
 	if err != nil {
 		return writeGatewayLoadError(out, err)
 	}
-	if err := json.NewEncoder(out).Encode(gatewayLoadResponse{Load: resp}); err != nil {
+	if err := json.NewEncoder(out).Encode(gatewayLoadResponse{Save: &resp.Save, Legacy: resp.Legacy}); err != nil {
 		return fmt.Errorf("writing gateway-load response: %w", err)
 	}
 	return nil
