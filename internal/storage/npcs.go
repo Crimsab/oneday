@@ -146,7 +146,17 @@ func (db *DB) GetNPCByName(storyID, name string) (*NPC, error) {
 
 // ListNPCs returns all NPCs for a story, ordered by first_appeared_turn.
 func (db *DB) ListNPCs(storyID string) ([]NPC, error) {
-	rows, err := db.conn.Query(
+	return listNPCsQuery(db.conn, storyID)
+}
+
+func (db *DB) ListNPCsTx(tx *sql.Tx, storyID string) ([]NPC, error) {
+	return listNPCsQuery(tx, storyID)
+}
+
+func listNPCsQuery(queryer interface {
+	Query(query string, args ...any) (*sql.Rows, error)
+}, storyID string) ([]NPC, error) {
+	rows, err := queryer.Query(
 		`SELECT id, story_id, name, role, appearance, personality_json, private_thoughts,
          relationship_json, nemesis_json, notes_on_protagonist, desires, disposition, is_alive,
          first_appeared_turn, last_seen_turn, can_help, created_at, updated_at

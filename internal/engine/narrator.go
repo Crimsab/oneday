@@ -39,6 +39,7 @@ type TurnCommitResult struct {
 	SessionID   string
 	Turn        int
 	NextTurn    int
+	Revision    int64
 	Entry       ChatEntry
 	Narrative   *NarrativeResponse
 	World       *storage.WorldState
@@ -398,6 +399,9 @@ func (n *Narrator) sendTurn(ctx context.Context, input string) (*NarrativeRespon
 }
 
 func (n *Narrator) sendTurnUnlocked(ctx context.Context, input string, lock *storage.StoryTurnLock, hook TurnCommitHook) (*NarrativeResponse, error) {
+	if err := n.RefreshFromDB(); err != nil {
+		return nil, err
+	}
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
 		return nil, err
@@ -421,6 +425,11 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 	}
 	heartbeat := lock.StartHeartbeat(ctx, time.Minute, 3*time.Minute)
 
+	if err := n.RefreshFromDB(); err != nil {
+		_ = heartbeat.Stop()
+		_ = lock.Release()
+		return nil, err
+	}
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
 		_ = heartbeat.Stop()
@@ -539,6 +548,7 @@ func (n *Narrator) acquireTurnLock(ctx context.Context) (*storage.StoryTurnLock,
 type preparedTurn struct {
 	inputType        string
 	currentTurn      int
+	storyRevision    int64
 	req              ai.Request
 	preflightUsage   ai.Usage
 	preflightLatency int64
@@ -555,6 +565,10 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 
 	// Current turn number (used for NPC context and state changes).
 	currentTurn := n.session.Turn()
+	storyRevision := int64(0)
+	if n.story != nil {
+		storyRevision = n.story.Revision
+	}
 
 	// Load recent messages from DB to build context.
 	recentMsgs, err := n.db.GetRecentMessages(n.session.SessionID(), n.contextCfg.RecentMessageCount)
@@ -610,6 +624,7 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 	return &preparedTurn{
 		inputType:        inputType,
 		currentTurn:      currentTurn,
+		storyRevision:    storyRevision,
 		preflightUsage:   preflightUsage,
 		preflightLatency: preflightLatency,
 		recentMessages:   recentMsgs,
@@ -747,14 +762,16 @@ func (n *Narrator) finalizeTurn(
 	}
 
 	// Handle chapter end if AI signalled one.
+	var chapterTransition *ChapterTransition
 	if narrative.ChapterEnd && n.chapters != nil {
 		title := narrative.ChapterTitle
 		if title == "" {
 			title = fmt.Sprintf("Chapter %d", n.world.CurrentChapter)
 		}
-		if err := n.chapters.HandleChapterEnd(ctx, prep.currentTurn, title); err != nil {
+		if transition, err := n.chapters.PrepareChapterEnd(ctx, prep.currentTurn, title); err != nil {
 			_ = err // non-fatal: chapter management failure does not break gameplay
 		} else {
+			chapterTransition = transition
 			n.world.CurrentChapter++
 		}
 	}
@@ -801,7 +818,11 @@ func (n *Narrator) finalizeTurn(
 		AIStreamed: n.lastStreamed,
 	}
 	settingChanged := storySnapshot.SettingJSON != n.story.SettingJSON
+	var committedRevision int64
 	beforeCommit := func(tx *sql.Tx) error {
+		if err := n.db.RequireStoryRevisionTx(tx, n.story.ID, prep.storyRevision); err != nil {
+			return err
+		}
 		if npcRecorder != nil {
 			if err := npcRecorder.Commit(txNPCStore{db: n.db, tx: tx}); err != nil {
 				return err
@@ -812,17 +833,38 @@ func (n *Narrator) finalizeTurn(
 				return err
 			}
 		}
+		if chapterTransition != nil && n.chapters != nil {
+			if err := n.chapters.CommitChapterEndTx(tx, chapterTransition); err != nil {
+				return err
+			}
+		}
+		if narrative.AchievementEarned != nil {
+			narrative.PersistedAchievement = ValidateAndPersistAchievementTx(n.db, tx, n.story.ID, narrative.AchievementEarned)
+		}
+		if narrative.Narrative != "" {
+			if err := UpdateNPCLastSeenTx(n.db, tx, n.story.ID, narrative.Narrative, prep.currentTurn); err != nil {
+				return err
+			}
+		}
+		nextRevision, err := n.db.BumpStoryRevisionTx(tx, n.story.ID)
+		if err != nil {
+			return err
+		}
+		committedRevision = nextRevision
+		storyForResult := *n.story
+		storyForResult.Revision = nextRevision
 		if hook != nil {
 			if err := hook(tx, TurnCommitResult{
 				StoryID:     n.story.ID,
 				SessionID:   n.session.SessionID(),
 				Turn:        prep.currentTurn,
 				NextTurn:    n.world.CurrentTurn,
+				Revision:    nextRevision,
 				Entry:       entry,
 				Narrative:   narrative,
 				World:       n.world,
 				Character:   n.character,
-				Story:       n.story,
+				Story:       &storyForResult,
 				AIModel:     resp.Model,
 				AILatencyMS: n.lastLatency,
 			}); err != nil {
@@ -839,20 +881,15 @@ func (n *Narrator) finalizeTurn(
 			return nil, fmt.Errorf("committing canonical turn %d: %w", prep.currentTurn, err)
 		}
 	}
-
-	// Process achievement_earned from AI only after the canonical turn is committed.
-	if narrative.AchievementEarned != nil {
-		if persisted := ValidateAndPersistAchievement(n.db, n.story.ID, narrative.AchievementEarned); persisted != nil {
-			narrative.PersistedAchievement = persisted
-			n.rememberAchievement(persisted)
-		}
+	if committedRevision > 0 {
+		n.story.Revision = committedRevision
+	}
+	if chapterTransition != nil && n.chapters != nil {
+		n.chapters.StoreChapterTransitionAsync(chapterTransition)
 	}
 
-	// Update last_seen_turn for any NPCs mentioned by name in the narrative text.
-	if narrative.Narrative != "" {
-		if err := UpdateNPCLastSeen(n.db, n.story.ID, narrative.Narrative, prep.currentTurn); err != nil {
-			log.Printf("oneday: npc last_seen update failed for story %s turn %d: %v", n.story.ID, prep.currentTurn, err)
-		}
+	if narrative.PersistedAchievement != nil {
+		n.rememberAchievement(narrative.PersistedAchievement)
 	}
 
 	// Async RAG summarization — fire-and-forget after turn is persisted.
@@ -894,19 +931,22 @@ func (n *Narrator) ShouldAutosave() bool {
 func (n *Narrator) AutosaveCmd() tea.Cmd {
 	db := n.db
 	dataDir := n.dataDir
-	story := n.story
-	// Take snapshots of current state to avoid races.
-	char := *n.character
-	world := *n.world
-	sessionID := n.session.SessionID()
-	meta := n.BuildSaveMetadata("autosave")
+	storyID := n.story.ID
+	narrator := n
 
 	return func() tea.Msg {
-		err := WithStoryMutationLease(context.Background(), db, story.ID, "autosave", "terminal", func(lease *StoryMutationLease) error {
+		err := WithStoryMutationLease(context.Background(), db, storyID, "autosave", "terminal", func(lease *StoryMutationLease) error {
 			if err := lease.Renew(); err != nil {
 				return err
 			}
-			return AutosaveWithMetadata(db, dataDir, story, &char, &world, sessionID, meta)
+			if err := narrator.RefreshFromDB(); err != nil {
+				return err
+			}
+			char := *narrator.character
+			world := *narrator.world
+			sessionID := narrator.session.SessionID()
+			meta := narrator.BuildSaveMetadata("autosave")
+			return AutosaveWithMetadata(db, dataDir, narrator.story, &char, &world, sessionID, meta)
 		})
 		return AutosaveCompleteMsg{Err: err}
 	}

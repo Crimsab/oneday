@@ -7,6 +7,7 @@ use anyhow::Context;
 use axum::Router;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use std::net::SocketAddr;
+use std::process::Command;
 use std::sync::Arc;
 use tracing_subscriber::EnvFilter;
 
@@ -25,6 +26,7 @@ async fn main() -> anyhow::Result<()> {
     let args = config::Args::parse_args();
     let paths = config::resolve_paths(&args).context("resolving OneDay gateway paths")?;
     let addr: SocketAddr = args.addr.parse().context("parsing --addr")?;
+    run_schema_preflight(&paths).context("running OneDay schema preflight")?;
 
     let db_options = SqliteConnectOptions::new()
         .filename(&paths.db_path)
@@ -48,6 +50,24 @@ async fn main() -> anyhow::Result<()> {
         .with_graceful_shutdown(shutdown_signal())
         .await
         .context("serving gateway")?;
+    Ok(())
+}
+
+fn run_schema_preflight(paths: &config::ResolvedPaths) -> anyhow::Result<()> {
+    let output = Command::new(&paths.oneday_bin)
+        .arg("gateway-schema-preflight")
+        .env("ONEDAY_CONFIG", &paths.config_path)
+        .current_dir(&paths.oneday_root)
+        .output()
+        .with_context(|| format!("starting {}", paths.oneday_bin.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow::anyhow!(
+            "schema preflight failed with status {}: {}",
+            output.status,
+            stderr.trim()
+        ));
+    }
     Ok(())
 }
 

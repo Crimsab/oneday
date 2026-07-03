@@ -28,6 +28,7 @@ fn bridge_error(code: impl Into<String>, message: impl Into<String>) -> anyhow::
 pub struct ActionEnvelope {
     pub session_id: String,
     pub client_turn: i64,
+    pub client_revision: i64,
     #[serde(default)]
     pub idempotency_key: String,
     pub action: PlayerAction,
@@ -60,6 +61,7 @@ pub struct ClientCapabilities {
 pub struct MetaEnvelope {
     pub session_id: String,
     pub client_turn: i64,
+    pub client_revision: i64,
     pub kind: String,
     #[serde(default)]
     pub text: String,
@@ -69,6 +71,7 @@ pub struct MetaEnvelope {
 pub struct SaveEnvelope {
     pub session_id: String,
     pub client_turn: i64,
+    pub client_revision: i64,
     #[serde(default)]
     pub name: String,
     #[serde(default = "default_save_kind")]
@@ -79,6 +82,7 @@ pub struct SaveEnvelope {
 pub struct LoadEnvelope {
     pub session_id: String,
     pub client_turn: i64,
+    pub client_revision: i64,
     pub save_id: String,
 }
 
@@ -86,6 +90,7 @@ pub struct LoadEnvelope {
 pub struct DeleteSaveEnvelope {
     pub session_id: String,
     pub client_turn: i64,
+    pub client_revision: i64,
     pub save_id: String,
 }
 
@@ -94,6 +99,7 @@ struct GatewayTurnRequest<'a> {
     story_id: &'a str,
     session_id: &'a str,
     client_turn: i64,
+    client_revision: i64,
     idempotency_key: &'a str,
     action: &'a PlayerAction,
     stream: bool,
@@ -105,6 +111,7 @@ struct GatewayMetaRequest<'a> {
     story_id: &'a str,
     session_id: &'a str,
     client_turn: i64,
+    client_revision: i64,
     kind: &'a str,
     text: &'a str,
 }
@@ -114,6 +121,7 @@ struct GatewaySaveRequest<'a> {
     story_id: &'a str,
     session_id: &'a str,
     client_turn: i64,
+    client_revision: i64,
     name: &'a str,
     kind: &'a str,
 }
@@ -123,6 +131,7 @@ struct GatewayLoadRequest<'a> {
     story_id: &'a str,
     session_id: &'a str,
     client_turn: i64,
+    client_revision: i64,
     save_id: &'a str,
 }
 
@@ -131,6 +140,7 @@ struct GatewayDeleteSaveRequest<'a> {
     story_id: &'a str,
     session_id: &'a str,
     client_turn: i64,
+    client_revision: i64,
     save_id: &'a str,
 }
 
@@ -403,6 +413,7 @@ pub async fn submit_action(
         story_id,
         session_id: &envelope.session_id,
         client_turn: envelope.client_turn,
+        client_revision: envelope.client_revision,
         idempotency_key: &envelope.idempotency_key,
         action: &envelope.action,
         stream: envelope.stream,
@@ -429,6 +440,7 @@ pub async fn submit_meta(
         story_id,
         session_id: &envelope.session_id,
         client_turn: envelope.client_turn,
+        client_revision: envelope.client_revision,
         kind: &envelope.kind,
         text: &envelope.text,
     };
@@ -452,6 +464,7 @@ pub async fn create_save(
         story_id,
         session_id: &envelope.session_id,
         client_turn: envelope.client_turn,
+        client_revision: envelope.client_revision,
         name: &envelope.name,
         kind: &envelope.kind,
     };
@@ -475,6 +488,7 @@ pub async fn load_save(
         story_id,
         session_id: &envelope.session_id,
         client_turn: envelope.client_turn,
+        client_revision: envelope.client_revision,
         save_id: &envelope.save_id,
     };
     let (parsed, status_ok, stderr) =
@@ -497,6 +511,7 @@ pub async fn delete_save(
         story_id,
         session_id: &envelope.session_id,
         client_turn: envelope.client_turn,
+        client_revision: envelope.client_revision,
         save_id: &envelope.save_id,
     };
     let (parsed, status_ok, stderr) =

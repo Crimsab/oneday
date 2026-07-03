@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -73,10 +74,18 @@ func (s SaveSnapshot) Metadata() *SaveMetadata {
 
 // CreateSave inserts a new save snapshot into the DB.
 func (db *DB) CreateSave(s *SaveSnapshot) error {
+	return createSaveExec(db.conn, s)
+}
+
+func (db *DB) CreateSaveTx(tx *sql.Tx, s *SaveSnapshot) error {
+	return createSaveExec(tx, s)
+}
+
+func createSaveExec(exec sqlExecer, s *SaveSnapshot) error {
 	if s.MetadataJSON == "" {
 		s.MetadataJSON = "{}"
 	}
-	_, err := db.conn.Exec(
+	_, err := exec.Exec(
 		`INSERT INTO saves (id, story_id, name, turn, chapter, location, character_json, world_state_json, session_id, metadata_json, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.StoryID, s.Name, s.Turn, s.Chapter, s.Location,
@@ -127,7 +136,15 @@ func (db *DB) ListSaves(storyID string) ([]SaveSnapshot, error) {
 
 // DeleteSave removes a save by ID.
 func (db *DB) DeleteSave(id string) error {
-	_, err := db.conn.Exec(`DELETE FROM saves WHERE id = ?`, id)
+	return deleteSaveExec(db.conn, id)
+}
+
+func (db *DB) DeleteSaveTx(tx *sql.Tx, id string) error {
+	return deleteSaveExec(tx, id)
+}
+
+func deleteSaveExec(exec sqlExecer, id string) error {
+	_, err := exec.Exec(`DELETE FROM saves WHERE id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("deleting save %s: %w", id, err)
 	}

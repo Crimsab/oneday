@@ -114,6 +114,7 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 		StoryID:        "story-browser",
 		SessionID:      snapshot.SessionID,
 		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
 		IdempotencyKey: "request-1",
 		Action: contracts.PlayerAction{
 			Kind: contracts.ActionKindFreeText,
@@ -169,6 +170,7 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 		StoryID:        "story-browser",
 		SessionID:      snapshot.SessionID,
 		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
 		IdempotencyKey: "request-1",
 		Action: contracts.PlayerAction{
 			Kind: contracts.ActionKindFreeText,
@@ -195,6 +197,7 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 		StoryID:        "story-browser",
 		SessionID:      snapshot.SessionID,
 		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
 		IdempotencyKey: "request-1",
 		Action: contracts.PlayerAction{
 			Kind: contracts.ActionKindFreeText,
@@ -238,6 +241,7 @@ func TestInProcessTurnServiceConcurrentSubmissionsSerializeAcrossInstances(t *te
 			StoryID:        "story-race",
 			SessionID:      snapshot.SessionID,
 			ClientTurn:     snapshot.Turn,
+			ClientRevision: snapshot.Revision,
 			IdempotencyKey: key,
 			Action: contracts.PlayerAction{
 				Kind: contracts.ActionKindFreeText,
@@ -340,6 +344,7 @@ func TestInProcessTurnServiceConcurrentSameIdempotencyReplaysCommittedTurn(t *te
 		StoryID:        "story-same-idem",
 		SessionID:      snapshot.SessionID,
 		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
 		IdempotencyKey: "same-key",
 		Action: contracts.PlayerAction{
 			Kind: contracts.ActionKindFreeText,
@@ -452,10 +457,11 @@ func TestInProcessTurnServiceMetaCommandsDoNotAdvanceTurnForUsagePrompts(t *test
 	}
 	for _, tc := range tests {
 		resp, err := svc.SubmitMeta(context.Background(), contracts.BrowserMetaRequest{
-			StoryID:    "story-meta",
-			SessionID:  snapshot.SessionID,
-			ClientTurn: snapshot.Turn,
-			Kind:       tc.kind,
+			StoryID:        "story-meta",
+			SessionID:      snapshot.SessionID,
+			ClientTurn:     snapshot.Turn,
+			ClientRevision: snapshot.Revision,
+			Kind:           tc.kind,
 		})
 		if err != nil {
 			t.Fatalf("SubmitMeta(%s): %v", tc.kind, err)
@@ -494,11 +500,12 @@ func TestInProcessTurnServiceCreateAndLoadSave(t *testing.T) {
 		t.Fatalf("Snapshot: %v", err)
 	}
 	saveResp, err := svc.CreateSave(context.Background(), contracts.BrowserSaveRequest{
-		StoryID:    "story-save",
-		SessionID:  snapshot.SessionID,
-		ClientTurn: snapshot.Turn,
-		Name:       "Browser Slot",
-		Kind:       "manual",
+		StoryID:        "story-save",
+		SessionID:      snapshot.SessionID,
+		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
+		Name:           "Browser Slot",
+		Kind:           "manual",
 	})
 	if err != nil {
 		t.Fatalf("CreateSave: %v", err)
@@ -521,10 +528,11 @@ func TestInProcessTurnServiceCreateAndLoadSave(t *testing.T) {
 		t.Fatalf("Snapshot after mutate: %v", err)
 	}
 	loadResp, err := svc.LoadSave(context.Background(), contracts.BrowserLoadRequest{
-		StoryID:    "story-save",
-		SessionID:  latest.SessionID,
-		ClientTurn: latest.Turn,
-		SaveID:     saveResp.Save.ID,
+		StoryID:        "story-save",
+		SessionID:      latest.SessionID,
+		ClientTurn:     latest.Turn,
+		ClientRevision: latest.Revision,
+		SaveID:         saveResp.Save.ID,
 	})
 	if err != nil {
 		t.Fatalf("LoadSave: %v", err)
@@ -556,21 +564,27 @@ func TestInProcessTurnServiceDeleteSave(t *testing.T) {
 		t.Fatalf("Snapshot: %v", err)
 	}
 	saveResp, err := svc.CreateSave(context.Background(), contracts.BrowserSaveRequest{
-		StoryID:    "story-delete-save",
-		SessionID:  snapshot.SessionID,
-		ClientTurn: snapshot.Turn,
-		Name:       "Delete Me",
-		Kind:       "manual",
+		StoryID:        "story-delete-save",
+		SessionID:      snapshot.SessionID,
+		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
+		Name:           "Delete Me",
+		Kind:           "manual",
 	})
 	if err != nil {
 		t.Fatalf("CreateSave: %v", err)
 	}
 
+	latest, err := svc.Snapshot(context.Background(), "story-delete-save")
+	if err != nil {
+		t.Fatalf("Snapshot after create save: %v", err)
+	}
 	deleteResp, err := svc.DeleteSave(context.Background(), contracts.BrowserDeleteSaveRequest{
-		StoryID:    "story-delete-save",
-		SessionID:  snapshot.SessionID,
-		ClientTurn: snapshot.Turn,
-		SaveID:     saveResp.Save.ID,
+		StoryID:        "story-delete-save",
+		SessionID:      latest.SessionID,
+		ClientTurn:     latest.Turn,
+		ClientRevision: latest.Revision,
+		SaveID:         saveResp.Save.ID,
 	})
 	if err != nil {
 		t.Fatalf("DeleteSave: %v", err)
@@ -587,6 +601,172 @@ func TestInProcessTurnServiceDeleteSave(t *testing.T) {
 	}
 	if len(saves) != 0 {
 		t.Fatalf("saves after delete = %d, want 0", len(saves))
+	}
+}
+
+func TestInProcessTurnServiceRejectsStaleClientRevisionAtSameTurn(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-stale-revision", 2)
+
+	provider := &fakeTurnProvider{}
+	router, err := ai.NewRouter([]ai.Provider{provider})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+
+	svc := NewInProcessTurnService(cfg, db, router)
+	snapshot, err := svc.Snapshot(context.Background(), "story-stale-revision")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	if _, err := db.BumpStoryRevision("story-stale-revision"); err != nil {
+		t.Fatalf("BumpStoryRevision: %v", err)
+	}
+
+	_, err = svc.SubmitAction(context.Background(), contracts.SubmitActionRequest{
+		StoryID:        "story-stale-revision",
+		SessionID:      snapshot.SessionID,
+		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
+		IdempotencyKey: "stale-revision-key",
+		Action: contracts.PlayerAction{
+			Kind: contracts.ActionKindFreeText,
+			Text: "I act on the old branch.",
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "stale client_revision") {
+		t.Fatalf("SubmitAction err = %v, want stale client_revision", err)
+	}
+	if provider.callCount() != 0 {
+		t.Fatalf("provider calls = %d, want 0", provider.callCount())
+	}
+}
+
+func TestInProcessTurnServiceRejectsSameIdempotencyKeyDifferentAction(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-idem-conflict", 0)
+
+	provider := &fakeTurnProvider{}
+	router, err := ai.NewRouter([]ai.Provider{provider})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+
+	svc := NewInProcessTurnService(cfg, db, router)
+	snapshot, err := svc.Snapshot(context.Background(), "story-idem-conflict")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	first := contracts.SubmitActionRequest{
+		StoryID:        "story-idem-conflict",
+		SessionID:      snapshot.SessionID,
+		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
+		IdempotencyKey: "same-key-different-action",
+		Action: contracts.PlayerAction{
+			Kind: contracts.ActionKindFreeText,
+			Text: "Open the door.",
+		},
+	}
+	stream, err := svc.SubmitAction(context.Background(), first)
+	if err != nil {
+		t.Fatalf("SubmitAction first: %v", err)
+	}
+	_ = collectTurnEvents(stream)
+
+	second := first
+	second.Action.Text = "Attack the guard."
+	_, err = svc.SubmitAction(context.Background(), second)
+	if err == nil || !strings.Contains(err.Error(), "turn idempotency key belongs to a different request") {
+		t.Fatalf("SubmitAction conflict err = %v, want idempotency conflict", err)
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("provider calls = %d, want 1", provider.callCount())
+	}
+}
+
+func TestInProcessTurnServiceLoadClearsFutureIdempotencyReplay(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-load-clears-idem", 0)
+
+	provider := &fakeTurnProvider{}
+	router, err := ai.NewRouter([]ai.Provider{provider})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+
+	svc := NewInProcessTurnService(cfg, db, router)
+	initial, err := svc.Snapshot(context.Background(), "story-load-clears-idem")
+	if err != nil {
+		t.Fatalf("initial Snapshot: %v", err)
+	}
+	saveResp, err := svc.CreateSave(context.Background(), contracts.BrowserSaveRequest{
+		StoryID:        "story-load-clears-idem",
+		SessionID:      initial.SessionID,
+		ClientTurn:     initial.Turn,
+		ClientRevision: initial.Revision,
+		Name:           "Before Future Turn",
+		Kind:           "manual",
+	})
+	if err != nil {
+		t.Fatalf("CreateSave: %v", err)
+	}
+	beforeTurn, err := svc.Snapshot(context.Background(), "story-load-clears-idem")
+	if err != nil {
+		t.Fatalf("Snapshot before turn: %v", err)
+	}
+	req := contracts.SubmitActionRequest{
+		StoryID:        "story-load-clears-idem",
+		SessionID:      beforeTurn.SessionID,
+		ClientTurn:     beforeTurn.Turn,
+		ClientRevision: beforeTurn.Revision,
+		IdempotencyKey: "future-key",
+		Action: contracts.PlayerAction{
+			Kind: contracts.ActionKindFreeText,
+			Text: "Create a future branch.",
+		},
+	}
+	stream, err := svc.SubmitAction(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SubmitAction future branch: %v", err)
+	}
+	_ = collectTurnEvents(stream)
+
+	afterTurn, err := svc.Snapshot(context.Background(), "story-load-clears-idem")
+	if err != nil {
+		t.Fatalf("Snapshot after turn: %v", err)
+	}
+	if _, err := svc.LoadSave(context.Background(), contracts.BrowserLoadRequest{
+		StoryID:        "story-load-clears-idem",
+		SessionID:      afterTurn.SessionID,
+		ClientTurn:     afterTurn.Turn,
+		ClientRevision: afterTurn.Revision,
+		SaveID:         saveResp.Save.ID,
+	}); err != nil {
+		t.Fatalf("LoadSave: %v", err)
+	}
+
+	_, err = svc.SubmitAction(context.Background(), req)
+	if err == nil || !strings.Contains(err.Error(), "stale client_revision") {
+		t.Fatalf("SubmitAction after load err = %v, want stale client_revision without replay", err)
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("provider calls = %d, want 1", provider.callCount())
 	}
 }
 

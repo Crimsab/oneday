@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -19,6 +20,14 @@ type ChapterManager struct {
 	storyID string
 	rag     *rag.RAG // optional — for embedding chapter summaries
 	router  *ai.Router
+}
+
+type ChapterTransition struct {
+	Current        storage.Chapter
+	CreatedCurrent bool
+	Next           storage.Chapter
+	Summary        string
+	CurrentTurn    int
 }
 
 // NewChapterManager creates a new ChapterManager.
@@ -68,11 +77,26 @@ func (cm *ChapterManager) EnsureCurrentChapter(startTurn int) error {
 // HandleChapterEnd closes the current chapter (generating an AI summary) and opens the next one.
 // chapterTitle is provided by the AI in the response. currentTurn is the turn number at chapter end.
 func (cm *ChapterManager) HandleChapterEnd(ctx context.Context, currentTurn int, chapterTitle string) error {
+	transition, err := cm.PrepareChapterEnd(ctx, currentTurn, chapterTitle)
+	if err != nil {
+		return err
+	}
+	if err := cm.db.WithTx(func(tx *sql.Tx) error {
+		return cm.CommitChapterEndTx(tx, transition)
+	}); err != nil {
+		return err
+	}
+	cm.StoreChapterTransitionAsync(transition)
+	return nil
+}
+
+func (cm *ChapterManager) PrepareChapterEnd(ctx context.Context, currentTurn int, chapterTitle string) (*ChapterTransition, error) {
 	// Get the current open chapter.
 	current, err := cm.db.GetCurrentChapter(cm.storyID)
 	if err != nil {
-		return fmt.Errorf("getting current chapter: %w", err)
+		return nil, fmt.Errorf("getting current chapter: %w", err)
 	}
+	createdCurrent := false
 	if current == nil {
 		// No open chapter — create one and close it immediately.
 		current = &storage.Chapter{
@@ -82,17 +106,12 @@ func (cm *ChapterManager) HandleChapterEnd(ctx context.Context, currentTurn int,
 			StartTurn:     0,
 			CreatedAt:     time.Now(),
 		}
-		if err := cm.db.CreateChapter(current); err != nil {
-			return fmt.Errorf("creating chapter for end: %w", err)
-		}
+		createdCurrent = true
 	}
 
 	// Update title if provided.
 	if chapterTitle != "" && chapterTitle != current.Title {
 		current.Title = chapterTitle
-		if err := cm.db.UpdateChapterTitle(cm.storyID, current.ChapterNumber, chapterTitle); err != nil {
-			_ = err // non-fatal
-		}
 	}
 
 	// Fetch messages for this chapter to generate a summary.
@@ -100,20 +119,6 @@ func (cm *ChapterManager) HandleChapterEnd(ctx context.Context, currentTurn int,
 	if err != nil {
 		// Non-fatal: store empty summary.
 		summary = ""
-	}
-
-	// Close the current chapter.
-	if err := cm.db.UpdateChapterEnd(cm.storyID, current.ChapterNumber, currentTurn, summary); err != nil {
-		return fmt.Errorf("closing chapter %d: %w", current.ChapterNumber, err)
-	}
-
-	// Embed the chapter summary into RAG for long-term memory.
-	if cm.rag != nil && summary != "" {
-		chunkText := fmt.Sprintf("[Chapter %d: %s]\n%s", current.ChapterNumber, current.Title, summary)
-		go func() {
-			bgCtx := context.Background()
-			_ = cm.rag.StoreChunk(bgCtx, cm.storyID, chunkText, "chapter", current.StartTurn, currentTurn)
-		}()
 	}
 
 	// Open the next chapter.
@@ -126,11 +131,50 @@ func (cm *ChapterManager) HandleChapterEnd(ctx context.Context, currentTurn int,
 		StartTurn:     currentTurn + 1,
 		CreatedAt:     time.Now(),
 	}
-	if err := cm.db.CreateChapter(nextChapter); err != nil {
-		return fmt.Errorf("creating chapter %d: %w", nextNum, err)
-	}
 
+	return &ChapterTransition{
+		Current:        *current,
+		CreatedCurrent: createdCurrent,
+		Next:           *nextChapter,
+		Summary:        summary,
+		CurrentTurn:    currentTurn,
+	}, nil
+}
+
+func (cm *ChapterManager) CommitChapterEndTx(tx *sql.Tx, transition *ChapterTransition) error {
+	if transition == nil {
+		return nil
+	}
+	current := transition.Current
+	if transition.CreatedCurrent {
+		if err := cm.db.CreateChapterTx(tx, &current); err != nil {
+			return fmt.Errorf("creating chapter for end: %w", err)
+		}
+	} else {
+		if err := cm.db.UpdateChapterTitleTx(tx, cm.storyID, current.ChapterNumber, current.Title); err != nil {
+			return fmt.Errorf("updating chapter %d title: %w", current.ChapterNumber, err)
+		}
+	}
+	if err := cm.db.UpdateChapterEndTx(tx, cm.storyID, current.ChapterNumber, transition.CurrentTurn, transition.Summary); err != nil {
+		return fmt.Errorf("closing chapter %d: %w", current.ChapterNumber, err)
+	}
+	next := transition.Next
+	if err := cm.db.CreateChapterTx(tx, &next); err != nil {
+		return fmt.Errorf("creating chapter %d: %w", next.ChapterNumber, err)
+	}
 	return nil
+}
+
+func (cm *ChapterManager) StoreChapterTransitionAsync(transition *ChapterTransition) {
+	if cm == nil || cm.rag == nil || transition == nil || transition.Summary == "" {
+		return
+	}
+	current := transition.Current
+	chunkText := fmt.Sprintf("[Chapter %d: %s]\n%s", current.ChapterNumber, current.Title, transition.Summary)
+	go func() {
+		bgCtx := context.Background()
+		_ = cm.rag.StoreChunk(bgCtx, cm.storyID, chunkText, "chapter", current.StartTurn, transition.CurrentTurn)
+	}()
 }
 
 // GetChapterSummaries returns all chapter summaries formatted for display (e.g., /journal).

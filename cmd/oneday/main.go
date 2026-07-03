@@ -121,6 +121,14 @@ func main() {
 	}
 	defer db.Close()
 
+	if wantsGatewaySchemaPreflight(os.Args[1:]) {
+		if err := runGatewaySchemaPreflight(os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway schema preflight failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	// Create AI router
 	router, err := aifactory.NewRouterFromConfig(cfg)
 	if err != nil {
@@ -288,6 +296,10 @@ func wantsExport(args []string) bool {
 
 func wantsGatewayCommandDescriptors(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-command-descriptors"
+}
+
+func wantsGatewaySchemaPreflight(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-schema-preflight"
 }
 
 func wantsGatewayModelSettings(args []string) bool {
