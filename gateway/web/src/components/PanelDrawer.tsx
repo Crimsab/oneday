@@ -148,6 +148,10 @@ function OptionsContent({
           </select>
         </label>
         <label className="toggle-row">
+          <span>Stories sidebar</span>
+          <input type="checkbox" checked={preferences.showLeftRail} onChange={(event) => update("showLeftRail", event.target.checked)} />
+        </label>
+        <label className="toggle-row">
           <span>Inspector panel</span>
           <input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} />
         </label>

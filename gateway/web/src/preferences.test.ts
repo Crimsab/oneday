@@ -10,6 +10,7 @@ describe("normalizePreferences", () => {
         density: "compact",
         fontSize: "large",
         accent: "blue",
+        showLeftRail: false,
         showInspector: false,
         wrapTranscript: false,
       }),
@@ -17,6 +18,7 @@ describe("normalizePreferences", () => {
       density: "compact",
       fontSize: "large",
       accent: "blue",
+      showLeftRail: false,
       showInspector: false,
       wrapTranscript: false,
     });
@@ -26,6 +28,7 @@ describe("normalizePreferences", () => {
         density: "wide" as never,
         fontSize: "huge" as never,
         accent: "orange" as never,
+        showLeftRail: "yes" as never,
         showInspector: "yes" as never,
         wrapTranscript: "no" as never,
       }),

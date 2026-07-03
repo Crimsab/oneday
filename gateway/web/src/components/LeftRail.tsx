@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Search, Users } from "lucide-react";
+import { PanelLeftOpen, Plus, RefreshCw, Search, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import { asArray, compactText, entryLabel, fieldRows } from "../format";
 import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary } from "../types";
@@ -104,6 +104,40 @@ export function LeftRail({
           </div>
         )}
       </section>
+    </aside>
+  );
+}
+
+interface CollapsedLeftRailProps {
+  selectedTab: ModuleTab;
+  onSelectTab: (tab: ModuleTab) => void;
+  onExpand: () => void;
+  onOpen: (overlay: OverlayKind) => void;
+}
+
+export function CollapsedLeftRail({ selectedTab, onSelectTab, onExpand, onOpen }: CollapsedLeftRailProps) {
+  return (
+    <aside className="left-rail-collapsed" aria-label="Collapsed story rail">
+      <button type="button" className="rail-icon-button" onClick={onExpand} title="Open stories sidebar ([)">
+        <PanelLeftOpen size={18} />
+      </button>
+      <button type="button" className="rail-icon-button" onClick={() => onOpen("new-story")} title="New story">
+        <Plus size={17} />
+      </button>
+      <div className="collapsed-module-stack">
+        {moduleSpecs.map(({ tab, label, hotkey, Icon }) => (
+          <button
+            type="button"
+            key={tab}
+            className={selectedTab === tab ? "active" : ""}
+            onClick={() => onSelectTab(tab)}
+            title={`${label} (${hotkey})`}
+          >
+            <Icon size={17} />
+            <kbd>{hotkey}</kbd>
+          </button>
+        ))}
+      </div>
     </aside>
   );
 }

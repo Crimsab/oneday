@@ -1,14 +1,18 @@
-import { HelpCircle, Save, Settings } from "lucide-react";
+import { HelpCircle, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Save, Settings } from "lucide-react";
 import { deriveCondition, displayClock, weatherLabel } from "../format";
 import type { OverlayKind, StorySnapshot, SyncState } from "../types";
 
 interface TopBarProps {
   snapshot: StorySnapshot | null;
   sync: SyncState;
+  showLeftRail: boolean;
+  showInspector: boolean;
+  onToggleLeftRail: () => void;
+  onToggleInspector: () => void;
   onOpen: (overlay: OverlayKind) => void;
 }
 
-export function TopBar({ snapshot, sync, onOpen }: TopBarProps) {
+export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLeftRail, onToggleInspector, onOpen }: TopBarProps) {
   const clock = displayClock(snapshot?.world.current_turn ?? 0);
   const condition = deriveCondition(snapshot);
   const weather = weatherLabel(snapshot);
@@ -31,6 +35,24 @@ export function TopBar({ snapshot, sync, onOpen }: TopBarProps) {
         </div>
       </div>
       <div className="top-actions">
+        <button
+          className="square-button"
+          type="button"
+          onClick={onToggleLeftRail}
+          title={`${showLeftRail ? "Collapse" : "Open"} stories sidebar ([)`}
+          aria-label={`${showLeftRail ? "Collapse" : "Open"} stories sidebar`}
+        >
+          {showLeftRail ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+        </button>
+        <button
+          className="square-button"
+          type="button"
+          onClick={onToggleInspector}
+          title={`${showInspector ? "Collapse" : "Open"} inspector (])`}
+          aria-label={`${showInspector ? "Collapse" : "Open"} inspector`}
+        >
+          {showInspector ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+        </button>
         <button className="chrome-button" type="button" onClick={() => onOpen("saves")}>
           <Save size={15} />
           Saves

@@ -6,6 +6,7 @@ export const defaultPreferences: AppPreferences = {
   density: "balanced",
   fontSize: "base",
   accent: "amber",
+  showLeftRail: true,
   showInspector: true,
   wrapTranscript: true,
 };
@@ -29,6 +30,7 @@ export function normalizePreferences(value: Partial<AppPreferences> | null | und
     density: oneOf(value?.density, ["compact", "balanced", "comfortable"], defaultPreferences.density),
     fontSize: oneOf(value?.fontSize, ["small", "base", "large"], defaultPreferences.fontSize),
     accent: oneOf(value?.accent, ["amber", "green", "blue", "rose"], defaultPreferences.accent),
+    showLeftRail: typeof value?.showLeftRail === "boolean" ? value.showLeftRail : defaultPreferences.showLeftRail,
     showInspector: typeof value?.showInspector === "boolean" ? value.showInspector : defaultPreferences.showInspector,
     wrapTranscript: typeof value?.wrapTranscript === "boolean" ? value.wrapTranscript : defaultPreferences.wrapTranscript,
   };
