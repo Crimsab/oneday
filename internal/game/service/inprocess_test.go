@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,13 +16,16 @@ import (
 )
 
 type fakeTurnProvider struct {
+	mu    sync.Mutex
 	calls int
 }
 
 func (f *fakeTurnProvider) Name() string { return "fake-turn" }
 
 func (f *fakeTurnProvider) Complete(_ context.Context, _ ai.Request) (ai.Response, error) {
+	f.mu.Lock()
 	f.calls++
+	f.mu.Unlock()
 	return ai.Response{
 		Model: "fake-model",
 		Content: `{
@@ -34,6 +39,51 @@ func (f *fakeTurnProvider) Complete(_ context.Context, _ ai.Request) (ai.Respons
 			"state_changes": {"location": "Market"}
 		}`,
 	}, nil
+}
+
+func (f *fakeTurnProvider) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+type blockingTurnProvider struct {
+	mu      sync.Mutex
+	calls   int
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (f *blockingTurnProvider) Name() string { return "blocking-turn" }
+
+func (f *blockingTurnProvider) Complete(ctx context.Context, _ ai.Request) (ai.Response, error) {
+	f.mu.Lock()
+	f.calls++
+	calls := f.calls
+	f.mu.Unlock()
+	if calls == 1 {
+		close(f.entered)
+		select {
+		case <-ctx.Done():
+			return ai.Response{}, ctx.Err()
+		case <-f.release:
+		}
+	}
+	return ai.Response{
+		Model: "blocking-model",
+		Content: `{
+			"narrative": "The lock resolves into one canonical turn.",
+			"choices": [{"id": 1, "text": "Continue.", "intent": "act", "risk": "low", "scope": "scene", "certainty": "safe"}],
+			"mood": "steady",
+			"location": "Harbor"
+		}`,
+	}, nil
+}
+
+func (f *blockingTurnProvider) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
 }
 
 func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
@@ -131,8 +181,8 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 	if got := collectTurnEvents(replay); len(got) != len(events) {
 		t.Fatalf("replay event count = %d, want %d", len(got), len(events))
 	}
-	if provider.calls != 1 {
-		t.Fatalf("provider calls = %d, want 1 after idempotent replay", provider.calls)
+	if provider.callCount() != 1 {
+		t.Fatalf("provider calls = %d, want 1 after idempotent replay", provider.callCount())
 	}
 
 	providerAfterRestart := &fakeTurnProvider{}
@@ -157,8 +207,111 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 	if got := collectTurnEvents(persistentReplay); len(got) != len(events) {
 		t.Fatalf("persistent replay event count = %d, want %d", len(got), len(events))
 	}
-	if providerAfterRestart.calls != 0 {
-		t.Fatalf("provider calls after restart = %d, want 0", providerAfterRestart.calls)
+	if providerAfterRestart.callCount() != 0 {
+		t.Fatalf("provider calls after restart = %d, want 0", providerAfterRestart.callCount())
+	}
+}
+
+func TestInProcessTurnServiceConcurrentSubmissionsSerializeAcrossInstances(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-race", 0)
+
+	provider := &blockingTurnProvider{entered: make(chan struct{}), release: make(chan struct{})}
+	router, err := ai.NewRouter([]ai.Provider{provider})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+
+	svcA := NewInProcessTurnService(cfg, db, router)
+	svcB := NewInProcessTurnService(cfg, db, router)
+	snapshot, err := svcA.Snapshot(context.Background(), "story-race")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	req := func(key string) contracts.SubmitActionRequest {
+		return contracts.SubmitActionRequest{
+			StoryID:        "story-race",
+			SessionID:      snapshot.SessionID,
+			ClientTurn:     snapshot.Turn,
+			IdempotencyKey: key,
+			Action: contracts.PlayerAction{
+				Kind: contracts.ActionKindFreeText,
+				Text: "I test the lock.",
+			},
+		}
+	}
+	type result struct {
+		events []contracts.TurnEvent
+		err    error
+	}
+	first := make(chan result, 1)
+	second := make(chan result, 1)
+	go func() {
+		stream, err := svcA.SubmitAction(context.Background(), req("race-a"))
+		if err != nil {
+			first <- result{err: err}
+			return
+		}
+		first <- result{events: collectTurnEvents(stream)}
+	}()
+	select {
+	case <-provider.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first provider call did not start")
+	}
+	go func() {
+		stream, err := svcB.SubmitAction(context.Background(), req("race-b"))
+		if err != nil {
+			second <- result{err: err}
+			return
+		}
+		second <- result{events: collectTurnEvents(stream)}
+	}()
+	close(provider.release)
+
+	var results []result
+	for i := 0; i < 2; i++ {
+		select {
+		case res := <-first:
+			results = append(results, res)
+			first = nil
+		case res := <-second:
+			results = append(results, res)
+			second = nil
+		case <-time.After(5 * time.Second):
+			t.Fatal("concurrent submissions did not finish")
+		}
+	}
+	successes := 0
+	stales := 0
+	for _, res := range results {
+		if res.err == nil {
+			successes++
+			continue
+		}
+		if strings.Contains(res.err.Error(), "stale client_turn") {
+			stales++
+			continue
+		}
+		t.Fatalf("unexpected concurrent submit error: %v", res.err)
+	}
+	if successes != 1 || stales != 1 {
+		t.Fatalf("successes=%d stales=%d, want 1/1; results=%#v", successes, stales, results)
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("provider calls = %d, want 1", provider.callCount())
+	}
+	world, err := db.GetWorldState("story-race")
+	if err != nil {
+		t.Fatalf("GetWorldState: %v", err)
+	}
+	if world.CurrentTurn != 1 {
+		t.Fatalf("world current turn = %d, want 1", world.CurrentTurn)
 	}
 }
 
@@ -214,8 +367,8 @@ func TestInProcessTurnServiceMetaCommandsDoNotAdvanceTurnForUsagePrompts(t *test
 	if world.CurrentTurn != 7 {
 		t.Fatalf("world turn = %d, want 7", world.CurrentTurn)
 	}
-	if provider.calls != 0 {
-		t.Fatalf("provider calls = %d, want 0 for usage prompts", provider.calls)
+	if provider.callCount() != 0 {
+		t.Fatalf("provider calls = %d, want 0 for usage prompts", provider.callCount())
 	}
 }
 

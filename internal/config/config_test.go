@@ -318,6 +318,15 @@ func TestUpdateModelRoutingSettingsRequiresFreshRevision(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	_, err = UpdateModelRoutingSettings(path, ModelRoutingUpdate{})
+	var missingRevisionErr ModelRoutingError
+	if !errors.As(err, &missingRevisionErr) {
+		t.Fatalf("expected missing revision ModelRoutingError, got %T %v", err, err)
+	}
+	if missingRevisionErr.Code != ModelRoutingErrorValidation {
+		t.Fatalf("missing revision code = %q, want %q", missingRevisionErr.Code, ModelRoutingErrorValidation)
+	}
+
 	_, err = UpdateModelRoutingSettings(path, ModelRoutingUpdate{BaseRevision: "stale"})
 	var routingErr ModelRoutingError
 	if !errors.As(err, &routingErr) {
@@ -325,6 +334,43 @@ func TestUpdateModelRoutingSettingsRequiresFreshRevision(t *testing.T) {
 	}
 	if routingErr.Code != ModelRoutingErrorStale {
 		t.Fatalf("routing error code = %q, want %q", routingErr.Code, ModelRoutingErrorStale)
+	}
+}
+
+func TestReadModelRoutingSettingsRejectsDuplicateYamlKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	raw := []byte(`config_version: 2
+ai:
+  provider_priority: [codex, litellm, openrouter, claude-code]
+ai:
+  provider_priority: [litellm, codex, openrouter, claude-code]
+`)
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := ReadModelRoutingSettings(path)
+	if err == nil || !strings.Contains(err.Error(), "duplicate YAML key") {
+		t.Fatalf("ReadModelRoutingSettings error = %v, want duplicate YAML key", err)
+	}
+}
+
+func TestPatchModelRoutingYAMLRejectsWrongTypeEditablePath(t *testing.T) {
+	raw := []byte(`config_version: 2
+ai:
+  provider_priority: [codex, litellm, openrouter, claude-code]
+  generation: wrong-type
+  litellm:
+    enabled: true
+    default_model: grok-4.1-fast
+  codex:
+    enabled: true
+    model: gpt-5.5
+    reasoning: off
+`)
+	_, err := patchModelRoutingYAML(raw, Default())
+	if err == nil || !strings.Contains(err.Error(), "ai.generation must be a mapping") {
+		t.Fatalf("patchModelRoutingYAML error = %v, want wrong-type path error", err)
 	}
 }
 

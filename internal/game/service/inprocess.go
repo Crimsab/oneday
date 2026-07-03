@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -98,6 +99,12 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 	lock.Lock()
 	defer lock.Unlock()
 
+	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "turn")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = storyLock.Release() }()
+
 	if events, ok, err := s.cachedEvents(req); err != nil {
 		return nil, err
 	} else if ok {
@@ -134,6 +141,12 @@ func (s *InProcessTurnService) SubmitMeta(ctx context.Context, req contracts.Bro
 	lock := s.storyLock(req.StoryID)
 	lock.Lock()
 	defer lock.Unlock()
+
+	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-create")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = storyLock.Release() }()
 
 	snapshot, err := s.Snapshot(ctx, req.StoryID)
 	if err != nil {
@@ -184,6 +197,12 @@ func (s *InProcessTurnService) CreateSave(ctx context.Context, req contracts.Bro
 	lock := s.storyLock(req.StoryID)
 	lock.Lock()
 	defer lock.Unlock()
+
+	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-load")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = storyLock.Release() }()
 
 	snapshot, err := s.Snapshot(ctx, req.StoryID)
 	if err != nil {
@@ -246,6 +265,12 @@ func (s *InProcessTurnService) LoadSave(ctx context.Context, req contracts.Brows
 	lock := s.storyLock(req.StoryID)
 	lock.Lock()
 	defer lock.Unlock()
+
+	storyLock, err := s.acquireStoryMutationLock(ctx, req.StoryID, "save-delete")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = storyLock.Release() }()
 
 	snapshot, err := s.Snapshot(ctx, req.StoryID)
 	if err != nil {
@@ -339,7 +364,7 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 		return nil, err
 	}
 
-	resp, err := narrator.SendAction(ctx, actionText(req.Action))
+	resp, err := narrator.SendActionLocked(ctx, actionText(req.Action))
 	if err != nil {
 		return nil, err
 	}
@@ -457,6 +482,14 @@ func (s *InProcessTurnService) storyLock(storyID string) *sync.Mutex {
 		s.storyLocks[storyID] = lock
 	}
 	return lock
+}
+
+func (s *InProcessTurnService) acquireStoryMutationLock(ctx context.Context, storyID, scope string) (*storage.StoryTurnLock, error) {
+	if s.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+	owner := fmt.Sprintf("browser:%s:%d:%d", strings.TrimSpace(scope), os.Getpid(), time.Now().UnixNano())
+	return s.db.AcquireStoryTurnLock(ctx, storyID, owner, 3*time.Minute)
 }
 
 func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest) ([]contracts.TurnEvent, bool, error) {

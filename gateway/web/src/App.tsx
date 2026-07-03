@@ -483,9 +483,6 @@ function App() {
       setNotice(`Model routing saved. Active provider: ${nextSettings.active.provider || "none"}.`);
     } catch (error) {
       setNotice(errorMessage(error));
-      if (error instanceof ApiRequestError && error.code === "stale_config") {
-        void refreshModelSettings();
-      }
       throw error;
     } finally {
       setModelSaving(false);
