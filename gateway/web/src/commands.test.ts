@@ -47,6 +47,19 @@ describe("commandToAction", () => {
     expect(commandToAction("/save")).toMatchObject({ tab: "saves", overlay: "saves", saveName: "" });
   });
 
+  it("keeps browser aliases when backend descriptors lag behind the local fallback", () => {
+    const backendLoadWithoutSavesAlias = fallbackCommandDescriptors.map((descriptor) =>
+      descriptor.id === "load" ? { ...descriptor, aliases: [] } : descriptor,
+    );
+
+    expect(commandToAction("/saves", { descriptors: backendLoadWithoutSavesAlias })).toMatchObject({
+      handled: true,
+      tab: "saves",
+      overlay: "saves",
+    });
+    expect(commandSuggestions("/saves", backendLoadWithoutSavesAlias)[0]?.name).toBe("/load");
+  });
+
   it("maps meta commands to browser meta operations instead of narrative actions", () => {
     expect(commandToAction("/btw what changed?")).toMatchObject({ meta: { kind: "btw", text: "what changed?" } });
     expect(commandToAction("/guide foreshadow the storm")).toMatchObject({ meta: { kind: "guide", text: "foreshadow the storm" } });
