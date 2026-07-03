@@ -21,6 +21,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories", get(stories))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/actions", post(submit_action))
+        .route("/api/stories/:story_id/meta", post(submit_meta))
+        .route("/api/stories/:story_id/saves", post(create_save))
+        .route(
+            "/api/stories/:story_id/saves/:save_id/load",
+            post(load_save),
+        )
         .route("/api/stories/:story_id/events", get(story_events))
         .fallback_service(spa)
         .with_state(state)
@@ -62,6 +68,47 @@ async fn submit_action(
     let snapshot = db::snapshot(&state.pool, &story_id).await?;
     Ok(Json(json!({
         "events": events.events,
+        "snapshot": snapshot,
+    })))
+}
+
+async fn submit_meta(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<engine::MetaEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let meta = engine::submit_meta(state.clone(), &story_id, payload).await?;
+    let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    Ok(Json(json!({
+        "meta": meta.meta,
+        "snapshot": snapshot,
+    })))
+}
+
+async fn create_save(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<engine::SaveEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let save = engine::create_save(state.clone(), &story_id, payload).await?;
+    let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    Ok(Json(json!({
+        "save": save.save,
+        "snapshot": snapshot,
+    })))
+}
+
+async fn load_save(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, save_id)): Path<(String, String)>,
+    Json(mut payload): Json<engine::LoadEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    payload.save_id = save_id;
+    let load = engine::load_save(state.clone(), &story_id, payload).await?;
+    let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    Ok(Json(json!({
+        "save": load.save,
+        "legacy": load.legacy,
         "snapshot": snapshot,
     })))
 }
@@ -131,6 +178,7 @@ impl From<anyhow::Error> for ApiError {
         let status = if message.contains("stale client_turn")
             || message.contains("stale session_id")
             || message.contains("is required")
+            || message.contains("belongs to story")
         {
             StatusCode::CONFLICT
         } else if message.contains("no rows returned") {
