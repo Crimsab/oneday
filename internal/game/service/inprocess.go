@@ -390,7 +390,15 @@ func choiceViews(choices []engine.Choice) []contracts.ChoiceView {
 		if id == 0 {
 			id = i + 1
 		}
-		out = append(out, contracts.ChoiceView{ID: id, Text: choice.Text})
+		out = append(out, contracts.ChoiceView{
+			ID:           id,
+			Text:         choice.Text,
+			Intent:       choice.Intent,
+			Risk:         choice.Risk,
+			Scope:        choice.Scope,
+			Certainty:    choice.Certainty,
+			RelatedStats: append([]string(nil), choice.RelatedStats...),
+		})
 	}
 	return out
 }

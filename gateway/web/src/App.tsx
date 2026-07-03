@@ -11,6 +11,7 @@ import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
 import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
+import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import type { AppPreferences, ChoiceView, ModuleTab, OverlayKind, PlayerAction, RecentCommand, StorySnapshot, StorySummary, SyncState } from "./types";
 
@@ -186,13 +187,13 @@ function App() {
       const response = await submitAction(storyId, {
         session_id: snapshot.active_session.id,
         client_turn: currentTurn,
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: clientId("turn"),
         action,
         capabilities: { images: true, ascii: true, roll_log: true },
       });
       setSnapshot(response.snapshot);
       setLocalCommands((items) => [
-        { id: crypto.randomUUID(), text: sourceText.trim(), turn: currentTurn, source: "browser" as const },
+        { id: clientId("command"), text: sourceText.trim(), turn: currentTurn, source: "browser" as const },
         ...items,
       ].slice(0, 10));
       setSync(paused ? "Paused" : "Live");

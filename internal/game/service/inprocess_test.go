@@ -26,8 +26,8 @@ func (f *fakeTurnProvider) Complete(_ context.Context, _ ai.Request) (ai.Respons
 		Content: `{
 			"narrative": "You step into the market and the rain thins.",
 			"choices": [
-				{"id": 1, "text": "Ask the lantern seller about the map."},
-				{"id": 2, "text": "Follow the wet footprints."}
+				{"id": 1, "text": "Ask the lantern seller about the map.", "intent": "social", "risk": "medium", "scope": "npc", "certainty": "uncertain", "related_stats": ["cha", "wis"]},
+				{"id": 2, "text": "Follow the wet footprints.", "intent": "observe", "risk": "low", "scope": "environment", "certainty": "safe", "related_stats": ["wis"]}
 			],
 			"mood": "curious",
 			"location": "Market",
@@ -89,6 +89,19 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 		if events[i].Type != want {
 			t.Fatalf("event[%d] type = %q, want %q", i, events[i].Type, want)
 		}
+	}
+	choicesPayload := decodeTurnPayload[struct {
+		Choices []contracts.ChoiceView `json:"choices"`
+	}](t, events[3])
+	if len(choicesPayload.Choices) != 2 {
+		t.Fatalf("choices payload count = %d, want 2", len(choicesPayload.Choices))
+	}
+	firstChoice := choicesPayload.Choices[0]
+	if firstChoice.Intent != "social" || firstChoice.Risk != "medium" || firstChoice.Scope != "npc" || firstChoice.Certainty != "uncertain" {
+		t.Fatalf("choice metadata was not preserved: %+v", firstChoice)
+	}
+	if got := firstChoice.RelatedStats; len(got) != 2 || got[0] != "cha" || got[1] != "wis" {
+		t.Fatalf("choice related stats = %#v, want [cha wis]", got)
 	}
 
 	world, err := db.GetWorldState("story-browser")
