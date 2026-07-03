@@ -9,6 +9,21 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 use uuid::Uuid;
 
+#[derive(Debug, thiserror::Error)]
+#[error("{message}")]
+pub struct BridgeError {
+    pub code: String,
+    pub message: String,
+}
+
+fn bridge_error(code: impl Into<String>, message: impl Into<String>) -> anyhow::Error {
+    BridgeError {
+        code: code.into(),
+        message: message.into(),
+    }
+    .into()
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ActionEnvelope {
     pub session_id: String,
@@ -217,6 +232,7 @@ pub struct ModelRoutingActive {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ModelRoutingSettings {
     pub config_path: String,
+    pub config_revision: String,
     #[serde(default)]
     pub provider_priority: Vec<String>,
     #[serde(default)]
@@ -245,6 +261,7 @@ pub struct ModelProviderUpdate {
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ModelRoutingUpdate {
+    pub base_revision: Option<String>,
     pub provider_priority: Option<Vec<String>>,
     #[serde(default)]
     pub providers: Vec<ModelProviderUpdate>,
@@ -261,6 +278,8 @@ pub struct GatewayModelSettingsResponse {
     pub settings: Option<ModelRoutingSettings>,
     #[serde(default)]
     pub error: String,
+    #[serde(default)]
+    pub error_code: String,
 }
 
 pub async fn command_descriptors(
@@ -334,7 +353,7 @@ pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<ModelRouting
             )
         })?;
     if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        return Err(bridge_error(parsed.error_code, parsed.error));
     }
     if !output.status.success() {
         return Err(anyhow!(
@@ -358,7 +377,7 @@ pub async fn update_model_settings(
     )
     .await?;
     if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        return Err(bridge_error(parsed.error_code, parsed.error));
     }
     if !status_ok {
         return Err(anyhow!(

@@ -41,6 +41,7 @@ export function draftFromModelSettings(settings: ModelSettings): ModelRoutingDra
 
 export function updateFromDraft(settings: ModelSettings, draft: ModelRoutingDraft): ModelSettingsUpdate {
   return {
+    base_revision: settings.config_revision,
     provider_priority: completePriority(draft.providerPriority, settings.providers.map((provider) => provider.id)),
     providers: settings.providers.map((provider) => providerUpdate(provider, draft.providers[provider.id])),
     utility_model: draft.utilityModel.trim(),
@@ -50,6 +51,37 @@ export function updateFromDraft(settings: ModelSettings, draft: ModelRoutingDraf
     embedding_provider: draft.embeddingProvider.trim(),
     embedding_model: draft.embeddingModel.trim(),
   };
+}
+
+export function hasModelRoutingChanges(settings: ModelSettings, draft: ModelRoutingDraft): boolean {
+  return JSON.stringify(draft) !== JSON.stringify(draftFromModelSettings(settings));
+}
+
+export function modelRoutingIssues(settings: ModelSettings, draft: ModelRoutingDraft): string[] {
+  const providerIds = settings.providers.map((provider) => provider.id);
+  const priority = completePriority(draft.providerPriority, providerIds);
+  const enabledProviders = settings.providers.filter((provider) => draft.providers[provider.id]?.enabled);
+  const issues: string[] = [];
+  if (enabledProviders.length === 0) {
+    issues.push("Enable at least one provider.");
+  }
+  const selectedProvider = priority[0];
+  if (selectedProvider && !draft.providers[selectedProvider]?.enabled) {
+    issues.push("The first provider in the priority chain must be enabled.");
+  }
+  for (const provider of enabledProviders) {
+    const value = draft.providers[provider.id];
+    if (provider.supports_model && !value?.model.trim()) {
+      issues.push(`${provider.label} needs a model name.`);
+    }
+  }
+  if (!draft.utilityModel.trim()) {
+    issues.push("Utility model is required.");
+  }
+  if (!draft.embeddingProvider.trim()) {
+    issues.push("Embedding provider is required.");
+  }
+  return issues;
 }
 
 export function promoteProvider(priority: string[], providerIds: string[], providerId: string): string[] {

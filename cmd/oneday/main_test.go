@@ -224,11 +224,15 @@ func TestGatewayModelSettingsCommands(t *testing.T) {
 	if resp.Settings == nil || resp.Settings.Active.Provider != "codex" {
 		t.Fatalf("settings response = %#v", resp)
 	}
+	if resp.Settings.ConfigRevision == "" {
+		t.Fatalf("settings response missing config revision = %#v", resp)
+	}
 
 	priority := []string{"litellm", "codex", "openrouter", "claude-code"}
 	litellmEnabled := true
 	litellmModel := "grok-4.1-fast-updated"
 	update := config.ModelRoutingUpdate{
+		BaseRevision:     resp.Settings.ConfigRevision,
 		ProviderPriority: &priority,
 		Providers: []config.ModelProviderUpdate{
 			{ID: "litellm", Enabled: &litellmEnabled, Model: &litellmModel},
@@ -255,5 +259,22 @@ func TestGatewayModelSettingsCommands(t *testing.T) {
 	}
 	if saved.AI.LiteLLM.DefaultModel != litellmModel {
 		t.Fatalf("saved LiteLLM model = %q", saved.AI.LiteLLM.DefaultModel)
+	}
+
+	out.Reset()
+	update.BaseRevision = "stale"
+	input, err = json.Marshal(update)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runGatewayModelSettingsUpdate(path, bytes.NewReader(input), &out); err == nil {
+		t.Fatal("expected stale update to return an error")
+	}
+	resp = gatewayModelSettingsResponse{}
+	if err := json.Unmarshal(out.Bytes(), &resp); err != nil {
+		t.Fatalf("decode stale update: %v", err)
+	}
+	if resp.ErrorCode != config.ModelRoutingErrorStale {
+		t.Fatalf("stale ErrorCode = %q, want %q", resp.ErrorCode, config.ModelRoutingErrorStale)
 	}
 }

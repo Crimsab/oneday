@@ -2,7 +2,7 @@ import { useEffect, useId, useState } from "react";
 import { X } from "lucide-react";
 import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
 import { compactText } from "../format";
-import { draftFromModelSettings, promoteProvider, updateFromDraft, type ModelRoutingDraft } from "../modelRouting";
+import { draftFromModelSettings, hasModelRoutingChanges, modelRoutingIssues, promoteProvider, updateFromDraft, type ModelRoutingDraft } from "../modelRouting";
 import { ModuleContent, moduleTitle } from "./Inspector";
 import type { AppPreferences, CommandDescriptor, MetaResult, ModelSettings, ModelSettingsUpdate, ModuleTab, OverlayKind, SaveView, StorySnapshot } from "../types";
 
@@ -12,6 +12,7 @@ interface PanelDrawerProps {
   preferences: AppPreferences;
   metaResult: MetaResult | null;
   modelSettings: ModelSettings | null;
+  modelError: string;
   modelBusy: boolean;
   selectedTab: ModuleTab;
   commandDescriptors: CommandDescriptor[];
@@ -19,6 +20,7 @@ interface PanelDrawerProps {
   onClose: () => void;
   onPreferencesChange: (preferences: AppPreferences) => void;
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
+  onModelSettingsReload: () => Promise<void> | void;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
   onDeleteSave: (save: SaveView) => void;
@@ -32,6 +34,7 @@ export function PanelDrawer({
   preferences,
   metaResult,
   modelSettings,
+  modelError,
   modelBusy,
   selectedTab,
   commandDescriptors,
@@ -39,6 +42,7 @@ export function PanelDrawer({
   onClose,
   onPreferencesChange,
   onModelSettingsSave,
+  onModelSettingsReload,
   onCreateSave,
   onLoadSave,
   onDeleteSave,
@@ -66,9 +70,11 @@ export function PanelDrawer({
             snapshot={snapshot}
             preferences={preferences}
             modelSettings={modelSettings}
+            modelError={modelError}
             modelBusy={modelBusy}
             onPreferencesChange={onPreferencesChange}
             onModelSettingsSave={onModelSettingsSave}
+            onModelSettingsReload={onModelSettingsReload}
           />
         )}
         {overlay === "saves" && (
@@ -118,16 +124,20 @@ function OptionsContent({
   snapshot,
   preferences,
   modelSettings,
+  modelError,
   modelBusy,
   onPreferencesChange,
   onModelSettingsSave,
+  onModelSettingsReload,
 }: {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
   modelSettings: ModelSettings | null;
+  modelError: string;
   modelBusy: boolean;
   onPreferencesChange: (preferences: AppPreferences) => void;
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
+  onModelSettingsReload: () => Promise<void> | void;
 }) {
   const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
     onPreferencesChange({ ...preferences, [key]: value });
@@ -192,22 +202,27 @@ function OptionsContent({
           <input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} />
         </label>
       </div>
-      <ModelRoutingSettings modelSettings={modelSettings} busy={modelBusy} onSave={onModelSettingsSave} />
+      <ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} />
     </div>
   );
 }
 
 function ModelRoutingSettings({
   modelSettings,
+  modelError,
   busy,
   onSave,
+  onReload,
 }: {
   modelSettings: ModelSettings | null;
+  modelError: string;
   busy: boolean;
   onSave: (payload: ModelSettingsUpdate) => Promise<void>;
+  onReload: () => Promise<void> | void;
 }) {
   const [draft, setDraft] = useState<ModelRoutingDraft | null>(() => (modelSettings ? draftFromModelSettings(modelSettings) : null));
   const [saveError, setSaveError] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
     setDraft(modelSettings ? draftFromModelSettings(modelSettings) : null);
@@ -219,6 +234,7 @@ function ModelRoutingSettings({
 
   const updateDraft = (updater: (value: ModelRoutingDraft) => ModelRoutingDraft) => {
     setSaveError("");
+    setSaveMessage("");
     setDraft((value) => (value ? updater(value) : value));
   };
 
@@ -235,8 +251,10 @@ function ModelRoutingSettings({
   const save = async () => {
     if (!modelSettings || !draft) return;
     setSaveError("");
+    setSaveMessage("");
     try {
       await onSave(updateFromDraft(modelSettings, draft));
+      setSaveMessage("Model routing saved to shared config.");
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     }
@@ -249,23 +267,33 @@ function ModelRoutingSettings({
           <span>Model Routing</span>
           <strong>Config unavailable</strong>
         </div>
+        {modelError && <p className="model-error">{modelError}</p>}
+        <div className="model-actions">
+          <button type="button" onClick={() => void onReload()} disabled={busy}>
+            Reload from disk
+          </button>
+        </div>
       </div>
     );
   }
+
+  const issues = modelRoutingIssues(modelSettings, draft);
+  const dirty = hasModelRoutingChanges(modelSettings, draft);
+  const revision = modelSettings.config_revision ? modelSettings.config_revision.slice(0, 12) : "unknown";
 
   return (
     <div className="model-routing">
       <div className="model-routing-head">
         <span>Model Routing</span>
-        <strong>Shared config</strong>
+        <strong>Shared config · {revision}</strong>
       </div>
       <div className="model-active-strip">
         <div>
-          <span>Active provider</span>
+          <span>Effective provider from saved config</span>
           <strong>{modelSettings.active.provider || "none"}</strong>
         </div>
         <div>
-          <span>Narrator model</span>
+          <span>Configured narrator model</span>
           <strong>{modelSettings.active.narrative_model || "provider default"}</strong>
         </div>
         <div>
@@ -275,13 +303,20 @@ function ModelRoutingSettings({
       </div>
       <div className="settings-grid">
         <label>
-          <span>Primary provider</span>
+          <span>Provider priority</span>
           <select
             value={activeProvider}
             onChange={(event) =>
               updateDraft((value) => ({
                 ...value,
                 providerPriority: promoteProvider(value.providerPriority, providerIds, event.target.value),
+                providers: {
+                  ...value.providers,
+                  [event.target.value]: {
+                    ...value.providers[event.target.value],
+                    enabled: true,
+                  },
+                },
               }))
             }
           >
@@ -309,7 +344,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Images/ascii model</span>
+          <span>ASCII art model</span>
           <ModelInput value={draft.imageModel} options={modelSettings.image_models} onChange={(value) => updateDraft((draft) => ({ ...draft, imageModel: value }))} />
         </label>
         <label>
@@ -371,15 +406,27 @@ function ModelRoutingSettings({
         <span>Embedding: {draft.embeddingProvider}/{draft.embeddingModel || "default"}</span>
         <span>TTS: {modelSettings.tts_status}</span>
       </div>
+      {issues.length > 0 && (
+        <div className="model-warning">
+          {issues.map((issue) => (
+            <span key={issue}>{issue}</span>
+          ))}
+        </div>
+      )}
       <div className="model-actions">
         <button type="button" onClick={() => setDraft(draftFromModelSettings(modelSettings))} disabled={busy}>
           Reset
         </button>
-        <button type="button" className="primary-action" onClick={() => void save()} disabled={busy}>
+        <button type="button" onClick={() => void onReload()} disabled={busy}>
+          Reload from disk
+        </button>
+        <button type="button" className="primary-action" onClick={() => void save()} disabled={busy || !dirty || issues.length > 0}>
           {busy ? "Saving..." : "Save model routing"}
         </button>
       </div>
+      {modelError && <p className="model-error">{modelError}</p>}
       {saveError && <p className="model-error">{saveError}</p>}
+      {saveMessage && <p className="model-success">{saveMessage}</p>}
       <p className="model-note">Saved changes write to the shared config used by the terminal and by the next browser turn bridge process.</p>
     </div>
   );
