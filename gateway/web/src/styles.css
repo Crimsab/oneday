@@ -222,6 +222,7 @@ button {
 .recent-list button,
 .slash-suggestions button,
 .save-load-button,
+.save-delete-button,
 .wide-action {
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -247,6 +248,7 @@ button {
 .recent-list button:hover,
 .slash-suggestions button:hover,
 .save-load-button:hover,
+.save-delete-button:hover,
 .wide-action:hover {
   border-color: var(--accent-2);
   color: #fff5dd;
@@ -1156,6 +1158,36 @@ input:disabled {
   padding: 10px 12px;
 }
 
+.save-filter {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+  border: 1px solid var(--line-soft);
+  background: #0b1317;
+  padding: 10px 12px;
+}
+
+.save-filter span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.save-filter input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  outline: 0;
+  background: #0a1115;
+  color: var(--text);
+  padding: 0 10px;
+}
+
+.save-filter input:focus {
+  border-color: var(--accent-2);
+}
+
 .save-create label {
   min-width: 0;
   display: grid;
@@ -1189,7 +1221,7 @@ input:disabled {
 }
 
 .save-row {
-  grid-template-columns: minmax(0, 1fr) 78px;
+  grid-template-columns: minmax(0, 1fr) 154px;
   align-items: center;
 }
 
@@ -1206,10 +1238,24 @@ input:disabled {
   white-space: nowrap;
 }
 
-.save-load-button {
+.save-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.save-load-button,
+.save-delete-button {
   min-height: 32px;
   padding: 0 12px;
+}
+
+.save-load-button {
   color: var(--accent);
+}
+
+.save-delete-button {
+  color: #f0a09a;
 }
 
 .help-row strong {
@@ -1461,5 +1507,13 @@ input:disabled {
 
   .save-create .wide-action {
     width: 100%;
+  }
+
+  .save-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .save-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

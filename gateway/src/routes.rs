@@ -3,7 +3,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use serde_json::json;
 use std::convert::Infallible;
@@ -27,6 +27,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/stories/:story_id/saves/:save_id/load",
             post(load_save),
         )
+        .route("/api/stories/:story_id/saves/:save_id", delete(delete_save))
         .route("/api/stories/:story_id/events", get(story_events))
         .fallback_service(spa)
         .with_state(state)
@@ -113,6 +114,20 @@ async fn load_save(
     })))
 }
 
+async fn delete_save(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, save_id)): Path<(String, String)>,
+    Json(mut payload): Json<engine::DeleteSaveEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    payload.save_id = save_id;
+    let deleted = engine::delete_save(state.clone(), &story_id, payload).await?;
+    let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    Ok(Json(json!({
+        "save": deleted.save,
+        "snapshot": snapshot,
+    })))
+}
+
 async fn story_events(
     State(state): State<Arc<AppState>>,
     Path(story_id): Path<String>,
@@ -175,13 +190,15 @@ impl IntoResponse for ApiError {
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
         let message = err.to_string();
-        let status = if message.contains("stale client_turn")
+        let is_conflict = message.contains("stale client_turn")
             || message.contains("stale session_id")
             || message.contains("is required")
-            || message.contains("belongs to story")
-        {
+            || message.contains("belongs to story");
+        let is_not_found =
+            message.contains("no rows returned") || message.contains("no rows in result set");
+        let status = if is_conflict {
             StatusCode::CONFLICT
-        } else if message.contains("no rows returned") {
+        } else if is_not_found {
             StatusCode::NOT_FOUND
         } else {
             StatusCode::INTERNAL_SERVER_ERROR

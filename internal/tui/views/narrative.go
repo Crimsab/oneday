@@ -437,7 +437,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		}
 		title := strings.TrimSpace(msg.title)
 		if title == "" {
-			title = "Game Master"
+			title = "Narrator Control"
 		}
 		rendered := components.RenderMarkdown("\n**[" + title + "]** " + msg.message + "\n")
 		cmd := m.appendNarrativeSegment(rendered+"\n", false)
@@ -905,7 +905,7 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.doQuit()
 	case "narrator":
 		if len(cmd.Args) == 0 {
-			m.errMsg = "Usage: /n <message to the game master>"
+			m.errMsg = "Usage: /n <narrator instruction or canon correction>"
 			return m, nil
 		}
 		input := strings.Join(cmd.Args, " ")
@@ -997,7 +997,7 @@ func (m *NarrativeModel) showOverlay(title, content string) {
 	m.input.Blur()
 }
 
-// sendNarratorCommand sends a /narrator meta-command to the AI game master.
+// sendNarratorCommand sends a /narrator meta-command to the narrator control layer.
 // Does not increment the turn counter.
 func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.Cmd) {
 	m.waiting = true
@@ -1009,7 +1009,7 @@ func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.C
 		if err != nil {
 			return narratorMetaResponseMsg{err: err}
 		}
-		return narratorMetaResponseMsg{title: "Game Master", message: resp.Message}
+		return narratorMetaResponseMsg{title: "Narrator Control", message: resp.Message}
 	}
 }
 
@@ -1179,7 +1179,7 @@ func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
 	}
 	lines = append(lines,
 		"  /achievements (/a)   Show earned achievements",
-		"  /narrator     (/n)   Speak to the game master",
+		"  /narrator     (/n)   Direct narrator canon",
 		"  /craft               Open crafting station (AI-driven)",
 		"  /talk [npc] [intent] Enter nearby-NPC talk mode or send a one-shot line",
 		"  /downtime [focus]    Request a quieter downtime beat",

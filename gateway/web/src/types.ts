@@ -228,6 +228,17 @@ export interface LoadResponse {
   snapshot: StorySnapshot;
 }
 
+export interface DeleteSaveEnvelope {
+  session_id: string;
+  client_turn: number;
+  save_id: string;
+}
+
+export interface DeleteSaveResponse {
+  save?: SaveView | null;
+  snapshot: StorySnapshot;
+}
+
 export interface RecentCommand {
   id: string;
   text: string;

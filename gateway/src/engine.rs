@@ -67,6 +67,13 @@ pub struct LoadEnvelope {
     pub save_id: String,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DeleteSaveEnvelope {
+    pub session_id: String,
+    pub client_turn: i64,
+    pub save_id: String,
+}
+
 #[derive(Debug, Serialize)]
 struct GatewayTurnRequest<'a> {
     story_id: &'a str,
@@ -98,6 +105,14 @@ struct GatewaySaveRequest<'a> {
 
 #[derive(Debug, Serialize)]
 struct GatewayLoadRequest<'a> {
+    story_id: &'a str,
+    session_id: &'a str,
+    client_turn: i64,
+    save_id: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct GatewayDeleteSaveRequest<'a> {
     story_id: &'a str,
     session_id: &'a str,
     client_turn: i64,
@@ -153,6 +168,13 @@ pub struct GatewayLoadResponse {
     pub save: Option<GatewaySaveView>,
     #[serde(default)]
     pub legacy: bool,
+    #[serde(default)]
+    pub error: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GatewayDeleteSaveResponse {
+    pub save: Option<GatewaySaveView>,
     #[serde(default)]
     pub error: String,
 }
@@ -251,6 +273,31 @@ pub async fn load_save(
     }
     if !status_ok {
         return Err(anyhow!("gateway-load failed: {}", compact_stderr(&stderr)));
+    }
+    Ok(parsed)
+}
+
+pub async fn delete_save(
+    state: Arc<AppState>,
+    story_id: &str,
+    envelope: DeleteSaveEnvelope,
+) -> anyhow::Result<GatewayDeleteSaveResponse> {
+    let req = GatewayDeleteSaveRequest {
+        story_id,
+        session_id: &envelope.session_id,
+        client_turn: envelope.client_turn,
+        save_id: &envelope.save_id,
+    };
+    let (parsed, status_ok, stderr) =
+        call_gateway::<_, GatewayDeleteSaveResponse>(state, "gateway-delete-save", &req).await?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !status_ok {
+        return Err(anyhow!(
+            "gateway-delete-save failed: {}",
+            compact_stderr(&stderr)
+        ));
     }
     Ok(parsed)
 }

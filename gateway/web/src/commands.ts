@@ -9,6 +9,7 @@ export interface CommandResult {
   notice?: string;
   meta?: MetaCommand;
   saveName?: string;
+  saveFilter?: string;
 }
 
 export const moduleSpecs: Array<{
@@ -43,11 +44,11 @@ export const slashCommands = [
   { name: "/advance", hint: "Push to the next meaningful beat", aliases: [] },
   { name: "/timeskip", hint: "Jump ahead to a later meaningful moment", aliases: [] },
   { name: "/downtime", hint: "Request a quieter scene", aliases: [] },
-  { name: "/narrator", hint: "Speak to the game master", aliases: ["/n"] },
+  { name: "/narrator", hint: "Direct narrator canon", aliases: ["/n"] },
   { name: "/craft", hint: "Open crafting context", aliases: ["/crafting"] },
   { name: "/talk", hint: "Talk to an NPC: /talk <npc> [intent] [message]", aliases: [] },
   { name: "/save", hint: "Create a manual save", aliases: [] },
-  { name: "/load", hint: "Open saved snapshots", aliases: [] },
+  { name: "/load", hint: "Open or filter saved snapshots", aliases: [] },
   { name: "/help", hint: "Show browser command help", aliases: [] },
   { name: "/quit", hint: "Leave from the terminal session menu", aliases: ["/q"] },
 ] as const;
@@ -96,8 +97,9 @@ export function commandToAction(rawText: string): CommandResult {
   if (lower === "/help") {
     return { handled: true, overlay: "help" };
   }
-  if (lower === "/load") {
-    return { handled: true, tab: "saves", overlay: "saves" };
+  if (lower === "/load" || lower.startsWith("/load ")) {
+    const query = text.slice("/load".length).trim();
+    return { handled: true, tab: "saves", overlay: "saves", saveFilter: query };
   }
   if (lower.startsWith("/save")) {
     const name = text.slice("/save".length).trim();
@@ -118,7 +120,7 @@ export function commandToAction(rawText: string): CommandResult {
   }
   if (lower.startsWith("/narrator") || lower === "/n" || lower.startsWith("/n ")) {
     const value = lower.startsWith("/narrator") ? text.slice("/narrator".length).trim() : text.slice("/n".length).trim();
-    if (!value) return { handled: true, notice: "Usage: /n <message to the game master>" };
+    if (!value) return { handled: true, notice: "Usage: /n <narrator instruction or canon correction>" };
     return { meta: { kind: "narrator", text: value } };
   }
   if (lower.startsWith("/advance")) {

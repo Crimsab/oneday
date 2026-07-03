@@ -498,7 +498,7 @@ The player can type special commands during gameplay. Commands start with `/`.
 
 ### The Narrator Command — `/n`
 
-`/n` (or `/narrator`) lets the player **speak directly to the AI as a narrator/game master**, outside of the story. This is a meta-level command that adds depth without breaking immersion.
+`/n` (or `/narrator`) lets the player **direct the narrator control layer**, outside of the story turn. This is a meta-level command for canon corrections, lore injection, and pacing guidance without advancing the scene.
 
 #### What `/n` can do
 
@@ -524,12 +524,12 @@ The player can type special commands during gameplay. Commands start with `/`.
 ```
 → AI takes note and introduces it at the next natural opportunity. Not forced, but guided.
 
-**Ask the narrator questions:**
+**Ask the narrator control layer for changes or context:**
 ```
 /n Quanto è pericoloso il territorio a nord?
 /n Ci sono altre fazioni che non ho ancora incontrato?
 ```
-→ AI answers from the narrator's perspective (may be vague or cryptic depending on the story's tone).
+→ AI answers from the narrator/control perspective and may apply canon or pacing changes when appropriate.
 
 **Correct or adjust:**
 ```
@@ -550,7 +550,7 @@ The player can type special commands during gameplay. Commands start with `/`.
 
 - Not a cheat command (can't give yourself items or stats)
 - Not a rewrite (can't undo past events, use `/undo` for that)
-- It's a **collaboration tool** between you and the AI narrator
+- It's a **collaboration tool** between you and the AI narrator/control layer
 
 ### Dynamic World Updates
 

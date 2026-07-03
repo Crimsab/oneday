@@ -169,7 +169,7 @@ func renderDialogueBlocks(blocks []engine.DialogueBlock, entities []KnownEntity)
 			}
 			rendered = append(rendered, fmt.Sprintf("> **%s:** _%s_", label, quoted))
 		case "meta", "system":
-			label := "[Game Master]"
+			label := "[Narrator Control]"
 			if speaker != "" {
 				label = "[" + speaker + "]"
 			}

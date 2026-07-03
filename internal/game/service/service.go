@@ -12,5 +12,6 @@ type TurnService interface {
 	SubmitMeta(ctx context.Context, req contracts.BrowserMetaRequest) (*contracts.BrowserMetaResponse, error)
 	CreateSave(ctx context.Context, req contracts.BrowserSaveRequest) (*contracts.BrowserSaveResponse, error)
 	LoadSave(ctx context.Context, req contracts.BrowserLoadRequest) (*contracts.BrowserLoadResponse, error)
+	DeleteSave(ctx context.Context, req contracts.BrowserDeleteSaveRequest) (*contracts.BrowserDeleteSaveResponse, error)
 	Snapshot(ctx context.Context, storyID string) (*contracts.GameSnapshot, error)
 }

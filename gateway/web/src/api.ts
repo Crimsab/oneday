@@ -1,6 +1,8 @@
 import type {
   ActionEnvelope,
   ActionResponse,
+  DeleteSaveEnvelope,
+  DeleteSaveResponse,
   Health,
   LoadEnvelope,
   LoadResponse,
@@ -79,4 +81,12 @@ export function loadSave(storyId: string, envelope: LoadEnvelope): Promise<LoadR
       body: JSON.stringify(envelope),
     },
   );
+}
+
+export function deleteSave(storyId: string, envelope: DeleteSaveEnvelope): Promise<DeleteSaveResponse> {
+  return request<DeleteSaveResponse>(`/api/stories/${encodeURIComponent(storyId)}/saves/${encodeURIComponent(envelope.save_id)}`, {
+    method: "DELETE",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(envelope),
+  });
 }

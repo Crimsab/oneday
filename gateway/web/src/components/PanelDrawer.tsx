@@ -14,6 +14,9 @@ interface PanelDrawerProps {
   onPreferencesChange: (preferences: AppPreferences) => void;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
+  onDeleteSave: (save: SaveView) => void;
+  saveFilter: string;
+  onSaveFilterChange: (value: string) => void;
 }
 
 export function PanelDrawer({
@@ -26,6 +29,9 @@ export function PanelDrawer({
   onPreferencesChange,
   onCreateSave,
   onLoadSave,
+  onDeleteSave,
+  saveFilter,
+  onSaveFilterChange,
 }: PanelDrawerProps) {
   if (!overlay) return null;
   return (
@@ -39,7 +45,17 @@ export function PanelDrawer({
         </div>
         {overlay === "help" && <HelpContent />}
         {overlay === "options" && <OptionsContent snapshot={snapshot} preferences={preferences} onPreferencesChange={onPreferencesChange} />}
-        {overlay === "saves" && <SavesContent snapshot={snapshot} busy={busy} onCreateSave={onCreateSave} onLoadSave={onLoadSave} />}
+        {overlay === "saves" && (
+          <SavesContent
+            snapshot={snapshot}
+            busy={busy}
+            saveFilter={saveFilter}
+            onSaveFilterChange={onSaveFilterChange}
+            onCreateSave={onCreateSave}
+            onLoadSave={onLoadSave}
+            onDeleteSave={onDeleteSave}
+          />
+        )}
         {overlay === "new-story" && <NewStoryContent />}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
       </section>
@@ -144,16 +160,26 @@ function OptionsContent({
 function SavesContent({
   snapshot,
   busy,
+  saveFilter,
+  onSaveFilterChange,
   onCreateSave,
   onLoadSave,
+  onDeleteSave,
 }: {
   snapshot: StorySnapshot | null;
   busy: boolean;
+  saveFilter: string;
+  onSaveFilterChange: (value: string) => void;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
+  onDeleteSave: (save: SaveView) => void;
 }) {
   const [name, setName] = useState("");
   const saves = snapshot?.panels.saves ?? [];
+  const query = saveFilter.trim().toLowerCase();
+  const filteredSaves = query
+    ? saves.filter((save) => `${save.name} ${save.location} ${save.turn} ${save.chapter} ${save.id}`.toLowerCase().includes(query))
+    : saves;
   const currentTurn = snapshot?.world.current_turn ?? 0;
   const submitSave = () => {
     onCreateSave(name);
@@ -178,11 +204,22 @@ function SavesContent({
           Create Save
         </button>
       </div>
+      <label className="save-filter">
+        <span>Find save</span>
+        <input
+          value={saveFilter}
+          onChange={(event) => onSaveFilterChange(event.target.value)}
+          placeholder="/load filter"
+          disabled={busy || !snapshot || saves.length === 0}
+        />
+      </label>
       <div className="save-list">
         {saves.length === 0 ? (
           <div className="empty-copy">No saved snapshots yet.</div>
+        ) : filteredSaves.length === 0 ? (
+          <div className="empty-copy">No saves match this filter.</div>
         ) : (
-          saves.map((save) => (
+          filteredSaves.map((save) => (
             <div className="save-row" key={save.id}>
               <div>
                 <strong>{save.name}</strong>
@@ -191,9 +228,14 @@ function SavesContent({
                 </span>
                 <small>{save.created_at}</small>
               </div>
-              <button type="button" className="save-load-button" onClick={() => onLoadSave(save)} disabled={busy}>
-                Load
-              </button>
+              <div className="save-actions">
+                <button type="button" className="save-load-button" onClick={() => onLoadSave(save)} disabled={busy}>
+                  Load
+                </button>
+                <button type="button" className="save-delete-button" onClick={() => onDeleteSave(save)} disabled={busy}>
+                  Delete
+                </button>
+              </div>
             </div>
           ))
         )}
