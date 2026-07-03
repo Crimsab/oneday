@@ -1,6 +1,7 @@
 import { DoorOpen, FileSearch, MessageSquare, PackageSearch, Search, Users } from "lucide-react";
 import type { ChoiceView, StorySnapshot } from "../types";
 import { compactText } from "../format";
+import { choicePresentation } from "../choicePresentation";
 
 interface SuggestedActionsProps {
   choices: ChoiceView[];
@@ -18,11 +19,26 @@ export function SuggestedActions({ choices, snapshot, onChoice, onDraft }: Sugge
       {choices.length > 0
         ? choices.slice(0, 6).map((choice, index) => {
             const Icon = choiceIcons[index % choiceIcons.length];
+            const presentation = choicePresentation(choice, index);
             return (
-              <button type="button" className="suggested-card" key={choice.id} onClick={() => onChoice(choice)}>
-                <Icon size={18} />
+              <button
+                type="button"
+                className="suggested-card choice-card"
+                data-choice-tone={presentation.tone}
+                key={choice.id}
+                onClick={() => onChoice(choice)}
+                title={`${presentation.gain}\n${presentation.tradeoff}`}
+              >
+                <div className="choice-card-top">
+                  <Icon size={18} />
+                  <span>{presentation.title}</span>
+                </div>
                 <strong>{choice.text}</strong>
-                <span>{[choice.intent, choice.risk, choice.scope, choice.certainty].filter(Boolean).join(" / ") || `Choice ${choice.id}`}</span>
+                <div className="choice-meta">
+                  {presentation.meta.length > 0 ? presentation.meta.map((item) => <small key={item}>{item}</small>) : <small>freeform suggestion</small>}
+                </div>
+                <span className="choice-effect plus">{presentation.gain}</span>
+                <span className="choice-effect minus">{presentation.tradeoff}</span>
               </button>
             );
           })

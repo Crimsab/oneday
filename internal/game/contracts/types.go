@@ -106,8 +106,13 @@ func NewTurnEvent(id, storyID, sessionID string, turn int, eventType TurnEventTy
 }
 
 type ChoiceView struct {
-	ID   int    `json:"id"`
-	Text string `json:"text"`
+	ID           int      `json:"id"`
+	Text         string   `json:"text"`
+	Intent       string   `json:"intent,omitempty"`
+	Risk         string   `json:"risk,omitempty"`
+	Scope        string   `json:"scope,omitempty"`
+	Certainty    string   `json:"certainty,omitempty"`
+	RelatedStats []string `json:"related_stats,omitempty"`
 }
 
 type StateDelta struct {
