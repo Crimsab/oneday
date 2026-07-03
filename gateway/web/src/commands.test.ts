@@ -117,6 +117,8 @@ describe("commandSuggestions", () => {
     expect(commandSuggestions("/fro").map((command) => command.name)).toContain("/fronts");
     expect(commandSuggestions("/hooks").map((command) => command.name)).toContain("/fronts");
     expect(commandSuggestions("/sav").find((command) => command.name === "/load")?.aliases).toContain("/saves");
+    expect(commandSuggestions("/sav")[0]?.name).toBe("/save");
+    expect(commandSuggestions("/saves")[0]?.name).toBe("/load");
   });
 
   it("completes multi-word NPC names and talk intents", () => {

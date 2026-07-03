@@ -57,8 +57,16 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
                 </span>
                 {presentation.hasMetadata && (
                   <span className="choice-effects" aria-hidden={!metadataTitle}>
-                    {presentation.gain && <small className="choice-effect plus">{presentation.gain}</small>}
-                    {presentation.tradeoff && <small className="choice-effect minus">{presentation.tradeoff}</small>}
+                    {presentation.gain && (
+                      <small className="choice-effect plus" title={presentation.gain}>
+                        {presentation.gain}
+                      </small>
+                    )}
+                    {presentation.tradeoff && (
+                      <small className="choice-effect minus" title={presentation.tradeoff}>
+                        {presentation.tradeoff}
+                      </small>
+                    )}
                   </span>
                 )}
                 {isActive && <ChoiceDetails choice={choice} presentation={presentation} />}

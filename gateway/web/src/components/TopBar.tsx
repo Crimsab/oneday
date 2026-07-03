@@ -28,7 +28,7 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
         <StatusCell label="Condition" value={condition} strong />
         <div className={`status-cell sync-cell ${sync.toLowerCase()}`}>
           <span>Sync</span>
-          <strong>
+          <strong title={sync}>
             {sync}
             <i aria-hidden="true" />
           </strong>
@@ -74,7 +74,9 @@ function StatusCell({ label, value, strong = false }: { label: string; value: st
   return (
     <div className="status-cell">
       <span>{label}</span>
-      <strong className={strong ? "status-strong" : undefined}>{value}</strong>
+      <strong className={strong ? "status-strong" : undefined} title={value}>
+        {value}
+      </strong>
     </div>
   );
 }
