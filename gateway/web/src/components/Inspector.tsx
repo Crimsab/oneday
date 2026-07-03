@@ -79,6 +79,7 @@ function StatsModule({ snapshot }: { snapshot: StorySnapshot }) {
       <StatsSection snapshot={snapshot} />
       <InspectorSection title="Attributes" rows={fieldRows(stats.attributes).slice(0, 12)} />
       <InspectorSection title="Secondary" rows={fieldRows(stats.secondary).slice(0, 12)} />
+      <InspectorSection title="Counters" rows={counterRows(stats)} />
       <CardsSection title="Skills" cards={cardsFromValue(stats.skills ?? snapshot.character.fields.skills, "Skill")} emptyLabel="No skills recorded." />
       <InspectorSection title="Traits" rows={traitRows(snapshot)} />
       <CardsSection title="Character Profile" cards={cardsFromValue(snapshot.character.fields.background, "Background")} emptyLabel="No background profile." />
@@ -246,6 +247,7 @@ function locationRows(snapshot: StorySnapshot): Array<[string, string]> {
 export function meterRows(snapshot: StorySnapshot): Array<{ label: string; value: number; text: string }> {
   const stats = asObject(snapshot.character.fields.stats);
   const preferred = ["health", "focus", "resolve", "stamina", "insight"];
+  const nonMeterKeys = new Set(["currency", "deaths", "gold", "coins", "xp", "level"]);
   const rows: Array<{ label: string; value: number; text: string }> = [];
 
   const vitals = asObject(stats.vitals);
@@ -263,6 +265,7 @@ export function meterRows(snapshot: StorySnapshot): Array<{ label: string; value
     if (value !== null) rows.push({ label: titleCase(key), value, text: `${value}/100` });
   }
   for (const [key, value] of Object.entries(stats)) {
+    if (nonMeterKeys.has(key.toLowerCase())) continue;
     if (rows.some((row) => row.label.toLowerCase() === key.toLowerCase())) continue;
     const stat = numericStat(value);
     if (stat !== null) rows.push({ label: titleCase(key), value: stat, text: `${stat}/100` });
@@ -353,6 +356,16 @@ function traitRows(snapshot: StorySnapshot): Array<[string, string]> {
   return traits.map((trait, index) => [`Trait ${index + 1}`, compactText(valueToText(trait), 80)] as [string, string]).slice(0, 12);
 }
 
+function counterRows(stats: JsonObject): Array<[string, string]> {
+  const counters = ["currency", "gold", "coins", "deaths", "level", "xp"];
+  const rows: Array<[string, string]> = [];
+  for (const key of counters) {
+    const value = stats[key] ?? stats[titleCase(key)];
+    if (value !== undefined && value !== null) rows.push([titleCase(key), compactText(valueToText(value), 80)]);
+  }
+  return rows;
+}
+
 function messageCards(snapshot: StorySnapshot, keywords: string[] = []): CardView[] {
   const wanted = keywords.map((item) => item.toLowerCase());
   return snapshot.messages
@@ -437,6 +450,7 @@ export function cardsFromValue(value: JsonValue | undefined, fallbackTitle: stri
   const object = asObject(value);
   const entries = Object.entries(object);
   if (entries.length === 0) {
+    if (value && typeof value === "object") return [];
     if (value === undefined || value === null) return [];
     return [{ title: fallbackTitle, rows: [["Value", compactText(valueToText(value), 120)]] }];
   }
