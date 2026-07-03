@@ -1,6 +1,9 @@
 package storage
 
-import "fmt"
+import (
+	"database/sql"
+	"fmt"
+)
 
 // migrate runs all schema migrations in order.
 func (db *DB) migrate() error {
@@ -39,6 +42,7 @@ func (db *DB) migrate() error {
 		{19, migrationV19},
 		{20, migrationV20},
 		{21, migrationV21},
+		{22, migrationV22},
 	}
 
 	for _, m := range migrations {
@@ -51,7 +55,7 @@ func (db *DB) migrate() error {
 			continue
 		}
 
-		if _, err := db.conn.Exec(m.sql); err != nil {
+		if err := db.applyMigration(m.version, m.sql); err != nil {
 			return fmt.Errorf("applying migration %d: %w", m.version, err)
 		}
 		if _, err := db.conn.Exec("INSERT INTO schema_version (version) VALUES (?)", m.version); err != nil {
@@ -59,6 +63,84 @@ func (db *DB) migrate() error {
 		}
 	}
 	return nil
+}
+
+func (db *DB) applyMigration(version int, migrationSQL string) error {
+	switch version {
+	case 21:
+		return db.applyMigrationV21()
+	case 22:
+		return db.applyMigrationV22()
+	default:
+		_, err := db.conn.Exec(migrationSQL)
+		return err
+	}
+}
+
+func (db *DB) applyMigrationV21() error {
+	if err := db.addColumnIfMissing("turn_idempotency", "status", "status TEXT NOT NULL DEFAULT 'committed'"); err != nil {
+		return err
+	}
+	if err := db.addColumnIfMissing("turn_idempotency", "owner", "owner TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := db.addColumnIfMissing("turn_idempotency", "locked_until", "locked_until TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := db.addColumnIfMissing("turn_idempotency", "updated_at", "updated_at TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := db.addColumnIfMissing("turn_idempotency", "error", "error TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	_, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_turn_idempotency_status_locked_until
+		ON turn_idempotency(status, locked_until)`)
+	return err
+}
+
+func (db *DB) applyMigrationV22() error {
+	if err := db.addColumnIfMissing("stories", "revision", "revision INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := db.addColumnIfMissing("turn_idempotency", "request_hash", "request_hash TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	_, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_turn_idempotency_request_hash
+		ON turn_idempotency(story_id, idempotency_key, request_hash)`)
+	return err
+}
+
+func (db *DB) addColumnIfMissing(table, column, definition string) error {
+	exists, err := db.columnExists(table, column)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = db.conn.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s", table, definition))
+	return err
+}
+
+func (db *DB) columnExists(table, column string) (bool, error) {
+	rows, err := db.conn.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &defaultValue, &pk); err != nil {
+			return false, err
+		}
+		if name == column {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 const migrationV1 = `
@@ -365,8 +447,18 @@ const migrationV21 = `
 ALTER TABLE turn_idempotency ADD COLUMN status TEXT NOT NULL DEFAULT 'committed';
 ALTER TABLE turn_idempotency ADD COLUMN owner TEXT NOT NULL DEFAULT '';
 ALTER TABLE turn_idempotency ADD COLUMN locked_until TEXT NOT NULL DEFAULT '';
-ALTER TABLE turn_idempotency ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE turn_idempotency ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
 ALTER TABLE turn_idempotency ADD COLUMN error TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_turn_idempotency_status_locked_until
 	ON turn_idempotency(status, locked_until);
+`
+
+const migrationV22 = `
+-- Monotonic branch revision for shared browser/terminal mutation safety.
+ALTER TABLE stories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
+
+-- Bind idempotency rows to the exact request fingerprint that created them.
+ALTER TABLE turn_idempotency ADD COLUMN request_hash TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_turn_idempotency_request_hash
+	ON turn_idempotency(story_id, idempotency_key, request_hash);
 `

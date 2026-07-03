@@ -51,6 +51,17 @@ type gatewayModelSettingsResponse struct {
 	ErrorCode string                       `json:"error_code,omitempty"`
 }
 
+type gatewaySchemaPreflightResponse struct {
+	Status string `json:"status"`
+}
+
+func runGatewaySchemaPreflight(out io.Writer) error {
+	if err := json.NewEncoder(out).Encode(gatewaySchemaPreflightResponse{Status: "ok"}); err != nil {
+		return fmt.Errorf("writing gateway-schema-preflight response: %w", err)
+	}
+	return nil
+}
+
 func runGatewayCommandDescriptors(out io.Writer) error {
 	if err := json.NewEncoder(out).Encode(gatewayCommandDescriptorsResponse{Commands: contracts.CommandDescriptors()}); err != nil {
 		return fmt.Errorf("writing gateway-command-descriptors response: %w", err)

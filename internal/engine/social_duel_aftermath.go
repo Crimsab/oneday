@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -99,11 +100,30 @@ func ApplySocialDuelAftermath(db *storage.DB, world *storage.WorldState, npc *st
 		}
 	}
 
-	if changedNPC && db != nil && npc != nil {
-		_ = db.UpdateNPC(npc)
-	}
-	if changedWorld && db != nil && world != nil {
-		_ = db.UpdateWorldState(world)
+	if db != nil && (changedNPC || changedWorld) {
+		storyID := ""
+		if world != nil {
+			storyID = world.StoryID
+		} else if npc != nil {
+			storyID = npc.StoryID
+		}
+		_ = db.WithTx(func(tx *sql.Tx) error {
+			if changedNPC && npc != nil {
+				if err := db.UpdateNPCTx(tx, npc); err != nil {
+					return err
+				}
+			}
+			if changedWorld && world != nil {
+				if err := db.UpdateWorldStateTx(tx, world); err != nil {
+					return err
+				}
+			}
+			if storyID == "" {
+				return nil
+			}
+			_, err := db.BumpStoryRevisionTx(tx, storyID)
+			return err
+		})
 	}
 
 	if len(aftermath.Summary) == 0 && aftermath.NPCNote == "" {

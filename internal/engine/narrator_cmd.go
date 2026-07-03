@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -210,15 +211,16 @@ func (nc *NarratorCommand) ExecuteGuide(ctx context.Context, input string) (*Gui
 		guideResp = &GuideMetaResponse{Message: strings.TrimSpace(resp.Content)}
 	}
 
+	var beforeCommit func(*sql.Tx) error
 	if len(guideResp.Guidance) > 0 {
 		existing := loadPlayerGuidance(nc.world)
 		storePlayerGuidance(nc.world, upsertPlayerGuidance(existing, guideResp.Guidance, nc.world.CurrentTurn))
-		if err := nc.db.UpdateWorldState(nc.world); err != nil {
-			guideResp.Message += fmt.Sprintf("\n\n_(Note: the guidance could not be saved cleanly: %v)_", err)
+		beforeCommit = func(tx *sql.Tx) error {
+			return nc.db.UpdateWorldStateTx(tx, nc.world)
 		}
 	}
 
-	if err := nc.logMetaInteraction("guide", input, guideResp.Message); err != nil {
+	if err := nc.logMetaInteractionWithSideEffects("guide", input, guideResp.Message, beforeCommit); err != nil {
 		guideResp.Message += fmt.Sprintf("\n\n_(Note: this guide exchange could not be saved cleanly: %v)_", err)
 	}
 
@@ -287,6 +289,10 @@ func (nc *NarratorCommand) buildNPCContext(_ context.Context) string {
 // logNarratorInteraction saves the /narrator interaction to the main session
 // history without incrementing the story turn.
 func (nc *NarratorCommand) logMetaInteraction(commandName, input, response string) error {
+	return nc.logMetaInteractionWithSideEffects(commandName, input, response, nil)
+}
+
+func (nc *NarratorCommand) logMetaInteractionWithSideEffects(commandName, input, response string, beforeCommit func(*sql.Tx) error) error {
 	if nc.db == nil || nc.session == nil {
 		return nil
 	}
@@ -295,7 +301,7 @@ func (nc *NarratorCommand) logMetaInteraction(commandName, input, response strin
 		commandName = "narrator"
 	}
 
-	if err := nc.session.AppendHistoryEntry(nc.db, ChatEntry{
+	entry := ChatEntry{
 		Turn:        nc.world.CurrentTurn,
 		Timestamp:   time.Now(),
 		Chapter:     nc.world.CurrentChapter,
@@ -310,12 +316,33 @@ func (nc *NarratorCommand) logMetaInteraction(commandName, input, response strin
 			Mood:      "neutral",
 			Location:  nc.world.CurrentLocation,
 		},
-	}); err != nil {
-		if IsMirrorSyncError(err) {
-			log.Printf("oneday: narrator meta interaction persisted canonically but jsonl mirror failed: %v", err)
-			return nil
+	}
+
+	var committedRevision int64
+	if err := nc.db.WithTx(func(tx *sql.Tx) error {
+		if beforeCommit != nil {
+			if err := beforeCommit(tx); err != nil {
+				return err
+			}
 		}
+		if err := nc.session.appendEntryToDB(tx, nc.db, entry); err != nil {
+			return err
+		}
+		nextRevision, err := nc.db.BumpStoryRevisionTx(tx, nc.story.ID)
+		if err != nil {
+			return err
+		}
+		committedRevision = nextRevision
+		return nil
+	}); err != nil {
 		return err
+	}
+	if committedRevision > 0 {
+		nc.story.Revision = committedRevision
+	}
+	if err := nc.session.writeJSONLEntry(entry); err != nil {
+		log.Printf("oneday: narrator meta interaction persisted canonically but jsonl mirror failed: %v", err)
+		return nil
 	}
 	return nil
 }

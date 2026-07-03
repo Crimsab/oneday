@@ -28,6 +28,13 @@ func Open(dbPath string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening database %s: %w", dbPath, err)
 	}
+	conn.SetMaxOpenConns(1)
+	conn.SetMaxIdleConns(1)
+
+	if _, err := conn.Exec("PRAGMA busy_timeout=5000"); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("setting SQLite busy timeout: %w", err)
+	}
 
 	// Enable WAL mode for concurrent reads
 	if _, err := conn.Exec("PRAGMA journal_mode=WAL"); err != nil {

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"database/sql"
 	"strings"
 
 	"github.com/crimsab/oneday/internal/storage"
@@ -30,6 +31,14 @@ var validRarities = map[string]bool{
 // validates category/rarity, checks for duplicates, and persists to DB.
 // Returns the persisted Achievement or nil if invalid/duplicate.
 func ValidateAndPersistAchievement(db *storage.DB, storyID string, data *AchievementData) *storage.Achievement {
+	return validateAndPersistAchievement(db, nil, storyID, data)
+}
+
+func ValidateAndPersistAchievementTx(db *storage.DB, tx *sql.Tx, storyID string, data *AchievementData) *storage.Achievement {
+	return validateAndPersistAchievement(db, tx, storyID, data)
+}
+
+func validateAndPersistAchievement(db *storage.DB, tx *sql.Tx, storyID string, data *AchievementData) *storage.Achievement {
 	if data == nil {
 		return nil
 	}
@@ -43,7 +52,13 @@ func ValidateAndPersistAchievement(db *storage.DB, storyID string, data *Achieve
 		return nil
 	}
 
-	exists, err := db.AchievementExistsByName(storyID, data.Name)
+	var exists bool
+	var err error
+	if tx != nil {
+		exists, err = db.AchievementExistsByNameTx(tx, storyID, data.Name)
+	} else {
+		exists, err = db.AchievementExistsByName(storyID, data.Name)
+	}
 	if err != nil || exists {
 		return nil
 	}
@@ -56,7 +71,12 @@ func ValidateAndPersistAchievement(db *storage.DB, storyID string, data *Achieve
 		Rarity:      strings.ToLower(data.Rarity),
 		Context:     data.Context,
 	}
-	if err := db.CreateAchievement(a); err != nil {
+	if tx != nil {
+		err = db.CreateAchievementTx(tx, a)
+	} else {
+		err = db.CreateAchievement(a)
+	}
+	if err != nil {
 		return nil
 	}
 	return a

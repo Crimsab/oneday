@@ -315,15 +315,35 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.inSocialDuel = false
 			m.socialDuelView = nil
 			m.pendingSocialDuel = nil
-			aftermath := engine.ApplySocialDuelAftermath(
-				m.narrator.DB(),
-				m.narrator.World(),
-				m.socialDuelNPC,
-				duelMsg.State,
-				duelMsg.Round,
-				duelMsg.Cue,
-				m.narrator.Turn(),
-			)
+			var aftermath *engine.SocialDuelAftermath
+			if err := engine.WithStoryMutationLease(context.Background(), m.narrator.DB(), m.narrator.Story().ID, "social-duel", "terminal", func(lease *engine.StoryMutationLease) error {
+				if err := lease.Renew(); err != nil {
+					return err
+				}
+				if err := m.narrator.RefreshFromDB(); err != nil {
+					return err
+				}
+				npc := m.socialDuelNPC
+				if npc != nil {
+					if freshNPC, err := m.narrator.DB().GetNPC(npc.ID); err == nil && freshNPC != nil {
+						npc = freshNPC
+						m.socialDuelNPC = freshNPC
+					}
+				}
+				aftermath = engine.ApplySocialDuelAftermath(
+					m.narrator.DB(),
+					m.narrator.World(),
+					npc,
+					duelMsg.State,
+					duelMsg.Round,
+					duelMsg.Cue,
+					m.narrator.Turn(),
+				)
+				return lease.Renew()
+			}); err != nil {
+				m.statusMsg = "Social duel sync failed"
+				m.statusExpiry = time.Now().Add(4 * time.Second)
+			}
 
 			if duelMsg.State != nil && duelMsg.State.Status == engine.SocialDuelActive {
 				m.activeSocialDuel = duelMsg.State
@@ -1005,7 +1025,21 @@ func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.C
 	m.statusExpiry = time.Now().Add(30 * time.Second)
 	narrator := m.narrator
 	return m, func() tea.Msg {
-		resp, err := narrator.ExecuteNarratorCommand(context.Background(), input)
+		var resp *engine.NarratorMetaResponse
+		err := engine.WithStoryMutationLease(context.Background(), narrator.DB(), narrator.Story().ID, "meta", "terminal", func(lease *engine.StoryMutationLease) error {
+			if err := lease.Renew(); err != nil {
+				return err
+			}
+			if err := narrator.RefreshFromDB(); err != nil {
+				return err
+			}
+			var execErr error
+			resp, execErr = narrator.ExecuteNarratorCommand(context.Background(), input)
+			if execErr != nil {
+				return execErr
+			}
+			return lease.Renew()
+		})
 		if err != nil {
 			return narratorMetaResponseMsg{err: err}
 		}
@@ -1037,7 +1071,21 @@ func (m NarrativeModel) sendGuideCommand(input string) (NarrativeModel, tea.Cmd)
 	m.statusExpiry = time.Now().Add(30 * time.Second)
 	narrator := m.narrator
 	return m, func() tea.Msg {
-		resp, err := narrator.ExecuteGuideCommand(context.Background(), input)
+		var resp *engine.GuideMetaResponse
+		err := engine.WithStoryMutationLease(context.Background(), narrator.DB(), narrator.Story().ID, "meta", "terminal", func(lease *engine.StoryMutationLease) error {
+			if err := lease.Renew(); err != nil {
+				return err
+			}
+			if err := narrator.RefreshFromDB(); err != nil {
+				return err
+			}
+			var execErr error
+			resp, execErr = narrator.ExecuteGuideCommand(context.Background(), input)
+			if execErr != nil {
+				return execErr
+			}
+			return lease.Renew()
+		})
 		if err != nil {
 			return narratorMetaResponseMsg{err: err}
 		}
@@ -1669,6 +1717,9 @@ func (m NarrativeModel) doSave(args []string) (NarrativeModel, tea.Cmd) {
 			if err := lease.Renew(); err != nil {
 				return err
 			}
+			if err := narrator.RefreshFromDB(); err != nil {
+				return err
+			}
 			_, err := engine.SaveGameWithMetadata(
 				narrator.DB(), narrator.DataDir(),
 				narrator.Story(), narrator.Character(), narrator.World(),
@@ -1686,6 +1737,9 @@ func (m NarrativeModel) doQuickSave() tea.Cmd {
 	return func() tea.Msg {
 		err := engine.WithStoryMutationLease(context.Background(), narrator.DB(), narrator.Story().ID, "save-create", "terminal", func(lease *engine.StoryMutationLease) error {
 			if err := lease.Renew(); err != nil {
+				return err
+			}
+			if err := narrator.RefreshFromDB(); err != nil {
 				return err
 			}
 			_, err := engine.SaveGameWithMetadata(
@@ -1722,6 +1776,9 @@ func (m NarrativeModel) doQuit() (NarrativeModel, tea.Cmd) {
 	return m, func() tea.Msg {
 		_ = engine.WithStoryMutationLease(context.Background(), narrator.DB(), narrator.Story().ID, "autosave", "terminal", func(lease *engine.StoryMutationLease) error {
 			if err := lease.Renew(); err != nil {
+				return err
+			}
+			if err := narrator.RefreshFromDB(); err != nil {
 				return err
 			}
 			return engine.AutosaveWithMetadata(

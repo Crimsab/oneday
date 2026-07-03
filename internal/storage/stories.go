@@ -7,18 +7,21 @@ import (
 	"time"
 )
 
-var ErrStaleWorldTurn = errors.New("stale world turn")
+var (
+	ErrStaleWorldTurn     = errors.New("stale world turn")
+	ErrStaleStoryRevision = errors.New("stale story revision")
+)
 
 // CreateStory inserts a new story.
 func (db *DB) CreateStory(s *Story) error {
 	_, err := db.conn.Exec(
 		`INSERT INTO stories (
 			id, name, setting_json, stats_schema_json, description, genre, tone,
-			language, writing_style, prompt_directives, is_archived, created_at, updated_at
+			language, writing_style, prompt_directives, revision, is_archived, created_at, updated_at
 		)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Name, s.SettingJSON, s.StatsSchemaJSON, s.Description, s.Genre, s.Tone,
-		s.Language, s.WritingStyle, s.PromptDirectives, s.IsArchived, s.CreatedAt, s.UpdatedAt,
+		s.Language, s.WritingStyle, s.PromptDirectives, s.Revision, s.IsArchived, s.CreatedAt, s.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting story: %w", err)
@@ -31,11 +34,11 @@ func (db *DB) GetStory(id string) (*Story, error) {
 	s := &Story{}
 	err := db.conn.QueryRow(
 		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone,
-                language, writing_style, prompt_directives, is_archived, created_at, updated_at
+                language, writing_style, prompt_directives, revision, is_archived, created_at, updated_at
          FROM stories WHERE id = ?`, id,
 	).Scan(
 		&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON, &s.Description, &s.Genre, &s.Tone,
-		&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.IsArchived, &s.CreatedAt, &s.UpdatedAt,
+		&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.Revision, &s.IsArchived, &s.CreatedAt, &s.UpdatedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("getting story %s: %w", id, err)
@@ -47,7 +50,7 @@ func (db *DB) GetStory(id string) (*Story, error) {
 func (db *DB) ListStories() ([]Story, error) {
 	rows, err := db.conn.Query(
 		`SELECT id, name, setting_json, stats_schema_json, description, genre, tone,
-                language, writing_style, prompt_directives, is_archived, created_at, updated_at
+                language, writing_style, prompt_directives, revision, is_archived, created_at, updated_at
          FROM stories ORDER BY updated_at DESC`,
 	)
 	if err != nil {
@@ -61,7 +64,7 @@ func (db *DB) ListStories() ([]Story, error) {
 		if err := rows.Scan(
 			&s.ID, &s.Name, &s.SettingJSON, &s.StatsSchemaJSON,
 			&s.Description, &s.Genre, &s.Tone,
-			&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.IsArchived,
+			&s.Language, &s.WritingStyle, &s.PromptDirectives, &s.Revision, &s.IsArchived,
 			&s.CreatedAt, &s.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scanning story: %w", err)
@@ -69,6 +72,71 @@ func (db *DB) ListStories() ([]Story, error) {
 		stories = append(stories, s)
 	}
 	return stories, rows.Err()
+}
+
+// GetStoryRevision returns the current monotonic story branch revision.
+func (db *DB) GetStoryRevision(storyID string) (int64, error) {
+	var revision int64
+	err := db.conn.QueryRow(`SELECT revision FROM stories WHERE id = ?`, storyID).Scan(&revision)
+	if err != nil {
+		return 0, fmt.Errorf("getting story revision for %s: %w", storyID, err)
+	}
+	return revision, nil
+}
+
+// RequireStoryRevisionTx verifies that a caller is still committing against the
+// same branch it prepared. Pass a negative expectedRevision to skip the check.
+func (db *DB) RequireStoryRevisionTx(tx *sql.Tx, storyID string, expectedRevision int64) error {
+	if tx == nil || expectedRevision < 0 {
+		return nil
+	}
+	var current int64
+	err := tx.QueryRow(`SELECT revision FROM stories WHERE id = ?`, storyID).Scan(&current)
+	if err != nil {
+		return fmt.Errorf("checking story revision for %s: %w", storyID, err)
+	}
+	if current != expectedRevision {
+		return fmt.Errorf("%w: expected revision %d, current revision is %d", ErrStaleStoryRevision, expectedRevision, current)
+	}
+	return nil
+}
+
+// BumpStoryRevisionTx increments the story branch revision inside an existing transaction.
+func (db *DB) BumpStoryRevisionTx(tx *sql.Tx, storyID string) (int64, error) {
+	if tx == nil {
+		return 0, errors.New("transaction is required")
+	}
+	now := time.Now()
+	res, err := tx.Exec(`UPDATE stories SET revision = revision + 1, updated_at = ? WHERE id = ?`, now, storyID)
+	if err != nil {
+		return 0, fmt.Errorf("bumping story revision for %s: %w", storyID, err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("checking story revision bump for %s: %w", storyID, err)
+	}
+	if rows == 0 {
+		return 0, fmt.Errorf("bumping story revision for %s: %w", storyID, sql.ErrNoRows)
+	}
+	var revision int64
+	if err := tx.QueryRow(`SELECT revision FROM stories WHERE id = ?`, storyID).Scan(&revision); err != nil {
+		return 0, fmt.Errorf("loading bumped story revision for %s: %w", storyID, err)
+	}
+	return revision, nil
+}
+
+// BumpStoryRevision increments the story branch revision in its own transaction.
+func (db *DB) BumpStoryRevision(storyID string) (int64, error) {
+	var revision int64
+	err := db.WithTx(func(tx *sql.Tx) error {
+		next, err := db.BumpStoryRevisionTx(tx, storyID)
+		if err != nil {
+			return err
+		}
+		revision = next
+		return nil
+	})
+	return revision, err
 }
 
 // CreateCharacter inserts a new character.

@@ -110,7 +110,7 @@ function snapshotWithWorld(overrides: Record<string, JsonValue>): StorySnapshot 
   const characterStats = overrides.characterStats ?? { focus: 80 };
   return {
     server_time: "2026-01-01T00:00:00Z",
-    version: { turn: 1, last_message_id: 1, world_updated_at: "now", achievement_count: 0, save_count: 0 },
+    version: { turn: 1, revision: 0, last_message_id: 1, world_updated_at: "now", achievement_count: 0, save_count: 0 },
     story: { id: "story", name: "Story", description: "", genre: "", tone: "", language: "en", is_archived: false, updated_at: "now" },
     character: { id: "character", name: "Hero", fields: { stats: characterStats } },
     world: {

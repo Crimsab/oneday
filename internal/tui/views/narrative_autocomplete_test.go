@@ -259,6 +259,17 @@ func newTalkTestNarrativeModel(t *testing.T) NarrativeModel {
 		t.Fatalf("CreateStory: %v", err)
 	}
 
+	character := &storage.Character{
+		ID:        "char-talk-model",
+		StoryID:   story.ID,
+		Name:      "Test Protagonist",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := db.CreateCharacter(character); err != nil {
+		t.Fatalf("CreateCharacter: %v", err)
+	}
+
 	world := &storage.WorldState{
 		ID:              "world-talk-model",
 		StoryID:         story.ID,
@@ -282,6 +293,6 @@ func newTalkTestNarrativeModel(t *testing.T) NarrativeModel {
 		_ = session.Close(db)
 	})
 
-	narrator := engine.NewNarrator(nil, db, story, &storage.Character{StoryID: story.ID}, world, session, engine.ContextConfig{}, config.GenerationConfig{}, config.ASCIIArtConfig{}, t.TempDir(), 5)
+	narrator := engine.NewNarrator(nil, db, story, character, world, session, engine.ContextConfig{}, config.GenerationConfig{}, config.ASCIIArtConfig{}, t.TempDir(), 5)
 	return NewNarrativeModel(narrator, 0, true)
 }

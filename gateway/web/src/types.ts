@@ -196,6 +196,7 @@ export interface PanelsView {
 
 export interface StoryVersion {
   turn: number;
+  revision: number;
   last_message_id: number;
   world_updated_at: string;
   achievement_count: number;
@@ -260,6 +261,7 @@ export interface PlayerAction {
 export interface ActionEnvelope {
   session_id: string;
   client_turn: number;
+  client_revision: number;
   idempotency_key: string;
   action: PlayerAction;
   capabilities: {
@@ -284,6 +286,7 @@ export interface MetaCommand {
 export interface MetaEnvelope extends MetaCommand {
   session_id: string;
   client_turn: number;
+  client_revision: number;
 }
 
 export interface MetaResult {
@@ -300,6 +303,7 @@ export interface MetaResponse {
 export interface SaveEnvelope {
   session_id: string;
   client_turn: number;
+  client_revision: number;
   name: string;
   kind: "manual" | "quicksave";
 }
@@ -312,6 +316,7 @@ export interface SaveResponse {
 export interface LoadEnvelope {
   session_id: string;
   client_turn: number;
+  client_revision: number;
   save_id: string;
 }
 
@@ -324,6 +329,7 @@ export interface LoadResponse {
 export interface DeleteSaveEnvelope {
   session_id: string;
   client_turn: number;
+  client_revision: number;
   save_id: string;
 }
 

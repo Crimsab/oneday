@@ -238,7 +238,9 @@ impl From<anyhow::Error> for ApiError {
             || message.contains("at least one provider")
             || message.contains("invalid gateway-model-settings-update JSON");
         let is_conflict = message.contains("stale client_turn")
+            || message.contains("stale client_revision")
             || message.contains("stale session_id")
+            || message.contains("turn idempotency key belongs to a different request")
             || message.contains("is required")
             || message.contains("belongs to story");
         let is_not_found =

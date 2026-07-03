@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +55,10 @@ func (s *InProcessTurnService) Snapshot(_ context.Context, storyID string) (*con
 	if err != nil {
 		return nil, err
 	}
+	story, err := s.db.GetStory(storyID)
+	if err != nil {
+		return nil, err
+	}
 	session, err := s.db.GetActiveSession(storyID)
 	if err != nil {
 		return nil, err
@@ -69,6 +75,7 @@ func (s *InProcessTurnService) Snapshot(_ context.Context, storyID string) (*con
 	snapshot := &contracts.GameSnapshot{
 		StoryID:  storyID,
 		Turn:     world.CurrentTurn,
+		Revision: story.Revision,
 		Location: world.CurrentLocation,
 	}
 	if session != nil {
@@ -88,7 +95,12 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 		return nil, errors.New("database is not configured")
 	}
 
-	if events, ok, err := s.cachedEvents(req); err != nil {
+	requestHash, err := requestFingerprint(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if events, ok, err := s.cachedEvents(req, requestHash); err != nil {
 		return nil, err
 	} else if ok {
 		return eventsChannel(events), nil
@@ -104,7 +116,7 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 	}
 	defer func() { _ = lease.Release() }()
 
-	if events, ok, err := s.cachedEvents(req); err != nil {
+	if events, ok, err := s.cachedEvents(req, requestHash); err != nil {
 		return nil, err
 	} else if ok {
 		return eventsChannel(events), nil
@@ -114,14 +126,14 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 	if err != nil {
 		return nil, err
 	}
-	if err := req.Validate(snapshot.Turn); err != nil {
+	if err := req.Validate(snapshot.Turn, snapshot.Revision); err != nil {
 		return nil, err
 	}
 	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
 		return nil, fmt.Errorf("stale session_id %q, active session is %q", req.SessionID, snapshot.SessionID)
 	}
 
-	claim, events, ok, err := s.claimTurn(req)
+	claim, events, ok, err := s.claimTurn(req, requestHash)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +174,7 @@ func (s *InProcessTurnService) SubmitMeta(ctx context.Context, req contracts.Bro
 	if err != nil {
 		return nil, err
 	}
-	if err := req.Validate(snapshot.Turn); err != nil {
+	if err := req.Validate(snapshot.Turn, snapshot.Revision); err != nil {
 		return nil, err
 	}
 	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
@@ -227,7 +239,7 @@ func (s *InProcessTurnService) CreateSave(ctx context.Context, req contracts.Bro
 	if err != nil {
 		return nil, err
 	}
-	if err := req.Validate(snapshot.Turn); err != nil {
+	if err := req.Validate(snapshot.Turn, snapshot.Revision); err != nil {
 		return nil, err
 	}
 	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
@@ -298,7 +310,7 @@ func (s *InProcessTurnService) LoadSave(ctx context.Context, req contracts.Brows
 	if err != nil {
 		return nil, err
 	}
-	if err := req.Validate(snapshot.Turn); err != nil {
+	if err := req.Validate(snapshot.Turn, snapshot.Revision); err != nil {
 		return nil, err
 	}
 	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
@@ -319,6 +331,7 @@ func (s *InProcessTurnService) LoadSave(ctx context.Context, req contracts.Brows
 	if err != nil {
 		return nil, err
 	}
+	s.clearCachedEvents(req.StoryID)
 	return &contracts.BrowserLoadResponse{Save: saveView(result.Save), Legacy: result.Legacy}, nil
 }
 
@@ -341,7 +354,7 @@ func (s *InProcessTurnService) DeleteSave(ctx context.Context, req contracts.Bro
 	if err != nil {
 		return nil, err
 	}
-	if err := req.Validate(snapshot.Turn); err != nil {
+	if err := req.Validate(snapshot.Turn, snapshot.Revision); err != nil {
 		return nil, err
 	}
 	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
@@ -377,7 +390,7 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 	var hook engine.TurnCommitHook
 	if claim != nil {
 		hook = func(tx *sql.Tx, result engine.TurnCommitResult) error {
-			events, err := buildTurnEvents(req, snapshot, sessionID, result.Narrative, result.World)
+			events, err := buildTurnEvents(req, snapshot, sessionID, result.Narrative, result.World, result.Revision)
 			if err != nil {
 				return err
 			}
@@ -400,10 +413,10 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 	if len(committedEvents) > 0 {
 		return cloneEvents(committedEvents), nil
 	}
-	return buildTurnEvents(req, snapshot, sessionID, resp, world)
+	return buildTurnEvents(req, snapshot, sessionID, resp, world, narrator.Story().Revision)
 }
 
-func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot, sessionID string, resp *engine.NarrativeResponse, world *storage.WorldState) ([]contracts.TurnEvent, error) {
+func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot, sessionID string, resp *engine.NarrativeResponse, world *storage.WorldState, revision int64) ([]contracts.TurnEvent, error) {
 	events := make([]contracts.TurnEvent, 0, 6)
 	appendEvent := func(eventType contracts.TurnEventType, payload any) error {
 		event, err := contracts.NewTurnEvent(
@@ -428,8 +441,9 @@ func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.Game
 		return nil, errors.New("missing world state")
 	}
 	if err := appendEvent(contracts.EventTurnStarted, map[string]any{
-		"client_turn": req.ClientTurn,
-		"action":      req.Action,
+		"client_turn":     req.ClientTurn,
+		"client_revision": req.ClientRevision,
+		"action":          req.Action,
 	}); err != nil {
 		return nil, err
 	}
@@ -470,6 +484,7 @@ func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.Game
 			StoryID:   req.StoryID,
 			SessionID: sessionID,
 			Turn:      world.CurrentTurn,
+			Revision:  revision,
 			Location:  world.CurrentLocation,
 			Choices:   choiceViews(resp.Choices),
 		},
@@ -553,8 +568,8 @@ func (s *InProcessTurnService) acquireStoryMutationLease(ctx context.Context, st
 	return engine.AcquireStoryMutationLease(ctx, s.db, storyID, scope, "browser")
 }
 
-func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest) ([]contracts.TurnEvent, bool, error) {
-	key := idempotencyKey(req)
+func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest, requestHash string) ([]contracts.TurnEvent, bool, error) {
+	key := idempotencyKey(req, requestHash)
 	if key == "" {
 		return nil, false, nil
 	}
@@ -568,7 +583,7 @@ func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest) (
 	if s.db == nil {
 		return nil, false, nil
 	}
-	eventsJSON, found, err := s.db.GetTurnIdempotency(req.StoryID, req.IdempotencyKey)
+	eventsJSON, found, err := s.db.GetTurnIdempotency(req.StoryID, req.IdempotencyKey, requestHash)
 	if err != nil || !found {
 		return nil, false, err
 	}
@@ -582,17 +597,18 @@ func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest) (
 	return stored, true, nil
 }
 
-func (s *InProcessTurnService) claimTurn(req contracts.SubmitActionRequest) (*storage.TurnIdempotencyClaim, []contracts.TurnEvent, bool, error) {
+func (s *InProcessTurnService) claimTurn(req contracts.SubmitActionRequest, requestHash string) (*storage.TurnIdempotencyClaim, []contracts.TurnEvent, bool, error) {
 	if s.db == nil {
 		return nil, nil, false, nil
 	}
-	key := idempotencyKey(req)
+	key := idempotencyKey(req, requestHash)
 	if key == "" {
 		return nil, nil, false, nil
 	}
 	result, err := s.db.ClaimTurnIdempotency(
 		req.StoryID,
 		req.IdempotencyKey,
+		requestHash,
 		fmt.Sprintf("browser:turn:%d", time.Now().UnixNano()),
 		engine.StoryMutationLockTTL,
 	)
@@ -614,12 +630,31 @@ func (s *InProcessTurnService) claimTurn(req contracts.SubmitActionRequest) (*st
 }
 
 func (s *InProcessTurnService) cacheEvents(req contracts.SubmitActionRequest, events []contracts.TurnEvent) {
-	key := idempotencyKey(req)
+	requestHash, err := requestFingerprint(req)
+	if err != nil {
+		return
+	}
+	key := idempotencyKey(req, requestHash)
 	if key == "" {
 		return
 	}
 	s.mu.Lock()
 	s.idempotency[key] = cloneEvents(events)
+	s.mu.Unlock()
+}
+
+func (s *InProcessTurnService) clearCachedEvents(storyID string) {
+	storyID = strings.TrimSpace(storyID)
+	if storyID == "" {
+		return
+	}
+	prefix := storyID + ":"
+	s.mu.Lock()
+	for key := range s.idempotency {
+		if strings.HasPrefix(key, prefix) {
+			delete(s.idempotency, key)
+		}
+	}
 	s.mu.Unlock()
 }
 
@@ -672,11 +707,49 @@ func buildEmbeddingProvider(spec aifactory.EmbeddingProviderSpec, timeout time.D
 	}
 }
 
-func idempotencyKey(req contracts.SubmitActionRequest) string {
-	if strings.TrimSpace(req.StoryID) == "" || strings.TrimSpace(req.IdempotencyKey) == "" {
+func idempotencyKey(req contracts.SubmitActionRequest, requestHash string) string {
+	if strings.TrimSpace(req.StoryID) == "" || strings.TrimSpace(req.IdempotencyKey) == "" || strings.TrimSpace(requestHash) == "" {
 		return ""
 	}
-	return req.StoryID + ":" + req.IdempotencyKey
+	return req.StoryID + ":" + req.IdempotencyKey + ":" + requestHash
+}
+
+func requestFingerprint(req contracts.SubmitActionRequest) (string, error) {
+	if strings.TrimSpace(req.IdempotencyKey) == "" {
+		return "", errors.New("idempotency_key is required")
+	}
+	if strings.TrimSpace(req.StoryID) == "" || strings.TrimSpace(req.SessionID) == "" {
+		return "", errors.New("story_id and session_id are required")
+	}
+	payload := struct {
+		Version        int                          `json:"version"`
+		StoryID        string                       `json:"story_id"`
+		SessionID      string                       `json:"session_id"`
+		ClientTurn     int                          `json:"client_turn"`
+		ClientRevision int64                        `json:"client_revision"`
+		IdempotencyKey string                       `json:"idempotency_key"`
+		Action         contracts.PlayerAction       `json:"action"`
+		Capabilities   contracts.ClientCapabilities `json:"capabilities"`
+	}{
+		Version:        1,
+		StoryID:        strings.TrimSpace(req.StoryID),
+		SessionID:      strings.TrimSpace(req.SessionID),
+		ClientTurn:     req.ClientTurn,
+		ClientRevision: req.ClientRevision,
+		IdempotencyKey: strings.TrimSpace(req.IdempotencyKey),
+		Action: contracts.PlayerAction{
+			Kind:     req.Action.Kind,
+			Text:     strings.TrimSpace(req.Action.Text),
+			ChoiceID: req.Action.ChoiceID,
+		},
+		Capabilities: req.Capabilities,
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encoding idempotency request fingerprint: %w", err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 func eventsChannel(events []contracts.TurnEvent) <-chan contracts.TurnEvent {

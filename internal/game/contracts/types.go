@@ -32,13 +32,14 @@ type SubmitActionRequest struct {
 	StoryID        string             `json:"story_id"`
 	SessionID      string             `json:"session_id"`
 	ClientTurn     int                `json:"client_turn"`
+	ClientRevision int64              `json:"client_revision"`
 	IdempotencyKey string             `json:"idempotency_key"`
 	Action         PlayerAction       `json:"action"`
 	Stream         bool               `json:"stream,omitempty"`
 	Capabilities   ClientCapabilities `json:"capabilities,omitempty"`
 }
 
-func (r SubmitActionRequest) Validate(currentTurn int) error {
+func (r SubmitActionRequest) Validate(currentTurn int, currentRevision int64) error {
 	if strings.TrimSpace(r.StoryID) == "" {
 		return errors.New("story_id is required")
 	}
@@ -50,6 +51,9 @@ func (r SubmitActionRequest) Validate(currentTurn int) error {
 	}
 	if r.ClientTurn != currentTurn {
 		return fmt.Errorf("stale client_turn %d, current turn is %d", r.ClientTurn, currentTurn)
+	}
+	if currentRevision >= 0 && r.ClientRevision != currentRevision {
+		return fmt.Errorf("stale client_revision %d, current revision is %d", r.ClientRevision, currentRevision)
 	}
 	if strings.TrimSpace(r.Action.Text) == "" && r.Action.ChoiceID == 0 {
 		return errors.New("action text or choice_id is required")
@@ -66,15 +70,16 @@ const (
 )
 
 type BrowserMetaRequest struct {
-	StoryID    string          `json:"story_id"`
-	SessionID  string          `json:"session_id"`
-	ClientTurn int             `json:"client_turn"`
-	Kind       BrowserMetaKind `json:"kind"`
-	Text       string          `json:"text,omitempty"`
+	StoryID        string          `json:"story_id"`
+	SessionID      string          `json:"session_id"`
+	ClientTurn     int             `json:"client_turn"`
+	ClientRevision int64           `json:"client_revision"`
+	Kind           BrowserMetaKind `json:"kind"`
+	Text           string          `json:"text,omitempty"`
 }
 
-func (r BrowserMetaRequest) Validate(currentTurn int) error {
-	if err := validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn); err != nil {
+func (r BrowserMetaRequest) Validate(currentTurn int, currentRevision int64) error {
+	if err := validateStorySessionTurnRevision(r.StoryID, r.SessionID, r.ClientTurn, r.ClientRevision, currentTurn, currentRevision); err != nil {
 		return err
 	}
 	switch r.Kind {
@@ -92,26 +97,28 @@ type BrowserMetaResponse struct {
 }
 
 type BrowserSaveRequest struct {
-	StoryID    string `json:"story_id"`
-	SessionID  string `json:"session_id"`
-	ClientTurn int    `json:"client_turn"`
-	Name       string `json:"name,omitempty"`
-	Kind       string `json:"kind,omitempty"`
+	StoryID        string `json:"story_id"`
+	SessionID      string `json:"session_id"`
+	ClientTurn     int    `json:"client_turn"`
+	ClientRevision int64  `json:"client_revision"`
+	Name           string `json:"name,omitempty"`
+	Kind           string `json:"kind,omitempty"`
 }
 
-func (r BrowserSaveRequest) Validate(currentTurn int) error {
-	return validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn)
+func (r BrowserSaveRequest) Validate(currentTurn int, currentRevision int64) error {
+	return validateStorySessionTurnRevision(r.StoryID, r.SessionID, r.ClientTurn, r.ClientRevision, currentTurn, currentRevision)
 }
 
 type BrowserLoadRequest struct {
-	StoryID    string `json:"story_id"`
-	SessionID  string `json:"session_id"`
-	ClientTurn int    `json:"client_turn"`
-	SaveID     string `json:"save_id"`
+	StoryID        string `json:"story_id"`
+	SessionID      string `json:"session_id"`
+	ClientTurn     int    `json:"client_turn"`
+	ClientRevision int64  `json:"client_revision"`
+	SaveID         string `json:"save_id"`
 }
 
-func (r BrowserLoadRequest) Validate(currentTurn int) error {
-	if err := validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn); err != nil {
+func (r BrowserLoadRequest) Validate(currentTurn int, currentRevision int64) error {
+	if err := validateStorySessionTurnRevision(r.StoryID, r.SessionID, r.ClientTurn, r.ClientRevision, currentTurn, currentRevision); err != nil {
 		return err
 	}
 	if strings.TrimSpace(r.SaveID) == "" {
@@ -121,14 +128,15 @@ func (r BrowserLoadRequest) Validate(currentTurn int) error {
 }
 
 type BrowserDeleteSaveRequest struct {
-	StoryID    string `json:"story_id"`
-	SessionID  string `json:"session_id"`
-	ClientTurn int    `json:"client_turn"`
-	SaveID     string `json:"save_id"`
+	StoryID        string `json:"story_id"`
+	SessionID      string `json:"session_id"`
+	ClientTurn     int    `json:"client_turn"`
+	ClientRevision int64  `json:"client_revision"`
+	SaveID         string `json:"save_id"`
 }
 
-func (r BrowserDeleteSaveRequest) Validate(currentTurn int) error {
-	if err := validateStorySessionTurn(r.StoryID, r.SessionID, r.ClientTurn, currentTurn); err != nil {
+func (r BrowserDeleteSaveRequest) Validate(currentTurn int, currentRevision int64) error {
+	if err := validateStorySessionTurnRevision(r.StoryID, r.SessionID, r.ClientTurn, r.ClientRevision, currentTurn, currentRevision); err != nil {
 		return err
 	}
 	if strings.TrimSpace(r.SaveID) == "" {
@@ -162,6 +170,10 @@ type BrowserDeleteSaveResponse struct {
 }
 
 func validateStorySessionTurn(storyID, sessionID string, clientTurn, currentTurn int) error {
+	return validateStorySessionTurnRevision(storyID, sessionID, clientTurn, 0, currentTurn, -1)
+}
+
+func validateStorySessionTurnRevision(storyID, sessionID string, clientTurn int, clientRevision int64, currentTurn int, currentRevision int64) error {
 	if strings.TrimSpace(storyID) == "" {
 		return errors.New("story_id is required")
 	}
@@ -170,6 +182,9 @@ func validateStorySessionTurn(storyID, sessionID string, clientTurn, currentTurn
 	}
 	if clientTurn != currentTurn {
 		return fmt.Errorf("stale client_turn %d, current turn is %d", clientTurn, currentTurn)
+	}
+	if currentRevision >= 0 && clientRevision != currentRevision {
+		return fmt.Errorf("stale client_revision %d, current revision is %d", clientRevision, currentRevision)
 	}
 	return nil
 }
@@ -242,6 +257,7 @@ type GameSnapshot struct {
 	StoryID   string       `json:"story_id"`
 	SessionID string       `json:"session_id"`
 	Turn      int          `json:"turn"`
+	Revision  int64        `json:"revision"`
 	Location  string       `json:"location,omitempty"`
 	Choices   []ChoiceView `json:"choices,omitempty"`
 }

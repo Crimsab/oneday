@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -245,10 +246,24 @@ func FormatNPCForContext(npc *storage.NPC) string {
 // name and on the first word of the name (first name). This is best-effort —
 // errors are swallowed so game flow is never interrupted.
 func UpdateNPCLastSeen(db *storage.DB, storyID string, narrativeText string, currentTurn int) error {
+	return updateNPCLastSeen(db, nil, storyID, narrativeText, currentTurn)
+}
+
+func UpdateNPCLastSeenTx(db *storage.DB, tx *sql.Tx, storyID string, narrativeText string, currentTurn int) error {
+	return updateNPCLastSeen(db, tx, storyID, narrativeText, currentTurn)
+}
+
+func updateNPCLastSeen(db *storage.DB, tx *sql.Tx, storyID string, narrativeText string, currentTurn int) error {
 	if db == nil || narrativeText == "" {
 		return nil
 	}
-	npcs, err := db.ListNPCs(storyID)
+	var npcs []storage.NPC
+	var err error
+	if tx != nil {
+		npcs, err = db.ListNPCsTx(tx, storyID)
+	} else {
+		npcs, err = db.ListNPCs(storyID)
+	}
 	if err != nil {
 		return nil // non-fatal
 	}
@@ -259,7 +274,11 @@ func UpdateNPCLastSeen(db *storage.DB, storyID string, narrativeText string, cur
 		fullLower := strings.ToLower(npc.Name)
 		if strings.Contains(lower, fullLower) {
 			npc.LastSeenTurn = currentTurn
-			_ = db.UpdateNPC(npc)
+			if tx != nil {
+				_ = db.UpdateNPCTx(tx, npc)
+			} else {
+				_ = db.UpdateNPC(npc)
+			}
 			continue
 		}
 		// Match first name only (first whitespace-delimited word).
@@ -268,7 +287,11 @@ func UpdateNPCLastSeen(db *storage.DB, storyID string, narrativeText string, cur
 			firstLower := strings.ToLower(parts[0])
 			if strings.Contains(lower, firstLower) {
 				npc.LastSeenTurn = currentTurn
-				_ = db.UpdateNPC(npc)
+				if tx != nil {
+					_ = db.UpdateNPCTx(tx, npc)
+				} else {
+					_ = db.UpdateNPC(npc)
+				}
 			}
 		}
 	}

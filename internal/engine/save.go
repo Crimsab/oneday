@@ -144,13 +144,46 @@ func SaveGameWithMetadata(
 	if err != nil {
 		return nil, fmt.Errorf("marshaling snapshot: %w", err)
 	}
-	if err := os.WriteFile(snapPath, snapBytes, 0644); err != nil {
-		return nil, fmt.Errorf("writing snapshot file: %w", err)
+	tmpFile, err := os.CreateTemp(filepath.Dir(snapPath), "."+saveID+"-*.tmp")
+	if err != nil {
+		return nil, fmt.Errorf("creating temporary snapshot file: %w", err)
 	}
+	tmpPath := tmpFile.Name()
+	cleanupTmp := true
+	defer func() {
+		if cleanupTmp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := tmpFile.Write(snapBytes); err != nil {
+		_ = tmpFile.Close()
+		return nil, fmt.Errorf("writing temporary snapshot file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return nil, fmt.Errorf("closing temporary snapshot file: %w", err)
+	}
+	if err := os.Rename(tmpPath, snapPath); err != nil {
+		return nil, fmt.Errorf("publishing snapshot file: %w", err)
+	}
+	cleanupTmp = false
 
-	if err := db.CreateSave(snap); err != nil {
+	var committedRevision int64
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		if err := db.CreateSaveTx(tx, snap); err != nil {
+			return err
+		}
+		nextRevision, err := db.BumpStoryRevisionTx(tx, story.ID)
+		if err != nil {
+			return err
+		}
+		committedRevision = nextRevision
+		return nil
+	}); err != nil {
 		_ = os.Remove(snapPath)
 		return nil, fmt.Errorf("saving to database: %w", err)
+	}
+	if committedRevision > 0 {
+		story.Revision = committedRevision
 	}
 
 	return snap, nil
@@ -185,11 +218,20 @@ func LoadGame(
 	}
 
 	if result.Legacy {
-		if err := db.UpdateCharacterFull(&char); err != nil {
-			return nil, fmt.Errorf("restoring character state: %w", err)
-		}
-		if err := db.UpdateWorldState(&world); err != nil {
-			return nil, fmt.Errorf("restoring world state: %w", err)
+		if err := db.WithTx(func(tx *sql.Tx) error {
+			if err := db.UpdateCharacterFullTx(tx, &char); err != nil {
+				return fmt.Errorf("restoring character state: %w", err)
+			}
+			if err := db.UpdateWorldStateTx(tx, &world); err != nil {
+				return fmt.Errorf("restoring world state: %w", err)
+			}
+			if err := db.ClearTurnIdempotencyTx(tx, snap.StoryID); err != nil {
+				return err
+			}
+			_, err := db.BumpStoryRevisionTx(tx, snap.StoryID)
+			return err
+		}); err != nil {
+			return nil, err
 		}
 		return result, nil
 	}
@@ -233,12 +275,14 @@ func AutosaveWithMetadata(
 		existing = nil
 	}
 
-	if existing != nil {
-		_ = DeleteSave(db, dataDir, existing.ID)
-	}
-
 	_, err = SaveGameWithMetadata(db, dataDir, story, char, world, sessionID, "autosave", meta)
-	return err
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		return DeleteSave(db, dataDir, existing.ID)
+	}
+	return nil
 }
 
 // DeleteSave removes a save snapshot from both the DB and the on-disk save directory.
@@ -248,7 +292,13 @@ func DeleteSave(db *storage.DB, dataDir, saveID string) error {
 		return fmt.Errorf("getting save %s: %w", saveID, err)
 	}
 
-	if err := db.DeleteSave(saveID); err != nil {
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		if err := db.DeleteSaveTx(tx, saveID); err != nil {
+			return err
+		}
+		_, err := db.BumpStoryRevisionTx(tx, snap.StoryID)
+		return err
+	}); err != nil {
 		return err
 	}
 
@@ -352,6 +402,9 @@ func restoreFullRollback(
 	if err := upsertStoryRow(tx, snap.Story); err != nil {
 		return fmt.Errorf("restoring story state: %w", err)
 	}
+	if err := db.ClearTurnIdempotencyTx(tx, snap.StoryID); err != nil {
+		return err
+	}
 
 	deleteStatements := []string{
 		`DELETE FROM chat_messages WHERE story_id = ?`,
@@ -397,6 +450,9 @@ func restoreFullRollback(
 	if err := insertCombatLogRows(tx, snap.CombatLogs); err != nil {
 		return fmt.Errorf("restoring combat logs: %w", err)
 	}
+	if _, err := db.BumpStoryRevisionTx(tx, snap.StoryID); err != nil {
+		return err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("committing rollback transaction: %w", err)
@@ -417,8 +473,8 @@ func upsertStoryRow(tx *sql.Tx, story *storage.Story) error {
 	_, err := tx.Exec(
 		`INSERT INTO stories (
 			id, name, setting_json, stats_schema_json, description, genre, tone,
-			language, writing_style, prompt_directives, is_archived, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			language, writing_style, prompt_directives, revision, is_archived, created_at, updated_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			name = excluded.name,
 			setting_json = excluded.setting_json,
@@ -429,12 +485,13 @@ func upsertStoryRow(tx *sql.Tx, story *storage.Story) error {
 			language = excluded.language,
 			writing_style = excluded.writing_style,
 			prompt_directives = excluded.prompt_directives,
+			revision = stories.revision,
 			is_archived = excluded.is_archived,
 			created_at = excluded.created_at,
 			updated_at = excluded.updated_at`,
 		story.ID, story.Name, story.SettingJSON, story.StatsSchemaJSON,
 		story.Description, story.Genre, story.Tone, story.Language,
-		story.WritingStyle, story.PromptDirectives, story.IsArchived,
+		story.WritingStyle, story.PromptDirectives, story.Revision, story.IsArchived,
 		story.CreatedAt, story.UpdatedAt,
 	)
 	return err
