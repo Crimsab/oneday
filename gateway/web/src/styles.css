@@ -89,11 +89,11 @@ button {
 }
 
 .app-shell[data-density="compact"] .center-stage {
-  grid-template-rows: minmax(0, 1fr) 124px 276px;
+  grid-template-rows: minmax(0, 1fr) auto 124px;
 }
 
 .app-shell[data-density="comfortable"] .center-stage {
-  grid-template-rows: minmax(0, 1fr) 152px 356px;
+  grid-template-rows: minmax(0, 1fr) auto 152px;
 }
 
 .app-shell[data-density="compact"] .story-row {
@@ -613,12 +613,13 @@ input:disabled {
 
 .center-stage {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) 138px 324px;
+  grid-template-rows: minmax(0, 1fr) auto 138px;
   background: radial-gradient(circle at 50% 22%, rgba(12, 40, 47, 0.2), transparent 40%), #060b0d;
 }
 
 .transcript-panel,
 .composer,
+.inline-choice-panel,
 .suggested-panel,
 .recent-panel,
 .right-inspector {
@@ -1188,6 +1189,12 @@ input:disabled {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.inline-choice-panel {
+  min-width: 0;
+  border-bottom: 1px solid var(--line);
+  border-top: 1px solid var(--line-soft);
+}
+
 .suggested-panel,
 .recent-panel {
   min-width: 0;
@@ -1202,11 +1209,11 @@ input:disabled {
 
 .choice-stack {
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
   display: grid;
   align-content: start;
   gap: 6px;
-  padding: 11px;
+  padding: 8px 11px;
 }
 
 .choice-row {

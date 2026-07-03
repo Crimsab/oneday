@@ -72,7 +72,7 @@ export function Composer({
   const pickSuggestion = useCallback(
     (item: SlashCommandItem) => {
       setCommandMenuOpen(false);
-      setInlineSuppressed(false);
+      setInlineSuppressed(true);
       onDraftChange(item.value);
       focusComposer();
     },
