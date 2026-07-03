@@ -238,7 +238,26 @@ export function commandSuggestions(
 }
 
 export function commandDescriptors(descriptors?: CommandDescriptor[]): CommandDescriptor[] {
-  return descriptors && descriptors.length > 0 ? descriptors : fallbackCommandDescriptors;
+  if (!descriptors || descriptors.length === 0) return fallbackCommandDescriptors;
+
+  const fallbackByID = new Map(fallbackCommandDescriptors.map((descriptor) => [descriptor.id, descriptor]));
+  const seen = new Set<string>();
+  const merged = descriptors.map((descriptor) => {
+    seen.add(descriptor.id);
+    const fallback = fallbackByID.get(descriptor.id);
+    if (!fallback) return descriptor;
+    return {
+      ...fallback,
+      ...descriptor,
+      aliases: uniqueNames([...(descriptor.aliases ?? []), ...(fallback.aliases ?? [])]),
+      examples: descriptor.examples?.length ? descriptor.examples : fallback.examples,
+      enabled_when: descriptor.enabled_when ?? fallback.enabled_when,
+    };
+  });
+  for (const fallback of fallbackCommandDescriptors) {
+    if (!seen.has(fallback.id) && fallback.parity === "browser_only") merged.push(fallback);
+  }
+  return merged;
 }
 
 export function isCommandEnabled(descriptor: CommandDescriptor, context: CommandSuggestionContext = {}): boolean {
