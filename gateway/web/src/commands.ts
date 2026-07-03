@@ -18,13 +18,18 @@ export const slashCommands = [
   { name: "/fronts", hint: "Open fronts and hooks", aliases: ["/hooks", "/front"] },
   { name: "/investigations", hint: "Open investigations", aliases: [] },
   { name: "/projects", hint: "Open projects", aliases: [] },
+  { name: "/btw", hint: "Ask a contextual side question", aliases: [] },
+  { name: "/guide", hint: "Store soft future story guidance", aliases: [] },
   { name: "/advance", hint: "Push to the next meaningful beat", aliases: [] },
   { name: "/timeskip", hint: "Jump ahead to a later meaningful moment", aliases: [] },
   { name: "/downtime", hint: "Request a quieter scene", aliases: [] },
+  { name: "/narrator", hint: "Speak to the game master", aliases: ["/n"] },
+  { name: "/craft", hint: "Open crafting context", aliases: ["/crafting"] },
   { name: "/talk", hint: "Talk to an NPC: /talk <npc> [intent] [message]", aliases: [] },
   { name: "/save", hint: "Prepare a save command", aliases: [] },
   { name: "/load", hint: "Open saved snapshots", aliases: [] },
   { name: "/help", hint: "Show browser command help", aliases: [] },
+  { name: "/quit", hint: "Leave from the terminal session menu", aliases: ["/q"] },
 ] as const;
 
 const tabCommands: Record<string, ModuleTab> = {
@@ -44,6 +49,8 @@ const tabCommands: Record<string, ModuleTab> = {
   "/investigation": "investigations",
   "/projects": "projects",
   "/project": "projects",
+  "/craft": "inventory",
+  "/crafting": "inventory",
   "/history": "history",
   "/achievements": "saves",
   "/a": "saves",
@@ -78,6 +85,25 @@ export function commandToAction(rawText: string): CommandResult {
         ? `Save command prepared as "${name}". Dedicated browser save endpoint is not exposed yet.`
         : "Saved snapshots are visible here. Type a save name after /save when the gateway exposes save writes.",
     };
+  }
+  if (lower === "/quit" || lower === "/q") {
+    return { handled: true, notice: "Quit remains a terminal session-menu action. Browser realtime sync stays connected." };
+  }
+  if (lower.startsWith("/btw")) {
+    const question = text.slice("/btw".length).trim();
+    if (!question) return { handled: true, notice: "Usage: /btw <question>" };
+    return { text: `[BTW] ${question}` };
+  }
+  if (lower.startsWith("/guide")) {
+    const guidance = text.slice("/guide".length).trim();
+    if (!guidance) return { handled: true, notice: "Usage: /guide <guidance>" };
+    return { text: `[Guide] ${guidance}` };
+  }
+  if (lower.startsWith("/narrator") || lower.startsWith("/n ")) {
+    const prefix = lower.startsWith("/n ") ? "/n" : "/narrator";
+    const message = text.slice(prefix.length).trim();
+    if (!message) return { handled: true, notice: "Usage: /narrator <message>" };
+    return { text: `[Narrator] ${message}` };
   }
   if (lower.startsWith("/advance")) {
     return { text: buildAdvanceSceneAction(text.slice("/advance".length).trim()) };
