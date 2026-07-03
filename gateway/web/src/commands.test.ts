@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actionModeToText, commandSuggestions, commandToAction, moduleSpecs, tabHotkeys } from "./commands";
+import { actionModeToText, commandSuggestions, commandToAction, groupCommandSuggestions, moduleSpecs, tabHotkeys } from "./commands";
 
 describe("commandToAction", () => {
   it("ignores normal prose", () => {
@@ -95,5 +95,34 @@ describe("commandSuggestions", () => {
     expect(commandSuggestions("/del").map((command) => command.name)).toContain("/delete-save");
     expect(commandSuggestions("/fro").map((command) => command.name)).toContain("/fronts");
     expect(commandSuggestions("/hooks").map((command) => command.name)).toContain("/fronts");
+  });
+
+  it("completes multi-word NPC names and talk intents", () => {
+    const npcSuggestions = commandSuggestions("/talk Mar", undefined, { npcNames: ["Maren Lo", "Dockworker"] });
+    expect(npcSuggestions[0]).toMatchObject({
+      kind: "completion",
+      name: "Maren Lo",
+      value: "/talk Maren Lo ",
+      group: "talk",
+    });
+
+    const intentSuggestions = commandSuggestions("/talk Maren Lo pr", undefined, { npcNames: ["Maren Lo"] });
+    expect(intentSuggestions.map((item) => item.value)).toContain("/talk Maren Lo probe ");
+  });
+
+  it("completes save names for load and delete-save commands", () => {
+    const saveContext = { saveNames: ["Before the docks", "Chapter 2 checkpoint"] };
+    expect(commandSuggestions("/load dock", undefined, saveContext)).toMatchObject([
+      { kind: "completion", name: "Before the docks", value: "/load Before the docks", group: "save" },
+    ]);
+    expect(commandSuggestions("/delete-save chapter", undefined, saveContext)).toMatchObject([
+      { kind: "completion", name: "Chapter 2 checkpoint", value: "/delete-save Chapter 2 checkpoint", group: "save" },
+    ]);
+  });
+
+  it("groups palette rows by command family with recent commands last", () => {
+    const groups = groupCommandSuggestions(commandSuggestions("/", undefined, { recentCommands: ["/advance docks"] }));
+    expect(groups.map((group) => group.key)).toContain("play");
+    expect(groups.at(-1)).toMatchObject({ key: "recent", label: "Recent" });
   });
 });
