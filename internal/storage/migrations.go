@@ -38,6 +38,7 @@ func (db *DB) migrate() error {
 		{18, migrationV18},
 		{19, migrationV19},
 		{20, migrationV20},
+		{21, migrationV21},
 	}
 
 	for _, m := range migrations {
@@ -356,4 +357,16 @@ CREATE TABLE IF NOT EXISTS story_turn_locks (
 );
 CREATE INDEX IF NOT EXISTS idx_story_turn_locks_locked_until
 	ON story_turn_locks(locked_until);
+`
+
+const migrationV21 = `
+-- Durable idempotency claims so browser retries cannot double-commit after
+-- process restarts or provider timeouts.
+ALTER TABLE turn_idempotency ADD COLUMN status TEXT NOT NULL DEFAULT 'committed';
+ALTER TABLE turn_idempotency ADD COLUMN owner TEXT NOT NULL DEFAULT '';
+ALTER TABLE turn_idempotency ADD COLUMN locked_until TEXT NOT NULL DEFAULT '';
+ALTER TABLE turn_idempotency ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE turn_idempotency ADD COLUMN error TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_turn_idempotency_status_locked_until
+	ON turn_idempotency(status, locked_until);
 `

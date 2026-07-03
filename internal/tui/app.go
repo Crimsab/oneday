@@ -211,7 +211,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.narrative == nil {
 			return a, nil
 		}
-		if err := engine.DeleteSave(a.db, a.cfg.DataDir, msg.SaveID); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := engine.WithStoryMutationLease(ctx, a.db, a.narrative.StoryID(), "save-delete", "terminal", func(lease *engine.StoryMutationLease) error {
+			if err := lease.Renew(); err != nil {
+				return err
+			}
+			return engine.DeleteSave(a.db, a.cfg.DataDir, msg.SaveID)
+		}); err != nil {
 			a.narrative.SetStatusMsg("Delete save failed")
 			return a, nil
 		}
@@ -526,8 +533,17 @@ func (a *App) startNarrativeFlow(
 
 // loadSaveAndResume restores state from a save and resumes the narrative view.
 func (a *App) loadSaveAndResume(storyID, saveID string) (tea.Cmd, error) {
-	loadResult, err := engine.LoadGame(a.db, a.cfg.DataDir, saveID)
-	if err != nil {
+	var loadResult *engine.LoadResult
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := engine.WithStoryMutationLease(ctx, a.db, storyID, "save-load", "terminal", func(lease *engine.StoryMutationLease) error {
+		if err := lease.Renew(); err != nil {
+			return err
+		}
+		var err error
+		loadResult, err = engine.LoadGame(a.db, a.cfg.DataDir, saveID)
+		return err
+	}); err != nil {
 		return nil, fmt.Errorf("loading save: %w", err)
 	}
 
