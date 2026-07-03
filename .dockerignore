@@ -6,6 +6,9 @@ dist
 release
 tmp
 temp
+node_modules
+gateway/web/node_modules
+gateway/web/dist
 coverage.out
 coverage.html
 oneday_data

@@ -11,6 +11,7 @@ services:
       - TZ=Europe/Rome
       - ONEDAY_ROOT=/opt/oneday
       - ONEDAY_GATEWAY_ADDR=0.0.0.0:8788
+      - ONEDAY_GATEWAY_STATIC_DIR=/usr/local/share/oneday-gateway/web
     volumes:
       - .:/opt/oneday
     dns:
