@@ -3,13 +3,14 @@ import { X } from "lucide-react";
 import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
 import { compactText } from "../format";
 import { ModuleContent, moduleTitle } from "./Inspector";
-import type { AppPreferences, CommandDescriptor, MetaResult, ModuleTab, OverlayKind, SaveView, StorySnapshot } from "../types";
+import type { AppPreferences, CommandDescriptor, MetaResult, ModelSettings, ModuleTab, OverlayKind, SaveView, StorySnapshot } from "../types";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
   metaResult: MetaResult | null;
+  modelSettings: ModelSettings | null;
   selectedTab: ModuleTab;
   commandDescriptors: CommandDescriptor[];
   busy: boolean;
@@ -27,6 +28,7 @@ export function PanelDrawer({
   snapshot,
   preferences,
   metaResult,
+  modelSettings,
   selectedTab,
   commandDescriptors,
   busy,
@@ -54,7 +56,14 @@ export function PanelDrawer({
           </button>
         </div>
         {overlay === "help" && <HelpContent commandDescriptors={commandDescriptors} />}
-        {overlay === "options" && <OptionsContent snapshot={snapshot} preferences={preferences} onPreferencesChange={onPreferencesChange} />}
+        {overlay === "options" && (
+          <OptionsContent
+            snapshot={snapshot}
+            preferences={preferences}
+            modelSettings={modelSettings}
+            onPreferencesChange={onPreferencesChange}
+          />
+        )}
         {overlay === "saves" && (
           <SavesContent
             snapshot={snapshot}
@@ -101,10 +110,12 @@ function HelpContent({ commandDescriptors }: { commandDescriptors: CommandDescri
 function OptionsContent({
   snapshot,
   preferences,
+  modelSettings,
   onPreferencesChange,
 }: {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
+  modelSettings: ModelSettings | null;
   onPreferencesChange: (preferences: AppPreferences) => void;
 }) {
   const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
@@ -170,7 +181,95 @@ function OptionsContent({
           <input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} />
         </label>
       </div>
+      <ModelRoutingSettings preferences={preferences} modelSettings={modelSettings} onUpdate={update} />
     </div>
+  );
+}
+
+function ModelRoutingSettings({
+  preferences,
+  modelSettings,
+  onUpdate,
+}: {
+  preferences: AppPreferences;
+  modelSettings: ModelSettings | null;
+  onUpdate: <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => void;
+}) {
+  return (
+    <div className="model-routing">
+      <div className="model-routing-head">
+        <span>Model Routing</span>
+        <strong>{modelSettings ? "Staged only" : "Config unavailable"}</strong>
+      </div>
+      <div className="settings-grid">
+        <ModelSelect
+          label="Narrator"
+          value={preferences.narrativeModel}
+          options={modelSettings?.narrative_models ?? []}
+          onChange={(value) => onUpdate("narrativeModel", value)}
+        />
+        <ModelSelect
+          label="Meta/utility"
+          value={preferences.utilityModel}
+          options={modelSettings?.utility_models ?? []}
+          onChange={(value) => onUpdate("utilityModel", value)}
+        />
+        <ModelSelect
+          label="Repair"
+          value={preferences.repairModel}
+          options={modelSettings?.repair_models ?? []}
+          onChange={(value) => onUpdate("repairModel", value)}
+        />
+        <ModelSelect
+          label="Images/ascii"
+          value={preferences.imageModel}
+          options={modelSettings?.image_models ?? []}
+          onChange={(value) => onUpdate("imageModel", value)}
+        />
+        <label>
+          <span>OpenAI endpoint</span>
+          <input
+            value={preferences.openAIEndpoint}
+            onChange={(event) => onUpdate("openAIEndpoint", event.target.value)}
+            placeholder="future /v1 endpoint override"
+          />
+        </label>
+        <label>
+          <span>TTS voice</span>
+          <input
+            value={preferences.ttsVoice}
+            onChange={(event) => onUpdate("ttsVoice", event.target.value)}
+            placeholder="future per-character voice"
+          />
+        </label>
+      </div>
+      <p className="model-note">
+        Browser selections are saved locally. The active terminal-compatible engine still follows config.yaml until a model_routing backend contract is added.
+      </p>
+      {modelSettings && (
+        <div className="model-facts">
+          <span>Provider chain: {modelSettings.provider_priority.join(" -> ") || "not configured"}</span>
+          <span>Embedding: {modelSettings.embedding_provider}/{modelSettings.embedding_model || "default"}</span>
+          <span>TTS: {modelSettings.tts_status}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModelSelect({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (value: string) => void }) {
+  return (
+    <label>
+      <span>{label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="config">Config default</option>
+        {options.map((option) => (
+          <option value={option} key={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

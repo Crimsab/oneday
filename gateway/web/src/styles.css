@@ -1715,15 +1715,23 @@ input:disabled {
   font-size: 12px;
 }
 
-.settings-grid select {
+.settings-grid select,
+.settings-grid input[type="text"],
+.settings-grid input:not([type]) {
   width: 100%;
   min-width: 0;
   height: 34px;
   border: 1px solid var(--line);
   border-radius: 3px;
+  outline: 0;
   background: #0a1115;
   color: var(--text);
   padding: 0 10px;
+}
+
+.settings-grid input:focus,
+.settings-grid select:focus {
+  border-color: var(--accent-2);
 }
 
 .settings-grid input[type="checkbox"] {
@@ -1735,6 +1743,47 @@ input:disabled {
 .settings-grid .toggle-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.model-routing {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+}
+
+.model-routing-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: #cdd4d8;
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.model-routing-head strong {
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 3px;
+  padding: 3px 7px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.model-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.model-facts {
+  display: grid;
+  gap: 5px;
+  color: var(--faint);
+  font-size: 11px;
 }
 
 .wide-action {
