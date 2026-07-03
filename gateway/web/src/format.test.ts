@@ -5,6 +5,7 @@ import {
   compactText,
   deriveCondition,
   displayClock,
+  displayTimestamp,
   entryLabel,
   fieldRows,
   findString,
@@ -42,6 +43,9 @@ describe("clock and stat helpers", () => {
     expect(displayClock(0)).toEqual({ day: 1, time: "Day 1, 08:00", cycle: "Morning" });
     expect(displayClock(24).day).toBe(2);
     expect(messageClock(message({ id: 5, turn: 2 }))).toBe("09:19");
+    expect(displayTimestamp("2026-07-03 23:44:18.215210603 +0200 CEST m=+25.421624674")).toBe(
+      "2026-07-03 23:44:18.215210603 +0200 CEST",
+    );
   });
 
   it("clamps and parses numeric stats", () => {
