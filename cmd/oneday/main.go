@@ -80,6 +80,13 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayCommandDescriptors(os.Args[1:]) {
+		if err := runGatewayCommandDescriptors(os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway command descriptors failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: could not load .env: %v\n", err)
@@ -259,6 +266,10 @@ func wantsStoryPacksList(args []string) bool {
 
 func wantsExport(args []string) bool {
 	return len(args) >= 1 && args[0] == "export"
+}
+
+func wantsGatewayCommandDescriptors(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-command-descriptors"
 }
 
 func wantsGatewayTurn(args []string) bool {

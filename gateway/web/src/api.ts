@@ -1,6 +1,7 @@
 import type {
   ActionEnvelope,
   ActionResponse,
+  CommandDescriptor,
   DeleteSaveEnvelope,
   DeleteSaveResponse,
   Health,
@@ -46,6 +47,10 @@ export function getStories(): Promise<StorySummary[]> {
 
 export function getSnapshot(storyId: string): Promise<StorySnapshot> {
   return request<StorySnapshot>(`/api/stories/${encodeURIComponent(storyId)}/snapshot`);
+}
+
+export function getCommandDescriptors(): Promise<CommandDescriptor[]> {
+  return request<CommandDescriptor[]>("/api/contracts/commands");
 }
 
 export function submitAction(storyId: string, envelope: ActionEnvelope): Promise<ActionResponse> {

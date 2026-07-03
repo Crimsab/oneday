@@ -1,24 +1,31 @@
 import { ChevronDown, CornerDownLeft } from "lucide-react";
-import { slashCommands } from "../commands";
+import { commandSuggestions } from "../commands";
+import type { CommandDescriptor } from "../types";
 
 interface ComposerProps {
   draft: string;
   mode: string;
   disabled: boolean;
   notice: string;
+  commandDescriptors: CommandDescriptor[];
   onDraftChange: (value: string) => void;
   onModeChange: (value: string) => void;
   onSubmit: () => void;
   onHistoryStep: (direction: -1 | 1) => string | null;
 }
 
-export function Composer({ draft, mode, disabled, notice, onDraftChange, onModeChange, onSubmit, onHistoryStep }: ComposerProps) {
-  const suggestions = draft.trim().startsWith("/")
-    ? slashCommands.filter((command) => {
-        const query = draft.trim().slice(1).toLowerCase();
-        return command.name.slice(1).startsWith(query) || command.aliases.some((alias) => alias.slice(1).startsWith(query));
-      })
-    : [];
+export function Composer({
+  draft,
+  mode,
+  disabled,
+  notice,
+  commandDescriptors,
+  onDraftChange,
+  onModeChange,
+  onSubmit,
+  onHistoryStep,
+}: ComposerProps) {
+  const suggestions = commandSuggestions(draft, commandDescriptors);
 
   return (
     <form
@@ -39,7 +46,15 @@ export function Composer({ draft, mode, disabled, notice, onDraftChange, onModeC
               event.preventDefault();
               onSubmit();
             }
+            if (event.key === "Tab" && suggestions[0]) {
+              event.preventDefault();
+              onDraftChange(suggestions[0].value);
+            }
             if (event.key === "ArrowUp") {
+              if (suggestions.length > 0) {
+                event.preventDefault();
+                return;
+              }
               const next = onHistoryStep(-1);
               if (next !== null) {
                 event.preventDefault();
@@ -47,6 +62,10 @@ export function Composer({ draft, mode, disabled, notice, onDraftChange, onModeC
               }
             }
             if (event.key === "ArrowDown") {
+              if (suggestions.length > 0) {
+                event.preventDefault();
+                return;
+              }
               const next = onHistoryStep(1);
               if (next !== null) {
                 event.preventDefault();
@@ -73,12 +92,12 @@ export function Composer({ draft, mode, disabled, notice, onDraftChange, onModeC
       </div>
       <div className="composer-tip">
         <span>{notice || "Tip: /advance, /timeskip, /downtime, /talk, /inventory, /stats, /characters, /fronts, /projects, /history, /saves"}</span>
-        <span>Ctrl+Enter to execute</span>
+        <span>Tab accepts slash command - Ctrl+Enter executes</span>
       </div>
       {suggestions.length > 0 && (
         <div className="slash-suggestions">
           {suggestions.slice(0, 7).map((command) => (
-            <button type="button" key={command.name} onClick={() => onDraftChange(`${command.name} `)}>
+            <button type="button" key={command.name} onClick={() => onDraftChange(command.value)}>
               <strong>{command.name}</strong>
               <span>{command.hint}</span>
             </button>

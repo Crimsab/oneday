@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/crimsab/oneday/internal/engine"
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 )
@@ -21,30 +22,7 @@ type talkIntentSpec struct {
 	Hint string
 }
 
-var slashCommandSpecs = []slashCommandSpec{
-	{Name: "inventory", Hint: "Show your inventory", Aliases: []string{"i"}},
-	{Name: "stats", Hint: "Show character sheet", Aliases: []string{"s"}},
-	{Name: "map", Hint: "Show discovered world map", Aliases: []string{"m"}},
-	{Name: "journal", Hint: "Show chapter journal", Aliases: []string{"j"}},
-	{Name: "thoughts", Hint: "Inspect saved NPC private thoughts"},
-	{Name: "codex", Hint: "Open the story codex"},
-	{Name: "fronts", Hint: "Open the fronts and fallout tracker", Aliases: []string{"hooks"}},
-	{Name: "investigations", Hint: "Open the investigation workspace"},
-	{Name: "projects", Hint: "Open the project workspace"},
-	{Name: "btw", Hint: "Ask a contextual side question", TrailingSpace: true},
-	{Name: "guide", Hint: "Store soft future story guidance", TrailingSpace: true},
-	{Name: "advance", Hint: "Push to the next meaningful beat; free text accepted", TrailingSpace: true},
-	{Name: "timeskip", Hint: "Jump ahead to a later meaningful moment; free text accepted", TrailingSpace: true},
-	{Name: "achievements", Hint: "Show earned achievements", Aliases: []string{"a"}},
-	{Name: "narrator", Hint: "Direct narrator canon", Aliases: []string{"n"}, TrailingSpace: true},
-	{Name: "craft", Hint: "Open the crafting station"},
-	{Name: "talk", Hint: "Talk to a nearby NPC", TrailingSpace: true},
-	{Name: "downtime", Hint: "Request a quieter scene", TrailingSpace: true},
-	{Name: "save", Hint: "Save your game", TrailingSpace: true},
-	{Name: "load", Hint: "Open the save picker"},
-	{Name: "help", Hint: "Show available commands"},
-	{Name: "quit", Hint: "Save and leave the session", Aliases: []string{"q"}},
-}
+var slashCommandSpecs = contractSlashCommandSpecs()
 
 var talkIntentSpecs = []talkIntentSpec{
 	{Name: "ask", Hint: "Ask directly for facts or help"},
@@ -55,6 +33,31 @@ var talkIntentSpecs = []talkIntentSpec{
 	{Name: "promise", Hint: "Offer a commitment"},
 	{Name: "lie", Hint: "Mislead or hide the truth"},
 	{Name: "confess", Hint: "Reveal something vulnerable"},
+}
+
+func contractSlashCommandSpecs() []slashCommandSpec {
+	descriptors := contracts.CommandDescriptors()
+	specs := make([]slashCommandSpec, 0, len(descriptors))
+	for _, descriptor := range descriptors {
+		if descriptor.Parity == contracts.CommandParityBrowserOnly {
+			continue
+		}
+		name := descriptor.ID
+		if descriptor.Canonical != "hooks" {
+			name = descriptor.Canonical
+		}
+		aliases := append([]string{}, descriptor.Aliases...)
+		if descriptor.Canonical != "" && descriptor.Canonical != name {
+			aliases = append([]string{descriptor.Canonical}, aliases...)
+		}
+		specs = append(specs, slashCommandSpec{
+			Name:          name,
+			Hint:          descriptor.Description,
+			Aliases:       aliases,
+			TrailingSpace: descriptor.TrailingSpace,
+		})
+	}
+	return specs
 }
 
 func (m *NarrativeModel) refreshSlashSuggestions() {

@@ -12,6 +12,9 @@ game state.
 - The Go engine remains the source of truth for turn advancement. Browser
   actions are submitted through a JSON bridge command so terminal and browser
   responses use the same narrator pipeline.
+- The Go game contract owns browser-facing slash command descriptors. The Rust
+  gateway exposes them at `/api/contracts/commands`; React may present them, but
+  should not maintain a separate command truth.
 - The Rust gateway serves HTTP, JSON APIs, the browser UI, and SSE realtime
   streams.
 - Both clients must observe the same active session and turn cursor.

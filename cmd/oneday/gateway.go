@@ -39,6 +39,18 @@ type gatewayDeleteSaveResponse struct {
 	Error string                     `json:"error,omitempty"`
 }
 
+type gatewayCommandDescriptorsResponse struct {
+	Commands []contracts.CommandDescriptor `json:"commands,omitempty"`
+	Error    string                        `json:"error,omitempty"`
+}
+
+func runGatewayCommandDescriptors(out io.Writer) error {
+	if err := json.NewEncoder(out).Encode(gatewayCommandDescriptorsResponse{Commands: contracts.CommandDescriptors()}); err != nil {
+		return fmt.Errorf("writing gateway-command-descriptors response: %w", err)
+	}
+	return nil
+}
+
 func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.SubmitActionRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
