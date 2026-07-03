@@ -170,7 +170,7 @@ func (s *InProcessTurnService) SubmitMeta(ctx context.Context, req contracts.Bro
 		if err != nil {
 			return nil, err
 		}
-		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "Game Master", Message: resp.Message}, nil
+		return &contracts.BrowserMetaResponse{Kind: req.Kind, Title: "Narrator Control", Message: resp.Message}, nil
 	default:
 		return nil, fmt.Errorf("unsupported browser meta kind %q", req.Kind)
 	}
@@ -270,6 +270,39 @@ func (s *InProcessTurnService) LoadSave(ctx context.Context, req contracts.Brows
 		return nil, err
 	}
 	return &contracts.BrowserLoadResponse{Save: saveView(result.Save), Legacy: result.Legacy}, nil
+}
+
+func (s *InProcessTurnService) DeleteSave(ctx context.Context, req contracts.BrowserDeleteSaveRequest) (*contracts.BrowserDeleteSaveResponse, error) {
+	if s.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	lock := s.storyLock(req.StoryID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	snapshot, err := s.Snapshot(ctx, req.StoryID)
+	if err != nil {
+		return nil, err
+	}
+	if err := req.Validate(snapshot.Turn); err != nil {
+		return nil, err
+	}
+	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
+		return nil, fmt.Errorf("stale session_id %q, active session is %q", req.SessionID, snapshot.SessionID)
+	}
+	save, err := s.db.GetSave(req.SaveID)
+	if err != nil {
+		return nil, err
+	}
+	if save.StoryID != req.StoryID {
+		return nil, fmt.Errorf("save %s belongs to story %s, not %s", req.SaveID, save.StoryID, req.StoryID)
+	}
+	view := saveView(save)
+	if err := engine.DeleteSave(s.db, s.cfg.DataDir, req.SaveID); err != nil {
+		return nil, err
+	}
+	return &contracts.BrowserDeleteSaveResponse{Save: view}, nil
 }
 
 func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot) ([]contracts.TurnEvent, error) {

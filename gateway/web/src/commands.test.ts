@@ -18,7 +18,8 @@ describe("commandToAction", () => {
 
   it("opens overlays for help and creates browser saves", () => {
     expect(commandToAction("/help")).toMatchObject({ handled: true, overlay: "help" });
-    expect(commandToAction("/load")).toMatchObject({ handled: true, tab: "saves", overlay: "saves" });
+    expect(commandToAction("/load")).toMatchObject({ handled: true, tab: "saves", overlay: "saves", saveFilter: "" });
+    expect(commandToAction("/load Camp")).toMatchObject({ handled: true, tab: "saves", overlay: "saves", saveFilter: "Camp" });
     expect(commandToAction("/save Camp")).toMatchObject({
       tab: "saves",
       overlay: "saves",

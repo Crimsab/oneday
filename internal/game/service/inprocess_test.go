@@ -281,6 +281,55 @@ func TestInProcessTurnServiceCreateAndLoadSave(t *testing.T) {
 	}
 }
 
+func TestInProcessTurnServiceDeleteSave(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-delete-save", 5)
+
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	svc := NewInProcessTurnService(cfg, db, nil)
+
+	snapshot, err := svc.Snapshot(context.Background(), "story-delete-save")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	saveResp, err := svc.CreateSave(context.Background(), contracts.BrowserSaveRequest{
+		StoryID:    "story-delete-save",
+		SessionID:  snapshot.SessionID,
+		ClientTurn: snapshot.Turn,
+		Name:       "Delete Me",
+		Kind:       "manual",
+	})
+	if err != nil {
+		t.Fatalf("CreateSave: %v", err)
+	}
+
+	deleteResp, err := svc.DeleteSave(context.Background(), contracts.BrowserDeleteSaveRequest{
+		StoryID:    "story-delete-save",
+		SessionID:  snapshot.SessionID,
+		ClientTurn: snapshot.Turn,
+		SaveID:     saveResp.Save.ID,
+	})
+	if err != nil {
+		t.Fatalf("DeleteSave: %v", err)
+	}
+	if deleteResp.Save.ID != saveResp.Save.ID || deleteResp.Save.Name != "Delete Me" {
+		t.Fatalf("delete response = %+v, want deleted save view", deleteResp.Save)
+	}
+	if _, err := db.GetSave(saveResp.Save.ID); err == nil {
+		t.Fatal("GetSave after DeleteSave succeeded, want error")
+	}
+	saves, err := db.ListSaves("story-delete-save")
+	if err != nil {
+		t.Fatalf("ListSaves: %v", err)
+	}
+	if len(saves) != 0 {
+		t.Fatalf("saves after delete = %d, want 0", len(saves))
+	}
+}
+
 func collectTurnEvents(stream <-chan contracts.TurnEvent) []contracts.TurnEvent {
 	var events []contracts.TurnEvent
 	for event := range stream {
