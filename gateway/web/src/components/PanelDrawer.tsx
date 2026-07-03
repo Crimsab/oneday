@@ -8,11 +8,10 @@ interface PanelDrawerProps {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
   onClose: () => void;
-  onDraft: (value: string) => void;
   onPreferencesChange: (preferences: AppPreferences) => void;
 }
 
-export function PanelDrawer({ overlay, snapshot, preferences, onClose, onDraft, onPreferencesChange }: PanelDrawerProps) {
+export function PanelDrawer({ overlay, snapshot, preferences, onClose, onPreferencesChange }: PanelDrawerProps) {
   if (!overlay) return null;
   return (
     <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
@@ -25,7 +24,7 @@ export function PanelDrawer({ overlay, snapshot, preferences, onClose, onDraft, 
         </div>
         {overlay === "help" && <HelpContent />}
         {overlay === "options" && <OptionsContent snapshot={snapshot} preferences={preferences} onPreferencesChange={onPreferencesChange} />}
-        {overlay === "saves" && <SavesContent snapshot={snapshot} onDraft={onDraft} onClose={onClose} />}
+        {overlay === "saves" && <SavesContent snapshot={snapshot} />}
         {overlay === "new-story" && <NewStoryContent />}
       </section>
     </div>
@@ -35,7 +34,7 @@ export function PanelDrawer({ overlay, snapshot, preferences, onClose, onDraft, 
 function overlayTitle(overlay: OverlayKind): string {
   if (overlay === "help") return "Help";
   if (overlay === "options") return "Options";
-  if (overlay === "saves") return "Save & Load";
+  if (overlay === "saves") return "Saves";
   return "New Story";
 }
 
@@ -125,28 +124,13 @@ function OptionsContent({
   );
 }
 
-function SavesContent({
-  snapshot,
-  onDraft,
-  onClose,
-}: {
-  snapshot: StorySnapshot | null;
-  onDraft: (value: string) => void;
-  onClose: () => void;
-}) {
+function SavesContent({ snapshot }: { snapshot: StorySnapshot | null }) {
   const saves = snapshot?.panels.saves ?? [];
   return (
     <div className="overlay-content">
-      <button
-        type="button"
-        className="wide-action"
-        onClick={() => {
-          onDraft(`/save Quicksave T${snapshot?.world.current_turn ?? ""}`.trim());
-          onClose();
-        }}
-      >
-        Prepare /save command
-      </button>
+      <div className="inline-warning">
+        Browser save writes are not exposed yet. Existing saves are read-only here; create new saves from the terminal for now.
+      </div>
       <div className="save-list">
         {saves.length === 0 ? (
           <div className="empty-copy">No saved snapshots yet.</div>

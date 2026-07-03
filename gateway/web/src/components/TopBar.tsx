@@ -33,7 +33,7 @@ export function TopBar({ snapshot, sync, onOpen }: TopBarProps) {
       <div className="top-actions">
         <button className="chrome-button" type="button" onClick={() => onOpen("saves")}>
           <Save size={15} />
-          Save
+          Saves
         </button>
         <button className="chrome-button" type="button" onClick={() => onOpen("options")}>
           <Settings size={15} />

@@ -3,17 +3,15 @@ import { choicePresentation, toneForChoice } from "./choicePresentation";
 
 describe("toneForChoice", () => {
   it("maps semantic intent and risk into distinct visual tones", () => {
-    expect(toneForChoice("social", "", 0)).toBe("social");
-    expect(toneForChoice("observe", "", 0)).toBe("explore");
-    expect(toneForChoice("stealth", "", 0)).toBe("stealth");
-    expect(toneForChoice("attack", "", 0)).toBe("force");
-    expect(toneForChoice("", "high", 0)).toBe("force");
+    expect(toneForChoice("social", "")).toBe("social");
+    expect(toneForChoice("observe", "")).toBe("explore");
+    expect(toneForChoice("stealth", "")).toBe("stealth");
+    expect(toneForChoice("attack", "")).toBe("force");
+    expect(toneForChoice("", "high")).toBe("force");
   });
 
-  it("uses index-based fallback tones for choices without metadata", () => {
-    expect(toneForChoice("", "", 0)).toBe("social");
-    expect(toneForChoice("", "", 1)).toBe("explore");
-    expect(toneForChoice("", "", 2)).toBe("stealth");
+  it("uses a neutral tone without real metadata", () => {
+    expect(toneForChoice("", "")).toBe("neutral");
   });
 });
 
@@ -34,6 +32,7 @@ describe("choicePresentation", () => {
 
     expect(presentation.tone).toBe("social");
     expect(presentation.title).toBe("Choice 2");
+    expect(presentation.hasMetadata).toBe(true);
     expect(presentation.meta).toEqual(["intent:social", "risk:medium", "certainty:uncertain", "scope:npc", "CHA", "WIL"]);
     expect(presentation.gain).toContain("Social leverage");
     expect(presentation.tradeoff).toContain("Medium risk");
@@ -41,9 +40,10 @@ describe("choicePresentation", () => {
 
   it("is explicit when metadata is missing", () => {
     const presentation = choicePresentation({ id: 1, text: "Do something" }, 1);
-    expect(presentation.tone).toBe("explore");
+    expect(presentation.tone).toBe("neutral");
+    expect(presentation.hasMetadata).toBe(false);
     expect(presentation.meta).toEqual([]);
-    expect(presentation.gain).toContain("Freeform angle");
-    expect(presentation.tradeoff).toContain("No risk metadata");
+    expect(presentation.gain).toContain("No structured metadata");
+    expect(presentation.tradeoff).toContain("Outcome depends on scene context");
   });
 });
