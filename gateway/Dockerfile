@@ -6,6 +6,7 @@ WORKDIR /app/gateway/web
 COPY gateway/web/package.json gateway/web/bun.lock ./
 COPY gateway/web/index.html gateway/web/tsconfig.json gateway/web/vite.config.ts ./
 COPY gateway/web/src src
+COPY gateway/web/public public
 RUN bun install --frozen-lockfile
 RUN bun run build
 
