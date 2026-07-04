@@ -2207,6 +2207,34 @@ input:disabled {
   border-color: var(--accent-2);
 }
 
+.visual-create-block {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line-soft));
+  background:
+    linear-gradient(180deg, rgba(244, 188, 77, 0.045), transparent 150px),
+    #0b1317;
+  padding: 12px;
+}
+
+.visual-create-block .model-routing-head {
+  min-height: 30px;
+}
+
+.visual-create-block .model-routing-head button {
+  min-height: 28px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: #141b1d;
+  color: var(--accent);
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+.visual-create-block label {
+  background: rgba(7, 13, 16, 0.72);
+}
+
 .two-column-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 190px;

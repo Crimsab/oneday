@@ -15,7 +15,10 @@ services:
       - ONEDAY_LITELLM_API_KEY=${ONEDAY_LITELLM_API_KEY:-}
       - ONEDAY_IMAGEGEN_API_KEY=${ONEDAY_IMAGEGEN_API_KEY:-}
       - ONEDAY_IMAGEGEN_BASE_URL=${ONEDAY_IMAGEGEN_BASE_URL:-}
+      - ONEDAY_IMAGEGEN_PROVIDER=${ONEDAY_IMAGEGEN_PROVIDER:-openclaw-bridge}
+      - ONEDAY_IMAGEGEN_OPENCLAW_URL=${ONEDAY_IMAGEGEN_OPENCLAW_URL:-http://openclaw-imagegen:8099/generate}
       - ONEDAY_IMAGEGEN_MODEL=${ONEDAY_IMAGEGEN_MODEL:-gpt-image-2}
+      - ONEDAY_IMAGEGEN_AUTOGENERATE=${ONEDAY_IMAGEGEN_AUTOGENERATE:-true}
     volumes:
       - .:/opt/oneday
       - /root/.local/bin/codex:/usr/local/bin/codex:ro

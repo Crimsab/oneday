@@ -100,6 +100,14 @@ pub struct StoryCreateEnvelope {
     pub character_name: String,
     #[serde(default)]
     pub character_background: String,
+    #[serde(default)]
+    pub world_style_prompt: String,
+    #[serde(default)]
+    pub character_style_prompt: String,
+    #[serde(default)]
+    pub negative_prompt: String,
+    #[serde(default)]
+    pub palette: String,
     #[serde(default = "default_start_story")]
     pub start: bool,
 }

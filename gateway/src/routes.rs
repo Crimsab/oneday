@@ -94,13 +94,33 @@ async fn create_story(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<engine::StoryCreateEnvelope>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    let visual_profile = story_create_visual_profile(&payload);
     let created = engine::create_story(state.clone(), payload).await?;
+    if let Some(profile) = visual_profile {
+        assets::update_profile_with_defaults(&state.pool, &created.story_id, profile).await?;
+    }
     let snapshot = db::snapshot(&state.pool, &created.story_id).await?;
     assets::spawn_auto_generation(state.clone(), created.story_id.clone());
     Ok(Json(json!({
         "story": created,
         "snapshot": snapshot,
     })))
+}
+
+fn story_create_visual_profile(
+    payload: &engine::StoryCreateEnvelope,
+) -> Option<assets::VisualProfileUpdate> {
+    let update = assets::VisualProfileUpdate {
+        world_style_prompt: payload.world_style_prompt.trim().to_string(),
+        character_style_prompt: payload.character_style_prompt.trim().to_string(),
+        negative_prompt: payload.negative_prompt.trim().to_string(),
+        palette: payload.palette.trim().to_string(),
+    };
+    let has_visual_direction = !update.world_style_prompt.is_empty()
+        || !update.character_style_prompt.is_empty()
+        || !update.negative_prompt.is_empty()
+        || !update.palette.is_empty();
+    has_visual_direction.then_some(update)
 }
 
 async fn snapshot(
