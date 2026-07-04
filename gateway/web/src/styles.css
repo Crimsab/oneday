@@ -166,7 +166,7 @@ button {
 
 .top-bar {
   display: grid;
-  grid-template-columns: 258px minmax(0, 1fr) auto;
+  grid-template-columns: 212px minmax(0, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--line);
   background:
@@ -180,7 +180,7 @@ button {
   display: flex;
   align-items: center;
   gap: 13px;
-  padding: 0 22px;
+  padding: 0 20px;
   border-right: 1px solid var(--line-soft);
   color: var(--accent);
   font-family: var(--sans);
@@ -201,22 +201,32 @@ button {
 .top-status {
   min-width: 0;
   height: 100%;
-  display: grid;
-  grid-template-columns: 88px minmax(176px, 204px) 158px 156px 154px 96px;
+  display: flex;
   align-items: center;
   overflow: hidden;
 }
 
 .status-cell {
-  min-width: 0;
+  min-width: max-content;
+  flex: 0 0 auto;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-columns: auto auto max-content;
   align-items: center;
   gap: 8px;
   height: 28px;
   padding: 0 8px;
   border-right: 1px solid var(--line-soft);
   white-space: nowrap;
+}
+
+.top-status > .status-cell:nth-child(2) {
+  min-width: 220px;
+  flex: 1 1 420px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+}
+
+.top-status > .status-cell:nth-child(2) strong {
+  font-size: 13px;
 }
 
 .status-icon {
@@ -278,7 +288,7 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 18px;
+  padding: 0 6px;
 }
 
 .chrome-button,
@@ -751,7 +761,7 @@ input:disabled {
 .scene-copy {
   position: relative;
   z-index: 1;
-  width: min(520px, 72%);
+  width: min(760px, calc(100% - 300px));
   display: grid;
   align-content: center;
   gap: 8px;
@@ -781,11 +791,10 @@ input:disabled {
   overflow: hidden;
   color: #fff4d5;
   font-family: var(--sans);
-  font-size: clamp(26px, 2.4vw, 38px);
+  font-size: clamp(24px, 2vw, 34px);
   font-weight: 760;
-  line-height: 1;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.04;
+  overflow-wrap: anywhere;
 }
 
 .scene-path {
@@ -798,7 +807,7 @@ input:disabled {
 }
 
 .scene-path span {
-  max-width: 220px;
+  max-width: 280px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(10, 10, 9, 0.5);

@@ -23,10 +23,10 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
       <div className="brand-mark">OneDay</div>
       <div className="top-status" aria-label="Current story status">
         <StatusCell icon={<Gauge size={14} />} label="Turn" value={snapshot ? String(snapshot.world.current_turn) : "-"} />
-        <StatusCell icon={<MapPin size={14} />} label="Location" value={snapshot?.world.current_location || "Select a story"} strong />
+        <StatusCell icon={<MapPin size={14} />} label="Loc" fullLabel="Location" value={snapshot?.world.current_location || "Select a story"} strong />
         <StatusCell icon={<Sun size={14} />} label="Time" value={snapshot ? clock.time : "-"} />
-        <StatusCell icon={<Cloud size={14} />} label="Weather" value={weather} />
-        <StatusCell icon={<Activity size={14} />} label="Condition" value={condition} strong />
+        <StatusCell icon={<Cloud size={14} />} label="Sky" fullLabel="Weather" value={weather} />
+        <StatusCell icon={<Activity size={14} />} label="State" fullLabel="Condition" value={condition} strong />
         <div className={`status-cell sync-cell ${sync.toLowerCase()}`}>
           <span>Sync</span>
           <strong title={sync}>
@@ -71,11 +71,23 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
   );
 }
 
-function StatusCell({ icon, label, value, strong = false }: { icon?: ReactNode; label: string; value: string; strong?: boolean }) {
+function StatusCell({
+  icon,
+  label,
+  fullLabel,
+  value,
+  strong = false,
+}: {
+  icon?: ReactNode;
+  label: string;
+  fullLabel?: string;
+  value: string;
+  strong?: boolean;
+}) {
   return (
-    <div className="status-cell">
+    <div className="status-cell" aria-label={`${fullLabel || label}: ${value}`}>
       {icon && <span className="status-icon" aria-hidden="true">{icon}</span>}
-      <span>{label}</span>
+      <span title={fullLabel || label}>{label}</span>
       <strong className={strong ? "status-strong" : undefined} title={value}>
         {value}
       </strong>
