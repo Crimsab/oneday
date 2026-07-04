@@ -241,19 +241,21 @@ function WorldStateModule({
           <span>Location</span>
         </header>
         <div className="ws-location">
+          <div className="ws-location-copy">
+            <strong title={snapshot.world.current_location}>{snapshot.world.current_location || "Unknown location"}</strong>
+            <div className="ws-location-rows">
+              <span>Type</span>
+              <small>{locationType}</small>
+              <span>Region</span>
+              <small>{locationRegion || "-"}</small>
+            </div>
+          </div>
           <div className={`ws-thumb ${locationThumb ? "ready" : "empty"}`}>
             {locationThumb ? (
               <img src={locationThumb} alt="" />
             ) : (
               <span>{locationState ? `Image ${locationState}` : "No image"}</span>
             )}
-          </div>
-          <div className="ws-location-copy">
-            <strong title={snapshot.world.current_location}>{snapshot.world.current_location || "Unknown location"}</strong>
-            <small>
-              {locationType}
-              {locationRegion ? ` - ${locationRegion}` : ""}
-            </small>
           </div>
         </div>
       </section>
@@ -265,13 +267,19 @@ function WorldStateModule({
         </header>
         <div className="ws-condition" data-condition-tone={conditionTone}>
           <div className="ws-condition-top">
-            <div>
-              <small>Current state</small>
-              <strong>{condition}</strong>
+            <div className="ws-condition-copy">
+              <strong>
+                <i aria-hidden="true" />
+                {condition}
+              </strong>
+              <span>{conditionNote}</span>
+              <dl>
+                <dt>Chapter</dt>
+                <dd>{snapshot.world.current_chapter}</dd>
+              </dl>
             </div>
-            <span>{conditionNote}</span>
+            <HeartbeatLine condition={condition} />
           </div>
-          <HeartbeatLine condition={condition} />
         </div>
       </section>
 
@@ -279,7 +287,7 @@ function WorldStateModule({
         <section className="ws-block">
           <header className="ws-block-head ws-block-head-split">
             <Users size={14} />
-            <span>Characters</span>
+            <span>Factions & NPCs</span>
             <small>{npcs.length}</small>
           </header>
           <NpcList npcs={npcs} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} />
@@ -335,13 +343,17 @@ function MetricTile({ icon, label, value }: { icon?: ReactNode; label: string; v
 }
 
 function HeartbeatLine({ condition }: { condition: string }) {
-  const flat = condition === "Idle" || condition === "Stable";
-  const points = flat
-    ? "0,22 200,22"
-    : "0,22 36,22 44,22 50,8 56,34 62,22 104,22 114,22 120,11 126,31 132,22 168,22 176,22 182,9 188,33 200,22";
+  const flat = condition === "Idle";
+  const stable = condition === "Stable";
+  const path = stable
+    ? "M4 24 C22 24 31 24 42 24 L49 24 L54 15 L60 31 L66 21 L72 25 L78 10 L86 36 L92 19 L99 27 L108 22 L117 25 L125 16 L132 23 C144 22 152 22 164 22 L176 22"
+    : flat
+      ? "M4 24 H176"
+      : "M4 24 C22 24 31 24 42 24 L49 24 L54 10 L60 36 L66 22 L78 22 L85 12 L92 32 L99 22 L130 22 L138 15 L145 31 L152 22 L176 22";
   return (
-    <svg className={`ws-heartbeat ${flat ? "flat" : ""}`} viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={points} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    <svg className={`ws-heartbeat ${flat ? "flat" : ""} ${stable ? "stable" : ""}`} viewBox="0 0 180 46" preserveAspectRatio="none" aria-hidden="true">
+      <path d={path} fill="none" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      <circle cx="176" cy="22" r="2.3" fill="currentColor" />
     </svg>
   );
 }
@@ -363,8 +375,8 @@ function NpcCard({ npc, asset, onOpenNpcCodex }: { npc: RecordView; asset: Visua
         <small>{role}</small>
         <div className="ws-relation">
           <div className="ws-relation-bar" role="meter" aria-label={`${npc.name} relationship`} aria-valuenow={relation.score} aria-valuemin={0} aria-valuemax={100}>
-            {Array.from({ length: 10 }, (_, index) => (
-              <i className={index < relation.filledSegments ? "filled" : ""} key={index} />
+            {Array.from({ length: 4 }, (_, index) => (
+              <i className={index < relation.filledBands ? "filled" : ""} key={index} />
             ))}
           </div>
           <em>{relation.score}/100</em>
@@ -470,6 +482,7 @@ export interface NpcRelationSummary {
   score: number;
   tone: RelationTone;
   filledSegments: number;
+  filledBands: number;
 }
 
 export function npcRelationSummary(npc: RecordView): NpcRelationSummary {
@@ -491,6 +504,7 @@ export function npcRelationSummary(npc: RecordView): NpcRelationSummary {
     score,
     tone,
     filledSegments: Math.max(0, Math.min(10, Math.round(score / 10))),
+    filledBands: Math.max(0, Math.min(4, Math.round(score / 25))),
   };
 }
 
