@@ -29,6 +29,17 @@ interface CardView {
   rows: Array<[string, string]>;
 }
 
+const stackedRowLabels = new Set([
+  "appearance",
+  "context",
+  "description",
+  "details",
+  "notes",
+  "summary",
+  "text",
+  "value",
+]);
+
 export function Inspector({ snapshot, selectedTab, onRefresh, onOpenModule }: InspectorProps) {
   const title = moduleTitle(selectedTab);
 
@@ -275,7 +286,7 @@ function InspectorSection({ title, rows }: { title: string; rows: Array<[string,
           <div className="empty-copy small">No data.</div>
         ) : (
           rows.map(([label, value]) => (
-            <div className="kv-row" key={`${title}-${label}`}>
+            <div className={inspectorRowClass(label, value)} key={`${title}-${label}`}>
               <span>{label}</span>
               <strong title={value}>{value}</strong>
             </div>
@@ -288,7 +299,7 @@ function InspectorSection({ title, rows }: { title: string; rows: Array<[string,
 
 function CardsSection({ title, cards, emptyLabel }: { title: string; cards: CardView[]; emptyLabel: string }) {
   return (
-    <details className="inspector-section card-section" open>
+    <details className="inspector-section card-section" data-section={sectionSlug(title)} open>
       <summary>
         <span>{title}</span>
         <ChevronDown size={14} />
@@ -303,7 +314,7 @@ function CardsSection({ title, cards, emptyLabel }: { title: string; cards: Card
               {card.rows.length > 0 && (
                 <div className="kv-list compact">
                   {card.rows.map(([label, value]) => (
-                    <div className="kv-row" key={`${card.title}-${label}`}>
+                    <div className={inspectorRowClass(label, value)} key={`${card.title}-${label}`}>
                       <span>{label}</span>
                       <strong title={value}>{value}</strong>
                     </div>
@@ -316,6 +327,21 @@ function CardsSection({ title, cards, emptyLabel }: { title: string; cards: Card
       </div>
     </details>
   );
+}
+
+function inspectorRowClass(label: string, value: string): string {
+  return isLongInspectorRow(label, value) ? "kv-row kv-row-long" : "kv-row";
+}
+
+export function isLongInspectorRow(label: string, value: string): boolean {
+  const normalized = normalizeFieldKey(label);
+  if (stackedRowLabels.has(normalized)) return true;
+  if (value.includes("\n")) return true;
+  return value.length > 54 && /[\s,.;:]/.test(value);
+}
+
+function sectionSlug(title: string): string {
+  return normalizeFieldKey(title).replaceAll("_", "-");
 }
 
 function StatsSection({ snapshot }: { snapshot: StorySnapshot }) {
@@ -360,11 +386,12 @@ function turnRows(snapshot: StorySnapshot): Array<[string, string]> {
 
 function locationRows(snapshot: StorySnapshot): Array<[string, string]> {
   const known = snapshot.world.known_locations;
+  const details = findString(known, ["details", "description", "notes"]) || valueToText(known);
   return [
     ["Current", snapshot.world.current_location || "-"],
     ["Type", findString(known, ["type", "kind", "category"]) || "-"],
     ["Region", findString(known, ["region", "district", "area"]) || "-"],
-    ["Details", compactText(findString(known, ["details", "description", "notes"]) || valueToText(known), 72)],
+    ["Details", compactText(details, 180)],
   ];
 }
 
@@ -528,7 +555,7 @@ function messageCards(snapshot: StorySnapshot, keywords: string[] = []): CardVie
       title: `${message.role} - Turn ${message.turn}`,
       rows: [
         ["Type", message.message_type || message.role],
-        ["Text", compactText(readableStructuredText(message.content), 160)],
+        ["Text", readableStructuredText(message.content)],
       ],
     }));
 }
@@ -539,7 +566,7 @@ function chapterCards(snapshot: StorySnapshot): CardView[] {
     rows: [
       ["Chapter", String(chapter.chapter_number)],
       ["Turns", chapter.end_turn ? `${chapter.start_turn}-${chapter.end_turn}` : `${chapter.start_turn}+`],
-      ["Summary", compactText(chapter.summary || "-", 140)],
+      ["Summary", compactText(chapter.summary || "-", 260)],
     ],
   }));
 }
@@ -550,7 +577,7 @@ function npcCards(snapshot: StorySnapshot): CardView[] {
     rows: [
       ...fieldRows(npc.fields)
         .filter(([key]) => !["Name", "Id"].includes(key) && !isPlayerHiddenField(key))
-        .map(([key, value]) => [key, compactText(value, 100)] as [string, string])
+        .map(([key, value]) => [key, compactText(value, 220)] as [string, string])
         .slice(0, 7),
     ],
   }));
@@ -573,7 +600,7 @@ function sessionCards(snapshot: StorySnapshot): CardView[] {
     title: displayTimestamp(session.started_at || session.id),
     rows: [
       ["Status", session.ended_at ? "Ended" : "Active"],
-      ["Summary", compactText(session.summary || "-", 140)],
+      ["Summary", compactText(session.summary || "-", 260)],
     ],
   }));
 }
@@ -584,7 +611,7 @@ function achievementCards(snapshot: StorySnapshot): CardView[] {
     rows: [
       ["Category", achievement.category || "-"],
       ["Rarity", achievement.rarity || "-"],
-      ["Description", compactText(achievement.description || "-", 140)],
+      ["Description", compactText(achievement.description || "-", 220)],
       ["Earned", displayTimestamp(achievement.earned_at)],
     ],
   }));
@@ -600,7 +627,7 @@ export function cardsFromValue(value: JsonValue | undefined, fallbackTitle: stri
   if (entries.length === 0) {
     if (value && typeof value === "object") return [];
     if (value === undefined || value === null) return [];
-    return [{ title: fallbackTitle, rows: [["Value", compactText(valueToText(value), 120)]] }];
+    return [{ title: fallbackTitle, rows: [["Value", compactText(valueToText(value), 220)]] }];
   }
 
   const complexEntries = entries.filter(([, child]) => child && typeof child === "object");
@@ -614,7 +641,7 @@ export function cardsFromValue(value: JsonValue | undefined, fallbackTitle: stri
       rows: entries
         .filter(([key]) => !isPlayerHiddenField(key))
         .slice(0, 12)
-        .map(([key, child]) => [titleCase(key), compactText(valueToText(child), 120)]),
+        .map(([key, child]) => [titleCase(key), compactText(valueToText(child), 220)]),
     },
   ];
 }
@@ -622,10 +649,10 @@ export function cardsFromValue(value: JsonValue | undefined, fallbackTitle: stri
 function cardFromEntry(value: JsonValue, title: string, index: number): CardView {
   const rows = fieldRows(value)
     .filter(([key]) => !["Name", "Title", "Id"].includes(key) && !isPlayerHiddenField(key))
-    .map(([key, child]) => [key, compactText(child, 120)] as [string, string])
+    .map(([key, child]) => [key, compactText(child, 220)] as [string, string])
     .slice(0, 8);
   return {
-    title: compactText(title || `${index + 1}`, 70),
+    title: compactText(title || `${index + 1}`, 120),
     rows,
   };
 }

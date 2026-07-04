@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardsFromValue, isPlayerHiddenField, meterRows, moduleTitle, sanitizePlayerVisibleValue } from "./Inspector";
+import { cardsFromValue, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, sanitizePlayerVisibleValue } from "./Inspector";
 import type { JsonValue, StorySnapshot } from "../types";
 
 describe("moduleTitle", () => {
@@ -63,6 +63,15 @@ describe("cardsFromValue", () => {
     expect(sanitizePlayerVisibleValue({ npcs: [{ name: "Maren", desires: ["hidden"], nested: { nemesis_json: { status: "active" } } }] })).toEqual({
       npcs: [{ name: "Maren", nested: {} }],
     });
+  });
+});
+
+describe("isLongInspectorRow", () => {
+  it("promotes prose-heavy inspector values to a full-width row", () => {
+    expect(isLongInspectorRow("Text", "Short but narrative text")).toBe(true);
+    expect(isLongInspectorRow("Details", "Station concourse, shared tables, overlapping announcements.")).toBe(true);
+    expect(isLongInspectorRow("Location", "Stazione Centrale - atrio principale")).toBe(false);
+    expect(isLongInspectorRow("Flag", "true")).toBe(false);
   });
 });
 
