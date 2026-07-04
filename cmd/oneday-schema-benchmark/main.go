@@ -76,11 +76,10 @@ type report struct {
 }
 
 func main() {
-	defaultModels := "grok-4.1-fast,main-fast,gemini-2.5-flash-lite,gemini-3.1-flash-lite-preview,qwen3.6-plus"
 	defaultBrief := "Mondo steampunk in tono serio e tenebroso, città industriale decadente, culto del vapore, dialoghi tesi, prosa elegante ma non prolissa. Lingua italiana. Voglio una campagna lunga, politica, investigativa e pericolosa."
 
 	configPath := flag.String("config", "config.yaml", "Path to config.yaml")
-	modelsFlag := flag.String("models", defaultModels, "Comma-separated repair model aliases")
+	modelsFlag := flag.String("models", os.Getenv("ONEDAY_SCHEMA_BENCH_MODELS"), "Comma-separated repair model aliases; required unless ONEDAY_SCHEMA_BENCH_MODELS is set")
 	outputDir := flag.String("output-dir", "docs/benchmarks/runs", "Directory for benchmark reports")
 	brief := flag.String("brief", defaultBrief, "Story brief used for schema-repair runs")
 	timeout := flag.Duration("timeout", 120*time.Second, "Per-case timeout")
@@ -199,6 +198,10 @@ func main() {
 	}
 
 	models := splitCSV(*modelsFlag)
+	if len(models) == 0 {
+		fmt.Fprintln(os.Stderr, "missing models list: pass -models or export ONEDAY_SCHEMA_BENCH_MODELS")
+		os.Exit(1)
+	}
 	rep := report{
 		GeneratedAt: time.Now().Format(time.RFC3339),
 		Brief:       *brief,

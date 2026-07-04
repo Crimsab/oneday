@@ -59,6 +59,7 @@ printf 'codex response\n' > "$out"
 func TestCodexCompleteMissingBinaryIsActionable(t *testing.T) {
 	provider := NewCodex(config.CodexConfig{
 		Binary: "oneday-test-codex-missing-binary",
+		Model:  "test-codex-model",
 	})
 
 	_, err := provider.Complete(context.Background(), ai.Request{
@@ -69,6 +70,25 @@ func TestCodexCompleteMissingBinaryIsActionable(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, want := range []string{"Codex CLI not found", "oneday doctor"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error %q missing %q", msg, want)
+		}
+	}
+}
+
+func TestCodexCompleteMissingModelIsActionable(t *testing.T) {
+	provider := NewCodex(config.CodexConfig{
+		Binary: "oneday-test-codex-should-not-run",
+	})
+
+	_, err := provider.Complete(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatal("expected missing model error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"Codex model missing", "ai.codex.model"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("error %q missing %q", msg, want)
 		}
@@ -89,7 +109,7 @@ exit 1
 		t.Fatal(err)
 	}
 
-	provider := NewCodex(config.CodexConfig{Binary: fake})
+	provider := NewCodex(config.CodexConfig{Binary: fake, Model: "test-codex-model"})
 	_, err := provider.Complete(context.Background(), ai.Request{
 		Messages: []ai.Message{{Role: ai.RoleUser, Content: "hello"}},
 	})

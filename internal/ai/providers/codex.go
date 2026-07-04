@@ -28,9 +28,6 @@ func NewCodex(cfg config.CodexConfig) *Codex {
 		binary = "codex"
 	}
 	model := cfg.Model
-	if model == "" {
-		model = "gpt-5.5"
-	}
 	reasoning := cfg.Reasoning
 	if reasoning == "" {
 		reasoning = "off"
@@ -54,6 +51,9 @@ func (c *Codex) Complete(ctx context.Context, req ai.Request) (ai.Response, erro
 	model := req.Model
 	if model == "" {
 		model = c.model
+	}
+	if strings.TrimSpace(model) == "" {
+		return ai.Response{}, fmt.Errorf("Codex model missing: set ai.codex.model in config.yaml or choose a Codex model in the browser Options panel")
 	}
 
 	dir, err := os.MkdirTemp("", "oneday-codex-*")

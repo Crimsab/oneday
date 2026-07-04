@@ -130,7 +130,7 @@ func TestSetupConfigForChoice(t *testing.T) {
 			choice:       "2",
 			wantProvider: "litellm",
 			wantLiteLLM:  true,
-			wantRAG:      true,
+			wantRAG:      false,
 			wantKey:      "${ONEDAY_LITELLM_API_KEY}",
 		},
 		{
@@ -138,7 +138,7 @@ func TestSetupConfigForChoice(t *testing.T) {
 			choice:         "3",
 			wantProvider:   "openrouter",
 			wantOpenRouter: true,
-			wantRAG:        true,
+			wantRAG:        false,
 			wantKey:        "${ONEDAY_OPENROUTER_API_KEY}",
 		},
 		{
@@ -155,6 +155,23 @@ func TestSetupConfigForChoice(t *testing.T) {
 			cfg, err := setupConfigForChoice(config.Default(), tc.choice)
 			if err != nil {
 				t.Fatalf("setupConfigForChoice: %v", err)
+			}
+			if cfg.AI.Codex.Enabled {
+				cfg.AI.Codex.Model = "test-codex-model"
+				cfg.AI.Generation.UtilityModel = "test-codex-model"
+			}
+			if cfg.AI.LiteLLM.Enabled {
+				cfg.AI.LiteLLM.DefaultModel = "test-litellm-model"
+				cfg.AI.Generation.UtilityModel = "test-litellm-model"
+			}
+			if cfg.AI.OpenRouter.Enabled {
+				cfg.AI.OpenRouter.DefaultModel = "test-openrouter-model"
+				cfg.AI.Generation.UtilityModel = "test-openrouter-model"
+			}
+			if cfg.RAG.Enabled && cfg.AI.Embedding.Provider == "local" {
+				cfg.AI.Embedding.Local.Model = "test-local-embedding-model"
+			} else if cfg.RAG.Enabled {
+				cfg.AI.Embedding.Model = "test-embedding-model"
 			}
 			if err := cfg.Validate(); err != nil {
 				t.Fatalf("Validate: %v", err)
@@ -213,7 +230,7 @@ func TestGatewayModelSettingsCommands(t *testing.T) {
 	cfg := config.Default()
 	cfg.AI.ProviderPriority = []string{"codex", "litellm", "openrouter", "claude-code"}
 	cfg.AI.Codex.Enabled = true
-	cfg.AI.Codex.Model = "gpt-5.5"
+	cfg.AI.Codex.Model = "test-codex-model"
 	data, err := config.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
@@ -239,7 +256,7 @@ func TestGatewayModelSettingsCommands(t *testing.T) {
 
 	priority := []string{"litellm", "codex", "openrouter", "claude-code"}
 	litellmEnabled := true
-	litellmModel := "grok-4.1-fast-updated"
+	litellmModel := "test-litellm-model-updated"
 	update := config.ModelRoutingUpdate{
 		BaseRevision:     resp.Settings.ConfigRevision,
 		ProviderPriority: &priority,

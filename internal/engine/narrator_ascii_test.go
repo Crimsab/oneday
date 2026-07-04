@@ -19,7 +19,7 @@ func (s *stubASCIIProvider) Name() string { return "stub-ascii" }
 
 func (s *stubASCIIProvider) Complete(_ context.Context, req ai.Request) (ai.Response, error) {
 	s.models = append(s.models, req.Model)
-	if req.Model == "ascii-ambient" {
+	if req.Model == "test-ascii-model" {
 		return ai.Response{}, context.DeadlineExceeded
 	}
 	return ai.Response{
@@ -69,7 +69,7 @@ func TestGenerateAmbientASCIIRetriesWithoutExplicitModel(t *testing.T) {
 		nil,
 		ContextConfig{},
 		config.GenerationConfig{},
-		config.ASCIIArtConfig{Enabled: true, Model: "ascii-ambient", Temperature: 0.4, MaxTokens: 300, TimeoutSeconds: 5},
+		config.ASCIIArtConfig{Enabled: true, Model: "test-ascii-model", Temperature: 0.4, MaxTokens: 300, TimeoutSeconds: 5},
 		t.TempDir(),
 		5,
 	)
@@ -97,7 +97,7 @@ func TestGenerateAmbientASCIIRetriesWithoutExplicitModel(t *testing.T) {
 	if len(provider.models) != 2 {
 		t.Fatalf("models called = %v, want 2 attempts", provider.models)
 	}
-	if provider.models[0] != "ascii-ambient" || provider.models[1] != "" {
+	if provider.models[0] != "test-ascii-model" || provider.models[1] != "" {
 		t.Fatalf("models called = %v, want explicit model then provider default", provider.models)
 	}
 

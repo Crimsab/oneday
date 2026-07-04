@@ -363,20 +363,6 @@ func wantsGatewayDeleteSave(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-delete-save"
 }
 
-type localEmbeddingModel struct {
-	ID          string
-	Label       string
-	Description string
-	Dimensions  int
-}
-
-var localEmbeddingModels = []localEmbeddingModel{
-	{ID: "bge-m3", Label: "bge-m3", Description: "Recommended default: strong multilingual/Italian support, reliable quality, moderate size", Dimensions: 1024},
-	{ID: "nomic-embed-text", Label: "nomic-embed-text", Description: "Fast/lightweight: good for English/general notes, smaller download, lower memory", Dimensions: 768},
-	{ID: "mxbai-embed-large", Label: "mxbai-embed-large", Description: "English retrieval quality: stronger for English docs, less ideal for multilingual text", Dimensions: 1024},
-	{ID: "qwen3-embedding", Label: "qwen3-embedding", Description: "Quality/heavier: best when available locally, more resource-hungry; dimensions should be smoke-tested", Dimensions: 1024},
-}
-
 func runSetup(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
 
@@ -414,21 +400,31 @@ func runSetup(args []string) error {
 	}
 	switch choice {
 	case "1":
-		configureCodex(reader, &cfg)
+		if err := configureCodex(reader, &cfg); err != nil {
+			return err
+		}
 		fmt.Println("If Codex is not logged in yet, run: codex login")
 		fmt.Println("RAG: disabled, reason: no embedding-capable provider configured")
 	case "2":
 		ensureEnvFile()
+		if err := configureLiteLLM(reader, &cfg); err != nil {
+			return err
+		}
 		if err := configureRAGChoice(reader, &cfg); err != nil {
 			return err
 		}
 	case "3":
 		ensureEnvFile()
+		if err := configureOpenRouter(reader, &cfg); err != nil {
+			return err
+		}
 		if err := configureRAGChoice(reader, &cfg); err != nil {
 			return err
 		}
 	case "4":
-		configureCodex(reader, &cfg)
+		if err := configureCodex(reader, &cfg); err != nil {
+			return err
+		}
 		if err := configureLocalRAG(reader, &cfg); err != nil {
 			return err
 		}
@@ -451,16 +447,72 @@ func runSetup(args []string) error {
 	return nil
 }
 
-func configureCodex(reader *bufio.Reader, cfg *config.Config) {
-	fmt.Print("Codex model [gpt-5.5]: ")
-	model, _ := reader.ReadString('\n')
-	if model = strings.TrimSpace(model); model != "" {
-		cfg.AI.Codex.Model = model
+func configureCodex(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "Codex model", cfg.AI.Codex.Model)
+	if err != nil {
+		return err
 	}
+	cfg.AI.Codex.Model = model
+	ensureGenerationModels(&cfg.AI.Generation, model)
 	fmt.Print("Reasoning off/none/minimal/low/medium/high/xhigh [off]: ")
 	reasoning, _ := reader.ReadString('\n')
 	if reasoning = strings.TrimSpace(reasoning); reasoning != "" {
 		cfg.AI.Codex.Reasoning = reasoning
+	}
+	return nil
+}
+
+func configureLiteLLM(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "LiteLLM default model", cfg.AI.LiteLLM.DefaultModel)
+	if err != nil {
+		return err
+	}
+	cfg.AI.LiteLLM.DefaultModel = model
+	ensureGenerationModels(&cfg.AI.Generation, model)
+	return nil
+}
+
+func configureOpenRouter(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "OpenRouter default model", cfg.AI.OpenRouter.DefaultModel)
+	if err != nil {
+		return err
+	}
+	cfg.AI.OpenRouter.DefaultModel = model
+	ensureGenerationModels(&cfg.AI.Generation, model)
+	return nil
+}
+
+func promptRequiredModel(reader *bufio.Reader, label, current string) (string, error) {
+	current = strings.TrimSpace(current)
+	if current == "" {
+		fmt.Printf("%s: ", label)
+	} else {
+		fmt.Printf("%s [%s]: ", label, current)
+	}
+	value, _ := reader.ReadString('\n')
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = current
+	}
+	if value == "" {
+		return "", fmt.Errorf("%s is required; model names are configured by the user, not hardcoded by OneDay", strings.ToLower(label))
+	}
+	return value, nil
+}
+
+func ensureGenerationModels(generation *config.GenerationConfig, model string) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return
+	}
+	if strings.TrimSpace(generation.UtilityModel) == "" {
+		generation.UtilityModel = model
+	}
+	if strings.TrimSpace(generation.RepairModel) == "" {
+		generation.RepairModel = model
+	}
+	if len(generation.RepairFallbackModels) == 0 {
+		generation.RepairFallbackModels = []string{model}
 	}
 }
 
@@ -479,9 +531,7 @@ func configureRAGChoice(reader *bufio.Reader, cfg *config.Config) error {
 	}
 	switch choice {
 	case "1":
-		cfg.RAG.Enabled = true
-		cfg.AI.Embedding.Provider = "auto"
-		return nil
+		return configureRemoteRAG(reader, cfg)
 	case "2":
 		return configureLocalRAG(reader, cfg)
 	case "3":
@@ -494,52 +544,61 @@ func configureRAGChoice(reader *bufio.Reader, cfg *config.Config) error {
 	}
 }
 
-func configureLocalRAG(reader *bufio.Reader, cfg *config.Config) error {
-	fmt.Println()
-	fmt.Println("Local RAG model choices:")
-	for i, model := range localEmbeddingModels {
-		fmt.Printf("  %d) %s — %s (%d dimensions)\n", i+1, model.Label, model.Description, model.Dimensions)
-	}
-	fmt.Print("Selection [1]: ")
-	choice, _ := reader.ReadString('\n')
-	choice = strings.TrimSpace(choice)
-	if choice == "" {
-		choice = "1"
-	}
-	model, err := localEmbeddingModelByChoice(choice)
+func configureRemoteRAG(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "Embedding model", cfg.AI.Embedding.Model)
 	if err != nil {
 		return err
 	}
+	fmt.Print("Embedding dimensions [1536]: ")
+	dimText, _ := reader.ReadString('\n')
+	dimensions := parsePositiveInt(strings.TrimSpace(dimText), 1536)
 
 	cfg.RAG.Enabled = true
-	cfg.RAG.Dimensions = model.Dimensions
+	cfg.RAG.Dimensions = dimensions
+	cfg.AI.Embedding.Provider = "auto"
+	cfg.AI.Embedding.Model = model
+	return nil
+}
+
+func configureLocalRAG(reader *bufio.Reader, cfg *config.Config) error {
+	fmt.Println()
+	model, err := promptRequiredModel(reader, "Ollama embedding model", cfg.AI.Embedding.Local.Model)
+	if err != nil {
+		return err
+	}
+	fmt.Print("Embedding dimensions [1024]: ")
+	dimText, _ := reader.ReadString('\n')
+	dimensions := parsePositiveInt(strings.TrimSpace(dimText), 1024)
+
+	cfg.RAG.Enabled = true
+	cfg.RAG.Dimensions = dimensions
 	cfg.AI.Embedding.Provider = "local"
 	cfg.AI.Embedding.Local.Enabled = true
 	cfg.AI.Embedding.Local.Type = "ollama"
 	cfg.AI.Embedding.Local.BaseURL = "http://127.0.0.1:11434"
-	cfg.AI.Embedding.Local.Model = model.ID
-	cfg.AI.Embedding.Local.Dimensions = model.Dimensions
+	cfg.AI.Embedding.Local.Model = model
+	cfg.AI.Embedding.Local.Dimensions = dimensions
 
-	fmt.Printf("Use Ollama model %s at %s\n", model.ID, cfg.AI.Embedding.Local.BaseURL)
+	fmt.Printf("Use Ollama model %s at %s\n", model, cfg.AI.Embedding.Local.BaseURL)
 	if _, err := exec.LookPath("ollama"); err != nil {
 		fmt.Println("Ollama CLI not found. Install from https://docs.ollama.com/linux or use custom local endpoint.")
 		return nil
 	}
-	fmt.Printf("Pull %s now with `ollama pull %s`? [Y/n]: ", model.ID, model.ID)
+	fmt.Printf("Pull %s now with `ollama pull %s`? [Y/n]: ", model, model)
 	answer, _ := reader.ReadString('\n')
 	answer = strings.ToLower(strings.TrimSpace(answer))
 	if answer == "" || answer == "y" || answer == "yes" {
-		if err := runInteractiveCommand("ollama", "pull", model.ID); err != nil {
+		if err := runInteractiveCommand("ollama", "pull", model); err != nil {
 			fmt.Printf("Ollama pull failed: %v\n", err)
 		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	if err := smokeLocalEmbedding(ctx, cfg.AI.Embedding.Local, model.Dimensions); err != nil {
+	if err := smokeLocalEmbedding(ctx, cfg.AI.Embedding.Local, dimensions); err != nil {
 		fmt.Printf("Embedding smoke: WARN: %v\n", err)
 		fmt.Println("Config will still be written; run `oneday doctor` after starting Ollama.")
 	} else {
-		fmt.Printf("Embedding smoke: OK (%s, %d dimensions)\n", model.ID, model.Dimensions)
+		fmt.Printf("Embedding smoke: OK (%s, %d dimensions)\n", model, dimensions)
 	}
 	return nil
 }
@@ -551,11 +610,9 @@ func configureCustomLocalRAG(reader *bufio.Reader, cfg *config.Config) error {
 	if baseURL == "" {
 		baseURL = "http://127.0.0.1:8000/embed"
 	}
-	fmt.Print("Embedding model name [local-embedding]: ")
-	model, _ := reader.ReadString('\n')
-	model = strings.TrimSpace(model)
-	if model == "" {
-		model = "local-embedding"
+	model, err := promptRequiredModel(reader, "Embedding model name", cfg.AI.Embedding.Local.Model)
+	if err != nil {
+		return err
 	}
 	fmt.Print("Embedding dimensions [1024]: ")
 	dimText, _ := reader.ReadString('\n')
@@ -579,15 +636,6 @@ func configureCustomLocalRAG(reader *bufio.Reader, cfg *config.Config) error {
 		fmt.Printf("Embedding smoke: OK (%s, %d dimensions)\n", model, dimensions)
 	}
 	return nil
-}
-
-func localEmbeddingModelByChoice(choice string) (localEmbeddingModel, error) {
-	for i, model := range localEmbeddingModels {
-		if choice == fmt.Sprintf("%d", i+1) || choice == model.ID {
-			return model, nil
-		}
-	}
-	return localEmbeddingModel{}, fmt.Errorf("unknown local embedding model choice %q", choice)
 }
 
 func parsePositiveInt(value string, fallback int) int {
@@ -665,7 +713,6 @@ func setupConfigForChoice(cfg config.Config, choice string) (config.Config, erro
 		cfg.AI.Embedding.Local.Enabled = true
 		cfg.AI.Embedding.Local.Type = "ollama"
 		cfg.AI.Embedding.Local.BaseURL = "http://127.0.0.1:11434"
-		cfg.AI.Embedding.Local.Model = "bge-m3"
 		cfg.AI.Embedding.Local.Dimensions = 1024
 		cfg.RAG.Dimensions = 1024
 	default:

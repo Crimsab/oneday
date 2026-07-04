@@ -1,8 +1,18 @@
 import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
-import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
+import {
+  commandDescriptorsToSlashCommands,
+  commandDescriptors as resolveCommandDescriptors,
+} from "../commands";
 import { compactText, displayTimestamp } from "../format";
-import { draftFromModelSettings, hasModelRoutingChanges, modelRoutingIssues, promoteProvider, updateFromDraft, type ModelRoutingDraft } from "../modelRouting";
+import {
+  draftFromModelSettings,
+  hasModelRoutingChanges,
+  modelRoutingIssues,
+  promoteProvider,
+  updateFromDraft,
+  type ModelRoutingDraft,
+} from "../modelRouting";
 import { ModuleContent, moduleTitle } from "./Inspector";
 import type {
   AppPreferences,
@@ -53,13 +63,25 @@ interface PanelDrawerProps {
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
-  onVisualAssetsGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
+  onVisualAssetsGenerate: (
+    payload: GenerateVisualAssetsRequest,
+  ) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
   onVisualAssetVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
-  onVisualAssetPromptSave: (assetId: string, payload: VisualAssetPromptUpdate) => Promise<void>;
-  onVisualAssetVersionSelect: (assetId: string, versionId: number) => Promise<void>;
-  onRunStoryWizard: (payload: StoryWizardEnvelope) => Promise<StoryWizardResponse>;
-  onEnhanceStoryText: (payload: StoryEnhanceEnvelope) => Promise<StoryEnhanceResponse>;
+  onVisualAssetPromptSave: (
+    assetId: string,
+    payload: VisualAssetPromptUpdate,
+  ) => Promise<void>;
+  onVisualAssetVersionSelect: (
+    assetId: string,
+    versionId: number,
+  ) => Promise<void>;
+  onRunStoryWizard: (
+    payload: StoryWizardEnvelope,
+  ) => Promise<StoryWizardResponse>;
+  onEnhanceStoryText: (
+    payload: StoryEnhanceEnvelope,
+  ) => Promise<StoryEnhanceResponse>;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
   onDeleteSave: (save: SaveView) => void;
@@ -116,11 +138,18 @@ export function PanelDrawer({
       >
         <div className="overlay-head">
           <h2>{overlayTitle(overlay, activeModuleTab)}</h2>
-          <button type="button" className="square-button" onClick={onClose} title="Close">
+          <button
+            type="button"
+            className="square-button"
+            onClick={onClose}
+            title="Close"
+          >
             <X size={16} />
           </button>
         </div>
-        {overlay === "help" && <HelpContent commandDescriptors={commandDescriptors} />}
+        {overlay === "help" && (
+          <HelpContent commandDescriptors={commandDescriptors} />
+        )}
         {overlay === "options" && (
           <OptionsContent
             snapshot={snapshot}
@@ -156,10 +185,21 @@ export function PanelDrawer({
           />
         )}
         {overlay === "new-story" && (
-          <NewStoryContent busy={busy} onRunStoryWizard={onRunStoryWizard} onEnhanceStoryText={onEnhanceStoryText} />
+          <NewStoryContent
+            busy={busy}
+            onRunStoryWizard={onRunStoryWizard}
+            onEnhanceStoryText={onEnhanceStoryText}
+          />
         )}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
-        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={activeModuleTab} visuals={visuals} focusCardId={moduleFocusId} />}
+        {overlay === "module" && (
+          <ModuleOverlayContent
+            snapshot={snapshot}
+            selectedTab={activeModuleTab}
+            visuals={visuals}
+            focusCardId={moduleFocusId}
+          />
+        )}
       </section>
     </div>
   );
@@ -174,8 +214,14 @@ function overlayTitle(overlay: OverlayKind, selectedTab: ModuleTab): string {
   return "New Story";
 }
 
-function HelpContent({ commandDescriptors }: { commandDescriptors: CommandDescriptor[] }) {
-  const commands = commandDescriptorsToSlashCommands(resolveCommandDescriptors(commandDescriptors));
+function HelpContent({
+  commandDescriptors,
+}: {
+  commandDescriptors: CommandDescriptor[];
+}) {
+  const commands = commandDescriptorsToSlashCommands(
+    resolveCommandDescriptors(commandDescriptors),
+  );
   return (
     <div className="overlay-content command-help">
       {commands.map((command) => (
@@ -224,13 +270,24 @@ function OptionsContent({
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
-  onVisualAssetsGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
+  onVisualAssetsGenerate: (
+    payload: GenerateVisualAssetsRequest,
+  ) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
   onVisualAssetVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
-  onVisualAssetPromptSave: (assetId: string, payload: VisualAssetPromptUpdate) => Promise<void>;
-  onVisualAssetVersionSelect: (assetId: string, versionId: number) => Promise<void>;
+  onVisualAssetPromptSave: (
+    assetId: string,
+    payload: VisualAssetPromptUpdate,
+  ) => Promise<void>;
+  onVisualAssetVersionSelect: (
+    assetId: string,
+    versionId: number,
+  ) => Promise<void>;
 }) {
-  const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
+  const update = <K extends keyof AppPreferences>(
+    key: K,
+    value: AppPreferences[K],
+  ) => {
     onPreferencesChange({ ...preferences, [key]: value });
   };
 
@@ -239,7 +296,9 @@ function OptionsContent({
       <div className="option-grid">
         <div>
           <span>Realtime bridge</span>
-          <strong>{snapshot ? "SSE snapshots + turn events" : "No story selected"}</strong>
+          <strong>
+            {snapshot ? "SSE snapshots + turn events" : "No story selected"}
+          </strong>
         </div>
         <div>
           <span>Action transport</span>
@@ -257,7 +316,12 @@ function OptionsContent({
       <div className="settings-grid">
         <label>
           <span>Density</span>
-          <select value={preferences.density} onChange={(event) => update("density", event.target.value as AppPreferences["density"])}>
+          <select
+            value={preferences.density}
+            onChange={(event) =>
+              update("density", event.target.value as AppPreferences["density"])
+            }
+          >
             <option value="compact">Compact</option>
             <option value="balanced">Balanced</option>
             <option value="comfortable">Comfortable</option>
@@ -265,7 +329,15 @@ function OptionsContent({
         </label>
         <label>
           <span>Font size</span>
-          <select value={preferences.fontSize} onChange={(event) => update("fontSize", event.target.value as AppPreferences["fontSize"])}>
+          <select
+            value={preferences.fontSize}
+            onChange={(event) =>
+              update(
+                "fontSize",
+                event.target.value as AppPreferences["fontSize"],
+              )
+            }
+          >
             <option value="small">Small</option>
             <option value="base">Base</option>
             <option value="large">Large</option>
@@ -273,7 +345,12 @@ function OptionsContent({
         </label>
         <label>
           <span>Accent</span>
-          <select value={preferences.accent} onChange={(event) => update("accent", event.target.value as AppPreferences["accent"])}>
+          <select
+            value={preferences.accent}
+            onChange={(event) =>
+              update("accent", event.target.value as AppPreferences["accent"])
+            }
+          >
             <option value="amber">Amber</option>
             <option value="green">Green</option>
             <option value="blue">Blue</option>
@@ -282,18 +359,36 @@ function OptionsContent({
         </label>
         <label className="toggle-row">
           <span>Stories sidebar</span>
-          <input type="checkbox" checked={preferences.showLeftRail} onChange={(event) => update("showLeftRail", event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={preferences.showLeftRail}
+            onChange={(event) => update("showLeftRail", event.target.checked)}
+          />
         </label>
         <label className="toggle-row">
           <span>Inspector panel</span>
-          <input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={preferences.showInspector}
+            onChange={(event) => update("showInspector", event.target.checked)}
+          />
         </label>
         <label className="toggle-row">
           <span>Transcript wrap</span>
-          <input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={preferences.wrapTranscript}
+            onChange={(event) => update("wrapTranscript", event.target.checked)}
+          />
         </label>
       </div>
-      <ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} />
+      <ModelRoutingSettings
+        modelSettings={modelSettings}
+        modelError={modelError}
+        busy={modelBusy}
+        onSave={onModelSettingsSave}
+        onReload={onModelSettingsReload}
+      />
       <VisualDirectionSettings
         profile={visualProfile}
         assets={visualAssets}
@@ -333,24 +428,39 @@ function VisualDirectionSettings({
   onGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onReload: () => Promise<void> | void;
   onVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
-  onAssetPromptSave: (assetId: string, payload: VisualAssetPromptUpdate) => Promise<void>;
+  onAssetPromptSave: (
+    assetId: string,
+    payload: VisualAssetPromptUpdate,
+  ) => Promise<void>;
   onVersionSelect: (assetId: string, versionId: number) => Promise<void>;
 }) {
-  const [draft, setDraft] = useState<VisualProfileUpdate>(() => profileDraft(profile));
+  const [draft, setDraft] = useState<VisualProfileUpdate>(() =>
+    profileDraft(profile),
+  );
   const [selectedAssetId, setSelectedAssetId] = useState(focusedAssetId ?? "");
-  const [assetDraft, setAssetDraft] = useState<VisualAssetPromptUpdate>({ prompt: "", negative_prompt: "" });
+  const [assetDraft, setAssetDraft] = useState<VisualAssetPromptUpdate>({
+    prompt: "",
+    negative_prompt: "",
+  });
   const [versions, setVersions] = useState<VisualAssetVersion[]>([]);
   const [versionIndex, setVersionIndex] = useState(0);
   const [versionsBusy, setVersionsBusy] = useState(false);
   const [saveError, setSaveError] = useState("");
   const readyCount = assets.filter((asset) => asset.status === "ready").length;
-  const pendingCount = assets.filter((asset) => asset.status !== "ready").length;
+  const pendingCount = assets.filter(
+    (asset) => asset.status !== "ready",
+  ).length;
   const selectedAsset = useMemo(
-    () => assets.find((asset) => asset.id === selectedAssetId) ?? assets.find((asset) => asset.id === focusedAssetId) ?? assets[0] ?? null,
+    () =>
+      assets.find((asset) => asset.id === selectedAssetId) ??
+      assets.find((asset) => asset.id === focusedAssetId) ??
+      assets[0] ??
+      null,
     [assets, focusedAssetId, selectedAssetId],
   );
   const selectedImageUrl = readyAssetUrl(selectedAsset);
-  const activeVersion = versions[Math.min(versionIndex, Math.max(versions.length - 1, 0))] ?? null;
+  const activeVersion =
+    versions[Math.min(versionIndex, Math.max(versions.length - 1, 0))] ?? null;
 
   useEffect(() => {
     setDraft(profileDraft(profile));
@@ -371,7 +481,10 @@ function VisualDirectionSettings({
       setVersions([]);
       return;
     }
-    setAssetDraft({ prompt: selectedAsset.prompt, negative_prompt: selectedAsset.negative_prompt });
+    setAssetDraft({
+      prompt: selectedAsset.prompt,
+      negative_prompt: selectedAsset.negative_prompt,
+    });
     let cancelled = false;
     setVersionsBusy(true);
     setSaveError("");
@@ -384,7 +497,9 @@ function VisualDirectionSettings({
       .catch((failure) => {
         if (cancelled) return;
         setVersions([]);
-        setSaveError(failure instanceof Error ? failure.message : String(failure));
+        setSaveError(
+          failure instanceof Error ? failure.message : String(failure),
+        );
       })
       .finally(() => {
         if (!cancelled) setVersionsBusy(false);
@@ -394,7 +509,10 @@ function VisualDirectionSettings({
     };
   }, [onVersionsLoad, selectedAsset]);
 
-  const update = <K extends keyof VisualProfileUpdate>(key: K, value: VisualProfileUpdate[K]) => {
+  const update = <K extends keyof VisualProfileUpdate>(
+    key: K,
+    value: VisualProfileUpdate[K],
+  ) => {
     setSaveError("");
     setDraft((current) => ({ ...current, [key]: value }));
   };
@@ -404,7 +522,11 @@ function VisualDirectionSettings({
     try {
       await onSave(draft);
     } catch (saveFailure) {
-      setSaveError(saveFailure instanceof Error ? saveFailure.message : String(saveFailure));
+      setSaveError(
+        saveFailure instanceof Error
+          ? saveFailure.message
+          : String(saveFailure),
+      );
     }
   };
 
@@ -413,7 +535,9 @@ function VisualDirectionSettings({
     try {
       await onGenerate(payload);
     } catch (failure) {
-      setSaveError(failure instanceof Error ? failure.message : String(failure));
+      setSaveError(
+        failure instanceof Error ? failure.message : String(failure),
+      );
     }
   };
 
@@ -423,7 +547,9 @@ function VisualDirectionSettings({
     try {
       await onAssetPromptSave(selectedAsset.id, assetDraft);
     } catch (failure) {
-      setSaveError(failure instanceof Error ? failure.message : String(failure));
+      setSaveError(
+        failure instanceof Error ? failure.message : String(failure),
+      );
     }
   };
 
@@ -432,12 +558,18 @@ function VisualDirectionSettings({
     setSaveError("");
     try {
       await onAssetPromptSave(selectedAsset.id, assetDraft);
-      await onGenerate({ asset_ids: [selectedAsset.id], force: true, limit: 1 });
+      await onGenerate({
+        asset_ids: [selectedAsset.id],
+        force: true,
+        limit: 1,
+      });
       const nextVersions = await onVersionsLoad(selectedAsset.id);
       setVersions(nextVersions);
       setVersionIndex(0);
     } catch (failure) {
-      setSaveError(failure instanceof Error ? failure.message : String(failure));
+      setSaveError(
+        failure instanceof Error ? failure.message : String(failure),
+      );
     }
   };
 
@@ -447,7 +579,9 @@ function VisualDirectionSettings({
     try {
       await onVersionSelect(selectedAsset.id, activeVersion.id);
     } catch (failure) {
-      setSaveError(failure instanceof Error ? failure.message : String(failure));
+      setSaveError(
+        failure instanceof Error ? failure.message : String(failure),
+      );
     }
   };
 
@@ -460,25 +594,47 @@ function VisualDirectionSettings({
         </strong>
       </div>
       {!profile ? (
-        <p className="model-error">{error || "Select a story to edit visual prompts."}</p>
+        <p className="model-error">
+          {error || "Select a story to edit visual prompts."}
+        </p>
       ) : (
         <>
           <div className="settings-grid visual-settings">
             <label>
               <span>World/location prompt</span>
-              <textarea value={draft.world_style_prompt} onChange={(event) => update("world_style_prompt", event.target.value)} rows={4} />
+              <textarea
+                value={draft.world_style_prompt}
+                onChange={(event) =>
+                  update("world_style_prompt", event.target.value)
+                }
+                rows={4}
+              />
             </label>
             <label>
               <span>Character prompt</span>
-              <textarea value={draft.character_style_prompt} onChange={(event) => update("character_style_prompt", event.target.value)} rows={4} />
+              <textarea
+                value={draft.character_style_prompt}
+                onChange={(event) =>
+                  update("character_style_prompt", event.target.value)
+                }
+                rows={4}
+              />
             </label>
             <label>
               <span>Palette</span>
-              <input value={draft.palette} onChange={(event) => update("palette", event.target.value)} />
+              <input
+                value={draft.palette}
+                onChange={(event) => update("palette", event.target.value)}
+              />
             </label>
             <label>
               <span>Negative prompt</span>
-              <input value={draft.negative_prompt} onChange={(event) => update("negative_prompt", event.target.value)} />
+              <input
+                value={draft.negative_prompt}
+                onChange={(event) =>
+                  update("negative_prompt", event.target.value)
+                }
+              />
             </label>
           </div>
           <div className="visual-asset-list">
@@ -502,19 +658,30 @@ function VisualDirectionSettings({
           {selectedAsset && (
             <div className="visual-asset-editor">
               <div className="visual-asset-preview">
-                {selectedImageUrl ? <img src={activeVersion?.url || selectedImageUrl} alt="" /> : <div>{selectedAsset.status}</div>}
+                {selectedImageUrl ? (
+                  <img src={activeVersion?.url || selectedImageUrl} alt="" />
+                ) : (
+                  <div>{selectedAsset.status}</div>
+                )}
               </div>
               <div className="visual-asset-editor-main">
                 <div className="visual-asset-editor-head">
                   <span>{selectedAsset.kind}</span>
                   <strong>{selectedAsset.subject}</strong>
-                  <small title={selectedAsset.provider}>{selectedAsset.status}</small>
+                  <small title={selectedAsset.provider}>
+                    {selectedAsset.status}
+                  </small>
                 </div>
                 <label>
                   <span>Asset prompt</span>
                   <textarea
                     value={assetDraft.prompt}
-                    onChange={(event) => setAssetDraft((current) => ({ ...current, prompt: event.target.value }))}
+                    onChange={(event) =>
+                      setAssetDraft((current) => ({
+                        ...current,
+                        prompt: event.target.value,
+                      }))
+                    }
                     rows={5}
                   />
                 </label>
@@ -522,33 +689,75 @@ function VisualDirectionSettings({
                   <span>Negative prompt</span>
                   <input
                     value={assetDraft.negative_prompt}
-                    onChange={(event) => setAssetDraft((current) => ({ ...current, negative_prompt: event.target.value }))}
+                    onChange={(event) =>
+                      setAssetDraft((current) => ({
+                        ...current,
+                        negative_prompt: event.target.value,
+                      }))
+                    }
                   />
                 </label>
                 <div className="visual-version-bar">
-                  <button type="button" disabled={busy || versionIndex >= versions.length - 1} onClick={() => setVersionIndex((value) => Math.min(versions.length - 1, value + 1))}>
+                  <button
+                    type="button"
+                    disabled={busy || versionIndex >= versions.length - 1}
+                    onClick={() =>
+                      setVersionIndex((value) =>
+                        Math.min(versions.length - 1, value + 1),
+                      )
+                    }
+                  >
                     Previous
                   </button>
                   <span>
-                    {versionsBusy ? "Loading versions" : versions.length ? `${versionIndex + 1} / ${versions.length}` : "No versions yet"}
+                    {versionsBusy
+                      ? "Loading versions"
+                      : versions.length
+                        ? `${versionIndex + 1} / ${versions.length}`
+                        : "No versions yet"}
                   </span>
-                  <button type="button" disabled={busy || versionIndex <= 0} onClick={() => setVersionIndex((value) => Math.max(0, value - 1))}>
+                  <button
+                    type="button"
+                    disabled={busy || versionIndex <= 0}
+                    onClick={() =>
+                      setVersionIndex((value) => Math.max(0, value - 1))
+                    }
+                  >
                     Next
                   </button>
                 </div>
                 {activeVersion && (
-                  <p className="model-note">
-                    Version from {displayTimestamp(activeVersion.created_at)} via {activeVersion.provider || "unknown provider"}.
-                  </p>
+                  <div className="model-note">
+                    <p>
+                      Version from {displayTimestamp(activeVersion.created_at)}{" "}
+                      via {activeVersion.provider || "unknown provider"}.
+                    </p>
+                    {activeVersion.revised_prompt ? (
+                      <p>Revised: {activeVersion.revised_prompt}</p>
+                    ) : null}
+                  </div>
                 )}
                 <div className="model-actions">
-                  <button type="button" onClick={() => void saveAssetPrompt()} disabled={busy}>
+                  <button
+                    type="button"
+                    onClick={() => void saveAssetPrompt()}
+                    disabled={busy}
+                  >
                     Save prompt
                   </button>
-                  <button type="button" onClick={() => void selectVersion()} disabled={busy || !activeVersion}>
+                  <button
+                    type="button"
+                    onClick={() => void selectVersion()}
+                    disabled={busy || !activeVersion}
+                  >
                     Use shown version
                   </button>
-                  <button type="button" className="primary-action" onClick={() => void regenerateSelectedAsset()} disabled={busy}>
+                  <button
+                    type="button"
+                    className="primary-action"
+                    onClick={() => void regenerateSelectedAsset()}
+                    disabled={busy}
+                  >
                     Regenerate
                   </button>
                 </div>
@@ -556,22 +765,42 @@ function VisualDirectionSettings({
             </div>
           )}
           <div className="model-actions">
-            <button type="button" onClick={() => void onReload()} disabled={busy}>
+            <button
+              type="button"
+              onClick={() => void onReload()}
+              disabled={busy}
+            >
               Reload assets
             </button>
-            <button type="button" onClick={() => void generate({ force: false, limit: 6 })} disabled={busy || assets.length === 0}>
+            <button
+              type="button"
+              onClick={() => void generate({ force: false, limit: 6 })}
+              disabled={busy || assets.length === 0}
+            >
               Generate missing
             </button>
-            <button type="button" onClick={() => void generate({ force: true, limit: 6 })} disabled={busy || assets.length === 0}>
+            <button
+              type="button"
+              onClick={() => void generate({ force: true, limit: 6 })}
+              disabled={busy || assets.length === 0}
+            >
               Regenerate visible
             </button>
-            <button type="button" className="primary-action" onClick={() => void save()} disabled={busy}>
+            <button
+              type="button"
+              className="primary-action"
+              onClick={() => void save()}
+              disabled={busy}
+            >
               {busy ? "Saving..." : "Save visual prompts"}
             </button>
           </div>
           {error && <p className="model-error">{error}</p>}
           {saveError && <p className="model-error">{saveError}</p>}
-          <p className="model-note">Missing images become pending asset requests. Ready images are served without blocking story turns.</p>
+          <p className="model-note">
+            Missing images become pending asset requests. Ready images are
+            served without blocking story turns.
+          </p>
         </>
       )}
     </div>
@@ -600,7 +829,9 @@ function ModelRoutingSettings({
   onSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onReload: () => Promise<void> | void;
 }) {
-  const [draft, setDraft] = useState<ModelRoutingDraft | null>(() => (modelSettings ? draftFromModelSettings(modelSettings) : null));
+  const [draft, setDraft] = useState<ModelRoutingDraft | null>(() =>
+    modelSettings ? draftFromModelSettings(modelSettings) : null,
+  );
   const [saveError, setSaveError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
 
@@ -609,16 +840,23 @@ function ModelRoutingSettings({
     setSaveError("");
   }, [modelSettings]);
 
-  const providerIds = modelSettings?.providers.map((provider) => provider.id) ?? [];
-  const activeProvider = draft?.providerPriority[0] ?? modelSettings?.active.provider ?? "";
+  const providerIds =
+    modelSettings?.providers.map((provider) => provider.id) ?? [];
+  const activeProvider =
+    draft?.providerPriority[0] ?? modelSettings?.active.provider ?? "";
 
-  const updateDraft = (updater: (value: ModelRoutingDraft) => ModelRoutingDraft) => {
+  const updateDraft = (
+    updater: (value: ModelRoutingDraft) => ModelRoutingDraft,
+  ) => {
     setSaveError("");
     setSaveMessage("");
     setDraft((value) => (value ? updater(value) : value));
   };
 
-  const updateProvider = (id: string, patch: Partial<ModelRoutingDraft["providers"][string]>) => {
+  const updateProvider = (
+    id: string,
+    patch: Partial<ModelRoutingDraft["providers"][string]>,
+  ) => {
     updateDraft((value) => ({
       ...value,
       providers: {
@@ -659,7 +897,9 @@ function ModelRoutingSettings({
 
   const issues = modelRoutingIssues(modelSettings, draft);
   const dirty = hasModelRoutingChanges(modelSettings, draft);
-  const revision = modelSettings.config_revision ? modelSettings.config_revision.slice(0, 12) : "unknown";
+  const revision = modelSettings.config_revision
+    ? modelSettings.config_revision.slice(0, 12)
+    : "unknown";
 
   return (
     <div className="model-routing">
@@ -674,11 +914,15 @@ function ModelRoutingSettings({
         </div>
         <div>
           <span>Configured narrator model</span>
-          <strong>{modelSettings.active.narrative_model || "provider default"}</strong>
+          <strong>
+            {modelSettings.active.narrative_model || "provider default"}
+          </strong>
         </div>
         <div>
           <span>Config path</span>
-          <strong title={modelSettings.config_path}>{modelSettings.config_path}</strong>
+          <strong title={modelSettings.config_path}>
+            {modelSettings.config_path}
+          </strong>
         </div>
       </div>
       <div className="settings-grid">
@@ -689,7 +933,11 @@ function ModelRoutingSettings({
             onChange={(event) =>
               updateDraft((value) => ({
                 ...value,
-                providerPriority: promoteProvider(value.providerPriority, providerIds, event.target.value),
+                providerPriority: promoteProvider(
+                  value.providerPriority,
+                  providerIds,
+                  event.target.value,
+                ),
                 providers: {
                   ...value.providers,
                   [event.target.value]: {
@@ -709,27 +957,68 @@ function ModelRoutingSettings({
         </label>
         <label>
           <span>Utility model</span>
-          <ModelInput value={draft.utilityModel} options={modelSettings.utility_models} onChange={(value) => updateDraft((draft) => ({ ...draft, utilityModel: value }))} />
+          <ModelInput
+            value={draft.utilityModel}
+            options={modelSettings.utility_models}
+            onChange={(value) =>
+              updateDraft((draft) => ({ ...draft, utilityModel: value }))
+            }
+          />
         </label>
         <label>
           <span>Repair model</span>
-          <ModelInput value={draft.repairModel} options={modelSettings.repair_models} onChange={(value) => updateDraft((draft) => ({ ...draft, repairModel: value }))} />
+          <ModelInput
+            value={draft.repairModel}
+            options={modelSettings.repair_models}
+            onChange={(value) =>
+              updateDraft((draft) => ({ ...draft, repairModel: value }))
+            }
+          />
         </label>
         <label>
           <span>Repair fallbacks</span>
           <input
             value={draft.repairFallbackModels}
-            onChange={(event) => updateDraft((draft) => ({ ...draft, repairFallbackModels: event.target.value }))}
+            onChange={(event) =>
+              updateDraft((draft) => ({
+                ...draft,
+                repairFallbackModels: event.target.value,
+              }))
+            }
             placeholder="comma-separated fallback models"
           />
         </label>
         <label>
+          <span>Image generation model</span>
+          <ModelInput
+            value={draft.imageModel}
+            options={modelSettings.image_models}
+            onChange={(value) =>
+              updateDraft((draft) => ({ ...draft, imageModel: value }))
+            }
+          />
+        </label>
+        <label>
           <span>ASCII art model</span>
-          <ModelInput value={draft.imageModel} options={modelSettings.image_models} onChange={(value) => updateDraft((draft) => ({ ...draft, imageModel: value }))} />
+          <ModelInput
+            value={draft.asciiModel}
+            options={modelSettings.ascii_models}
+            onChange={(value) =>
+              updateDraft((draft) => ({ ...draft, asciiModel: value }))
+            }
+          />
         </label>
         <label>
           <span>Embedding provider</span>
-          <select value={draft.embeddingProvider} onChange={(event) => updateDraft((draft) => ({ ...draft, embeddingProvider: event.target.value }))}>
+          <select
+            value={draft.embeddingProvider}
+            onChange={(event) =>
+              updateDraft((draft) => ({
+                ...draft,
+                embeddingProvider: event.target.value,
+              }))
+            }
+          >
             {modelSettings.embedding_providers.map((provider) => (
               <option key={provider} value={provider}>
                 {provider}
@@ -739,20 +1028,35 @@ function ModelRoutingSettings({
         </label>
         <label>
           <span>Embedding model</span>
-          <input value={draft.embeddingModel} onChange={(event) => updateDraft((draft) => ({ ...draft, embeddingModel: event.target.value }))} />
+          <input
+            value={draft.embeddingModel}
+            onChange={(event) =>
+              updateDraft((draft) => ({
+                ...draft,
+                embeddingModel: event.target.value,
+              }))
+            }
+          />
         </label>
       </div>
       <div className="provider-editor-grid">
         {modelSettings.providers.map((provider) => {
           const providerDraft = draft.providers[provider.id];
           return (
-            <div className={`provider-card ${providerDraft?.enabled ? "enabled" : ""}`} key={provider.id}>
+            <div
+              className={`provider-card ${providerDraft?.enabled ? "enabled" : ""}`}
+              key={provider.id}
+            >
               <label className="toggle-row">
                 <span>{provider.label}</span>
                 <input
                   type="checkbox"
                   checked={providerDraft?.enabled ?? provider.enabled}
-                  onChange={(event) => updateProvider(provider.id, { enabled: event.target.checked })}
+                  onChange={(event) =>
+                    updateProvider(provider.id, {
+                      enabled: event.target.checked,
+                    })
+                  }
                 />
               </label>
               {provider.supports_model && (
@@ -761,15 +1065,32 @@ function ModelRoutingSettings({
                   <ModelInput
                     value={providerDraft?.model ?? ""}
                     options={modelSettings.narrative_models}
-                    onChange={(value) => updateProvider(provider.id, { model: value })}
+                    onChange={(value) =>
+                      updateProvider(provider.id, { model: value })
+                    }
                   />
                 </label>
               )}
               {provider.supports_reasoning && (
                 <label>
                   <span>Reasoning</span>
-                  <select value={providerDraft?.reasoning ?? "off"} onChange={(event) => updateProvider(provider.id, { reasoning: event.target.value })}>
-                    {["off", "none", "minimal", "low", "medium", "high", "xhigh"].map((level) => (
+                  <select
+                    value={providerDraft?.reasoning ?? "off"}
+                    onChange={(event) =>
+                      updateProvider(provider.id, {
+                        reasoning: event.target.value,
+                      })
+                    }
+                  >
+                    {[
+                      "off",
+                      "none",
+                      "minimal",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh",
+                    ].map((level) => (
                       <option key={level} value={level}>
                         {level}
                       </option>
@@ -783,7 +1104,10 @@ function ModelRoutingSettings({
       </div>
       <div className="model-facts">
         <span>Provider chain: {draft.providerPriority.join(" -> ")}</span>
-        <span>Embedding: {draft.embeddingProvider}/{draft.embeddingModel || "default"}</span>
+        <span>
+          Embedding: {draft.embeddingProvider}/
+          {draft.embeddingModel || "default"}
+        </span>
         <span>TTS: {modelSettings.tts_status}</span>
       </div>
       {issues.length > 0 && (
@@ -794,29 +1118,53 @@ function ModelRoutingSettings({
         </div>
       )}
       <div className="model-actions">
-        <button type="button" onClick={() => setDraft(draftFromModelSettings(modelSettings))} disabled={busy}>
+        <button
+          type="button"
+          onClick={() => setDraft(draftFromModelSettings(modelSettings))}
+          disabled={busy}
+        >
           Reset
         </button>
         <button type="button" onClick={() => void onReload()} disabled={busy}>
           Reload from disk
         </button>
-        <button type="button" className="primary-action" onClick={() => void save()} disabled={busy || !dirty || issues.length > 0}>
+        <button
+          type="button"
+          className="primary-action"
+          onClick={() => void save()}
+          disabled={busy || !dirty || issues.length > 0}
+        >
           {busy ? "Saving..." : "Save model routing"}
         </button>
       </div>
       {modelError && <p className="model-error">{modelError}</p>}
       {saveError && <p className="model-error">{saveError}</p>}
       {saveMessage && <p className="model-success">{saveMessage}</p>}
-      <p className="model-note">Saved changes write to the shared config used by the terminal and by the next browser turn bridge process.</p>
+      <p className="model-note">
+        Saved changes write to the shared config used by the terminal and by the
+        next browser turn bridge process.
+      </p>
     </div>
   );
 }
 
-function ModelInput({ value, options, onChange }: { value: string; options: string[]; onChange: (value: string) => void }) {
+function ModelInput({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
   const listId = useId();
   return (
     <>
-      <input value={value} onChange={(event) => onChange(event.target.value)} list={listId} />
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        list={listId}
+      />
       <datalist id={listId}>
         {options.map((option) => (
           <option value={option} key={option} />
@@ -847,7 +1195,11 @@ function SavesContent({
   const saves = snapshot?.panels.saves ?? [];
   const query = saveFilter.trim().toLowerCase();
   const filteredSaves = query
-    ? saves.filter((save) => `${save.name} ${save.location} ${save.turn} ${save.chapter} ${save.id}`.toLowerCase().includes(query))
+    ? saves.filter((save) =>
+        `${save.name} ${save.location} ${save.turn} ${save.chapter} ${save.id}`
+          .toLowerCase()
+          .includes(query),
+      )
     : saves;
   const currentTurn = snapshot?.world.current_turn ?? 0;
   const submitSave = () => {
@@ -869,7 +1221,12 @@ function SavesContent({
             disabled={busy || !snapshot}
           />
         </label>
-        <button type="button" className="wide-action" onClick={submitSave} disabled={busy || !snapshot}>
+        <button
+          type="button"
+          className="wide-action"
+          onClick={submitSave}
+          disabled={busy || !snapshot}
+        >
           Create Save
         </button>
       </div>
@@ -893,15 +1250,26 @@ function SavesContent({
               <div>
                 <strong>{save.name}</strong>
                 <span>
-                  Turn {save.turn} - Chapter {save.chapter} - {compactText(save.location || "Unknown", 32)}
+                  Turn {save.turn} - Chapter {save.chapter} -{" "}
+                  {compactText(save.location || "Unknown", 32)}
                 </span>
                 <small>{displayTimestamp(save.created_at)}</small>
               </div>
               <div className="save-actions">
-                <button type="button" className="save-load-button" onClick={() => onLoadSave(save)} disabled={busy}>
+                <button
+                  type="button"
+                  className="save-load-button"
+                  onClick={() => onLoadSave(save)}
+                  disabled={busy}
+                >
                   Load
                 </button>
-                <button type="button" className="save-delete-button" onClick={() => onDeleteSave(save)} disabled={busy}>
+                <button
+                  type="button"
+                  className="save-delete-button"
+                  onClick={() => onDeleteSave(save)}
+                  disabled={busy}
+                >
                   Delete
                 </button>
               </div>
@@ -944,13 +1312,21 @@ function ModuleOverlayContent({
   if (!snapshot) {
     return (
       <div className="overlay-content">
-        <p className="overlay-copy muted">Select a story to inspect this module.</p>
+        <p className="overlay-copy muted">
+          Select a story to inspect this module.
+        </p>
       </div>
     );
   }
   return (
     <div className="overlay-content module-content">
-      <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} expanded focusCardId={focusCardId} />
+      <ModuleContent
+        tab={selectedTab}
+        snapshot={snapshot}
+        visuals={visuals}
+        expanded
+        focusCardId={focusCardId}
+      />
     </div>
   );
 }
@@ -961,8 +1337,12 @@ function NewStoryContent({
   onEnhanceStoryText,
 }: {
   busy: boolean;
-  onRunStoryWizard: (payload: StoryWizardEnvelope) => Promise<StoryWizardResponse>;
-  onEnhanceStoryText: (payload: StoryEnhanceEnvelope) => Promise<StoryEnhanceResponse>;
+  onRunStoryWizard: (
+    payload: StoryWizardEnvelope,
+  ) => Promise<StoryWizardResponse>;
+  onEnhanceStoryText: (
+    payload: StoryEnhanceEnvelope,
+  ) => Promise<StoryEnhanceResponse>;
 }) {
   const [wizard, setWizard] = useState<StoryWizardResult | null>(null);
   const [input, setInput] = useState("");
@@ -976,7 +1356,15 @@ function NewStoryContent({
     setWizard(next);
     setInput("");
     if (next.message) {
-      setLog((items) => [{ stage: next.stage_label || next.stage || "Story setup", message: next.message }, ...items].slice(0, 8));
+      setLog((items) =>
+        [
+          {
+            stage: next.stage_label || next.stage || "Story setup",
+            message: next.message,
+          },
+          ...items,
+        ].slice(0, 8),
+      );
     }
   };
 
@@ -1001,7 +1389,10 @@ function NewStoryContent({
         if (!cancelled) applyResponse(response);
       })
       .catch((failure) => {
-        if (!cancelled) setError(failure instanceof Error ? failure.message : String(failure));
+        if (!cancelled)
+          setError(
+            failure instanceof Error ? failure.message : String(failure),
+          );
       });
     return () => {
       cancelled = true;
@@ -1040,31 +1431,49 @@ function NewStoryContent({
       });
       setInput(response.text?.trim() || fallback);
       if (response.model || response.provider) {
-        setLog((items) => [
-          {
-            stage: "AI enhance",
-            message: `Improved ${inputLabelForStage(stage).toLowerCase()} with ${response.model || response.provider}.`,
-          },
-          ...items,
-        ].slice(0, 8));
+        setLog((items) =>
+          [
+            {
+              stage: "AI enhance",
+              message: `Improved ${inputLabelForStage(stage).toLowerCase()} with ${response.model || response.provider}.`,
+            },
+            ...items,
+          ].slice(0, 8),
+        );
       }
     } catch (failure) {
       setInput(fallback);
-      setError(`AI enhance failed; used local fallback. ${failure instanceof Error ? failure.message : String(failure)}`);
+      setError(
+        `AI enhance failed; used local fallback. ${failure instanceof Error ? failure.message : String(failure)}`,
+      );
     } finally {
       setEnhancing(false);
     }
   };
 
   return (
-    <form className="overlay-content new-story-form story-wizard-form" onSubmit={submit}>
+    <form
+      className="overlay-content new-story-form story-wizard-form"
+      onSubmit={submit}
+    >
       <div className="story-wizard-status">
         <div>
-          <span>{phase === "done" ? "Complete" : phase === "character" ? "Character setup" : "Story setup"}</span>
+          <span>
+            {phase === "done"
+              ? "Complete"
+              : phase === "character"
+                ? "Character setup"
+                : "Story setup"}
+          </span>
           <strong>{wizard?.stage_label || "Loading wizard"}</strong>
         </div>
         <label className="checkbox-line">
-          <input type="checkbox" checked={start} onChange={(event) => setStart(event.target.checked)} disabled={busy || stage === "done"} />
+          <input
+            type="checkbox"
+            checked={start}
+            onChange={(event) => setStart(event.target.checked)}
+            disabled={busy || stage === "done"}
+          />
           <span>Start first turn after creation</span>
         </label>
       </div>
@@ -1072,13 +1481,25 @@ function NewStoryContent({
       <div className="story-wizard-grid">
         <div className="story-wizard-main">
           <div className="story-wizard-message">
-            <pre>{wizard?.message || "Starting the same guided setup used by the terminal..."}</pre>
+            <pre>
+              {wizard?.message ||
+                "Starting the same guided setup used by the terminal..."}
+            </pre>
           </div>
 
           {wizard?.actions?.length ? (
-            <div className="story-wizard-actions" aria-label="Wizard quick choices">
+            <div
+              className="story-wizard-actions"
+              aria-label="Wizard quick choices"
+            >
               {wizard.actions.map((action, index) => (
-                <button type="button" key={action.key} title={action.key} onClick={() => void runAction(action.key)} disabled={busy}>
+                <button
+                  type="button"
+                  key={action.key}
+                  title={action.key}
+                  onClick={() => void runAction(action.key)}
+                  disabled={busy}
+                >
                   <span>{index + 1}</span>
                   <strong>{action.label}</strong>
                 </button>
@@ -1092,7 +1513,13 @@ function NewStoryContent({
               <textarea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                rows={stage === "brief" ? 6 : stage === "character_background" ? 4 : 5}
+                rows={
+                  stage === "brief"
+                    ? 6
+                    : stage === "character_background"
+                      ? 4
+                      : 5
+                }
                 placeholder={wizard?.placeholder || "Type your response..."}
                 disabled={busy}
               />
@@ -1102,10 +1529,18 @@ function NewStoryContent({
           {error && <p className="form-error">{error}</p>}
 
           <div className="drawer-actions story-wizard-submit">
-            <button type="button" onClick={() => void enhanceInput()} disabled={busy || enhancing || stage === "done"}>
+            <button
+              type="button"
+              onClick={() => void enhanceInput()}
+              disabled={busy || enhancing || stage === "done"}
+            >
               {enhancing ? "Enhancing..." : "Enhance text"}
             </button>
-            <button type="submit" className="primary" disabled={busy || stage === "done"}>
+            <button
+              type="submit"
+              className="primary"
+              disabled={busy || stage === "done"}
+            >
               {busy ? "Working..." : submitLabelForStage(stage)}
             </button>
           </div>
@@ -1132,7 +1567,10 @@ function NewStoryContent({
                 </dl>
               </>
             ) : (
-              <p>No draft yet. Start with a brief or a terminal-compatible preset.</p>
+              <p>
+                No draft yet. Start with a brief or a terminal-compatible
+                preset.
+              </p>
             )}
           </div>
           <div className="story-wizard-card">
@@ -1159,7 +1597,8 @@ function NewStoryContent({
 function currentInputRequiredMessage(wizard: StoryWizardResult | null): string {
   const stage = wizard?.stage ?? "brief";
   if (stage === "character_name") return "Protagonist name is required.";
-  if (stage === "character_background") return "Write a background or use Skip background.";
+  if (stage === "character_background")
+    return "Write a background or use Skip background.";
   if (stage === "brief") return "Story brief is required.";
   return "Type a revision or use one of the quick choices.";
 }
@@ -1190,7 +1629,10 @@ function submitLabelForStage(stage: string): string {
   }
 }
 
-function enhancedStoryInput(wizard: StoryWizardResult | null, current: string): string {
+function enhancedStoryInput(
+  wizard: StoryWizardResult | null,
+  current: string,
+): string {
   const stage = wizard?.stage ?? "brief";
   const text = current.trim();
   if (stage === "character_name") return text || "Mira";
@@ -1228,21 +1670,25 @@ function storyTextPresetFor(source: string): string {
   return "Italian mystery adventure, compact prose, practical choices, strong anti-loop rules, no lore sprawl, no free advantages, meaningful randomness, and a first scene with a concrete problem.";
 }
 
-function storyDefinitionSummary(value: unknown):
-  | {
-      name: string;
-      description: string;
-      genre: string;
-      tone: string;
-      language: string;
-      worldName: string;
-      hasCombat: boolean;
-    }
-  | null {
+function storyDefinitionSummary(value: unknown): {
+  name: string;
+  description: string;
+  genre: string;
+  tone: string;
+  language: string;
+  worldName: string;
+  hasCombat: boolean;
+} | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
-  const setting = typeof raw.setting === "object" && raw.setting ? (raw.setting as Record<string, unknown>) : {};
-  const stats = typeof raw.stats_schema === "object" && raw.stats_schema ? (raw.stats_schema as Record<string, unknown>) : {};
+  const setting =
+    typeof raw.setting === "object" && raw.setting
+      ? (raw.setting as Record<string, unknown>)
+      : {};
+  const stats =
+    typeof raw.stats_schema === "object" && raw.stats_schema
+      ? (raw.stats_schema as Record<string, unknown>)
+      : {};
   return {
     name: stringValue(raw.name, "Untitled story"),
     description: stringValue(raw.description, "No description yet."),

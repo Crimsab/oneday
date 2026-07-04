@@ -35,6 +35,14 @@ game state.
 - If the host Codex installation moves, update the compose mount for
   `/usr/local/bin/codex` and verify with `docker exec oneday-gateway codex login
   status`.
+- Browser visual asset generation defaults to `ONEDAY_IMAGEGEN_PROVIDER=openclaw-bridge`
+  and calls `http://openclaw-imagegen:8099/generate` on `homelab_network`.
+  The gateway forwards prompt, output format, size, optional resolution/aspect
+  ratio/background, and stores provider `revised_prompt` values on asset
+  versions for audit.
+- To send the saved asset prompt exactly as-is, set
+  `ONEDAY_IMAGEGEN_APPEND_NEGATIVE_PROMPT=false`; otherwise the gateway appends
+  the asset negative prompt as an `Avoid:` line before calling the provider.
 
 ## Browser Feature Inventory
 

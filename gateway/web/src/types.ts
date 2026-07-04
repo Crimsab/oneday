@@ -1,4 +1,5 @@
-export type SyncState = "Idle" | "Loading" | "Live" | "Sending" | "Paused" | "Reconnecting" | "Error";
+export type SyncState =
+  "Idle" | "Loading" | "Live" | "Sending" | "Paused" | "Reconnecting" | "Error";
 
 export type ModuleTab =
   | "history"
@@ -11,7 +12,8 @@ export type ModuleTab =
   | "projects"
   | "saves";
 
-export type OverlayKind = "help" | "options" | "saves" | "new-story" | "meta" | "module" | null;
+export type OverlayKind =
+  "help" | "options" | "saves" | "new-story" | "meta" | "module" | null;
 
 export type DensityPreference = "compact" | "balanced" | "comfortable";
 export type FontSizePreference = "small" | "base" | "large";
@@ -43,6 +45,7 @@ export interface ModelRoutingActive {
   repair_model: string;
   repair_fallback_models: string[];
   image_model: string;
+  ascii_model: string;
   embedding_provider: string;
   embedding_model: string;
   codex_reasoning: string;
@@ -57,6 +60,7 @@ export interface ModelSettings {
   utility_models: string[];
   repair_models: string[];
   image_models: string[];
+  ascii_models: string[];
   embedding_providers: string[];
   active: ModelRoutingActive;
   tts_status: string;
@@ -77,6 +81,7 @@ export interface ModelSettingsUpdate {
   repair_model?: string;
   repair_fallback_models?: string[];
   image_model?: string;
+  ascii_model?: string;
   embedding_model?: string;
   embedding_provider?: string;
 }
@@ -156,7 +161,14 @@ export interface PendingTurnView {
 
 export interface TurnStreamEvent {
   story_id: string;
-  status: "submitted" | "event" | "completed" | "failed" | "snapshot_changed" | "lagged" | string;
+  status:
+    | "submitted"
+    | "event"
+    | "completed"
+    | "failed"
+    | "snapshot_changed"
+    | "lagged"
+    | string;
   client_turn?: number | null;
   action_kind?: string | null;
   action_text?: string | null;
@@ -236,7 +248,8 @@ export interface StorySnapshot {
   panels: PanelsView;
 }
 
-export type VisualAssetStatus = "pending" | "queued" | "running" | "ready" | "failed";
+export type VisualAssetStatus =
+  "pending" | "queued" | "running" | "ready" | "failed";
 export type VisualAssetKind = "location" | "character" | "world" | string;
 
 export interface VisualProfile {
@@ -273,6 +286,7 @@ export interface VisualAssetVersion {
   subject: string;
   url: string;
   prompt: string;
+  revised_prompt: string;
   negative_prompt: string;
   provider: string;
   turn: number;
@@ -375,7 +389,8 @@ export interface StoryEnhanceResponse {
   latency_ms?: number;
 }
 
-export type CommandGroup = "play" | "talk" | "state" | "save" | "meta" | "system" | "debug";
+export type CommandGroup =
+  "play" | "talk" | "state" | "save" | "meta" | "system" | "debug";
 export type CommandParity = "shared" | "terminal_only" | "browser_only";
 export type CommandBehavior =
   | "submit_action"

@@ -362,6 +362,8 @@ pub struct ModelRoutingActive {
     #[serde(default)]
     pub repair_fallback_models: Vec<String>,
     pub image_model: String,
+    #[serde(default)]
+    pub ascii_model: String,
     pub embedding_provider: String,
     pub embedding_model: String,
     pub codex_reasoning: String,
@@ -383,6 +385,8 @@ pub struct ModelRoutingSettings {
     pub repair_models: Vec<String>,
     #[serde(default)]
     pub image_models: Vec<String>,
+    #[serde(default)]
+    pub ascii_models: Vec<String>,
     #[serde(default)]
     pub embedding_providers: Vec<String>,
     pub active: ModelRoutingActive,
@@ -407,6 +411,7 @@ pub struct ModelRoutingUpdate {
     pub repair_model: Option<String>,
     pub repair_fallback_models: Option<Vec<String>>,
     pub image_model: Option<String>,
+    pub ascii_model: Option<String>,
     pub embedding_provider: Option<String>,
     pub embedding_model: Option<String>,
 }

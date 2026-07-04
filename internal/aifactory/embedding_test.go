@@ -42,14 +42,14 @@ func TestSelectEmbeddingProviderAllowsLocalWithoutAPIKey(t *testing.T) {
 	cfg.AI.Embedding.Local.Enabled = true
 	cfg.AI.Embedding.Local.Type = "ollama"
 	cfg.AI.Embedding.Local.BaseURL = "http://127.0.0.1:11434"
-	cfg.AI.Embedding.Local.Model = "bge-m3"
+	cfg.AI.Embedding.Local.Model = "test-local-embedding-model"
 	cfg.AI.Embedding.Local.Dimensions = 1024
 
 	spec, reason := SelectEmbeddingProvider(cfg)
 	if reason != "" {
 		t.Fatalf("SelectEmbeddingProvider reason = %q, want none", reason)
 	}
-	if spec.Kind != "ollama" || spec.Model != "bge-m3" || spec.Dimensions != 1024 {
+	if spec.Kind != "ollama" || spec.Model != "test-local-embedding-model" || spec.Dimensions != 1024 {
 		t.Fatalf("unexpected local spec: %#v", spec)
 	}
 }
