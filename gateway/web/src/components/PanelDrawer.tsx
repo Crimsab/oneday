@@ -36,6 +36,7 @@ interface PanelDrawerProps {
   visualProfileError: string;
   visualProfileBusy: boolean;
   selectedTab: ModuleTab;
+  moduleTab?: ModuleTab | null;
   moduleFocusId?: string | null;
   commandDescriptors: CommandDescriptor[];
   busy: boolean;
@@ -68,6 +69,7 @@ export function PanelDrawer({
   visualProfileError,
   visualProfileBusy,
   selectedTab,
+  moduleTab,
   moduleFocusId,
   commandDescriptors,
   busy,
@@ -86,6 +88,7 @@ export function PanelDrawer({
   onSaveFilterChange,
 }: PanelDrawerProps) {
   if (!overlay) return null;
+  const activeModuleTab = moduleTab ?? selectedTab;
   return (
     <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
       <section
@@ -95,7 +98,7 @@ export function PanelDrawer({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="overlay-head">
-          <h2>{overlayTitle(overlay, selectedTab)}</h2>
+          <h2>{overlayTitle(overlay, activeModuleTab)}</h2>
           <button type="button" className="square-button" onClick={onClose} title="Close">
             <X size={16} />
           </button>
@@ -133,7 +136,7 @@ export function PanelDrawer({
         )}
         {overlay === "new-story" && <NewStoryContent busy={busy} onCreateStory={onCreateStory} />}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
-        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={selectedTab} visuals={visuals} focusCardId={moduleFocusId} />}
+        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={activeModuleTab} visuals={visuals} focusCardId={moduleFocusId} />}
       </section>
     </div>
   );
