@@ -112,6 +112,28 @@ pub struct StoryCreateEnvelope {
     pub start: bool,
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StoryWizardEnvelope {
+    pub state: Option<serde_json::Value>,
+    #[serde(default)]
+    pub input: String,
+    #[serde(default)]
+    pub action: String,
+    #[serde(default = "default_start_story")]
+    pub start: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct StoryEnhanceEnvelope {
+    pub state: Option<serde_json::Value>,
+    #[serde(default)]
+    pub stage: String,
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub context: String,
+}
+
 #[derive(Debug, Serialize)]
 struct GatewayTurnRequest<'a> {
     story_id: &'a str,
@@ -168,6 +190,22 @@ struct GatewayStoryCreateRequest<'a> {
     character_name: &'a str,
     character_background: &'a str,
     start: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct GatewayStoryWizardRequest<'a> {
+    state: Option<&'a serde_json::Value>,
+    input: &'a str,
+    action: &'a str,
+    start: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct GatewayStoryEnhanceRequest<'a> {
+    state: Option<&'a serde_json::Value>,
+    stage: &'a str,
+    text: &'a str,
+    context: &'a str,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -240,6 +278,56 @@ pub struct GatewayStoryCreateResponse {
     pub started: bool,
     #[serde(default)]
     pub start_error: String,
+    #[serde(default)]
+    pub error: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GatewayStoryWizardResponse {
+    #[serde(default)]
+    pub state: serde_json::Value,
+    #[serde(default)]
+    pub phase: String,
+    #[serde(default)]
+    pub stage: String,
+    #[serde(default)]
+    pub stage_label: String,
+    #[serde(default)]
+    pub placeholder: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default)]
+    pub actions: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub definition: serde_json::Value,
+    #[serde(default)]
+    pub last_model: String,
+    #[serde(default)]
+    pub last_latency_ms: i64,
+    #[serde(default)]
+    pub story_id: String,
+    #[serde(default)]
+    pub character_id: String,
+    #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub started: bool,
+    #[serde(default)]
+    pub start_error: String,
+    #[serde(default)]
+    pub error: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GatewayStoryEnhanceResponse {
+    #[serde(default)]
+    pub text: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub latency_ms: i64,
     #[serde(default)]
     pub error: String,
 }
@@ -489,6 +577,55 @@ pub async fn create_story(
     if !status_ok {
         return Err(anyhow!(
             "gateway-story-create failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    Ok(parsed)
+}
+
+pub async fn story_wizard(
+    state: Arc<AppState>,
+    envelope: StoryWizardEnvelope,
+) -> anyhow::Result<GatewayStoryWizardResponse> {
+    let req = GatewayStoryWizardRequest {
+        state: envelope.state.as_ref(),
+        input: &envelope.input,
+        action: &envelope.action,
+        start: envelope.start,
+    };
+    let (parsed, status_ok, stderr) =
+        call_gateway::<_, GatewayStoryWizardResponse>(state, "gateway-story-wizard", &req).await?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !status_ok {
+        return Err(anyhow!(
+            "gateway-story-wizard failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    Ok(parsed)
+}
+
+pub async fn story_enhance(
+    state: Arc<AppState>,
+    envelope: StoryEnhanceEnvelope,
+) -> anyhow::Result<GatewayStoryEnhanceResponse> {
+    let req = GatewayStoryEnhanceRequest {
+        state: envelope.state.as_ref(),
+        stage: &envelope.stage,
+        text: &envelope.text,
+        context: &envelope.context,
+    };
+    let (parsed, status_ok, stderr) =
+        call_gateway::<_, GatewayStoryEnhanceResponse>(state, "gateway-story-enhance", &req)
+            .await?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !status_ok {
+        return Err(anyhow!(
+            "gateway-story-enhance failed: {}",
             compact_stderr(&stderr)
         ));
     }

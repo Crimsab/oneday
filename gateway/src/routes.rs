@@ -25,6 +25,8 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(model_settings).put(update_model_settings),
         )
         .route("/api/contracts/commands", get(command_descriptors))
+        .route("/api/story-wizard", post(story_wizard))
+        .route("/api/story-enhance", post(story_enhance))
         .route("/api/stories", get(stories).post(create_story))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
@@ -117,6 +119,29 @@ async fn create_story(
         "story": created,
         "snapshot": snapshot,
     })))
+}
+
+async fn story_wizard(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<engine::StoryWizardEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let wizard = engine::story_wizard(state.clone(), payload).await?;
+    let snapshot = if wizard.story_id.trim().is_empty() {
+        None
+    } else {
+        Some(db::snapshot(&state.pool, &wizard.story_id).await?)
+    };
+    Ok(Json(json!({
+        "wizard": wizard,
+        "snapshot": snapshot,
+    })))
+}
+
+async fn story_enhance(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<engine::StoryEnhanceEnvelope>,
+) -> Result<Json<engine::GatewayStoryEnhanceResponse>, ApiError> {
+    Ok(Json(engine::story_enhance(state, payload).await?))
 }
 
 fn story_create_visual_profile(

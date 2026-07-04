@@ -41,8 +41,20 @@ const (
 
 // CreationAction is a quick action shown in the story creation wizard.
 type CreationAction struct {
-	Key   string
-	Label string
+	Key   string `json:"key"`
+	Label string `json:"label"`
+}
+
+// StoryCreatorState is the serializable browser/terminal bridge state for the
+// guided story wizard. The browser sends it back on the next step so the
+// gateway can remain stateless between HTTP requests.
+type StoryCreatorState struct {
+	Stage         string           `json:"stage"`
+	InitialBrief  string           `json:"initial_brief,omitempty"`
+	CharacterName string           `json:"character_name,omitempty"`
+	Definition    *StoryDefinition `json:"definition,omitempty"`
+	StoryID       string           `json:"story_id,omitempty"`
+	CharacterID   string           `json:"character_id,omitempty"`
 }
 
 // StoryCreator manages the guided story creation wizard.
@@ -112,6 +124,11 @@ func (sc *StoryCreator) StageLabel() string {
 	default:
 		return "Finalizing story"
 	}
+}
+
+// StageKey returns a stable, machine-readable wizard step identifier.
+func (sc *StoryCreator) StageKey() string {
+	return storyCreationStageKey(sc.stage)
 }
 
 // InputPlaceholder returns the most useful textarea hint for the current step.
@@ -201,6 +218,44 @@ func (sc *StoryCreator) Character() *storage.Character { return sc.character }
 // Definition returns the current draft story definition.
 func (sc *StoryCreator) Definition() *StoryDefinition { return sc.definition }
 
+// ExportState returns the portable wizard state needed for the next gateway step.
+func (sc *StoryCreator) ExportState() StoryCreatorState {
+	state := StoryCreatorState{
+		Stage:         sc.StageKey(),
+		InitialBrief:  sc.initialBrief,
+		CharacterName: sc.charName,
+		Definition:    sc.definition,
+	}
+	if sc.story != nil {
+		state.StoryID = sc.story.ID
+	}
+	if sc.character != nil {
+		state.CharacterID = sc.character.ID
+	}
+	return state
+}
+
+// RestoreState loads a previously exported wizard state.
+func (sc *StoryCreator) RestoreState(state StoryCreatorState) error {
+	stage, err := parseStoryCreationStage(state.Stage)
+	if err != nil {
+		return err
+	}
+	sc.stage = stage
+	sc.initialBrief = strings.TrimSpace(state.InitialBrief)
+	sc.charName = strings.TrimSpace(state.CharacterName)
+	sc.definition = state.Definition
+	sc.lastModel = "system"
+	sc.lastLatency = 0
+	if state.StoryID != "" {
+		sc.story = &storage.Story{ID: state.StoryID}
+	}
+	if state.CharacterID != "" {
+		sc.character = &storage.Character{ID: state.CharacterID, StoryID: state.StoryID}
+	}
+	return nil
+}
+
 // StartConversation returns the local wizard intro instantly.
 func (sc *StoryCreator) StartConversation(ctx context.Context) (string, error) {
 	sc.lastModel = "system"
@@ -280,6 +335,52 @@ func (sc *StoryCreator) ExecuteAction(ctx context.Context, actionKey string) (st
 	}
 
 	return "", fmt.Errorf("unsupported action: %s", actionKey)
+}
+
+func storyCreationStageKey(stage storyCreationStage) string {
+	switch stage {
+	case stageBrief:
+		return "brief"
+	case stageReviewWorld:
+		return "review_world"
+	case stageReviewRules:
+		return "review_rules"
+	case stageReviewStats:
+		return "review_stats"
+	case stageConfirm:
+		return "confirm"
+	case stageCharacterName:
+		return "character_name"
+	case stageCharacterBackground:
+		return "character_background"
+	case stageDone:
+		return "done"
+	default:
+		return "brief"
+	}
+}
+
+func parseStoryCreationStage(value string) (storyCreationStage, error) {
+	switch strings.TrimSpace(value) {
+	case "", "brief":
+		return stageBrief, nil
+	case "review_world":
+		return stageReviewWorld, nil
+	case "review_rules":
+		return stageReviewRules, nil
+	case "review_stats":
+		return stageReviewStats, nil
+	case "confirm":
+		return stageConfirm, nil
+	case "character_name":
+		return stageCharacterName, nil
+	case "character_background":
+		return stageCharacterBackground, nil
+	case "done":
+		return stageDone, nil
+	default:
+		return stageBrief, fmt.Errorf("unknown story creator stage: %s", value)
+	}
 }
 
 func (sc *StoryCreator) handleBrief(ctx context.Context, input string) (string, error) {
@@ -861,10 +962,6 @@ func parseStoryDefinitionWithFallbackWithOptions(text, brief string, previous *S
 }
 
 func decodeStoryDefinitionJSON(raw string, out *StoryDefinition) error {
-	if err := json.Unmarshal([]byte(raw), out); err == nil {
-		return nil
-	}
-
 	var payload map[string]any
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
 		return fmt.Errorf("decoding story definition JSON: %w", err)
@@ -886,6 +983,51 @@ func normalizeLooseStoryDefinitionPayload(payload map[string]any) map[string]any
 		return map[string]any{}
 	}
 
+	legacyShape := hasLooseLegacyStoryShape(payload)
+	applyPayloadStringAlias(payload, "name", "title", "story_name")
+	if legacyShape {
+		applyPayloadDefault(payload, "genre", inferStoryGenre(payload))
+		applyPayloadDefault(payload, "tone", inferStoryTone(payload))
+		applyPayloadDefault(payload, "language", "italiano")
+		applyPayloadDefault(payload, "writing_style", "prosa concreta, compatta e reattiva alle conseguenze")
+	}
+
+	settingRaw, _ := payload["setting"].(map[string]any)
+	if settingRaw == nil && legacyShape {
+		settingRaw = map[string]any{}
+	}
+	if settingRaw != nil {
+		applyPayloadStringAlias(settingRaw, "world_name", "world", "world_title", "setting_name")
+		if legacyShape {
+			applyPayloadDefault(settingRaw, "world_name", firstNonEmptyStoryString(
+				stringFromAny(payload["world_name"]),
+				stringFromAny(payload["name"]),
+				stringFromAny(payload["title"]),
+				"OneDay",
+			))
+			applyPayloadDefault(settingRaw, "era", inferStoryEra(payload))
+			applyPayloadDefault(settingRaw, "geography", inferStoryGeography(payload))
+			applyPayloadDefault(settingRaw, "magic_system", inferStoryMagicSystem(payload))
+			applyPayloadDefault(settingRaw, "technology_level", inferStoryTechnologyLevel(payload))
+			applyPayloadDefault(settingRaw, "society", inferStorySociety(payload))
+			movePayloadIfMissing(settingRaw, "rules", payload, "rules")
+			movePayloadIfMissing(settingRaw, "factions", payload, "factions")
+			movePayloadIfMissing(settingRaw, "cultures", payload, "cultures")
+			movePayloadIfMissing(settingRaw, "dangers", payload, "dangers")
+		}
+		settingRaw["rules"] = coerceStringListPayload(settingRaw["rules"])
+		settingRaw["factions"] = coerceStringListPayload(settingRaw["factions"])
+		settingRaw["cultures"] = coerceStringListPayload(settingRaw["cultures"])
+		settingRaw["dangers"] = coerceStringListPayload(settingRaw["dangers"])
+		if legacyShape {
+			ensurePayloadStringListDefault(settingRaw, "rules", []string{"Ogni scelta importante deve mostrare costi, rischi o conseguenze prima dell'azione."})
+			ensurePayloadStringListDefault(settingRaw, "factions", []string{"Autorita locali", "Rete informale di testimoni"})
+			ensurePayloadStringListDefault(settingRaw, "cultures", []string{"Abitanti e lavoratori del luogo"})
+			ensurePayloadStringListDefault(settingRaw, "dangers", []string{"Informazioni incomplete", "Pressione del tempo", "Conseguenze sociali e materiali"})
+		}
+		payload["setting"] = settingRaw
+	}
+
 	if statsRaw, ok := payload["stats_schema"].(map[string]any); ok {
 		statsRaw["vitals"] = coerceStatDefPayload(statsRaw["vitals"])
 		statsRaw["attributes"] = coerceStatDefPayload(statsRaw["attributes"])
@@ -894,16 +1036,195 @@ func normalizeLooseStoryDefinitionPayload(payload map[string]any) map[string]any
 			statsRaw["currency"] = currency
 		}
 		payload["stats_schema"] = statsRaw
-	}
-	if settingRaw, ok := payload["setting"].(map[string]any); ok {
-		settingRaw["rules"] = coerceStringListPayload(settingRaw["rules"])
-		settingRaw["factions"] = coerceStringListPayload(settingRaw["factions"])
-		settingRaw["cultures"] = coerceStringListPayload(settingRaw["cultures"])
-		settingRaw["dangers"] = coerceStringListPayload(settingRaw["dangers"])
-		payload["setting"] = settingRaw
+	} else if legacyShape {
+		payload["stats_schema"] = legacyStatsSchemaPayload(payload["stats"])
 	}
 
 	return payload
+}
+
+func hasLooseLegacyStoryShape(payload map[string]any) bool {
+	if payload == nil {
+		return false
+	}
+	for _, key := range []string{"title", "rules", "factions", "cultures", "dangers", "stats"} {
+		if _, ok := payload[key]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func applyPayloadStringAlias(payload map[string]any, target string, aliases ...string) {
+	if stringFromAny(payload[target]) != "" {
+		return
+	}
+	for _, alias := range aliases {
+		if value := stringFromAny(payload[alias]); value != "" {
+			payload[target] = value
+			return
+		}
+	}
+}
+
+func applyPayloadDefault(payload map[string]any, target, fallback string) {
+	if stringFromAny(payload[target]) == "" && strings.TrimSpace(fallback) != "" {
+		payload[target] = fallback
+	}
+}
+
+func movePayloadIfMissing(target map[string]any, targetKey string, source map[string]any, sourceKey string) {
+	if _, ok := target[targetKey]; ok {
+		return
+	}
+	if value, ok := source[sourceKey]; ok {
+		target[targetKey] = value
+	}
+}
+
+func ensurePayloadStringListDefault(payload map[string]any, key string, fallback []string) {
+	if list, ok := payload[key].([]string); ok && len(list) > 0 {
+		return
+	}
+	payload[key] = fallback
+}
+
+func legacyStatsSchemaPayload(value any) map[string]any {
+	attrs := coerceStatDefPayload(value)
+	if list, ok := attrs.([]map[string]any); !ok || len(list) == 0 {
+		attrs = []map[string]any{
+			{"key": "observation", "label": "Osservazione", "starting": 3},
+			{"key": "reasoning", "label": "Ragionamento", "starting": 3},
+			{"key": "empathy", "label": "Empatia", "starting": 3},
+		}
+	}
+	return map[string]any{
+		"vitals": []map[string]any{
+			{"key": "health", "label": "Salute", "starting": 10},
+			{"key": "focus", "label": "Focus", "starting": 10},
+		},
+		"attributes": attrs,
+		"secondary": []map[string]any{
+			{"key": "reputation", "label": "Reputazione", "starting": 0},
+			{"key": "clues", "label": "Indizi", "starting": 0},
+		},
+		"has_combat": true,
+	}
+}
+
+func inferStoryGenre(payload map[string]any) string {
+	text := looseStoryText(payload)
+	switch {
+	case strings.Contains(text, "cyber"):
+		return "cyberpunk noir"
+	case strings.Contains(text, "horror") || strings.Contains(text, "orrore"):
+		return "horror mystery"
+	case strings.Contains(text, "fantasy") || strings.Contains(text, "magia"):
+		return "fantasy investigativo"
+	case strings.Contains(text, "mystery") || strings.Contains(text, "indagin"):
+		return "mystery urbano"
+	default:
+		return "avventura narrativa"
+	}
+}
+
+func inferStoryTone(payload map[string]any) string {
+	text := looseStoryText(payload)
+	switch {
+	case strings.Contains(text, "cozy"):
+		return "intimo e leggero"
+	case strings.Contains(text, "horror") || strings.Contains(text, "orrore"):
+		return "teso e inquieto"
+	case strings.Contains(text, "realistic") || strings.Contains(text, "realist"):
+		return "realistico e teso"
+	default:
+		return "concreto e drammatico"
+	}
+}
+
+func inferStoryEra(payload map[string]any) string {
+	text := looseStoryText(payload)
+	switch {
+	case strings.Contains(text, "steampunk"):
+		return "eta industriale alternativa"
+	case strings.Contains(text, "fantasy"):
+		return "eta fantastica"
+	case strings.Contains(text, "cyber"):
+		return "futuro prossimo"
+	default:
+		return "contemporaneo"
+	}
+}
+
+func inferStoryGeography(payload map[string]any) string {
+	text := looseStoryText(payload)
+	switch {
+	case strings.Contains(text, "stazione"):
+		return "stazione centrale e quartieri urbani collegati"
+	case strings.Contains(text, "bosco") || strings.Contains(text, "foresta"):
+		return "boschi, sentieri e insediamenti isolati"
+	default:
+		return firstNonEmptyStoryString(stringFromAny(payload["description"]), stringFromAny(payload["name"]), "luoghi concreti e attraversabili")
+	}
+}
+
+func inferStoryMagicSystem(payload map[string]any) string {
+	text := looseStoryText(payload)
+	if strings.Contains(text, "nessun potere") || strings.Contains(text, "realistic") || strings.Contains(text, "realist") {
+		return "nessun sistema soprannaturale; valgono vincoli realistici"
+	}
+	if strings.Contains(text, "magia") || strings.Contains(text, "fantasy") {
+		return "magia limitata da costi, rischi e regole esplicite"
+	}
+	return "nessun sistema straordinario dominante"
+}
+
+func inferStoryTechnologyLevel(payload map[string]any) string {
+	text := looseStoryText(payload)
+	switch {
+	case strings.Contains(text, "steampunk"):
+		return "tecnologia meccanica e industriale"
+	case strings.Contains(text, "cyber"):
+		return "alta tecnologia urbana"
+	case strings.Contains(text, "fantasy"):
+		return "tecnologia premoderna"
+	default:
+		return "tecnologia contemporanea"
+	}
+}
+
+func inferStorySociety(payload map[string]any) string {
+	text := looseStoryText(payload)
+	switch {
+	case strings.Contains(text, "stazione"):
+		return "pendolari, lavoratori, sicurezza, burocrazia e reti informali"
+	case strings.Contains(text, "fantasy"):
+		return "comunita locali, fazioni rivali e autorita fragili"
+	default:
+		return "comunita locali, istituzioni e gruppi con interessi in conflitto"
+	}
+}
+
+func looseStoryText(payload map[string]any) string {
+	if payload == nil {
+		return ""
+	}
+	var parts []string
+	for _, key := range []string{"name", "title", "description", "genre", "tone", "writing_style", "prompt_directives"} {
+		if value := stringFromAny(payload[key]); value != "" {
+			parts = append(parts, value)
+		}
+	}
+	return strings.ToLower(strings.Join(parts, " "))
+}
+
+func firstNonEmptyStoryString(values ...string) string {
+	for _, value := range values {
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func coerceStatDefPayload(value any) any {
@@ -970,9 +1291,45 @@ func coerceSingleStatDef(defaultKey string, value any) (map[string]any, bool) {
 			"label":    defaultKey,
 			"starting": starting,
 		}, true
+	case string:
+		label := strings.TrimSpace(typed)
+		if label == "" {
+			return nil, false
+		}
+		key := statKeyFromLabel(label, defaultKey)
+		if key == "" {
+			return nil, false
+		}
+		return map[string]any{
+			"key":      key,
+			"label":    label,
+			"starting": 0,
+		}, true
 	default:
 		return nil, false
 	}
+}
+
+func statKeyFromLabel(label, fallback string) string {
+	label = strings.ToLower(strings.TrimSpace(label))
+	var b strings.Builder
+	lastUnderscore := false
+	for _, r := range label {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			b.WriteByte('_')
+			lastUnderscore = true
+		}
+	}
+	key := strings.Trim(b.String(), "_")
+	if key == "" {
+		key = strings.TrimSpace(fallback)
+	}
+	return key
 }
 
 func coerceCurrencyPayload(value any) any {

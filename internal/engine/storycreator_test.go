@@ -188,6 +188,36 @@ func TestStoryCreatorCanFinishWithLocalCharacterSetup(t *testing.T) {
 	}
 }
 
+func TestStoryCreatorStateRoundTripPreservesReviewDraft(t *testing.T) {
+	creator, _ := newStoryCreatorForTest(t, validStoryDefinitionJSON)
+
+	if _, err := creator.SendMessage(context.Background(), "Italian dark fantasy with bells."); err != nil {
+		t.Fatalf("initial SendMessage: %v", err)
+	}
+
+	state := creator.ExportState()
+	if state.Stage != "review_world" {
+		t.Fatalf("state.Stage = %q, want review_world", state.Stage)
+	}
+	if state.Definition == nil || state.Definition.Name == "" {
+		t.Fatalf("state.Definition = %#v, want populated draft", state.Definition)
+	}
+
+	restored, _ := newStoryCreatorForTest(t)
+	if err := restored.RestoreState(state); err != nil {
+		t.Fatalf("RestoreState: %v", err)
+	}
+	if restored.StageKey() != "review_world" {
+		t.Fatalf("StageKey = %q, want review_world", restored.StageKey())
+	}
+	if restored.Definition() == nil || restored.Definition().Name != creator.Definition().Name {
+		t.Fatalf("restored definition = %#v, want %q", restored.Definition(), creator.Definition().Name)
+	}
+	if restored.InputPlaceholder() == "" || len(restored.Actions()) == 0 {
+		t.Fatal("restored creator should expose browser wizard controls")
+	}
+}
+
 func containsSubstring(s, want string) bool {
 	return strings.Contains(s, want)
 }
@@ -384,6 +414,41 @@ func TestStoryCreatorCoercesCurrencyArray(t *testing.T) {
 	}
 	if creator.Definition().StatsSchema.Currency.Name != "Corone di Carbone" {
 		t.Fatalf("Currency.Name = %q, want Corone di Carbone", creator.Definition().StatsSchema.Currency.Name)
+	}
+}
+
+func TestExtractStoryJSONCoercesLegacyFlatDraft(t *testing.T) {
+	raw := `{
+	  "language":"it",
+	  "title":"Mystery alla Stazione Centrale",
+	  "description":"Un mystery urbano ambientato attorno a una grande stazione centrale, dove ogni indizio ha un costo e ogni scelta lascia conseguenze visibili.",
+	  "writing_style":"Prosa secca e concreta, con dettagli urbani osservati da vicino.",
+	  "prompt_directives":"Mantieni il tono realistico; non introdurre poteri o soluzioni facili.",
+	  "rules":["Nessun potere soprannaturale o abilità gratuite","Ogni azione lascia tracce"],
+	  "factions":["Polizia ferroviaria","Personale della stazione"],
+	  "cultures":["Pendolari e viaggiatori di passaggio"],
+	  "dangers":["Falsi indizi","Sorveglianza e controlli"],
+	  "stats":["Osservazione","Ragionamento","Empatia","Furtività","Reattività","Tenuta"]
+	}`
+
+	def := extractStoryJSON(raw)
+	if def == nil {
+		t.Fatal("extractStoryJSON returned nil for legacy flat draft")
+	}
+	if def.Name != "Mystery alla Stazione Centrale" {
+		t.Fatalf("Name = %q, want title alias", def.Name)
+	}
+	if def.Genre != "mystery urbano" {
+		t.Fatalf("Genre = %q, want inferred mystery urbano", def.Genre)
+	}
+	if def.Setting.WorldName != "Mystery alla Stazione Centrale" {
+		t.Fatalf("WorldName = %q, want title fallback", def.Setting.WorldName)
+	}
+	if len(def.StatsSchema.Attributes) != 6 {
+		t.Fatalf("attributes len = %d, want legacy stats converted", len(def.StatsSchema.Attributes))
+	}
+	if def.StatsSchema.Attributes[0].Key != "osservazione" || def.StatsSchema.Attributes[0].Label != "Osservazione" {
+		t.Fatalf("first legacy stat = %#v", def.StatsSchema.Attributes[0])
 	}
 }
 
