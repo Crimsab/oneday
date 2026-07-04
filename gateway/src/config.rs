@@ -38,6 +38,7 @@ pub struct ResolvedPaths {
     pub db_path: PathBuf,
     pub oneday_bin: PathBuf,
     pub static_dir: PathBuf,
+    pub visual_asset_dir: PathBuf,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,13 +64,19 @@ pub fn resolve_paths(args: &Args) -> anyhow::Result<ResolvedPaths> {
         .unwrap_or_else(|| oneday_root.join("gateway/web/dist"));
     let static_dir = absolute_path_relative(&oneday_root, &static_dir)?;
 
-    let db_path = if let Some(path) = &args.db_path {
-        absolute_path_relative(&oneday_root, path)?
+    let (db_path, data_dir) = if let Some(path) = &args.db_path {
+        let db_path = absolute_path_relative(&oneday_root, path)?;
+        let data_dir = db_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| oneday_root.join("oneday_data"));
+        (db_path, data_dir)
     } else {
         let data_dir = read_data_dir(&config_path).unwrap_or_else(|_| PathBuf::from("oneday_data"));
         let data_dir = absolute_path_relative(&oneday_root, &data_dir)?;
-        data_dir.join("oneday.db")
+        (data_dir.join("oneday.db"), data_dir)
     };
+    let visual_asset_dir = data_dir.join("visual_assets");
 
     if !db_path.exists() {
         return Err(anyhow!("database does not exist: {}", db_path.display()));
@@ -93,6 +100,7 @@ pub fn resolve_paths(args: &Args) -> anyhow::Result<ResolvedPaths> {
         db_path,
         oneday_bin,
         static_dir,
+        visual_asset_dir,
     })
 }
 

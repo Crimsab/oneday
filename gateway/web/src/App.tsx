@@ -5,6 +5,7 @@ import {
   createSave,
   createStory,
   deleteSave,
+  generateVisualAssets,
   getCommandDescriptors,
   getHealth,
   getModelSettings,
@@ -50,6 +51,7 @@ import type {
   SyncState,
   TurnStreamEvent,
   VisualAssetsResponse,
+  GenerateVisualAssetsRequest,
   VisualProfileUpdate,
 } from "./types";
 import { visualCatalog } from "./visualAssets";
@@ -83,6 +85,7 @@ function App() {
   const [visualAssets, setVisualAssets] = useState<VisualAssetsResponse | null>(null);
   const [visualAssetsError, setVisualAssetsError] = useState("");
   const [visualProfileSaving, setVisualProfileSaving] = useState(false);
+  const [visualGenerationBusy, setVisualGenerationBusy] = useState(false);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -639,6 +642,26 @@ function App() {
     }
   };
 
+  const generateMissingVisualAssets = async (payload: GenerateVisualAssetsRequest = {}) => {
+    if (!storyId) return;
+    setVisualGenerationBusy(true);
+    setNotice("");
+    try {
+      const nextAssets = await generateVisualAssets(storyId, payload);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+      const ready = nextAssets.assets.filter((asset) => asset.status === "ready").length;
+      const failed = nextAssets.assets.filter((asset) => asset.status === "failed").length;
+      setNotice(`Visual generation finished. ${ready} ready${failed ? `, ${failed} failed` : ""}.`);
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualGenerationBusy(false);
+    }
+  };
+
   const toggleLeftRail = () => {
     setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
   };
@@ -764,7 +787,7 @@ function App() {
         visualAssets={visualAssets?.assets ?? []}
         visuals={visuals}
         visualProfileError={visualAssetsError}
-        visualProfileBusy={visualProfileSaving}
+        visualProfileBusy={visualProfileSaving || visualGenerationBusy}
         selectedTab={selectedTab}
         commandDescriptors={commandDescriptors}
         busy={sending}
@@ -773,6 +796,7 @@ function App() {
         onModelSettingsSave={(payload) => saveModelSettings(payload)}
         onModelSettingsReload={() => refreshModelSettings()}
         onVisualProfileSave={(payload) => saveVisualProfile(payload)}
+        onVisualAssetsGenerate={(payload) => generateMissingVisualAssets(payload)}
         onVisualAssetsReload={() => refreshVisualAssets()}
         onCreateStory={(payload) => createBrowserStory(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
