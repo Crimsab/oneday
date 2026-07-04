@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { Activity, ChevronDown, Clock3, Hash, MapPin, Maximize2, RefreshCw, Sun, Users } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Activity, ChevronDown, Clock3, Hash, MapPin, Maximize2, RefreshCw, Search, Sun, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import {
   asArray,
@@ -187,12 +187,13 @@ function WorldStateModule({ snapshot, visuals }: { snapshot: StorySnapshot; visu
   const clock = displayClock(snapshot.world.current_turn);
   const condition = deriveCondition(snapshot);
   const conditionNote = conditionDetail(snapshot);
+  const conditionTone = conditionToneFor(condition);
   const locationThumb = readyAssetUrl(visuals?.location ?? null);
   const locationState = visuals?.location?.status;
   const known = snapshot.world.known_locations;
   const locationType = findString(known, ["type", "kind", "category"]) || "-";
   const locationRegion = findString(known, ["region", "district", "area"]) || "";
-  const npcs = snapshot.panels.npcs.slice(0, 4);
+  const npcs = snapshot.panels.npcs;
   const threads = threadItems(snapshot);
   const facts = quickFacts(snapshot);
 
@@ -232,10 +233,13 @@ function WorldStateModule({ snapshot, visuals }: { snapshot: StorySnapshot; visu
           <Activity size={14} />
           <span>Condition</span>
         </header>
-        <div className="ws-condition">
-          <div className="ws-condition-row">
-            <strong>{condition}</strong>
-            <small>{conditionNote}</small>
+        <div className="ws-condition" data-condition-tone={conditionTone}>
+          <div className="ws-condition-top">
+            <div>
+              <small>Current state</small>
+              <strong>{condition}</strong>
+            </div>
+            <span>{conditionNote}</span>
           </div>
           <HeartbeatLine condition={condition} />
         </div>
@@ -243,15 +247,12 @@ function WorldStateModule({ snapshot, visuals }: { snapshot: StorySnapshot; visu
 
       {npcs.length > 0 && (
         <section className="ws-block">
-          <header className="ws-block-head">
+          <header className="ws-block-head ws-block-head-split">
             <Users size={14} />
             <span>Characters</span>
+            <small>{npcs.length}</small>
           </header>
-          <div className="ws-npcs">
-            {npcs.map((npc) => (
-              <NpcCard key={npc.id} npc={npc} asset={visuals ? characterAsset(visuals, npc) : null} />
-            ))}
-          </div>
+          <NpcList npcs={npcs} visuals={visuals} />
         </section>
       )}
 
@@ -316,29 +317,171 @@ function HeartbeatLine({ condition }: { condition: string }) {
 }
 
 function NpcCard({ npc, asset }: { npc: RecordView; asset: VisualAsset | null }) {
-  const disposition = numericStat(npc.fields.disposition) ?? 50;
-  const relation = relationLabel(npc.fields.relationship);
-  const role = findString(npc.fields, ["role", "occupation", "archetype", "type", "kind"]) || "Unknown";
+  const relation = npcRelationSummary(npc);
+  const role = npcRole(npc);
   const imageUrl = readyAssetUrl(asset);
   return (
-    <article className="ws-npc" title={npc.name}>
+    <article className="ws-npc" data-relation-tone={relation.tone} title={`${npc.name}: ${relation.label} ${relation.score}/100`}>
       <div className={`ws-npc-img ${imageUrl ? "ready" : "empty"}`}>
         {imageUrl ? <img src={imageUrl} alt="" /> : <Users size={16} />}
       </div>
       <div className="ws-npc-body">
-        <strong>{npc.name}</strong>
+        <div className="ws-npc-title">
+          <strong>{npc.name}</strong>
+          <span>{relation.label}</span>
+        </div>
         <small>{role}</small>
         <div className="ws-relation">
-          <div className="ws-relation-bar" role="meter" aria-valuenow={disposition} aria-valuemin={0} aria-valuemax={100}>
-            <i style={{ width: `${disposition}%` }} />
+          <div className="ws-relation-bar" role="meter" aria-label={`${npc.name} relationship`} aria-valuenow={relation.score} aria-valuemin={0} aria-valuemax={100}>
+            {Array.from({ length: 10 }, (_, index) => (
+              <i className={index < relation.filledSegments ? "filled" : ""} key={index} />
+            ))}
           </div>
-          <span>
-            {relation} <em>{disposition}</em>
-          </span>
+          <em>{relation.score}/100</em>
         </div>
       </div>
     </article>
   );
+}
+
+function NpcList({ npcs, visuals }: { npcs: RecordView[]; visuals?: VisualCatalog }) {
+  const pageSize = 3;
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const showPager = npcs.length > pageSize;
+  const showSearch = npcs.length > 5;
+  const normalizedQuery = query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    if (!normalizedQuery) return npcs;
+    return npcs.filter((npc) => npcSearchText(npc).includes(normalizedQuery));
+  }, [normalizedQuery, npcs]);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, totalPages - 1);
+  const visibleNpcs = showPager ? filtered.slice(safePage * pageSize, safePage * pageSize + pageSize) : filtered;
+  const start = filtered.length === 0 ? 0 : safePage * pageSize + 1;
+  const end = Math.min(filtered.length, safePage * pageSize + visibleNpcs.length);
+
+  useEffect(() => {
+    setPage(0);
+  }, [normalizedQuery, npcs.length]);
+
+  useEffect(() => {
+    if (page > totalPages - 1) setPage(totalPages - 1);
+  }, [page, totalPages]);
+
+  return (
+    <div className="ws-npc-module">
+      {showSearch && (
+        <label className="ws-npc-search">
+          <Search size={13} />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search characters..." />
+        </label>
+      )}
+      <div className="ws-npcs">
+        {visibleNpcs.length === 0 ? (
+          <div className="empty-copy small">No matching characters.</div>
+        ) : (
+          visibleNpcs.map((npc) => <NpcCard key={npc.id} npc={npc} asset={visuals ? characterAsset(visuals, npc) : null} />)
+        )}
+      </div>
+      {showPager && (
+        <div className="ws-npc-pager">
+          <span>
+            {start}-{end} / {filtered.length}
+          </span>
+          <div>
+            <button type="button" disabled={safePage === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
+              Prev
+            </button>
+            <button type="button" disabled={safePage >= totalPages - 1} onClick={() => setPage((value) => Math.min(totalPages - 1, value + 1))}>
+              Next
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+type RelationTone = "ally" | "friendly" | "neutral" | "wary" | "hostile";
+
+export interface NpcRelationSummary {
+  label: string;
+  score: number;
+  tone: RelationTone;
+  filledSegments: number;
+}
+
+export function npcRelationSummary(npc: RecordView): NpcRelationSummary {
+  const relationshipValue = npc.fields.relationship;
+  const relationship = asObject(relationshipValue);
+  const directLabel = relationshipLabelFromValue(relationshipValue);
+  const score =
+    numericStat(npc.fields.disposition) ??
+    numericStat(relationship.disposition) ??
+    numericStat(relationship.trust) ??
+    numericStat(relationship.affinity) ??
+    numericStat(relationship.score) ??
+    numericStat(relationship.value) ??
+    50;
+  const label = directLabel || labelForRelationScore(score);
+  const tone = toneForRelation(label, score);
+  return {
+    label,
+    score,
+    tone,
+    filledSegments: Math.max(0, Math.min(10, Math.round(score / 10))),
+  };
+}
+
+function npcRole(npc: RecordView): string {
+  return findString(npc.fields, ["role", "occupation", "archetype", "type", "kind"]) || "Unknown";
+}
+
+function npcSearchText(npc: RecordView): string {
+  const relation = npcRelationSummary(npc);
+  return `${npc.name} ${npcRole(npc)} ${relation.label}`.toLowerCase();
+}
+
+function relationshipLabelFromValue(value: JsonValue | undefined): string {
+  if (typeof value === "string" && value.trim() && numericStat(value) === null) return titleCase(value);
+  const object = asObject(value);
+  for (const key of ["label", "status", "kind", "state", "relation"]) {
+    const child = object[key];
+    if (typeof child === "string" && child.trim() && numericStat(child) === null) return titleCase(child);
+  }
+  return "";
+}
+
+function labelForRelationScore(score: number): string {
+  if (score <= 15) return "Enemy";
+  if (score <= 30) return "Hostile";
+  if (score <= 45) return "Wary";
+  if (score <= 60) return "Neutral";
+  if (score <= 80) return "Friendly";
+  return "Ally";
+}
+
+function toneForRelation(label: string, score: number): RelationTone {
+  const normalized = label.toLowerCase();
+  if (/\b(ally|allied|loyal|devoted|alleat|fidat)/.test(normalized)) return "ally";
+  if (/\b(friend|friendly|warm|trusted|amico|amica|fiducia)/.test(normalized)) return "friendly";
+  if (/\b(enemy|hostile|nemic|ostil|rival|foe|threat)/.test(normalized)) return "hostile";
+  if (/\b(wary|cautious|suspicious|tense|diffident|guarded|cauto|sospett)/.test(normalized)) return "wary";
+  if (score <= 30) return "hostile";
+  if (score <= 45) return "wary";
+  if (score >= 81) return "ally";
+  if (score >= 61) return "friendly";
+  return "neutral";
+}
+
+function conditionToneFor(condition: string): string {
+  const normalized = condition.toLowerCase();
+  if (normalized.includes("injured")) return "danger";
+  if (normalized.includes("exhausted")) return "warning";
+  if (normalized.includes("focused")) return "focused";
+  if (normalized.includes("idle")) return "idle";
+  return "stable";
 }
 
 interface ThreadItem {
@@ -637,16 +780,6 @@ function collectFlags(rows: Array<[string, string]>, value: JsonValue, prefix: s
     if (typeof child === "boolean") rows.push([key, child ? "true" : "false"]);
     else if (typeof child === "string" || typeof child === "number") rows.push([key, compactText(String(child), 34)]);
   }
-}
-
-function relationLabel(value: JsonValue | undefined): string {
-  const object = asObject(value);
-  const direct = object.label ?? object.status ?? object.kind;
-  if (typeof direct === "string" && direct.trim()) return direct;
-  const trust = numericStat(object.trust ?? object.Trust);
-  if (trust !== null && trust > 60) return "Friendly";
-  if (trust !== null && trust < 30) return "Cautious";
-  return "Neutral";
 }
 
 function activeFrontRows(snapshot: StorySnapshot): Array<[string, string]> {
