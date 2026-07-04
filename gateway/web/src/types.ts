@@ -287,6 +287,10 @@ export interface StoryCreateEnvelope {
   brief: string;
   character_name: string;
   character_background: string;
+  world_style_prompt?: string;
+  character_style_prompt?: string;
+  negative_prompt?: string;
+  palette?: string;
   start: boolean;
 }
 

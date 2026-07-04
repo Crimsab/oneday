@@ -48,6 +48,9 @@ async fn main() -> anyhow::Result<()> {
         .connect_with(db_options)
         .await
         .with_context(|| format!("opening SQLite database {}", paths.db_path.display()))?;
+    assets::ensure_visual_asset_version_schema(&pool)
+        .await
+        .context("ensuring visual asset version schema")?;
 
     let (turn_events, _) = broadcast::channel(128);
     let state = Arc::new(AppState {
