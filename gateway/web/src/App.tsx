@@ -65,6 +65,7 @@ function App() {
   const [filter, setFilter] = useState("");
   const [selectedTab, setSelectedTab] = useState<ModuleTab>("history");
   const [moduleFocusId, setModuleFocusId] = useState<string | null>(null);
+  const [moduleOverlayTab, setModuleOverlayTab] = useState<ModuleTab | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(null);
   const [saveFilter, setSaveFilter] = useState("");
   const [draft, setDraft] = useState("");
@@ -242,6 +243,7 @@ function App() {
 
   const selectModuleTab = useCallback((tab: ModuleTab) => {
     setModuleFocusId(null);
+    setModuleOverlayTab(null);
     setSelectedTab(tab);
   }, []);
 
@@ -600,6 +602,10 @@ function App() {
   };
 
   const openOverlay = (nextOverlay: OverlayKind) => {
+    if (nextOverlay !== "module") {
+      setModuleFocusId(null);
+      setModuleOverlayTab(null);
+    }
     if (nextOverlay === "saves") {
       selectModuleTab("saves");
       setSaveFilter("");
@@ -612,13 +618,20 @@ function App() {
 
   const openModuleOverlay = () => {
     setModuleFocusId(null);
+    setModuleOverlayTab(selectedTab);
     setOverlay("module");
   };
 
   const openNpcCodex = (npcId: string) => {
     setModuleFocusId(npcId);
-    setSelectedTab("codex");
+    setModuleOverlayTab("codex");
     setOverlay("module");
+  };
+
+  const closeOverlay = () => {
+    setOverlay(null);
+    setModuleFocusId(null);
+    setModuleOverlayTab(null);
   };
 
   const updatePreferences = (nextPreferences: AppPreferences) => {
@@ -807,10 +820,11 @@ function App() {
         visualProfileError={visualAssetsError}
         visualProfileBusy={visualProfileSaving || visualGenerationBusy}
         selectedTab={selectedTab}
+        moduleTab={moduleOverlayTab}
         moduleFocusId={moduleFocusId}
         commandDescriptors={commandDescriptors}
         busy={sending}
-        onClose={() => setOverlay(null)}
+        onClose={closeOverlay}
         onPreferencesChange={updatePreferences}
         onModelSettingsSave={(payload) => saveModelSettings(payload)}
         onModelSettingsReload={() => refreshModelSettings()}
