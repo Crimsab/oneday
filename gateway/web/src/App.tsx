@@ -64,6 +64,7 @@ function App() {
   const [healthText, setHealthText] = useState("Gateway starting");
   const [filter, setFilter] = useState("");
   const [selectedTab, setSelectedTab] = useState<ModuleTab>("history");
+  const [moduleFocusId, setModuleFocusId] = useState<string | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(null);
   const [saveFilter, setSaveFilter] = useState("");
   const [draft, setDraft] = useState("");
@@ -239,6 +240,11 @@ function App() {
     savePreferences(preferences);
   }, [preferences]);
 
+  const selectModuleTab = useCallback((tab: ModuleTab) => {
+    setModuleFocusId(null);
+    setSelectedTab(tab);
+  }, []);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
@@ -268,12 +274,12 @@ function App() {
       const tab = tabHotkeys[event.key.toLowerCase()];
       if (tab) {
         event.preventDefault();
-        setSelectedTab(tab);
+        selectModuleTab(tab);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [selectModuleTab]);
 
   const selectStory = (nextStoryId: string) => {
     if (nextStoryId === storyId) {
@@ -298,7 +304,7 @@ function App() {
       saveNames: saveNamesFromSnapshot(snapshot),
       visiblePrivateThoughts: false,
     });
-    if (commandResult.tab) setSelectedTab(commandResult.tab);
+    if (commandResult.tab) selectModuleTab(commandResult.tab);
     if (commandResult.overlay) setOverlay(commandResult.overlay);
     if (commandResult.saveFilter !== undefined) setSaveFilter(commandResult.saveFilter);
     if (commandResult.saveDeleteFilter !== undefined) setSaveFilter(commandResult.saveDeleteFilter);
@@ -411,7 +417,7 @@ function App() {
         kind: "manual",
       });
       setSnapshot(response.snapshot);
-      setSelectedTab("saves");
+      selectModuleTab("saves");
       setOverlay("saves");
       setSaveFilter("");
       setNotice(`Saved ${response.save?.name ?? saveName}.`);
@@ -440,7 +446,7 @@ function App() {
       setStoryId(response.snapshot.story.id);
       void refreshVisualAssets(response.snapshot.story.id);
       setStories((items) => [response.snapshot.story, ...items.filter((story) => story.id !== response.snapshot.story.id)]);
-      setSelectedTab("history");
+      selectModuleTab("history");
       setOverlay(null);
       setHiddenBeforeMessageId(0);
       setLiveTurnEvents([]);
@@ -474,7 +480,7 @@ function App() {
         save_id: save.id,
       });
       setSnapshot(response.snapshot);
-      setSelectedTab("saves");
+      selectModuleTab("saves");
       setNotice(`${response.legacy ? "Legacy save loaded" : "Loaded"} ${response.save?.name ?? save.name}.`);
       setLocalCommands((items) => [
         { id: clientId("command"), text: `/load ${save.name}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
@@ -507,7 +513,7 @@ function App() {
         save_id: save.id,
       });
       setSnapshot(response.snapshot);
-      setSelectedTab("saves");
+      selectModuleTab("saves");
       setOverlay("saves");
       setNotice(`Deleted ${response.save?.name ?? save.name}.`);
       setLocalCommands((items) => [
@@ -595,13 +601,24 @@ function App() {
 
   const openOverlay = (nextOverlay: OverlayKind) => {
     if (nextOverlay === "saves") {
-      setSelectedTab("saves");
+      selectModuleTab("saves");
       setSaveFilter("");
     }
     if (nextOverlay === "options") {
       void refreshModelSettings();
     }
     setOverlay(nextOverlay);
+  };
+
+  const openModuleOverlay = () => {
+    setModuleFocusId(null);
+    setOverlay("module");
+  };
+
+  const openNpcCodex = (npcId: string) => {
+    setModuleFocusId(npcId);
+    setSelectedTab("codex");
+    setOverlay("module");
   };
 
   const updatePreferences = (nextPreferences: AppPreferences) => {
@@ -714,14 +731,14 @@ function App() {
             healthText={healthText}
             onFilterChange={setFilter}
             onSelectStory={selectStory}
-            onSelectTab={setSelectedTab}
+            onSelectTab={selectModuleTab}
             onRefreshStories={refreshStories}
             onOpen={openOverlay}
           />
         ) : (
           <CollapsedLeftRail
             selectedTab={selectedTab}
-            onSelectTab={setSelectedTab}
+            onSelectTab={selectModuleTab}
             onExpand={toggleLeftRail}
             onOpen={openOverlay}
           />
@@ -771,7 +788,8 @@ function App() {
             selectedTab={selectedTab}
             visuals={visuals}
             onRefresh={() => void loadSnapshot()}
-            onOpenModule={() => setOverlay("module")}
+            onOpenModule={openModuleOverlay}
+            onOpenNpcCodex={openNpcCodex}
           />
         )}
       </div>
@@ -789,6 +807,7 @@ function App() {
         visualProfileError={visualAssetsError}
         visualProfileBusy={visualProfileSaving || visualGenerationBusy}
         selectedTab={selectedTab}
+        moduleFocusId={moduleFocusId}
         commandDescriptors={commandDescriptors}
         busy={sending}
         onClose={() => setOverlay(null)}
