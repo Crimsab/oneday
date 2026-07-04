@@ -53,6 +53,12 @@ func TestWantsOperatorCommands(t *testing.T) {
 	if !wantsGatewayStoryCreate([]string{"gateway-story-create"}) {
 		t.Fatal("expected gateway-story-create")
 	}
+	if !wantsGatewayStoryWizard([]string{"gateway-story-wizard"}) {
+		t.Fatal("expected gateway-story-wizard")
+	}
+	if !wantsGatewayStoryEnhance([]string{"gateway-story-enhance"}) {
+		t.Fatal("expected gateway-story-enhance")
+	}
 }
 
 func TestProviderConsistencyWarnings(t *testing.T) {

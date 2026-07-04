@@ -16,7 +16,11 @@ import type {
   SaveResponse,
   StoryCreateEnvelope,
   StoryCreateResponse,
+  StoryEnhanceEnvelope,
+  StoryEnhanceResponse,
   StorySnapshot,
+  StoryWizardEnvelope,
+  StoryWizardResponse,
   StorySummary,
   VisualAssetsResponse,
   VisualAssetPromptUpdate,
@@ -68,6 +72,22 @@ export function getStories(): Promise<StorySummary[]> {
 
 export function createStory(envelope: StoryCreateEnvelope): Promise<StoryCreateResponse> {
   return request<StoryCreateResponse>("/api/stories", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(envelope),
+  });
+}
+
+export function runStoryWizard(envelope: StoryWizardEnvelope): Promise<StoryWizardResponse> {
+  return request<StoryWizardResponse>("/api/story-wizard", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(envelope),
+  });
+}
+
+export function enhanceStoryText(envelope: StoryEnhanceEnvelope): Promise<StoryEnhanceResponse> {
+  return request<StoryEnhanceResponse>("/api/story-enhance", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(envelope),

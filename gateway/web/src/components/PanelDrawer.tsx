@@ -13,8 +13,12 @@ import type {
   ModuleTab,
   OverlayKind,
   SaveView,
-  StoryCreateEnvelope,
+  StoryEnhanceEnvelope,
+  StoryEnhanceResponse,
   StorySnapshot,
+  StoryWizardEnvelope,
+  StoryWizardResponse,
+  StoryWizardResult,
   GenerateVisualAssetsRequest,
   VisualAsset,
   VisualAssetPromptUpdate,
@@ -54,7 +58,8 @@ interface PanelDrawerProps {
   onVisualAssetVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
   onVisualAssetPromptSave: (assetId: string, payload: VisualAssetPromptUpdate) => Promise<void>;
   onVisualAssetVersionSelect: (assetId: string, versionId: number) => Promise<void>;
-  onCreateStory: (payload: StoryCreateEnvelope) => Promise<void> | void;
+  onRunStoryWizard: (payload: StoryWizardEnvelope) => Promise<StoryWizardResponse>;
+  onEnhanceStoryText: (payload: StoryEnhanceEnvelope) => Promise<StoryEnhanceResponse>;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
   onDeleteSave: (save: SaveView) => void;
@@ -91,7 +96,8 @@ export function PanelDrawer({
   onVisualAssetVersionsLoad,
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
-  onCreateStory,
+  onRunStoryWizard,
+  onEnhanceStoryText,
   onCreateSave,
   onLoadSave,
   onDeleteSave,
@@ -103,7 +109,7 @@ export function PanelDrawer({
   return (
     <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className={`overlay-panel ${overlay === "module" ? "module-overlay" : ""}`}
+        className={`overlay-panel ${overlay === "module" ? "module-overlay" : ""} ${overlay === "new-story" ? "new-story-overlay" : ""}`}
         role="dialog"
         aria-modal="true"
         onMouseDown={(event) => event.stopPropagation()}
@@ -149,7 +155,9 @@ export function PanelDrawer({
             onDeleteSave={onDeleteSave}
           />
         )}
-        {overlay === "new-story" && <NewStoryContent busy={busy} onCreateStory={onCreateStory} />}
+        {overlay === "new-story" && (
+          <NewStoryContent busy={busy} onRunStoryWizard={onRunStoryWizard} onEnhanceStoryText={onEnhanceStoryText} />
+        )}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
         {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={activeModuleTab} visuals={visuals} focusCardId={moduleFocusId} />}
       </section>
@@ -949,208 +957,303 @@ function ModuleOverlayContent({
 
 function NewStoryContent({
   busy,
-  onCreateStory,
+  onRunStoryWizard,
+  onEnhanceStoryText,
 }: {
   busy: boolean;
-  onCreateStory: (payload: StoryCreateEnvelope) => Promise<void> | void;
+  onRunStoryWizard: (payload: StoryWizardEnvelope) => Promise<StoryWizardResponse>;
+  onEnhanceStoryText: (payload: StoryEnhanceEnvelope) => Promise<StoryEnhanceResponse>;
 }) {
-  const [brief, setBrief] = useState(
-    "Italian mystery adventure, compact prose, practical choices, strong anti-loop rules, no lore sprawl.",
-  );
-  const [characterName, setCharacterName] = useState("Tester");
-  const [characterBackground, setCharacterBackground] = useState("Created from the browser to validate OneDay parity and UI flows.");
-  const [worldStylePrompt, setWorldStylePrompt] = useState("");
-  const [characterStylePrompt, setCharacterStylePrompt] = useState("");
-  const [palette, setPalette] = useState("");
-  const [negativePrompt, setNegativePrompt] = useState("no text, no logos, no watermark, no UI, no unreadable signage");
+  const [wizard, setWizard] = useState<StoryWizardResult | null>(null);
+  const [input, setInput] = useState("");
   const [start, setStart] = useState(true);
   const [error, setError] = useState("");
+  const [enhancing, setEnhancing] = useState(false);
+  const [log, setLog] = useState<Array<{ stage: string; message: string }>>([]);
+
+  const applyResponse = (response: StoryWizardResponse) => {
+    const next = response.wizard;
+    setWizard(next);
+    setInput("");
+    if (next.message) {
+      setLog((items) => [{ stage: next.stage_label || next.stage || "Story setup", message: next.message }, ...items].slice(0, 8));
+    }
+  };
+
+  const runStep = async (payload: Omit<StoryWizardEnvelope, "start">) => {
+    setError("");
+    try {
+      const response = await onRunStoryWizard({
+        state: wizard?.state,
+        ...payload,
+        start,
+      });
+      applyResponse(response);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    onRunStoryWizard({ start })
+      .then((response) => {
+        if (!cancelled) applyResponse(response);
+      })
+      .catch((failure) => {
+        if (!cancelled) setError(failure instanceof Error ? failure.message : String(failure));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!brief.trim()) {
-      setError("Story brief is required.");
+    const text = input.trim();
+    if (!text) {
+      setError(currentInputRequiredMessage(wizard));
       return;
     }
-    if (!characterName.trim()) {
-      setError("Character name is required.");
-      return;
-    }
-    setError("");
-    await onCreateStory({
-      brief: brief.trim(),
-      character_name: characterName.trim(),
-      character_background: characterBackground.trim(),
-      world_style_prompt: worldStylePrompt.trim(),
-      character_style_prompt: characterStylePrompt.trim(),
-      negative_prompt: negativePrompt.trim(),
-      palette: palette.trim(),
-      start,
-    });
+    await runStep({ input: text });
   };
 
-  const enhanceVisuals = () => {
-    const enhanced = enhancedVisualDirection({
-      brief,
-      characterBackground,
-      worldStylePrompt,
-      characterStylePrompt,
-      palette,
-      negativePrompt,
-    });
-    setWorldStylePrompt(enhanced.world_style_prompt);
-    setCharacterStylePrompt(enhanced.character_style_prompt);
-    setPalette(enhanced.palette);
-    setNegativePrompt(enhanced.negative_prompt);
+  const runAction = async (action: string) => {
+    await runStep({ action });
+  };
+
+  const stage = wizard?.stage ?? "brief";
+  const phase = wizard?.phase ?? "conversation";
+  const definition = storyDefinitionSummary(wizard?.definition);
+
+  const enhanceInput = async () => {
+    if (stage === "done" || enhancing) return;
+    const fallback = enhancedStoryInput(wizard, input);
+    setError("");
+    setEnhancing(true);
+    try {
+      const response = await onEnhanceStoryText({
+        state: wizard?.state,
+        stage,
+        text: fallback,
+        context: wizard?.message || "",
+      });
+      setInput(response.text?.trim() || fallback);
+      if (response.model || response.provider) {
+        setLog((items) => [
+          {
+            stage: "AI enhance",
+            message: `Improved ${inputLabelForStage(stage).toLowerCase()} with ${response.model || response.provider}.`,
+          },
+          ...items,
+        ].slice(0, 8));
+      }
+    } catch (failure) {
+      setInput(fallback);
+      setError(`AI enhance failed; used local fallback. ${failure instanceof Error ? failure.message : String(failure)}`);
+    } finally {
+      setEnhancing(false);
+    }
   };
 
   return (
-    <form className="overlay-content new-story-form" onSubmit={submit}>
-      <label>
-        <span>Story brief</span>
-        <textarea value={brief} onChange={(event) => setBrief(event.target.value)} rows={5} disabled={busy} />
-      </label>
-      <div className="two-column-form">
-        <label>
-          <span>Protagonist</span>
-          <input value={characterName} onChange={(event) => setCharacterName(event.target.value)} disabled={busy} />
-        </label>
+    <form className="overlay-content new-story-form story-wizard-form" onSubmit={submit}>
+      <div className="story-wizard-status">
+        <div>
+          <span>{phase === "done" ? "Complete" : phase === "character" ? "Character setup" : "Story setup"}</span>
+          <strong>{wizard?.stage_label || "Loading wizard"}</strong>
+        </div>
         <label className="checkbox-line">
-          <input type="checkbox" checked={start} onChange={(event) => setStart(event.target.checked)} disabled={busy} />
-          <span>Start first turn</span>
+          <input type="checkbox" checked={start} onChange={(event) => setStart(event.target.checked)} disabled={busy || stage === "done"} />
+          <span>Start first turn after creation</span>
         </label>
       </div>
-      <label>
-        <span>Background</span>
-        <textarea value={characterBackground} onChange={(event) => setCharacterBackground(event.target.value)} rows={3} disabled={busy} />
-      </label>
-      <div className="visual-create-block">
-        <div className="model-routing-head">
-          <span>Image Style</span>
-          <button type="button" onClick={enhanceVisuals} disabled={busy}>
-            Enhance style
-          </button>
+
+      <div className="story-wizard-grid">
+        <div className="story-wizard-main">
+          <div className="story-wizard-message">
+            <pre>{wizard?.message || "Starting the same guided setup used by the terminal..."}</pre>
+          </div>
+
+          {wizard?.actions?.length ? (
+            <div className="story-wizard-actions" aria-label="Wizard quick choices">
+              {wizard.actions.map((action, index) => (
+                <button type="button" key={action.key} title={action.key} onClick={() => void runAction(action.key)} disabled={busy}>
+                  <span>{index + 1}</span>
+                  <strong>{action.label}</strong>
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {stage !== "done" && (
+            <label className="story-wizard-input">
+              <span>{inputLabelForStage(stage)}</span>
+              <textarea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                rows={stage === "brief" ? 6 : stage === "character_background" ? 4 : 5}
+                placeholder={wizard?.placeholder || "Type your response..."}
+                disabled={busy}
+              />
+            </label>
+          )}
+
+          {error && <p className="form-error">{error}</p>}
+
+          <div className="drawer-actions story-wizard-submit">
+            <button type="button" onClick={() => void enhanceInput()} disabled={busy || enhancing || stage === "done"}>
+              {enhancing ? "Enhancing..." : "Enhance text"}
+            </button>
+            <button type="submit" className="primary" disabled={busy || stage === "done"}>
+              {busy ? "Working..." : submitLabelForStage(stage)}
+            </button>
+          </div>
         </div>
-        <label>
-          <span>World and location style</span>
-          <textarea
-            value={worldStylePrompt}
-            onChange={(event) => setWorldStylePrompt(event.target.value)}
-            rows={4}
-            placeholder="Optional. Leave empty to auto-derive from the story."
-            disabled={busy}
-          />
-        </label>
-        <label>
-          <span>Character style</span>
-          <textarea
-            value={characterStylePrompt}
-            onChange={(event) => setCharacterStylePrompt(event.target.value)}
-            rows={3}
-            placeholder="Optional. Used for NPC and protagonist portraits."
-            disabled={busy}
-          />
-        </label>
-        <div className="two-column-form">
-          <label>
-            <span>Palette</span>
-            <input value={palette} onChange={(event) => setPalette(event.target.value)} placeholder="Optional palette" disabled={busy} />
-          </label>
-          <label>
-            <span>Negative prompt</span>
-            <input value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} disabled={busy} />
-          </label>
-        </div>
-      </div>
-      {error && <p className="form-error">{error}</p>}
-      <div className="drawer-actions">
-        <button type="submit" className="primary" disabled={busy}>
-          {busy ? "Creating..." : "Create Story"}
-        </button>
+
+        <aside className="story-wizard-side">
+          <div className="story-wizard-card">
+            <span>Draft Summary</span>
+            {definition ? (
+              <>
+                <strong>{definition.name}</strong>
+                <p>{definition.description}</p>
+                <dl>
+                  <dt>Genre</dt>
+                  <dd>{definition.genre}</dd>
+                  <dt>Tone</dt>
+                  <dd>{definition.tone}</dd>
+                  <dt>Language</dt>
+                  <dd>{definition.language}</dd>
+                  <dt>World</dt>
+                  <dd>{definition.worldName}</dd>
+                  <dt>Combat</dt>
+                  <dd>{definition.hasCombat ? "enabled" : "disabled"}</dd>
+                </dl>
+              </>
+            ) : (
+              <p>No draft yet. Start with a brief or a terminal-compatible preset.</p>
+            )}
+          </div>
+          <div className="story-wizard-card">
+            <span>Recent Wizard Log</span>
+            {log.length ? (
+              <ol>
+                {log.map((item, index) => (
+                  <li key={`${item.stage}-${index}`}>
+                    <strong>{item.stage}</strong>
+                    <p>{compactText(item.message.replace(/\s+/g, " "), 180)}</p>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>Steps will appear here as you build the story.</p>
+            )}
+          </div>
+        </aside>
       </div>
     </form>
   );
 }
 
-function enhancedVisualDirection({
-  brief,
-  characterBackground,
-  worldStylePrompt,
-  characterStylePrompt,
-  palette,
-  negativePrompt,
-}: {
-  brief: string;
-  characterBackground: string;
-  worldStylePrompt: string;
-  characterStylePrompt: string;
-  palette: string;
-  negativePrompt: string;
-}): VisualProfileUpdate {
-  const context = [brief, characterBackground].map((part) => part.trim()).filter(Boolean).join(" ");
-  const preset = visualPresetFor(context || worldStylePrompt || characterStylePrompt);
-  const worldBase = worldStylePrompt.trim() || preset.world;
-  const characterBase = characterStylePrompt.trim() || preset.character;
-  const contextLine = context
-    ? ` Story context: ${compactText(context, 260)}.`
-    : " Use a flexible original setting direction suitable for sci-fi, cyberpunk, steampunk, fantasy, or mystery stories.";
+function currentInputRequiredMessage(wizard: StoryWizardResult | null): string {
+  const stage = wizard?.stage ?? "brief";
+  if (stage === "character_name") return "Protagonist name is required.";
+  if (stage === "character_background") return "Write a background or use Skip background.";
+  if (stage === "brief") return "Story brief is required.";
+  return "Type a revision or use one of the quick choices.";
+}
 
+function inputLabelForStage(stage: string): string {
+  switch (stage) {
+    case "brief":
+      return "Story brief";
+    case "character_name":
+      return "Protagonist name";
+    case "character_background":
+      return "Background";
+    default:
+      return "Revision";
+  }
+}
+
+function submitLabelForStage(stage: string): string {
+  switch (stage) {
+    case "brief":
+      return "Draft world";
+    case "character_name":
+      return "Set name";
+    case "character_background":
+      return "Create story";
+    default:
+      return "Send revision";
+  }
+}
+
+function enhancedStoryInput(wizard: StoryWizardResult | null, current: string): string {
+  const stage = wizard?.stage ?? "brief";
+  const text = current.trim();
+  if (stage === "character_name") return text || "Mira";
+  if (stage === "character_background") {
+    if (text) {
+      return `${text}\n\nAdd: a concrete personal stake, one useful skill, one fear, and one unresolved tie to the opening situation. Keep it playable, concise, and not overpowered.`;
+    }
+    return "A practical survivor with one useful skill, one unresolved debt, and a clear reason to enter the first scene instead of walking away.";
+  }
+  if (stage !== "brief") {
+    return text
+      ? `${text}\n\nPlease keep the current identity, reduce vague lore, add concrete tradeoffs, and preserve clear player agency.`
+      : "Keep the current identity, reduce vague lore, add concrete tradeoffs, and preserve clear player agency.";
+  }
+
+  const preset = storyTextPresetFor(text);
+  if (!text) return preset;
+  return `${text}\n\nDesign constraints: compact prose, meaningful random outcomes, anti-loop memory, grounded consequences, no easy reward inflation, and choices that expose risk, scope, and likely tradeoffs.`;
+}
+
+function storyTextPresetFor(source: string): string {
+  const text = source.toLowerCase();
+  if (/(cyber|noir|neon|corporate|hacker)/.test(text)) {
+    return "Italian cyberpunk noir with sharp dialogue, practical investigations, corporate pressure, visible consequences, compact prose, no lore sprawl, and choices that reveal risk before action.";
+  }
+  if (/(steam|clockwork|airship|brass)/.test(text)) {
+    return "Italian steampunk mystery with industrial politics, dangerous machines, grounded travel, compact prose, social and technical problem solving, and clear costs for risky choices.";
+  }
+  if (/(fantasy|magic|magia|ruin|dragon|dungeon)/.test(text)) {
+    return "Italian fantasy adventure with tactile places, costly magic, memorable factions, compact prose, no overpowered gifts, and choices that balance danger, discovery, and relationships.";
+  }
+  if (/(horror|occult|ghost|paura|orrore)/.test(text)) {
+    return "Italian horror mystery with ordinary places turning unsafe, slow dread, limited resources, compact prose, no cheap shocks, and investigation choices with visible emotional and physical risk.";
+  }
+  return "Italian mystery adventure, compact prose, practical choices, strong anti-loop rules, no lore sprawl, no free advantages, meaningful randomness, and a first scene with a concrete problem.";
+}
+
+function storyDefinitionSummary(value: unknown):
+  | {
+      name: string;
+      description: string;
+      genre: string;
+      tone: string;
+      language: string;
+      worldName: string;
+      hasCombat: boolean;
+    }
+  | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const setting = typeof raw.setting === "object" && raw.setting ? (raw.setting as Record<string, unknown>) : {};
+  const stats = typeof raw.stats_schema === "object" && raw.stats_schema ? (raw.stats_schema as Record<string, unknown>) : {};
   return {
-    world_style_prompt: `${worldBase}${contextLine} Composition: cinematic game key art, strong readable silhouettes, concrete places, no generic stock mood.`,
-    character_style_prompt: `${characterBase}${contextLine} Composition: square portrait, expressive face, outfit and props derived from role and world, coherent with location lighting.`,
-    palette: palette.trim() || preset.palette,
-    negative_prompt:
-      negativePrompt.trim() ||
-      "no text, no logos, no watermark, no UI, no unreadable signage, no extra limbs, no generic stock photo, no anime unless requested",
+    name: stringValue(raw.name, "Untitled story"),
+    description: stringValue(raw.description, "No description yet."),
+    genre: stringValue(raw.genre, "-"),
+    tone: stringValue(raw.tone, "-"),
+    language: stringValue(raw.language, "-"),
+    worldName: stringValue(setting.world_name, "-"),
+    hasCombat: Boolean(stats.has_combat),
   };
 }
 
-function visualPresetFor(source: string): Pick<VisualProfileUpdate, "world_style_prompt" | "character_style_prompt" | "palette"> & {
-  world: string;
-  character: string;
-} {
-  const text = source.toLowerCase();
-  if (/(cyber|neon|corporate|hacker|noir)/.test(text)) {
-    return {
-      world: "Cyberpunk noir concept art with lived-in streets, reflective rain, practical industrial detail, and restrained neon.",
-      character: "Grounded cyberpunk character portraits with specific faces, worn clothing, practical tech, and cinematic rim light.",
-      world_style_prompt: "",
-      character_style_prompt: "",
-      palette: "oil black, rain blue, sodium amber, muted teal, restrained neon rose",
-    };
-  }
-  if (/(steam|brass|victorian|clockwork|airship)/.test(text)) {
-    return {
-      world: "Steampunk adventure concept art with brass machinery, soot, hand-built interiors, and believable period texture.",
-      character: "Steampunk character portraits with tailored silhouettes, tools, goggles or period props only when context supports them.",
-      world_style_prompt: "",
-      character_style_prompt: "",
-      palette: "ink black, aged brass, oxidized green, coal gray, warm lamp light",
-    };
-  }
-  if (/(fantasy|magia|magic|elf|ruin|dragon|dungeon)/.test(text)) {
-    return {
-      world: "Dark fantasy concept art with ancient materials, tactile ruins, weathered magic, and grounded natural light.",
-      character: "Painterly fantasy portraits with believable anatomy, expressive eyes, specific costume details, and non-generic silhouettes.",
-      world_style_prompt: "",
-      character_style_prompt: "",
-      palette: "deep forest, bone ivory, tarnished gold, storm gray, ember amber",
-    };
-  }
-  if (/(horror|dread|ghost|occult|paura|orrore)/.test(text)) {
-    return {
-      world: "Atmospheric horror mystery concept art with ordinary places made tense, soft practical light, and unsettling negative space.",
-      character: "Horror mystery portraits with tired expressions, realistic skin, subtle dread, and no exaggerated monster styling unless requested.",
-      world_style_prompt: "",
-      character_style_prompt: "",
-      palette: "cold gray, old paper, sickly green, candle amber, dried red",
-    };
-  }
-  return {
-    world: "Cinematic sci-fi adventure concept art with functional architecture, tactile materials, readable geography, and human-scale drama.",
-    character: "Grounded sci-fi character portraits with practical outfits, memorable faces, role-specific props, and coherent world lighting.",
-    world_style_prompt: "",
-    character_style_prompt: "",
-    palette: "graphite, soft white, signal amber, desaturated teal, muted blue",
-  };
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }

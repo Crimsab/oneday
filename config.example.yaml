@@ -84,7 +84,7 @@ ai:
     utility_model: "gpt-5.4-mini"
     # Optional dedicated repair/validator model for schema-fix passes.
     # Primary repair model plus ordered fallbacks.
-    repair_model: "gemini-3.1-flash-lite-preview"
+    repair_model: "gpt-5.4-mini"
     repair_fallback_models:
       - "gpt-5.4-mini"
 

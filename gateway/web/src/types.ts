@@ -326,6 +326,55 @@ export interface StoryCreateResponse {
   snapshot: StorySnapshot;
 }
 
+export interface StoryWizardAction {
+  key: string;
+  label: string;
+}
+
+export interface StoryWizardEnvelope {
+  state?: JsonValue;
+  input?: string;
+  action?: string;
+  start: boolean;
+}
+
+export interface StoryWizardResult {
+  state?: JsonValue;
+  phase: string;
+  stage: string;
+  stage_label: string;
+  placeholder: string;
+  message: string;
+  actions: StoryWizardAction[];
+  definition?: JsonValue;
+  last_model?: string;
+  last_latency_ms?: number;
+  story_id?: string;
+  character_id?: string;
+  session_id?: string;
+  started?: boolean;
+  start_error?: string;
+}
+
+export interface StoryWizardResponse {
+  wizard: StoryWizardResult;
+  snapshot?: StorySnapshot | null;
+}
+
+export interface StoryEnhanceEnvelope {
+  state?: JsonValue;
+  stage: string;
+  text: string;
+  context?: string;
+}
+
+export interface StoryEnhanceResponse {
+  text: string;
+  model?: string;
+  provider?: string;
+  latency_ms?: number;
+}
+
 export type CommandGroup = "play" | "talk" | "state" | "save" | "meta" | "system" | "debug";
 export type CommandParity = "shared" | "terminal_only" | "browser_only";
 export type CommandBehavior =
