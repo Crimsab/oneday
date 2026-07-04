@@ -1,9 +1,9 @@
-use crate::{db, engine, events::TurnStreamEvent, AppState};
+use crate::{assets, db, engine, events::TurnStreamEvent, AppState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
 use serde_json::json;
 use std::convert::Infallible;
@@ -26,6 +26,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/contracts/commands", get(command_descriptors))
         .route("/api/stories", get(stories).post(create_story))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
+        .route("/api/stories/:story_id/visual-assets", get(visual_assets))
+        .route(
+            "/api/stories/:story_id/visual-profile",
+            put(update_visual_profile),
+        )
         .route("/api/stories/:story_id/actions", post(submit_action))
         .route("/api/stories/:story_id/meta", post(submit_meta))
         .route("/api/stories/:story_id/saves", post(create_save))
@@ -96,6 +101,23 @@ async fn snapshot(
     Path(story_id): Path<String>,
 ) -> Result<Json<db::StorySnapshot>, ApiError> {
     Ok(Json(db::snapshot(&state.pool, &story_id).await?))
+}
+
+async fn visual_assets(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
+    Ok(Json(assets::visual_assets(&state.pool, &story_id).await?))
+}
+
+async fn update_visual_profile(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<assets::VisualProfileUpdate>,
+) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
+    Ok(Json(
+        assets::update_profile(&state.pool, &story_id, payload).await?,
+    ))
 }
 
 async fn submit_action(
