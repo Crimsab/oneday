@@ -68,9 +68,10 @@ func TestOpenAICompatServerError(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAICompat(OpenAICompatConfig{
-		Name:    "failing-provider",
-		BaseURL: server.URL,
-		Timeout: 5 * time.Second,
+		Name:         "failing-provider",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
 	})
 
 	_, err := provider.Complete(context.Background(), ai.Request{
@@ -97,6 +98,28 @@ func TestOpenAICompatMissingLiteLLMKeyIsActionable(t *testing.T) {
 	}
 	msg := err.Error()
 	for _, want := range []string{"ONEDAY_LITELLM_API_KEY", "oneday doctor"} {
+		if !strings.Contains(msg, want) {
+			t.Fatalf("error %q missing %q", msg, want)
+		}
+	}
+}
+
+func TestOpenAICompatMissingModelIsActionable(t *testing.T) {
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:    "litellm",
+		BaseURL: "http://example.invalid",
+		APIKey:  "test-key",
+		Timeout: time.Second,
+	})
+
+	_, err := provider.Complete(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hello"}},
+	})
+	if err == nil {
+		t.Fatal("expected missing model error")
+	}
+	msg := err.Error()
+	for _, want := range []string{"LiteLLM model missing", "ai.litellm.default_model"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("error %q missing %q", msg, want)
 		}
@@ -143,13 +166,13 @@ func TestOpenAICompatEmbedding401IsActionable(t *testing.T) {
 		Name:         "litellm-embed",
 		BaseURL:      server.URL,
 		APIKey:       "bad-key",
-		DefaultModel: "text-embedding-3-small",
+		DefaultModel: "test-embedding-model",
 		Timeout:      time.Second,
 	})
 
 	_, err := provider.Embed(context.Background(), ai.EmbeddingRequest{
 		Input: "hello",
-		Model: "text-embedding-3-small",
+		Model: "test-embedding-model",
 	})
 	if err == nil {
 		t.Fatal("expected auth error")
@@ -172,9 +195,10 @@ func TestOpenAICompatNoChoices(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAICompat(OpenAICompatConfig{
-		Name:    "empty-provider",
-		BaseURL: server.URL,
-		Timeout: 5 * time.Second,
+		Name:         "empty-provider",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
 	})
 
 	_, err := provider.Complete(context.Background(), ai.Request{
@@ -403,10 +427,11 @@ func TestOpenAICompatStream(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAICompat(OpenAICompatConfig{
-		Name:    "litellm",
-		BaseURL: server.URL,
-		APIKey:  "test-key",
-		Timeout: 5 * time.Second,
+		Name:         "litellm",
+		BaseURL:      server.URL,
+		APIKey:       "test-key",
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
 	})
 
 	ch, err := provider.Stream(context.Background(), ai.Request{
@@ -576,9 +601,10 @@ func TestOpenAICompatStreamServerError(t *testing.T) {
 	defer server.Close()
 
 	provider := NewOpenAICompat(OpenAICompatConfig{
-		Name:    "error-stream",
-		BaseURL: server.URL,
-		Timeout: 5 * time.Second,
+		Name:         "error-stream",
+		BaseURL:      server.URL,
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
 	})
 
 	_, err := provider.Stream(context.Background(), ai.Request{

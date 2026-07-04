@@ -2810,6 +2810,10 @@ input:disabled {
   line-height: 1.5;
 }
 
+.model-note p {
+  margin: 0;
+}
+
 .model-facts {
   display: grid;
   gap: 5px;

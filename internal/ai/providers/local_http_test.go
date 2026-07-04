@@ -39,18 +39,18 @@ func TestOllamaEmbeddingParsesEmbedResponse(t *testing.T) {
 			t.Fatalf("path = %q, want /api/embed", r.URL.Path)
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"model":      "bge-m3",
+			"model":      "test-local-embedding-model",
 			"embeddings": [][]float32{{1, 2, 3, 4}},
 		})
 	}))
 	defer server.Close()
 
-	provider := NewOllamaEmbedding(OllamaEmbeddingConfig{BaseURL: server.URL, Model: "bge-m3", Timeout: time.Second})
+	provider := NewOllamaEmbedding(OllamaEmbeddingConfig{BaseURL: server.URL, Model: "test-local-embedding-model", Timeout: time.Second})
 	resp, err := provider.Embed(context.Background(), ai.EmbeddingRequest{Input: "hello"})
 	if err != nil {
 		t.Fatalf("Embed: %v", err)
 	}
-	if resp.Model != "bge-m3" || len(resp.Embedding) != 4 {
+	if resp.Model != "test-local-embedding-model" || len(resp.Embedding) != 4 {
 		t.Fatalf("unexpected response: %#v", resp)
 	}
 }

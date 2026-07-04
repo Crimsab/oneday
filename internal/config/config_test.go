@@ -26,11 +26,14 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.LiteLLM.BaseURL != "http://lite.homelab.local/v1" {
 		t.Errorf("LiteLLM.BaseURL = %q, want %q", cfg.AI.LiteLLM.BaseURL, "http://lite.homelab.local/v1")
 	}
-	if cfg.AI.LiteLLM.DefaultModel != "gpt-5.4-mini" {
-		t.Errorf("LiteLLM.DefaultModel = %q, want %q", cfg.AI.LiteLLM.DefaultModel, "gpt-5.4-mini")
+	if cfg.AI.LiteLLM.Enabled {
+		t.Error("LiteLLM.Enabled = true, want false by default")
 	}
-	if cfg.AI.OpenRouter.DefaultModel != "google/gemini-2.5-flash-lite" {
-		t.Errorf("OpenRouter.DefaultModel = %q, want %q", cfg.AI.OpenRouter.DefaultModel, "google/gemini-2.5-flash-lite")
+	if cfg.AI.LiteLLM.DefaultModel != "" {
+		t.Errorf("LiteLLM.DefaultModel = %q, want empty default", cfg.AI.LiteLLM.DefaultModel)
+	}
+	if cfg.AI.OpenRouter.DefaultModel != "" {
+		t.Errorf("OpenRouter.DefaultModel = %q, want empty default", cfg.AI.OpenRouter.DefaultModel)
 	}
 	if cfg.AI.OpenRouter.Enabled {
 		t.Error("OpenRouter.Enabled = true, want false by default")
@@ -41,17 +44,26 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.Generation.Temperature != 0.8 {
 		t.Errorf("Temperature = %f, want 0.8", cfg.AI.Generation.Temperature)
 	}
-	if cfg.AI.Generation.UtilityModel != "gpt-5.4-mini" {
-		t.Errorf("UtilityModel = %q, want gpt-5.4-mini", cfg.AI.Generation.UtilityModel)
+	if cfg.AI.Generation.UtilityModel != "" {
+		t.Errorf("UtilityModel = %q, want empty default", cfg.AI.Generation.UtilityModel)
 	}
-	if !cfg.AI.ASCIIArt.Enabled {
-		t.Error("ASCIIArt.Enabled = false, want true by default")
+	if cfg.AI.ASCIIArt.Enabled {
+		t.Error("ASCIIArt.Enabled = true, want false by default")
 	}
-	if cfg.AI.ASCIIArt.Model != "ascii-ambient" {
-		t.Errorf("ASCIIArt.Model = %q, want %q", cfg.AI.ASCIIArt.Model, "ascii-ambient")
+	if cfg.AI.ASCIIArt.Model != "" {
+		t.Errorf("ASCIIArt.Model = %q, want empty default", cfg.AI.ASCIIArt.Model)
+	}
+	if cfg.AI.ImageGeneration.Model != "" {
+		t.Errorf("ImageGeneration.Model = %q, want empty default", cfg.AI.ImageGeneration.Model)
 	}
 	if cfg.AI.Embedding.Provider != "auto" {
 		t.Errorf("Embedding.Provider = %q, want auto", cfg.AI.Embedding.Provider)
+	}
+	if cfg.AI.Embedding.Model != "" {
+		t.Errorf("Embedding.Model = %q, want empty default", cfg.AI.Embedding.Model)
+	}
+	if cfg.RAG.Enabled {
+		t.Error("RAG.Enabled = true, want false by default")
 	}
 	if cfg.Game.VisiblePrivateThoughts {
 		t.Error("VisiblePrivateThoughts = true, want false in player mode defaults")
@@ -76,10 +88,10 @@ func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
 	if cfg.ConfigVersion != 2 {
 		t.Fatalf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
 	}
-	if cfg.AI.Embedding.Local.Type != "ollama" || cfg.AI.Embedding.Local.Model != "bge-m3" || cfg.AI.Embedding.Local.Dimensions != 1024 {
+	if cfg.AI.Embedding.Local.Type != "ollama" || cfg.AI.Embedding.Local.Model != "" || cfg.AI.Embedding.Local.Dimensions != 1024 {
 		t.Fatalf("local embedding defaults not migrated: %#v", cfg.AI.Embedding.Local)
 	}
-	if cfg.AI.Generation.UtilityModel != "gpt-5.4-mini" {
+	if cfg.AI.Generation.UtilityModel != "" {
 		t.Fatalf("UtilityModel = %q", cfg.AI.Generation.UtilityModel)
 	}
 	if cfg.Game.RewardBudget != "balanced" {
@@ -154,6 +166,7 @@ ai:
   litellm:
     enabled: true
     api_key: "${ONEDAY_TEST_API_KEY}"
+    default_model: test-litellm-model
 `
 	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
 		t.Fatal(err)
@@ -181,6 +194,7 @@ ai:
   litellm:
     enabled: true
     api_key: "${ONEDAY_TEST_API_KEY}"
+    default_model: test-litellm-model
 `
 	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
 		t.Fatal(err)
@@ -242,6 +256,8 @@ func TestValidateInvalidCodexReasoning(t *testing.T) {
 
 func TestValidateEmptyUtilityModel(t *testing.T) {
 	cfg := Default()
+	cfg.AI.LiteLLM.Enabled = true
+	cfg.AI.LiteLLM.DefaultModel = "test-litellm-model"
 	cfg.AI.Generation.UtilityModel = " "
 
 	err := cfg.Validate()
@@ -262,7 +278,7 @@ func TestValidateInvalidRewardBudget(t *testing.T) {
 
 func TestRepairModelCandidatesUsesUtilityOnlyWhenRepairMissing(t *testing.T) {
 	withRepair := GenerationConfig{
-		UtilityModel:         "gpt-5.4-mini",
+		UtilityModel:         "test-utility-model",
 		RepairModel:          "repair-primary",
 		RepairFallbackModels: []string{"repair-fallback"},
 	}
@@ -272,11 +288,11 @@ func TestRepairModelCandidatesUsesUtilityOnlyWhenRepairMissing(t *testing.T) {
 	}
 
 	withoutRepair := GenerationConfig{
-		UtilityModel:         "gpt-5.4-mini",
+		UtilityModel:         "test-utility-model",
 		RepairFallbackModels: []string{"repair-fallback"},
 	}
 	candidates = withoutRepair.RepairModelCandidates()
-	if len(candidates) != 2 || candidates[0] != "gpt-5.4-mini" || candidates[1] != "repair-fallback" {
+	if len(candidates) != 2 || candidates[0] != "test-utility-model" || candidates[1] != "repair-fallback" {
 		t.Fatalf("RepairModelCandidates without repair = %#v", candidates)
 	}
 }
@@ -285,8 +301,9 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	cfg := Default()
 	cfg.AI.ProviderPriority = []string{"codex", "litellm", "openrouter", "claude-code"}
 	cfg.AI.Codex.Enabled = true
-	cfg.AI.Codex.Model = "gpt-5.4-mini"
-	cfg.AI.Generation.RepairFallbackModels = []string{"gpt-5.4-mini", "gpt-5.4-mini"}
+	cfg.AI.Codex.Model = "test-narrative-model"
+	cfg.AI.Generation.UtilityModel = "test-narrative-model"
+	cfg.AI.Generation.RepairFallbackModels = []string{"test-narrative-model", "test-narrative-model"}
 
 	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg, "revision-1")
 
@@ -296,13 +313,13 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	if settings.Active.Provider != "codex" {
 		t.Fatalf("Active.Provider = %q, want codex", settings.Active.Provider)
 	}
-	if settings.Active.NarrativeModel != "gpt-5.4-mini" {
+	if settings.Active.NarrativeModel != "test-narrative-model" {
 		t.Fatalf("Active.NarrativeModel = %q", settings.Active.NarrativeModel)
 	}
 	if len(settings.Providers) != 4 {
 		t.Fatalf("Providers length = %d, want 4", len(settings.Providers))
 	}
-	if got := settings.RepairModels; len(got) != 1 || got[0] != "gpt-5.4-mini" {
+	if got := settings.RepairModels; len(got) != 1 || got[0] != "test-narrative-model" {
 		t.Fatalf("RepairModels = %#v", got)
 	}
 }
@@ -362,10 +379,10 @@ ai:
   generation: wrong-type
   litellm:
     enabled: true
-    default_model: gpt-5.4-mini
+    default_model: test-litellm-model
   codex:
     enabled: true
-    model: gpt-5.4-mini
+    model: test-codex-model
     reasoning: off
 `)
 	_, err := patchModelRoutingYAML(raw, Default())
@@ -389,10 +406,10 @@ ai:
   litellm:
     enabled: true
     base_url: ${LITELLM_BASE_URL}
-    default_model: gpt-5.4-mini
+    default_model: test-litellm-model
   codex:
     enabled: true
-    model: gpt-5.4-mini
+    model: test-codex-model
     reasoning: off
 `)
 	if err := os.WriteFile(path, raw, 0640); err != nil {
@@ -403,7 +420,7 @@ ai:
 		t.Fatal(err)
 	}
 
-	nextModel := "gpt-5.4-mini-updated"
+	nextModel := "test-litellm-model-updated"
 	next, err := UpdateModelRoutingSettings(path, ModelRoutingUpdate{
 		BaseRevision: settings.ConfigRevision,
 		Providers: []ModelProviderUpdate{
@@ -421,7 +438,7 @@ ai:
 		t.Fatal(err)
 	}
 	text := string(out)
-	for _, needle := range []string{"# keep this top-level comment", "unknown_top: keep-me", "${LITELLM_BASE_URL}", "default_model: gpt-5.4-mini-updated"} {
+	for _, needle := range []string{"# keep this top-level comment", "unknown_top: keep-me", "${LITELLM_BASE_URL}", "default_model: test-litellm-model-updated"} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("updated config missing %q:\n%s", needle, text)
 		}
@@ -440,14 +457,17 @@ ai:
 
 func TestApplyModelRoutingUpdate(t *testing.T) {
 	cfg := Default()
+	cfg.AI.LiteLLM.Enabled = true
+	cfg.AI.LiteLLM.DefaultModel = "test-litellm-model"
 	priority := []string{"openrouter", "litellm", "codex", "claude-code"}
 	openRouterEnabled := true
-	openRouterModel := "anthropic/claude-sonnet-4.6"
+	openRouterModel := "test-openrouter-model"
 	codexEnabled := false
-	utility := "gpt-5.4-mini-fast"
-	repair := "gemini-3.1-pro"
-	fallbacks := []string{"gpt-5.4-mini", "gpt-5.5"}
-	image := "ascii-ambient-v2"
+	utility := "test-utility-model"
+	repair := "test-repair-model"
+	fallbacks := []string{"test-fallback-one", "test-fallback-two"}
+	image := "test-image-model"
+	ascii := "test-ascii-model"
 
 	err := ApplyModelRoutingUpdate(&cfg, ModelRoutingUpdate{
 		ProviderPriority: &priority,
@@ -459,6 +479,7 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 		RepairModel:          &repair,
 		RepairFallbackModels: &fallbacks,
 		ImageModel:           &image,
+		ASCIIModel:           &ascii,
 	})
 	if err != nil {
 		t.Fatalf("ApplyModelRoutingUpdate: %v", err)
@@ -472,7 +493,10 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 	if cfg.AI.Generation.UtilityModel != utility || cfg.AI.Generation.RepairModel != repair {
 		t.Fatalf("generation models not updated: %#v", cfg.AI.Generation)
 	}
-	if cfg.AI.ASCIIArt.Model != image {
+	if cfg.AI.ImageGeneration.Model != image {
+		t.Fatalf("ImageGeneration.Model = %q", cfg.AI.ImageGeneration.Model)
+	}
+	if cfg.AI.ASCIIArt.Model != ascii {
 		t.Fatalf("ASCIIArt.Model = %q", cfg.AI.ASCIIArt.Model)
 	}
 }
@@ -515,14 +539,10 @@ func TestValidateInvalidEmbeddingProvider(t *testing.T) {
 
 func TestEnabledProviders(t *testing.T) {
 	cfg := Default()
-	// Default: litellm primary, openrouter disabled, claude-code disabled
 	enabled := cfg.EnabledProviders()
 
-	if len(enabled) != 1 {
-		t.Fatalf("EnabledProviders length = %d, want 1", len(enabled))
-	}
-	if enabled[0] != "litellm" {
-		t.Errorf("EnabledProviders[0] = %q, want litellm", enabled[0])
+	if len(enabled) != 0 {
+		t.Fatalf("EnabledProviders length = %d, want 0", len(enabled))
 	}
 }
 
