@@ -31,6 +31,12 @@ async fn main() -> anyhow::Result<()> {
     let paths = config::resolve_paths(&args).context("resolving OneDay gateway paths")?;
     let addr: SocketAddr = args.addr.parse().context("parsing --addr")?;
     run_schema_preflight(&paths).context("running OneDay schema preflight")?;
+    std::fs::create_dir_all(&paths.visual_asset_dir).with_context(|| {
+        format!(
+            "creating visual asset directory {}",
+            paths.visual_asset_dir.display()
+        )
+    })?;
 
     let db_options = SqliteConnectOptions::new()
         .filename(&paths.db_path)

@@ -15,6 +15,7 @@ import type {
   SaveView,
   StoryCreateEnvelope,
   StorySnapshot,
+  GenerateVisualAssetsRequest,
   VisualAsset,
   VisualProfile,
   VisualProfileUpdate,
@@ -42,6 +43,7 @@ interface PanelDrawerProps {
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
+  onVisualAssetsGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
   onCreateStory: (payload: StoryCreateEnvelope) => Promise<void> | void;
   onCreateSave: (name: string) => void;
@@ -72,6 +74,7 @@ export function PanelDrawer({
   onModelSettingsSave,
   onModelSettingsReload,
   onVisualProfileSave,
+  onVisualAssetsGenerate,
   onVisualAssetsReload,
   onCreateStory,
   onCreateSave,
@@ -111,6 +114,7 @@ export function PanelDrawer({
             onModelSettingsSave={onModelSettingsSave}
             onModelSettingsReload={onModelSettingsReload}
             onVisualProfileSave={onVisualProfileSave}
+            onVisualAssetsGenerate={onVisualAssetsGenerate}
             onVisualAssetsReload={onVisualAssetsReload}
           />
         )}
@@ -171,6 +175,7 @@ function OptionsContent({
   onModelSettingsSave,
   onModelSettingsReload,
   onVisualProfileSave,
+  onVisualAssetsGenerate,
   onVisualAssetsReload,
 }: {
   snapshot: StorySnapshot | null;
@@ -186,6 +191,7 @@ function OptionsContent({
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
+  onVisualAssetsGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
 }) {
   const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
@@ -209,7 +215,7 @@ function OptionsContent({
         </div>
         <div>
           <span>Theme</span>
-          <strong>Dark cockpit</strong>
+          <strong>Reference Amber Noir</strong>
         </div>
       </div>
       <div className="settings-grid">
@@ -258,6 +264,7 @@ function OptionsContent({
         error={visualProfileError}
         busy={visualProfileBusy}
         onSave={onVisualProfileSave}
+        onGenerate={onVisualAssetsGenerate}
         onReload={onVisualAssetsReload}
       />
     </div>
@@ -270,6 +277,7 @@ function VisualDirectionSettings({
   error,
   busy,
   onSave,
+  onGenerate,
   onReload,
 }: {
   profile: VisualProfile | null;
@@ -277,6 +285,7 @@ function VisualDirectionSettings({
   error: string;
   busy: boolean;
   onSave: (payload: VisualProfileUpdate) => Promise<void>;
+  onGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onReload: () => Promise<void> | void;
 }) {
   const [draft, setDraft] = useState<VisualProfileUpdate>(() => profileDraft(profile));
@@ -300,6 +309,15 @@ function VisualDirectionSettings({
       await onSave(draft);
     } catch (saveFailure) {
       setSaveError(saveFailure instanceof Error ? saveFailure.message : String(saveFailure));
+    }
+  };
+
+  const generate = async (payload: GenerateVisualAssetsRequest) => {
+    setSaveError("");
+    try {
+      await onGenerate(payload);
+    } catch (failure) {
+      setSaveError(failure instanceof Error ? failure.message : String(failure));
     }
   };
 
@@ -338,13 +356,30 @@ function VisualDirectionSettings({
               <div className={`visual-asset-row ${asset.status}`} key={asset.id} title={asset.prompt}>
                 <span>{asset.kind}</span>
                 <strong>{asset.subject}</strong>
-                <small>{asset.status}</small>
+                <small title={asset.error || asset.provider}>
+                  {asset.status}
+                  {asset.error ? " !" : ""}
+                </small>
+                <button
+                  type="button"
+                  onClick={() => void generate({ asset_ids: [asset.id], force: true, limit: 1 })}
+                  disabled={busy}
+                  title={asset.error || `Regenerate ${asset.subject}`}
+                >
+                  regen
+                </button>
               </div>
             ))}
           </div>
           <div className="model-actions">
             <button type="button" onClick={() => void onReload()} disabled={busy}>
               Reload assets
+            </button>
+            <button type="button" onClick={() => void generate({ force: false, limit: 6 })} disabled={busy || assets.length === 0}>
+              Generate missing
+            </button>
+            <button type="button" onClick={() => void generate({ force: true, limit: 6 })} disabled={busy || assets.length === 0}>
+              Regenerate visible
             </button>
             <button type="button" className="primary-action" onClick={() => void save()} disabled={busy}>
               {busy ? "Saving..." : "Save visual prompts"}

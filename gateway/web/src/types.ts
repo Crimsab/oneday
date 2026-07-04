@@ -270,6 +270,12 @@ export interface VisualAssetsResponse {
   assets: VisualAsset[];
 }
 
+export interface GenerateVisualAssetsRequest {
+  asset_ids?: string[];
+  force?: boolean;
+  limit?: number;
+}
+
 export interface VisualProfileUpdate {
   world_style_prompt: string;
   character_style_prompt: string;

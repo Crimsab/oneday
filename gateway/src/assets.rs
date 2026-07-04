@@ -1,8 +1,16 @@
-use crate::db;
-use anyhow::Context;
+use crate::{db, AppState};
+use anyhow::{anyhow, Context};
+use base64::Engine;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
+use std::collections::HashSet;
+use std::path::Path;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::fs;
 
 #[derive(Debug, Serialize)]
 pub struct VisualAssetsResponse {
@@ -32,6 +40,16 @@ pub struct VisualProfileUpdate {
     pub palette: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct GenerateVisualAssetsRequest {
+    #[serde(default)]
+    pub asset_ids: Vec<String>,
+    #[serde(default)]
+    pub force: bool,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct VisualAsset {
     pub id: String,
@@ -48,6 +66,47 @@ pub struct VisualAsset {
     pub error: String,
     pub turn: i64,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone)]
+struct ImageGenerationConfig {
+    base_url: String,
+    api_key: String,
+    model: String,
+    provider: String,
+    default_size: String,
+    location_size: String,
+    character_size: String,
+    quality: String,
+    timeout_seconds: u64,
+    auto_generate: bool,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayConfig {
+    ai: Option<GatewayAiConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayAiConfig {
+    litellm: Option<GatewayHttpProviderConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayHttpProviderConfig {
+    base_url: Option<String>,
+    api_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageGenerateResponse {
+    data: Vec<ImageGenerateData>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ImageGenerateData {
+    b64_json: Option<String>,
+    url: Option<String>,
 }
 
 #[derive(Debug)]
@@ -100,6 +159,362 @@ pub async fn update_profile(
     .with_context(|| format!("saving visual profile for {story_id}"))?;
 
     visual_assets(pool, story_id).await
+}
+
+pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
+    if !image_generation_config(&state)
+        .map(|config| config.auto_generate && !config.api_key.trim().is_empty())
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    tokio::spawn(async move {
+        let request = GenerateVisualAssetsRequest {
+            asset_ids: Vec::new(),
+            force: false,
+            limit: Some(3),
+        };
+        if let Err(err) = generate_visual_assets(state.as_ref(), &story_id, request).await {
+            tracing::warn!(story_id = %story_id, error = %err, "visual asset auto-generation failed");
+        }
+    });
+}
+
+pub async fn generate_visual_assets(
+    state: &AppState,
+    story_id: &str,
+    request: GenerateVisualAssetsRequest,
+) -> anyhow::Result<VisualAssetsResponse> {
+    visual_assets(&state.pool, story_id).await?;
+    let config = image_generation_config(state)?;
+    if config.api_key.trim().is_empty() {
+        return Err(anyhow!(
+            "image generation provider is not configured; set ONEDAY_IMAGEGEN_API_KEY or ONEDAY_LITELLM_API_KEY"
+        ));
+    }
+
+    let targets = generation_targets(&state.pool, story_id, &request).await?;
+    let client = Client::builder()
+        .timeout(Duration::from_secs(config.timeout_seconds))
+        .build()
+        .context("building image generation HTTP client")?;
+
+    for asset in targets {
+        if let Err(err) = mark_asset_running(&state.pool, &asset.id, &config).await {
+            tracing::warn!(asset_id = %asset.id, error = %err, "could not mark visual asset running");
+            continue;
+        }
+        match generate_one_asset(&client, state, &config, &asset).await {
+            Ok((url, file_path)) => {
+                mark_asset_ready(&state.pool, &asset.id, &url, &file_path, &config)
+                    .await
+                    .with_context(|| format!("marking visual asset {} ready", asset.id))?;
+            }
+            Err(err) => {
+                let _ = mark_asset_failed(&state.pool, &asset.id, &err.to_string(), &config).await;
+            }
+        }
+    }
+
+    visual_assets(&state.pool, story_id).await
+}
+
+async fn generation_targets(
+    pool: &SqlitePool,
+    story_id: &str,
+    request: &GenerateVisualAssetsRequest,
+) -> anyhow::Result<Vec<VisualAsset>> {
+    let requested: HashSet<&str> = request.asset_ids.iter().map(String::as_str).collect();
+    let limit = request.limit.unwrap_or(6).clamp(1, 12);
+    let assets = list_assets(pool, story_id).await?;
+    Ok(assets
+        .into_iter()
+        .filter(|asset| requested.is_empty() || requested.contains(asset.id.as_str()))
+        .filter(|asset| request.force || asset.status != "ready")
+        .filter(|asset| asset.status != "running")
+        .take(limit)
+        .collect())
+}
+
+async fn mark_asset_running(
+    pool: &SqlitePool,
+    asset_id: &str,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"UPDATE visual_assets
+           SET status = 'running', provider = ?, error = '', updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?"#,
+    )
+    .bind(provider_label(config))
+    .bind(asset_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn mark_asset_ready(
+    pool: &SqlitePool,
+    asset_id: &str,
+    url: &str,
+    file_path: &str,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"UPDATE visual_assets
+           SET status = 'ready', url = ?, file_path = ?, provider = ?, error = '',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?"#,
+    )
+    .bind(url)
+    .bind(file_path)
+    .bind(provider_label(config))
+    .bind(asset_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn mark_asset_failed(
+    pool: &SqlitePool,
+    asset_id: &str,
+    error: &str,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"UPDATE visual_assets
+           SET status = 'failed', provider = ?, error = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?"#,
+    )
+    .bind(provider_label(config))
+    .bind(compact_error(error))
+    .bind(asset_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn generate_one_asset(
+    client: &Client,
+    state: &AppState,
+    config: &ImageGenerationConfig,
+    asset: &VisualAsset,
+) -> anyhow::Result<(String, String)> {
+    let size = asset_size(config, asset);
+    let prompt = final_prompt(asset);
+    let mut payload = serde_json::json!({
+        "model": config.model,
+        "prompt": prompt,
+        "size": size,
+        "n": 1
+    });
+    if !config.quality.trim().is_empty() {
+        payload["quality"] = Value::String(config.quality.clone());
+    }
+
+    let endpoint = format!(
+        "{}/images/generations",
+        config.base_url.trim_end_matches('/')
+    );
+    let response = client
+        .post(endpoint)
+        .bearer_auth(&config.api_key)
+        .json(&payload)
+        .send()
+        .await
+        .with_context(|| format!("requesting image for {}", asset.subject))?;
+    let status = response.status();
+    if !status.is_success() {
+        let detail = response.text().await.unwrap_or_default();
+        return Err(anyhow!(
+            "image provider returned {}: {}",
+            status,
+            compact_error(&detail)
+        ));
+    }
+
+    let response: ImageGenerateResponse = response
+        .json()
+        .await
+        .context("decoding image generation response")?;
+    let first = response
+        .data
+        .first()
+        .ok_or_else(|| anyhow!("image provider returned no images"))?;
+    let bytes = if let Some(encoded) = &first.b64_json {
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .context("decoding generated image base64")?
+    } else if let Some(url) = &first.url {
+        client
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("downloading generated image for {}", asset.subject))?
+            .error_for_status()
+            .context("generated image download failed")?
+            .bytes()
+            .await
+            .context("reading generated image bytes")?
+            .to_vec()
+    } else {
+        return Err(anyhow!("image provider returned neither b64_json nor url"));
+    };
+    if bytes.is_empty() {
+        return Err(anyhow!("image provider returned empty image bytes"));
+    }
+
+    let story_slug = slug(&asset.story_id);
+    let subject_slug = slug(&format!("{}-{}", asset.kind, asset.subject));
+    let hash = short_hash(&bytes);
+    let filename = format!("{subject_slug}-{hash}.png");
+    let dir = state.paths.visual_asset_dir.join(&story_slug);
+    fs::create_dir_all(&dir)
+        .await
+        .with_context(|| format!("creating visual asset directory {}", dir.display()))?;
+    let file_path = dir.join(&filename);
+    fs::write(&file_path, bytes)
+        .await
+        .with_context(|| format!("writing generated image {}", file_path.display()))?;
+    let url = format!("/generated/assets/{story_slug}/{filename}");
+    Ok((url, file_path.to_string_lossy().to_string()))
+}
+
+fn final_prompt(asset: &VisualAsset) -> String {
+    let mut prompt = clean_or(
+        &asset.prompt,
+        "Create a polished visual asset for this story.",
+    );
+    if !asset.negative_prompt.trim().is_empty() {
+        prompt.push_str("\nAvoid: ");
+        prompt.push_str(asset.negative_prompt.trim());
+    }
+    prompt
+}
+
+fn asset_size(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
+    match asset.kind.as_str() {
+        "location" => clean_or(&config.location_size, &config.default_size),
+        "character" => clean_or(&config.character_size, &config.default_size),
+        _ => config.default_size.clone(),
+    }
+}
+
+fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationConfig> {
+    let file_config = read_gateway_config(&state.paths.config_path)?;
+    let litellm = file_config.ai.and_then(|ai| ai.litellm);
+    let config_base_url = litellm
+        .as_ref()
+        .and_then(|provider| provider.base_url.clone())
+        .unwrap_or_default();
+    let config_api_key = litellm
+        .as_ref()
+        .and_then(|provider| provider.api_key.clone())
+        .map(|value| expand_env_refs(&value))
+        .unwrap_or_default();
+    let base_url = first_env(&["ONEDAY_IMAGEGEN_BASE_URL", "ONEDAY_IMAGE_BASE_URL"])
+        .or_else(|| non_empty(config_base_url))
+        .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+    let api_key = first_env(&[
+        "ONEDAY_IMAGEGEN_API_KEY",
+        "ONEDAY_IMAGE_API_KEY",
+        "ONEDAY_LITELLM_API_KEY",
+        "OPENAI_API_KEY",
+    ])
+    .or_else(|| non_empty(config_api_key))
+    .unwrap_or_default();
+    let model = first_env(&["ONEDAY_IMAGEGEN_MODEL", "ONEDAY_IMAGE_MODEL"])
+        .unwrap_or_else(|| "gpt-image-2".to_string());
+
+    Ok(ImageGenerationConfig {
+        base_url,
+        api_key,
+        model,
+        provider: first_env(&["ONEDAY_IMAGEGEN_PROVIDER", "ONEDAY_IMAGE_PROVIDER"])
+            .unwrap_or_else(|| "openai-compatible".to_string()),
+        default_size: first_env(&["ONEDAY_IMAGEGEN_SIZE", "ONEDAY_IMAGE_SIZE"])
+            .unwrap_or_else(|| "1024x1024".to_string()),
+        location_size: first_env(&["ONEDAY_IMAGEGEN_LOCATION_SIZE"])
+            .unwrap_or_else(|| "1536x1024".to_string()),
+        character_size: first_env(&["ONEDAY_IMAGEGEN_CHARACTER_SIZE"])
+            .unwrap_or_else(|| "1024x1024".to_string()),
+        quality: first_env(&["ONEDAY_IMAGEGEN_QUALITY"]).unwrap_or_default(),
+        timeout_seconds: first_env(&["ONEDAY_IMAGEGEN_TIMEOUT_SECONDS"])
+            .and_then(|value| value.parse::<u64>().ok())
+            .unwrap_or(180),
+        auto_generate: first_env(&["ONEDAY_IMAGEGEN_AUTOGENERATE"])
+            .map(|value| parse_bool(&value))
+            .unwrap_or(true),
+    })
+}
+
+fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("reading gateway image config {}", path.display()))?;
+    serde_yaml::from_str(&raw).with_context(|| format!("parsing {}", path.display()))
+}
+
+fn provider_label(config: &ImageGenerationConfig) -> String {
+    format!("{}:{}", config.provider, config.model)
+}
+
+fn short_hash(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    hex_prefix(&digest, 12)
+}
+
+fn hex_prefix(bytes: &[u8], len: usize) -> String {
+    let mut out = String::new();
+    for byte in bytes {
+        out.push_str(&format!("{byte:02x}"));
+        if out.len() >= len {
+            break;
+        }
+    }
+    out.truncate(len);
+    out
+}
+
+fn first_env(names: &[&str]) -> Option<String> {
+    names.iter().find_map(|name| {
+        std::env::var(name)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn non_empty(value: String) -> Option<String> {
+    let trimmed = value.trim().to_string();
+    (!trimmed.is_empty()).then_some(trimmed)
+}
+
+fn parse_bool(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
+fn expand_env_refs(value: &str) -> String {
+    let trimmed = value.trim();
+    if let Some(name) = trimmed
+        .strip_prefix("${")
+        .and_then(|rest| rest.strip_suffix('}'))
+    {
+        return std::env::var(name).unwrap_or_default();
+    }
+    trimmed.to_string()
+}
+
+fn compact_error(value: &str) -> String {
+    let collapsed = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.len() > 900 {
+        format!("{}...", &collapsed[..900])
+    } else {
+        collapsed
+    }
 }
 
 async fn ensure_profile(
@@ -397,5 +812,76 @@ fn value_to_text(value: &Value) -> String {
             })
             .collect::<Vec<_>>()
             .join("; "),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expands_simple_env_reference() {
+        std::env::set_var("ONEDAY_TEST_IMAGE_KEY", "secret-value");
+        assert_eq!(expand_env_refs("${ONEDAY_TEST_IMAGE_KEY}"), "secret-value");
+        std::env::remove_var("ONEDAY_TEST_IMAGE_KEY");
+    }
+
+    #[test]
+    fn chooses_asset_specific_sizes() {
+        let config = ImageGenerationConfig {
+            base_url: "http://example.test/v1".to_string(),
+            api_key: "key".to_string(),
+            model: "gpt-image-2".to_string(),
+            provider: "test".to_string(),
+            default_size: "1024x1024".to_string(),
+            location_size: "1536x1024".to_string(),
+            character_size: "768x768".to_string(),
+            quality: String::new(),
+            timeout_seconds: 10,
+            auto_generate: true,
+        };
+        let mut asset = VisualAsset {
+            id: "asset".to_string(),
+            story_id: "story".to_string(),
+            kind: "location".to_string(),
+            subject: "Station".to_string(),
+            entity_id: "world".to_string(),
+            prompt: String::new(),
+            negative_prompt: String::new(),
+            status: "pending".to_string(),
+            url: String::new(),
+            provider: String::new(),
+            source: String::new(),
+            error: String::new(),
+            turn: 1,
+            updated_at: String::new(),
+        };
+        assert_eq!(asset_size(&config, &asset), "1536x1024");
+        asset.kind = "character".to_string();
+        assert_eq!(asset_size(&config, &asset), "768x768");
+        asset.kind = "item".to_string();
+        assert_eq!(asset_size(&config, &asset), "1024x1024");
+    }
+
+    #[test]
+    fn prompt_includes_negative_direction() {
+        let asset = VisualAsset {
+            id: "asset".to_string(),
+            story_id: "story".to_string(),
+            kind: "character".to_string(),
+            subject: "Barista".to_string(),
+            entity_id: "npc".to_string(),
+            prompt: "portrait".to_string(),
+            negative_prompt: "no text".to_string(),
+            status: "pending".to_string(),
+            url: String::new(),
+            provider: String::new(),
+            source: String::new(),
+            error: String::new(),
+            turn: 1,
+            updated_at: String::new(),
+        };
+        assert!(final_prompt(&asset).contains("portrait"));
+        assert!(final_prompt(&asset).contains("Avoid: no text"));
     }
 }

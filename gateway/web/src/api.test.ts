@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, createStory, getStories } from "./api";
+import { ApiRequestError, createStory, generateVisualAssets, getStories } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -41,6 +41,31 @@ describe("api request handling", () => {
       }),
     );
   });
+
+  it("posts visual image generation requests to the story gateway", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          profile: { story_id: "story-1" },
+          assets: [{ id: "asset-1", status: "running" }],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(generateVisualAssets("story-1", { asset_ids: ["asset-1"], force: true, limit: 1 })).resolves.toMatchObject({
+      assets: [{ id: "asset-1", status: "running" }],
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story-1/visual-assets/generate",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"asset_ids\":[\"asset-1\"]"),
+      }),
+    );
+  });
+
 
   it("rejects successful non-JSON responses before they crash React state", async () => {
     mockFetch(new Response("<html>vite fallback</html>", { status: 200, headers: { "content-type": "text/html" } }));
