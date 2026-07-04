@@ -1,4 +1,5 @@
-import { ChevronDown, Maximize2, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
+import { Activity, ChevronDown, Clock3, Hash, MapPin, Maximize2, RefreshCw, Sun, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import {
   asArray,
@@ -15,7 +16,7 @@ import {
   titleCase,
   valueToText,
 } from "../format";
-import type { JsonObject, JsonValue, ModuleTab, StorySnapshot } from "../types";
+import type { JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
 import type { VisualCatalog } from "../visualAssets";
 import { characterAsset, readyAssetUrl } from "../visualAssets";
 
@@ -51,14 +52,16 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
   return (
     <aside className="right-inspector">
       <div className="inspector-head">
-        <h2>Canonical State Inspector</h2>
-        <span className="inspector-mode">{title}</span>
-        <button type="button" className="square-button" onClick={onOpenModule} title="Open module in modal">
-          <Maximize2 size={15} />
-        </button>
-        <button type="button" className="square-button" onClick={onRefresh} title="Refresh snapshot">
-          <RefreshCw size={15} />
-        </button>
+        <h2>{selectedTab === "history" ? "World State" : title}</h2>
+        <div className="inspector-head-actions">
+          {selectedTab !== "history" && <span className="inspector-mode">{title}</span>}
+          <button type="button" className="square-button" onClick={onOpenModule} title="Open module in modal">
+            <Maximize2 size={15} />
+          </button>
+          <button type="button" className="square-button" onClick={onRefresh} title="Refresh snapshot">
+            <RefreshCw size={15} />
+          </button>
+        </div>
       </div>
       {!snapshot ? (
         <div className="empty-copy inspector-empty">Select a story to inspect canonical state.</div>
@@ -89,7 +92,7 @@ function renderModule(tab: ModuleTab, snapshot: StorySnapshot, visuals?: VisualC
   if (tab === "investigations") return <InvestigationsModule snapshot={snapshot} />;
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
-  return <HistoryModule snapshot={snapshot} />;
+  return <WorldStateModule snapshot={snapshot} visuals={visuals} />;
 }
 
 function RawStateSection({ tab, snapshot }: { tab: ModuleTab; snapshot: StorySnapshot }) {
@@ -176,17 +179,209 @@ function rawStateForModule(tab: ModuleTab, snapshot: StorySnapshot): Record<stri
   };
 }
 
-function HistoryModule({ snapshot }: { snapshot: StorySnapshot }) {
+function HistoryModule({ snapshot, visuals }: { snapshot: StorySnapshot; visuals?: VisualCatalog }) {
+  return <WorldStateModule snapshot={snapshot} visuals={visuals} />;
+}
+
+function WorldStateModule({ snapshot, visuals }: { snapshot: StorySnapshot; visuals?: VisualCatalog }) {
+  const clock = displayClock(snapshot.world.current_turn);
+  const condition = deriveCondition(snapshot);
+  const conditionNote = conditionDetail(snapshot);
+  const locationThumb = readyAssetUrl(visuals?.location ?? null);
+  const locationState = visuals?.location?.status;
+  const known = snapshot.world.known_locations;
+  const locationType = findString(known, ["type", "kind", "category"]) || "-";
+  const locationRegion = findString(known, ["region", "district", "area"]) || "";
+  const npcs = snapshot.panels.npcs.slice(0, 4);
+  const threads = threadItems(snapshot);
+  const facts = quickFacts(snapshot);
+
   return (
-    <>
-      <InspectorSection title="Turn & Time" rows={turnRows(snapshot)} />
-      <InspectorSection title="Location" rows={locationRows(snapshot)} />
-      <InspectorSection title="Condition" rows={conditionRows(snapshot)} />
-      <CardsSection title="Timeline" cards={cardsFromValue(snapshot.world.timeline, "Timeline")} emptyLabel="No timeline entries." />
-      <InspectorSection title="Relationships" rows={relationshipRows(snapshot)} />
-      <CardsSection title="Recent Transcript" cards={messageCards(snapshot)} emptyLabel="No transcript messages." />
-    </>
+    <div className="world-state">
+      <div className="ws-metrics">
+        <MetricTile icon={<Hash size={14} />} label="Turn" value={String(snapshot.world.current_turn)} />
+        <MetricTile icon={<Clock3 size={14} />} label="Time" value={clock.time} />
+        <MetricTile icon={<Sun size={14} />} label="Cycle" value={clock.cycle} />
+      </div>
+
+      <section className="ws-block">
+        <header className="ws-block-head">
+          <MapPin size={14} />
+          <span>Location</span>
+        </header>
+        <div className="ws-location">
+          <div className={`ws-thumb ${locationThumb ? "ready" : "empty"}`}>
+            {locationThumb ? (
+              <img src={locationThumb} alt="" />
+            ) : (
+              <span>{locationState ? `Image ${locationState}` : "No image"}</span>
+            )}
+          </div>
+          <div className="ws-location-copy">
+            <strong title={snapshot.world.current_location}>{snapshot.world.current_location || "Unknown location"}</strong>
+            <small>
+              {locationType}
+              {locationRegion ? ` - ${locationRegion}` : ""}
+            </small>
+          </div>
+        </div>
+      </section>
+
+      <section className="ws-block">
+        <header className="ws-block-head">
+          <Activity size={14} />
+          <span>Condition</span>
+        </header>
+        <div className="ws-condition">
+          <div className="ws-condition-row">
+            <strong>{condition}</strong>
+            <small>{conditionNote}</small>
+          </div>
+          <HeartbeatLine condition={condition} />
+        </div>
+      </section>
+
+      {npcs.length > 0 && (
+        <section className="ws-block">
+          <header className="ws-block-head">
+            <Users size={14} />
+            <span>Characters</span>
+          </header>
+          <div className="ws-npcs">
+            {npcs.map((npc) => (
+              <NpcCard key={npc.id} npc={npc} asset={visuals ? characterAsset(visuals, npc) : null} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {threads.length > 0 && (
+        <section className="ws-block">
+          <header className="ws-block-head">
+            <span>Current Threads</span>
+          </header>
+          <ul className="ws-threads">
+            {threads.map((thread) => (
+              <li key={thread.key} className={thread.tone}>
+                <i aria-hidden="true" />
+                <span>{thread.label}</span>
+                <small>{thread.status}</small>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {facts.length > 0 && (
+        <section className="ws-block">
+          <header className="ws-block-head">
+            <span>Quick Facts</span>
+          </header>
+          <ul className="ws-facts">
+            {facts.map((fact) => (
+              <li key={fact.label}>
+                <small>{fact.label}</small>
+                <strong>{fact.value}</strong>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
   );
+}
+
+function MetricTile({ icon, label, value }: { icon?: ReactNode; label: string; value: string }) {
+  return (
+    <div className="ws-metric" title={`${label}: ${value}`}>
+      <small>
+        {icon}
+        {label}
+      </small>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function HeartbeatLine({ condition }: { condition: string }) {
+  const flat = condition === "Idle" || condition === "Stable";
+  const points = flat
+    ? "0,22 200,22"
+    : "0,22 36,22 44,22 50,8 56,34 62,22 104,22 114,22 120,11 126,31 132,22 168,22 176,22 182,9 188,33 200,22";
+  return (
+    <svg className={`ws-heartbeat ${flat ? "flat" : ""}`} viewBox="0 0 200 40" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={points} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+
+function NpcCard({ npc, asset }: { npc: RecordView; asset: VisualAsset | null }) {
+  const disposition = numericStat(npc.fields.disposition) ?? 50;
+  const relation = relationLabel(npc.fields.relationship);
+  const role = findString(npc.fields, ["role", "occupation", "archetype", "type", "kind"]) || "Unknown";
+  const imageUrl = readyAssetUrl(asset);
+  return (
+    <article className="ws-npc" title={npc.name}>
+      <div className={`ws-npc-img ${imageUrl ? "ready" : "empty"}`}>
+        {imageUrl ? <img src={imageUrl} alt="" /> : <Users size={16} />}
+      </div>
+      <div className="ws-npc-body">
+        <strong>{npc.name}</strong>
+        <small>{role}</small>
+        <div className="ws-relation">
+          <div className="ws-relation-bar" role="meter" aria-valuenow={disposition} aria-valuemin={0} aria-valuemax={100}>
+            <i style={{ width: `${disposition}%` }} />
+          </div>
+          <span>
+            {relation} <em>{disposition}</em>
+          </span>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+interface ThreadItem {
+  key: string;
+  label: string;
+  status: string;
+  tone: "lead" | "hook" | "clue" | "guide";
+}
+
+function threadItems(snapshot: StorySnapshot): ThreadItem[] {
+  const items: ThreadItem[] = [];
+  asArray(snapshot.world.fronts).slice(0, 2).forEach((entry, index) => {
+    items.push({ key: `front-${index}`, label: compactText(entryLabel(entry, index), 60), status: "Active front", tone: "lead" });
+  });
+  asArray(snapshot.world.story_hooks).slice(0, 2).forEach((entry, index) => {
+    items.push({ key: `hook-${index}`, label: compactText(entryLabel(entry, index), 60), status: "Hook", tone: "hook" });
+  });
+  asArray(snapshot.world.investigations).slice(0, 2).forEach((entry, index) => {
+    items.push({ key: `inv-${index}`, label: compactText(entryLabel(entry, index), 60), status: "Lead", tone: "clue" });
+  });
+  const guidance = asArray(snapshot.world.guidance)[0];
+  if (guidance) {
+    items.push({ key: "guide", label: compactText(entryLabel(guidance, 0), 60), status: "Next lead", tone: "guide" });
+  }
+  return items.slice(0, 5);
+}
+
+function quickFacts(snapshot: StorySnapshot): Array<{ label: string; value: string }> {
+  const facts: Array<{ label: string; value: string }> = [];
+  const npc = snapshot.panels.npcs[0];
+  if (npc) facts.push({ label: "Key Contact", value: npc.name });
+  const front = activeFrontRows(snapshot)[0]?.[1];
+  if (front && front !== "-") facts.push({ label: "Active Front", value: compactText(front, 60) });
+  facts.push({ label: "Chapter", value: String(snapshot.world.current_chapter) });
+  facts.push({ label: "Messages", value: String(snapshot.messages.length) });
+  facts.push({ label: "Updated", value: compactTimestamp(snapshot.world.updated_at || snapshot.server_time) });
+  return facts;
+}
+
+function compactTimestamp(value: string | undefined): string {
+  const timestamp = displayTimestamp(value);
+  const match = timestamp.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+  return match ? `${match[1]} ${match[2]}` : timestamp;
 }
 
 function InventoryModule({ snapshot }: { snapshot: StorySnapshot }) {
@@ -386,26 +581,6 @@ export function moduleTitle(tab: ModuleTab): string {
   return moduleSpecs.find((item) => item.tab === tab)?.label ?? titleCase(tab);
 }
 
-function turnRows(snapshot: StorySnapshot): Array<[string, string]> {
-  const clock = displayClock(snapshot.world.current_turn);
-  return [
-    ["Turn", String(snapshot.world.current_turn)],
-    ["Time", clock.time],
-    ["Cycle", clock.cycle],
-  ];
-}
-
-function locationRows(snapshot: StorySnapshot): Array<[string, string]> {
-  const known = snapshot.world.known_locations;
-  const details = findString(known, ["details", "description", "notes"]) || valueToText(known);
-  return [
-    ["Current", snapshot.world.current_location || "-"],
-    ["Type", findString(known, ["type", "kind", "category"]) || "-"],
-    ["Region", findString(known, ["region", "district", "area"]) || "-"],
-    ["Details", compactText(details, 180)],
-  ];
-}
-
 export function meterRows(snapshot: StorySnapshot): Array<{ label: string; value: number; text: string }> {
   const stats = asObject(snapshot.character.fields.stats);
   const preferred = ["health", "focus", "resolve", "stamina", "insight"];
@@ -435,13 +610,6 @@ export function meterRows(snapshot: StorySnapshot): Array<{ label: string; value
   return rows.slice(0, 7);
 }
 
-function conditionRows(snapshot: StorySnapshot): Array<[string, string]> {
-  return [
-    [deriveCondition(snapshot), conditionDetail(snapshot)],
-    ["Chapter", String(snapshot.world.current_chapter)],
-  ];
-}
-
 function conditionDetail(snapshot: StorySnapshot): string {
   const condition = deriveCondition(snapshot);
   if (condition === "Focused") return "No active penalties.";
@@ -469,14 +637,6 @@ function collectFlags(rows: Array<[string, string]>, value: JsonValue, prefix: s
     if (typeof child === "boolean") rows.push([key, child ? "true" : "false"]);
     else if (typeof child === "string" || typeof child === "number") rows.push([key, compactText(String(child), 34)]);
   }
-}
-
-function relationshipRows(snapshot: StorySnapshot): Array<[string, string]> {
-  return snapshot.panels.npcs.slice(0, 6).map((npc) => {
-    const disposition = numericStat(npc.fields.disposition);
-    const relation = relationLabel(npc.fields.relationship);
-    return [npc.name, `${relation} (${disposition ?? 0})`];
-  });
 }
 
 function relationLabel(value: JsonValue | undefined): string {

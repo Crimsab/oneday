@@ -27,10 +27,10 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
   return (
     <div className="choice-stack" onMouseLeave={() => setActiveChoiceId(null)}>
       {visibleChoices.length > 0
-        ? visibleChoices.map((choice, index) => {
-            const Icon = choiceIcons[index % choiceIcons.length];
-            const presentation = choicePresentation(choice, index);
+        ? visibleChoices.map((choice) => {
+            const presentation = choicePresentation(choice, choice.id - 1);
             const isActive = choice.id === activeChoiceId;
+            const outcome = choiceOutcome(presentation);
             const metadataTitle = [presentation.gain, presentation.tradeoff, presentation.meta.join(" ")]
               .filter(Boolean)
               .join("\n");
@@ -48,28 +48,17 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
                 title={metadataTitle || "Suggested action"}
               >
                 <span className="choice-index" aria-label={`Choice ${choice.id}`}>
-                  <Icon size={18} />
                   <kbd>{choice.id}</kbd>
                 </span>
                 <span className="choice-copy">
                   <strong>{choice.text}</strong>
                   <ChoiceMetadata choice={choice} presentation={presentation} />
+                  {outcome && (
+                    <small className="choice-outcome" title={metadataTitle}>
+                      {outcome}
+                    </small>
+                  )}
                 </span>
-                {presentation.hasMetadata && (
-                  <span className="choice-effects" aria-hidden={!metadataTitle}>
-                    {presentation.gain && (
-                      <small className="choice-effect plus" title={presentation.gain}>
-                        {presentation.gain}
-                      </small>
-                    )}
-                    {presentation.tradeoff && (
-                      <small className="choice-effect minus" title={presentation.tradeoff}>
-                        {presentation.tradeoff}
-                      </small>
-                    )}
-                  </span>
-                )}
-                {isActive && <ChoiceDetails choice={choice} presentation={presentation} />}
               </button>
             );
           })
@@ -91,6 +80,21 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
   );
 }
 
+function choiceOutcome(presentation: ChoicePresentation): string {
+  const gain = firstSentence(presentation.gain);
+  const tradeoff = firstSentence(presentation.tradeoff);
+  if (gain && tradeoff) return `Gain: ${gain}. Risk: ${tradeoff}.`;
+  if (gain) return `Gain: ${gain}.`;
+  if (tradeoff) return `Risk: ${tradeoff}.`;
+  return "";
+}
+
+function firstSentence(value: string): string {
+  const clean = value.trim();
+  if (!clean) return "";
+  return clean.split(".")[0]?.trim() ?? "";
+}
+
 function ChoiceMetadata({ choice, presentation }: { choice: ChoiceView; presentation: ChoicePresentation }) {
   const chips = [
     ["INT", choice.intent],
@@ -106,43 +110,6 @@ function ChoiceMetadata({ choice, presentation }: { choice: ChoiceView; presenta
           <b>{label}</b> {value}
         </small>
       ))}
-    </span>
-  );
-}
-
-function ChoiceDetails({ choice, presentation }: { choice: ChoiceView; presentation: ChoicePresentation }) {
-  const stats = (choice.related_stats ?? []).slice(0, 4);
-  return (
-    <span className="choice-detail">
-      <span className="choice-detail-cell">
-        <b>Description</b>
-        <small>{choice.text}</small>
-      </span>
-      <span className="choice-detail-cell">
-        <b>Stats involved</b>
-        {stats.length > 0 ? (
-          <span className="choice-stat-list">
-            {stats.map((stat, index) => (
-              <span className="choice-stat" key={stat}>
-                <span>{compactText(stat, 16)}</span>
-                <span className="stat-dots" aria-hidden="true">
-                  {Array.from({ length: 6 }, (_, dot) => (
-                    <i className={dot <= Math.min(5, 2 + index) ? "filled" : ""} key={dot} />
-                  ))}
-                </span>
-              </span>
-            ))}
-          </span>
-        ) : (
-          <small>No stat metadata.</small>
-        )}
-      </span>
-      <span className="choice-detail-cell">
-        <b>Possible outcomes</b>
-        {presentation.gain && <small className="outcome-good">{presentation.gain}</small>}
-        {presentation.tradeoff && <small className="outcome-risk">{presentation.tradeoff}</small>}
-        <small>Not guaranteed. The scene context still decides.</small>
-      </span>
     </span>
   );
 }
