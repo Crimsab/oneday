@@ -1,6 +1,6 @@
 import { PanelLeftOpen, Plus, RefreshCw, Search, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
-import { asArray, compactText, displayTimestamp, entryLabel, fieldRows } from "../format";
+import { asArray, compactText, displayTimestamp, entryLabel } from "../format";
 import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary } from "../types";
 
 interface LeftRailProps {
@@ -173,8 +173,14 @@ function storyNotes(snapshot: StorySnapshot | null): string[] {
   if (fronts[0]) notes.push(`Active Front: ${compactText(entryLabel(fronts[0], 0), 90)}`);
   const npc = snapshot.panels.npcs[0];
   if (npc) notes.push(`Key Contact: ${npc.name}`);
-  const guidance = fieldRows(snapshot.world.guidance)[0];
-  if (guidance) notes.push(`Next Lead: ${compactText(guidance[1], 90)}`);
-  notes.push(`Updated: ${displayTimestamp(snapshot.world.updated_at || snapshot.server_time)}`);
+  const guidance = asArray(snapshot.world.guidance)[0];
+  if (guidance) notes.push(`Next Lead: ${compactText(entryLabel(guidance, 0), 90)}`);
+  notes.push(`Updated: ${compactTimestamp(snapshot.world.updated_at || snapshot.server_time)}`);
   return notes;
+}
+
+function compactTimestamp(value: string | undefined): string {
+  const timestamp = displayTimestamp(value);
+  const match = timestamp.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/);
+  return match ? `${match[1]} ${match[2]}` : timestamp;
 }
