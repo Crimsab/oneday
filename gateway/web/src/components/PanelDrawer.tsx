@@ -788,6 +788,10 @@ function NewStoryContent({
   );
   const [characterName, setCharacterName] = useState("Tester");
   const [characterBackground, setCharacterBackground] = useState("Created from the browser to validate OneDay parity and UI flows.");
+  const [worldStylePrompt, setWorldStylePrompt] = useState("");
+  const [characterStylePrompt, setCharacterStylePrompt] = useState("");
+  const [palette, setPalette] = useState("");
+  const [negativePrompt, setNegativePrompt] = useState("no text, no logos, no watermark, no UI, no unreadable signage");
   const [start, setStart] = useState(true);
   const [error, setError] = useState("");
 
@@ -806,8 +810,27 @@ function NewStoryContent({
       brief: brief.trim(),
       character_name: characterName.trim(),
       character_background: characterBackground.trim(),
+      world_style_prompt: worldStylePrompt.trim(),
+      character_style_prompt: characterStylePrompt.trim(),
+      negative_prompt: negativePrompt.trim(),
+      palette: palette.trim(),
       start,
     });
+  };
+
+  const enhanceVisuals = () => {
+    const enhanced = enhancedVisualDirection({
+      brief,
+      characterBackground,
+      worldStylePrompt,
+      characterStylePrompt,
+      palette,
+      negativePrompt,
+    });
+    setWorldStylePrompt(enhanced.world_style_prompt);
+    setCharacterStylePrompt(enhanced.character_style_prompt);
+    setPalette(enhanced.palette);
+    setNegativePrompt(enhanced.negative_prompt);
   };
 
   return (
@@ -830,6 +853,44 @@ function NewStoryContent({
         <span>Background</span>
         <textarea value={characterBackground} onChange={(event) => setCharacterBackground(event.target.value)} rows={3} disabled={busy} />
       </label>
+      <div className="visual-create-block">
+        <div className="model-routing-head">
+          <span>Image Style</span>
+          <button type="button" onClick={enhanceVisuals} disabled={busy}>
+            Enhance style
+          </button>
+        </div>
+        <label>
+          <span>World and location style</span>
+          <textarea
+            value={worldStylePrompt}
+            onChange={(event) => setWorldStylePrompt(event.target.value)}
+            rows={4}
+            placeholder="Optional. Leave empty to auto-derive from the story."
+            disabled={busy}
+          />
+        </label>
+        <label>
+          <span>Character style</span>
+          <textarea
+            value={characterStylePrompt}
+            onChange={(event) => setCharacterStylePrompt(event.target.value)}
+            rows={3}
+            placeholder="Optional. Used for NPC and protagonist portraits."
+            disabled={busy}
+          />
+        </label>
+        <div className="two-column-form">
+          <label>
+            <span>Palette</span>
+            <input value={palette} onChange={(event) => setPalette(event.target.value)} placeholder="Optional palette" disabled={busy} />
+          </label>
+          <label>
+            <span>Negative prompt</span>
+            <input value={negativePrompt} onChange={(event) => setNegativePrompt(event.target.value)} disabled={busy} />
+          </label>
+        </div>
+      </div>
       {error && <p className="form-error">{error}</p>}
       <div className="drawer-actions">
         <button type="submit" className="primary" disabled={busy}>
@@ -838,4 +899,87 @@ function NewStoryContent({
       </div>
     </form>
   );
+}
+
+function enhancedVisualDirection({
+  brief,
+  characterBackground,
+  worldStylePrompt,
+  characterStylePrompt,
+  palette,
+  negativePrompt,
+}: {
+  brief: string;
+  characterBackground: string;
+  worldStylePrompt: string;
+  characterStylePrompt: string;
+  palette: string;
+  negativePrompt: string;
+}): VisualProfileUpdate {
+  const context = [brief, characterBackground].map((part) => part.trim()).filter(Boolean).join(" ");
+  const preset = visualPresetFor(context || worldStylePrompt || characterStylePrompt);
+  const worldBase = worldStylePrompt.trim() || preset.world;
+  const characterBase = characterStylePrompt.trim() || preset.character;
+  const contextLine = context
+    ? ` Story context: ${compactText(context, 260)}.`
+    : " Use a flexible original setting direction suitable for sci-fi, cyberpunk, steampunk, fantasy, or mystery stories.";
+
+  return {
+    world_style_prompt: `${worldBase}${contextLine} Composition: cinematic game key art, strong readable silhouettes, concrete places, no generic stock mood.`,
+    character_style_prompt: `${characterBase}${contextLine} Composition: square portrait, expressive face, outfit and props derived from role and world, coherent with location lighting.`,
+    palette: palette.trim() || preset.palette,
+    negative_prompt:
+      negativePrompt.trim() ||
+      "no text, no logos, no watermark, no UI, no unreadable signage, no extra limbs, no generic stock photo, no anime unless requested",
+  };
+}
+
+function visualPresetFor(source: string): Pick<VisualProfileUpdate, "world_style_prompt" | "character_style_prompt" | "palette"> & {
+  world: string;
+  character: string;
+} {
+  const text = source.toLowerCase();
+  if (/(cyber|neon|corporate|hacker|noir)/.test(text)) {
+    return {
+      world: "Cyberpunk noir concept art with lived-in streets, reflective rain, practical industrial detail, and restrained neon.",
+      character: "Grounded cyberpunk character portraits with specific faces, worn clothing, practical tech, and cinematic rim light.",
+      world_style_prompt: "",
+      character_style_prompt: "",
+      palette: "oil black, rain blue, sodium amber, muted teal, restrained neon rose",
+    };
+  }
+  if (/(steam|brass|victorian|clockwork|airship)/.test(text)) {
+    return {
+      world: "Steampunk adventure concept art with brass machinery, soot, hand-built interiors, and believable period texture.",
+      character: "Steampunk character portraits with tailored silhouettes, tools, goggles or period props only when context supports them.",
+      world_style_prompt: "",
+      character_style_prompt: "",
+      palette: "ink black, aged brass, oxidized green, coal gray, warm lamp light",
+    };
+  }
+  if (/(fantasy|magia|magic|elf|ruin|dragon|dungeon)/.test(text)) {
+    return {
+      world: "Dark fantasy concept art with ancient materials, tactile ruins, weathered magic, and grounded natural light.",
+      character: "Painterly fantasy portraits with believable anatomy, expressive eyes, specific costume details, and non-generic silhouettes.",
+      world_style_prompt: "",
+      character_style_prompt: "",
+      palette: "deep forest, bone ivory, tarnished gold, storm gray, ember amber",
+    };
+  }
+  if (/(horror|dread|ghost|occult|paura|orrore)/.test(text)) {
+    return {
+      world: "Atmospheric horror mystery concept art with ordinary places made tense, soft practical light, and unsettling negative space.",
+      character: "Horror mystery portraits with tired expressions, realistic skin, subtle dread, and no exaggerated monster styling unless requested.",
+      world_style_prompt: "",
+      character_style_prompt: "",
+      palette: "cold gray, old paper, sickly green, candle amber, dried red",
+    };
+  }
+  return {
+    world: "Cinematic sci-fi adventure concept art with functional architecture, tactile materials, readable geography, and human-scale drama.",
+    character: "Grounded sci-fi character portraits with practical outfits, memorable faces, role-specific props, and coherent world lighting.",
+    world_style_prompt: "",
+    character_style_prompt: "",
+    palette: "graphite, soft white, signal amber, desaturated teal, muted blue",
+  };
 }

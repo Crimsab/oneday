@@ -74,6 +74,7 @@ struct ImageGenerationConfig {
     api_key: String,
     model: String,
     provider: String,
+    openclaw_bridge_url: String,
     default_size: String,
     location_size: String,
     character_size: String,
@@ -109,6 +110,13 @@ struct ImageGenerateData {
     url: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct OpenClawGenerateResponse {
+    ok: bool,
+    image_b64: Option<String>,
+    error: Option<String>,
+}
+
 #[derive(Debug)]
 struct VisualSpec {
     kind: String,
@@ -129,6 +137,43 @@ pub async fn visual_assets(
     ensure_asset_rows(pool, story_id, &specs).await?;
     let assets = list_assets(pool, story_id).await?;
     Ok(VisualAssetsResponse { profile, assets })
+}
+
+pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS visual_asset_versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+            story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+            kind TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            url TEXT NOT NULL DEFAULT '',
+            file_path TEXT NOT NULL DEFAULT '',
+            prompt TEXT NOT NULL DEFAULT '',
+            negative_prompt TEXT NOT NULL DEFAULT '',
+            provider TEXT NOT NULL DEFAULT '',
+            turn INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual_asset_versions table")?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_asset
+           ON visual_asset_versions(asset_id, created_at DESC)"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual asset version asset index")?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_story
+           ON visual_asset_versions(story_id, kind, subject, created_at DESC)"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual asset version story index")?;
+    Ok(())
 }
 
 pub async fn update_profile(
@@ -161,9 +206,32 @@ pub async fn update_profile(
     visual_assets(pool, story_id).await
 }
 
+pub async fn update_profile_with_defaults(
+    pool: &SqlitePool,
+    story_id: &str,
+    update: VisualProfileUpdate,
+) -> anyhow::Result<VisualAssetsResponse> {
+    let snapshot = db::snapshot(pool, story_id).await?;
+    let defaults = default_profile(&snapshot);
+    update_profile(
+        pool,
+        story_id,
+        VisualProfileUpdate {
+            world_style_prompt: clean_or(&update.world_style_prompt, &defaults.world_style_prompt),
+            character_style_prompt: clean_or(
+                &update.character_style_prompt,
+                &defaults.character_style_prompt,
+            ),
+            negative_prompt: clean_or(&update.negative_prompt, &defaults.negative_prompt),
+            palette: clean_or(&update.palette, &defaults.palette),
+        },
+    )
+    .await
+}
+
 pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
     if !image_generation_config(&state)
-        .map(|config| config.auto_generate && !config.api_key.trim().is_empty())
+        .map(|config| config.auto_generate && image_generation_available(&config))
         .unwrap_or(false)
     {
         return;
@@ -188,9 +256,9 @@ pub async fn generate_visual_assets(
 ) -> anyhow::Result<VisualAssetsResponse> {
     visual_assets(&state.pool, story_id).await?;
     let config = image_generation_config(state)?;
-    if config.api_key.trim().is_empty() {
+    if !image_generation_available(&config) {
         return Err(anyhow!(
-            "image generation provider is not configured; set ONEDAY_IMAGEGEN_API_KEY or ONEDAY_LITELLM_API_KEY"
+            "image generation provider is not configured; set ONEDAY_IMAGEGEN_PROVIDER=openclaw-bridge or configure ONEDAY_IMAGEGEN_API_KEY/ONEDAY_LITELLM_API_KEY"
         ));
     }
 
@@ -210,6 +278,11 @@ pub async fn generate_visual_assets(
                 mark_asset_ready(&state.pool, &asset.id, &url, &file_path, &config)
                     .await
                     .with_context(|| format!("marking visual asset {} ready", asset.id))?;
+                if let Err(err) =
+                    record_asset_version(&state.pool, &asset, &url, &file_path, &config).await
+                {
+                    tracing::warn!(asset_id = %asset.id, error = %err, "could not record visual asset version");
+                }
             }
             Err(err) => {
                 let _ = mark_asset_failed(&state.pool, &asset.id, &err.to_string(), &config).await;
@@ -295,12 +368,45 @@ async fn mark_asset_failed(
     Ok(())
 }
 
+async fn record_asset_version(
+    pool: &SqlitePool,
+    asset: &VisualAsset,
+    url: &str,
+    file_path: &str,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"INSERT INTO visual_asset_versions (
+              asset_id, story_id, kind, subject, url, file_path, prompt,
+              negative_prompt, provider, turn
+           )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+    )
+    .bind(&asset.id)
+    .bind(&asset.story_id)
+    .bind(&asset.kind)
+    .bind(&asset.subject)
+    .bind(url)
+    .bind(file_path)
+    .bind(&asset.prompt)
+    .bind(&asset.negative_prompt)
+    .bind(provider_label(config))
+    .bind(asset.turn)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 async fn generate_one_asset(
     client: &Client,
     state: &AppState,
     config: &ImageGenerationConfig,
     asset: &VisualAsset,
 ) -> anyhow::Result<(String, String)> {
+    if is_openclaw_bridge(config) {
+        return generate_one_openclaw_asset(client, state, config, asset).await;
+    }
+
     let size = asset_size(config, asset);
     let prompt = final_prompt(asset);
     let mut payload = serde_json::json!({
@@ -365,10 +471,78 @@ async fn generate_one_asset(
         return Err(anyhow!("image provider returned empty image bytes"));
     }
 
+    persist_generated_asset(state, asset, bytes, "png").await
+}
+
+async fn generate_one_openclaw_asset(
+    client: &Client,
+    state: &AppState,
+    config: &ImageGenerationConfig,
+    asset: &VisualAsset,
+) -> anyhow::Result<(String, String)> {
+    let prompt = final_prompt(asset);
+    let payload = serde_json::json!({
+        "prompt": prompt,
+        "size": asset_size(config, asset),
+        "output_format": "png"
+    });
+    let response = client
+        .post(&config.openclaw_bridge_url)
+        .json(&payload)
+        .send()
+        .await
+        .with_context(|| format!("requesting OpenClaw image for {}", asset.subject))?;
+    let status = response.status();
+    let raw = response
+        .text()
+        .await
+        .context("reading OpenClaw image response")?;
+    if !status.is_success() {
+        return Err(anyhow!(
+            "OpenClaw image bridge returned {}: {}",
+            status,
+            compact_error(&raw)
+        ));
+    }
+
+    let response: OpenClawGenerateResponse =
+        serde_json::from_str(&raw).context("decoding OpenClaw image response")?;
+    if !response.ok {
+        return Err(anyhow!(
+            "OpenClaw image bridge failed: {}",
+            compact_error(response.error.as_deref().unwrap_or("unknown error"))
+        ));
+    }
+    let encoded = response
+        .image_b64
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("OpenClaw image bridge returned no image_b64"))?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .context("decoding OpenClaw image base64")?;
+    if bytes.is_empty() {
+        return Err(anyhow!("OpenClaw image bridge returned empty image bytes"));
+    }
+
+    persist_generated_asset(state, asset, bytes, "png").await
+}
+
+async fn persist_generated_asset(
+    state: &AppState,
+    asset: &VisualAsset,
+    bytes: Vec<u8>,
+    extension: &str,
+) -> anyhow::Result<(String, String)> {
     let story_slug = slug(&asset.story_id);
     let subject_slug = slug(&format!("{}-{}", asset.kind, asset.subject));
     let hash = short_hash(&bytes);
-    let filename = format!("{subject_slug}-{hash}.png");
+    let extension = extension.trim_start_matches('.').trim();
+    let extension = if extension.is_empty() {
+        "png"
+    } else {
+        extension
+    };
+    let filename = format!("{subject_slug}-{hash}.{extension}");
     let dir = state.paths.visual_asset_dir.join(&story_slug);
     fs::create_dir_all(&dir)
         .await
@@ -433,6 +607,11 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         model,
         provider: first_env(&["ONEDAY_IMAGEGEN_PROVIDER", "ONEDAY_IMAGE_PROVIDER"])
             .unwrap_or_else(|| "openai-compatible".to_string()),
+        openclaw_bridge_url: first_env(&[
+            "ONEDAY_IMAGEGEN_OPENCLAW_URL",
+            "ONEDAY_OPENCLAW_IMAGEGEN_URL",
+        ])
+        .unwrap_or_else(|| "http://openclaw-imagegen:8099/generate".to_string()),
         default_size: first_env(&["ONEDAY_IMAGEGEN_SIZE", "ONEDAY_IMAGE_SIZE"])
             .unwrap_or_else(|| "1024x1024".to_string()),
         location_size: first_env(&["ONEDAY_IMAGEGEN_LOCATION_SIZE"])
@@ -447,6 +626,20 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
             .map(|value| parse_bool(&value))
             .unwrap_or(true),
     })
+}
+
+fn is_openclaw_bridge(config: &ImageGenerationConfig) -> bool {
+    matches!(
+        config.provider.trim().to_ascii_lowercase().as_str(),
+        "openclaw" | "openclaw-bridge" | "codex-oauth"
+    )
+}
+
+fn image_generation_available(config: &ImageGenerationConfig) -> bool {
+    if is_openclaw_bridge(config) {
+        return !config.openclaw_bridge_url.trim().is_empty();
+    }
+    !config.api_key.trim().is_empty()
 }
 
 fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
@@ -833,6 +1026,7 @@ mod tests {
             api_key: "key".to_string(),
             model: "gpt-image-2".to_string(),
             provider: "test".to_string(),
+            openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
             location_size: "1536x1024".to_string(),
             character_size: "768x768".to_string(),
@@ -883,5 +1077,43 @@ mod tests {
         };
         assert!(final_prompt(&asset).contains("portrait"));
         assert!(final_prompt(&asset).contains("Avoid: no text"));
+    }
+
+    #[test]
+    fn openclaw_bridge_does_not_require_api_key() {
+        let config = ImageGenerationConfig {
+            base_url: String::new(),
+            api_key: String::new(),
+            model: "gpt-image-2".to_string(),
+            provider: "openclaw-bridge".to_string(),
+            openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
+            default_size: "1024x1024".to_string(),
+            location_size: "1536x1024".to_string(),
+            character_size: "1024x1024".to_string(),
+            quality: String::new(),
+            timeout_seconds: 10,
+            auto_generate: true,
+        };
+        assert!(is_openclaw_bridge(&config));
+        assert!(image_generation_available(&config));
+    }
+
+    #[test]
+    fn openai_compatible_provider_requires_api_key() {
+        let config = ImageGenerationConfig {
+            base_url: "http://example.test/v1".to_string(),
+            api_key: String::new(),
+            model: "gpt-image-2".to_string(),
+            provider: "openai-compatible".to_string(),
+            openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
+            default_size: "1024x1024".to_string(),
+            location_size: "1536x1024".to_string(),
+            character_size: "1024x1024".to_string(),
+            quality: String::new(),
+            timeout_seconds: 10,
+            auto_generate: true,
+        };
+        assert!(!is_openclaw_bridge(&config));
+        assert!(!image_generation_available(&config));
     }
 }

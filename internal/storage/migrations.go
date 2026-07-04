@@ -44,6 +44,7 @@ func (db *DB) migrate() error {
 		{21, migrationV21},
 		{22, migrationV22},
 		{23, migrationV23},
+		{24, migrationV24},
 	}
 
 	for _, m := range migrations {
@@ -500,4 +501,29 @@ CREATE TABLE IF NOT EXISTS visual_assets (
 
 CREATE INDEX IF NOT EXISTS idx_visual_assets_story_kind
 	ON visual_assets(story_id, kind, updated_at DESC);
+`
+
+const migrationV24 = `
+-- Preserve every generated visual variant so the browser can offer image
+-- history, prompt inspection, and previous/next selection without losing files.
+CREATE TABLE IF NOT EXISTS visual_asset_versions (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	kind TEXT NOT NULL,
+	subject TEXT NOT NULL,
+	url TEXT NOT NULL DEFAULT '',
+	file_path TEXT NOT NULL DEFAULT '',
+	prompt TEXT NOT NULL DEFAULT '',
+	negative_prompt TEXT NOT NULL DEFAULT '',
+	provider TEXT NOT NULL DEFAULT '',
+	turn INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_asset
+	ON visual_asset_versions(asset_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_story
+	ON visual_asset_versions(story_id, kind, subject, created_at DESC);
 `
