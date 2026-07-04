@@ -5,6 +5,7 @@ import type {
   DeleteSaveEnvelope,
   DeleteSaveResponse,
   Health,
+  GenerateVisualAssetsRequest,
   LoadEnvelope,
   LoadResponse,
   MetaEnvelope,
@@ -82,6 +83,14 @@ export function getVisualAssets(storyId: string): Promise<VisualAssetsResponse> 
 export function updateVisualProfile(storyId: string, payload: VisualProfileUpdate): Promise<VisualAssetsResponse> {
   return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-profile`, {
     method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function generateVisualAssets(storyId: string, payload: GenerateVisualAssetsRequest = {}): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-assets/generate`, {
+    method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });

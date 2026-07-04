@@ -14,6 +14,7 @@ use tower_http::services::{ServeDir, ServeFile};
 
 pub fn router(state: Arc<AppState>) -> Router {
     let static_dir = state.paths.static_dir.clone();
+    let visual_asset_dir = state.paths.visual_asset_dir.clone();
     let spa =
         ServeDir::new(&static_dir).not_found_service(ServeFile::new(static_dir.join("index.html")));
 
@@ -28,6 +29,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
         .route(
+            "/api/stories/:story_id/visual-assets/generate",
+            post(generate_visual_assets),
+        )
+        .route(
             "/api/stories/:story_id/visual-profile",
             put(update_visual_profile),
         )
@@ -40,6 +45,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/stories/:story_id/saves/:save_id", delete(delete_save))
         .route("/api/stories/:story_id/events", get(story_events))
+        .nest_service("/generated/assets", ServeDir::new(visual_asset_dir))
         .fallback_service(spa)
         .with_state(state)
 }
@@ -90,6 +96,7 @@ async fn create_story(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let created = engine::create_story(state.clone(), payload).await?;
     let snapshot = db::snapshot(&state.pool, &created.story_id).await?;
+    assets::spawn_auto_generation(state.clone(), created.story_id.clone());
     Ok(Json(json!({
         "story": created,
         "snapshot": snapshot,
@@ -117,6 +124,16 @@ async fn update_visual_profile(
 ) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
     Ok(Json(
         assets::update_profile(&state.pool, &story_id, payload).await?,
+    ))
+}
+
+async fn generate_visual_assets(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<assets::GenerateVisualAssetsRequest>,
+) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
+    Ok(Json(
+        assets::generate_visual_assets(state.as_ref(), &story_id, payload).await?,
     ))
 }
 
@@ -164,6 +181,7 @@ async fn submit_action(
         );
     }
     let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    assets::spawn_auto_generation(state.clone(), story_id.clone());
     emit_turn_stream(
         &state,
         TurnStreamEvent::status(
@@ -352,6 +370,7 @@ impl From<anyhow::Error> for ApiError {
         let is_bad_request = message.contains("unknown provider")
             || message.contains("must be")
             || message.contains("at least one provider")
+            || message.contains("image generation provider is not configured")
             || message.contains("story brief is required")
             || message.contains("character name is required")
             || message.contains("invalid gateway-model-settings-update JSON");
