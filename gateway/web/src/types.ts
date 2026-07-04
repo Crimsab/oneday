@@ -236,6 +236,47 @@ export interface StorySnapshot {
   panels: PanelsView;
 }
 
+export type VisualAssetStatus = "pending" | "queued" | "running" | "ready" | "failed";
+export type VisualAssetKind = "location" | "character" | "world" | string;
+
+export interface VisualProfile {
+  story_id: string;
+  world_style_prompt: string;
+  character_style_prompt: string;
+  negative_prompt: string;
+  palette: string;
+  updated_at: string;
+}
+
+export interface VisualAsset {
+  id: string;
+  story_id: string;
+  kind: VisualAssetKind;
+  subject: string;
+  entity_id: string;
+  prompt: string;
+  negative_prompt: string;
+  status: VisualAssetStatus | string;
+  url: string;
+  provider: string;
+  source: string;
+  error: string;
+  turn: number;
+  updated_at: string;
+}
+
+export interface VisualAssetsResponse {
+  profile: VisualProfile;
+  assets: VisualAsset[];
+}
+
+export interface VisualProfileUpdate {
+  world_style_prompt: string;
+  character_style_prompt: string;
+  negative_prompt: string;
+  palette: string;
+}
+
 export interface StoryCreateEnvelope {
   brief: string;
   character_name: string;

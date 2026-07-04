@@ -43,6 +43,7 @@ func (db *DB) migrate() error {
 		{20, migrationV20},
 		{21, migrationV21},
 		{22, migrationV22},
+		{23, migrationV23},
 	}
 
 	for _, m := range migrations {
@@ -461,4 +462,42 @@ ALTER TABLE stories ADD COLUMN revision INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE turn_idempotency ADD COLUMN request_hash TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_turn_idempotency_request_hash
 	ON turn_idempotency(story_id, idempotency_key, request_hash);
+`
+
+const migrationV23 = `
+-- Browser visual profile and async image asset registry.
+-- Image generation must not block the canonical turn path: rows can be pending
+-- while the browser keeps using the latest ready asset.
+CREATE TABLE IF NOT EXISTS story_visual_profiles (
+	story_id TEXT PRIMARY KEY REFERENCES stories(id) ON DELETE CASCADE,
+	world_style_prompt TEXT NOT NULL DEFAULT '',
+	character_style_prompt TEXT NOT NULL DEFAULT '',
+	negative_prompt TEXT NOT NULL DEFAULT '',
+	palette TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS visual_assets (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	kind TEXT NOT NULL,
+	subject TEXT NOT NULL,
+	entity_id TEXT NOT NULL DEFAULT '',
+	prompt TEXT NOT NULL DEFAULT '',
+	negative_prompt TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'running', 'ready', 'failed')),
+	url TEXT NOT NULL DEFAULT '',
+	file_path TEXT NOT NULL DEFAULT '',
+	provider TEXT NOT NULL DEFAULT '',
+	source TEXT NOT NULL DEFAULT '',
+	error TEXT NOT NULL DEFAULT '',
+	turn INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id, kind, subject)
+);
+
+CREATE INDEX IF NOT EXISTS idx_visual_assets_story_kind
+	ON visual_assets(story_id, kind, updated_at DESC);
 `
