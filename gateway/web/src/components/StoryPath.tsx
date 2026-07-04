@@ -6,6 +6,7 @@ import { readyAssetUrl } from "../visualAssets";
 interface StoryPathProps {
   snapshot: StorySnapshot | null;
   locationAsset?: VisualAsset | null;
+  onOpenVisualAsset?: (assetId: string) => void;
 }
 
 const cycleIcon = {
@@ -15,7 +16,7 @@ const cycleIcon = {
   Night: Moon,
 };
 
-export function StoryPath({ snapshot, locationAsset }: StoryPathProps) {
+export function StoryPath({ snapshot, locationAsset, onOpenVisualAsset }: StoryPathProps) {
   if (!snapshot) {
     return (
       <div className="scene-header empty-scene">
@@ -38,7 +39,19 @@ export function StoryPath({ snapshot, locationAsset }: StoryPathProps) {
 
   return (
     <div className={`scene-header ${imageUrl ? "has-image" : ""}`} aria-label="Current story path">
-      {imageUrl && <img src={imageUrl} alt="" />}
+      {imageUrl && locationAsset && onOpenVisualAsset ? (
+        <button
+          type="button"
+          className="scene-image-button"
+          onClick={() => onOpenVisualAsset(locationAsset.id)}
+          title={`Edit image prompt for ${locationAsset.subject}`}
+          aria-label={`Edit image prompt for ${locationAsset.subject}`}
+        >
+          <img src={imageUrl} alt="" />
+        </button>
+      ) : (
+        imageUrl && <img src={imageUrl} alt="" />
+      )}
       <div className="scene-scrim" />
       <div className="scene-copy">
         <div className="scene-copy-head">
