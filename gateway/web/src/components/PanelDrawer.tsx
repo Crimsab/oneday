@@ -36,6 +36,7 @@ interface PanelDrawerProps {
   visualProfileError: string;
   visualProfileBusy: boolean;
   selectedTab: ModuleTab;
+  moduleFocusId?: string | null;
   commandDescriptors: CommandDescriptor[];
   busy: boolean;
   onClose: () => void;
@@ -67,6 +68,7 @@ export function PanelDrawer({
   visualProfileError,
   visualProfileBusy,
   selectedTab,
+  moduleFocusId,
   commandDescriptors,
   busy,
   onClose,
@@ -131,7 +133,7 @@ export function PanelDrawer({
         )}
         {overlay === "new-story" && <NewStoryContent busy={busy} onCreateStory={onCreateStory} />}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
-        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={selectedTab} visuals={visuals} />}
+        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={selectedTab} visuals={visuals} focusCardId={moduleFocusId} />}
       </section>
     </div>
   );
@@ -746,7 +748,17 @@ function MetaContent({ metaResult }: { metaResult: MetaResult | null }) {
   );
 }
 
-function ModuleOverlayContent({ snapshot, selectedTab, visuals }: { snapshot: StorySnapshot | null; selectedTab: ModuleTab; visuals: VisualCatalog }) {
+function ModuleOverlayContent({
+  snapshot,
+  selectedTab,
+  visuals,
+  focusCardId,
+}: {
+  snapshot: StorySnapshot | null;
+  selectedTab: ModuleTab;
+  visuals: VisualCatalog;
+  focusCardId?: string | null;
+}) {
   if (!snapshot) {
     return (
       <div className="overlay-content">
@@ -756,7 +768,7 @@ function ModuleOverlayContent({ snapshot, selectedTab, visuals }: { snapshot: St
   }
   return (
     <div className="overlay-content module-content">
-      <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} expanded />
+      <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} expanded focusCardId={focusCardId} />
     </div>
   );
 }

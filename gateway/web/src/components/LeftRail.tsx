@@ -35,10 +35,13 @@ export function LeftRail({
 
   return (
     <aside className="left-rail">
+      <div className="rail-brand">
+        <strong>OneDay</strong>
+        <small>{healthText}</small>
+      </div>
       <section className="rail-block stories-block">
         <div className="rail-title">
           <span>Stories</span>
-          <small>{healthText}</small>
         </div>
         <div className="new-story-row">
           <button type="button" className="new-story-button" onClick={() => onOpen("new-story")}>
@@ -135,6 +138,9 @@ interface CollapsedLeftRailProps {
 export function CollapsedLeftRail({ selectedTab, onSelectTab, onExpand, onOpen }: CollapsedLeftRailProps) {
   return (
     <aside className="left-rail-collapsed" aria-label="Collapsed story rail">
+      <button type="button" className="rail-brand-compact" onClick={onExpand} title="Open stories sidebar ([)">
+        OD
+      </button>
       <button type="button" className="rail-icon-button" onClick={onExpand} title="Open stories sidebar ([)">
         <PanelLeftOpen size={18} />
       </button>

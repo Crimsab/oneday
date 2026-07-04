@@ -20,7 +20,6 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
 
   return (
     <header className="top-bar">
-      <div className="brand-mark">OneDay</div>
       <div className="top-status" aria-label="Current story status">
         <StatusCell icon={<Gauge size={14} />} label="Turn" value={snapshot ? String(snapshot.world.current_turn) : "-"} />
         <StatusCell icon={<MapPin size={14} />} label="Loc" fullLabel="Location" value={snapshot?.world.current_location || "Select a story"} strong />
