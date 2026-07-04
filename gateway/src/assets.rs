@@ -68,6 +68,29 @@ pub struct VisualAsset {
     pub updated_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct VisualAssetVersion {
+    pub id: i64,
+    pub asset_id: String,
+    pub story_id: String,
+    pub kind: String,
+    pub subject: String,
+    pub url: String,
+    pub prompt: String,
+    pub negative_prompt: String,
+    pub provider: String,
+    pub turn: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VisualAssetPromptUpdate {
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub negative_prompt: String,
+}
+
 #[derive(Debug, Clone)]
 struct ImageGenerationConfig {
     base_url: String,
@@ -139,6 +162,42 @@ pub async fn visual_assets(
     Ok(VisualAssetsResponse { profile, assets })
 }
 
+pub async fn visual_asset_versions(
+    pool: &SqlitePool,
+    story_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<Vec<VisualAssetVersion>> {
+    ensure_asset_belongs_to_story(pool, story_id, asset_id).await?;
+    let rows = sqlx::query(
+        r#"SELECT id, asset_id, story_id, kind, subject, url, prompt,
+                  negative_prompt, provider, turn, CAST(created_at AS TEXT) AS created_at
+           FROM visual_asset_versions
+           WHERE story_id = ? AND asset_id = ?
+           ORDER BY id DESC"#,
+    )
+    .bind(story_id)
+    .bind(asset_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| VisualAssetVersion {
+            id: row.try_get("id").unwrap_or_default(),
+            asset_id: row_string(&row, "asset_id"),
+            story_id: row_string(&row, "story_id"),
+            kind: row_string(&row, "kind"),
+            subject: row_string(&row, "subject"),
+            url: row_string(&row, "url"),
+            prompt: row_string(&row, "prompt"),
+            negative_prompt: row_string(&row, "negative_prompt"),
+            provider: row_string(&row, "provider"),
+            turn: row.try_get("turn").unwrap_or_default(),
+            created_at: row_string(&row, "created_at"),
+        })
+        .collect())
+}
+
 pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS visual_asset_versions (
@@ -174,6 +233,73 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
     .await
     .context("creating visual asset version story index")?;
     Ok(())
+}
+
+pub async fn update_asset_prompt(
+    pool: &SqlitePool,
+    story_id: &str,
+    asset_id: &str,
+    update: VisualAssetPromptUpdate,
+) -> anyhow::Result<VisualAssetsResponse> {
+    ensure_asset_belongs_to_story(pool, story_id, asset_id).await?;
+    sqlx::query(
+        r#"UPDATE visual_assets
+           SET prompt = ?, negative_prompt = ?, source = 'manual-asset',
+               error = CASE WHEN status = 'failed' THEN '' ELSE error END,
+               status = CASE WHEN status = 'failed' THEN 'pending' ELSE status END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE story_id = ? AND id = ?"#,
+    )
+    .bind(update.prompt.trim())
+    .bind(update.negative_prompt.trim())
+    .bind(story_id)
+    .bind(asset_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("updating visual asset prompt {asset_id}"))?;
+
+    visual_assets(pool, story_id).await
+}
+
+pub async fn select_asset_version(
+    pool: &SqlitePool,
+    story_id: &str,
+    asset_id: &str,
+    version_id: i64,
+) -> anyhow::Result<VisualAssetsResponse> {
+    ensure_asset_belongs_to_story(pool, story_id, asset_id).await?;
+    let version = sqlx::query(
+        r#"SELECT url, file_path, prompt, negative_prompt, provider, turn
+           FROM visual_asset_versions
+           WHERE story_id = ? AND asset_id = ? AND id = ?"#,
+    )
+    .bind(story_id)
+    .bind(asset_id)
+    .bind(version_id)
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| anyhow!("visual asset version not found"))?;
+
+    sqlx::query(
+        r#"UPDATE visual_assets
+           SET status = 'ready', url = ?, file_path = ?, prompt = ?,
+               negative_prompt = ?, provider = ?, error = '', turn = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE story_id = ? AND id = ?"#,
+    )
+    .bind(row_string(&version, "url"))
+    .bind(row_string(&version, "file_path"))
+    .bind(row_string(&version, "prompt"))
+    .bind(row_string(&version, "negative_prompt"))
+    .bind(row_string(&version, "provider"))
+    .bind(version.try_get::<i64, _>("turn").unwrap_or_default())
+    .bind(story_id)
+    .bind(asset_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("selecting visual asset version {version_id}"))?;
+
+    visual_assets(pool, story_id).await
 }
 
 pub async fn update_profile(
@@ -905,6 +1031,22 @@ async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Vi
             updated_at: row_string(&row, "updated_at"),
         })
         .collect())
+}
+
+async fn ensure_asset_belongs_to_story(
+    pool: &SqlitePool,
+    story_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<()> {
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM visual_assets WHERE story_id = ? AND id = ?")
+            .bind(story_id)
+            .bind(asset_id)
+            .fetch_optional(pool)
+            .await?;
+    exists
+        .map(|_| ())
+        .ok_or_else(|| anyhow!("visual asset not found"))
 }
 
 fn asset_id(story_id: &str, kind: &str, subject: &str) -> String {

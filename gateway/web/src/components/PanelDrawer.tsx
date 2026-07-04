@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import { commandDescriptorsToSlashCommands, commandDescriptors as resolveCommandDescriptors } from "../commands";
 import { compactText, displayTimestamp } from "../format";
@@ -17,10 +17,13 @@ import type {
   StorySnapshot,
   GenerateVisualAssetsRequest,
   VisualAsset,
+  VisualAssetPromptUpdate,
+  VisualAssetVersion,
   VisualProfile,
   VisualProfileUpdate,
 } from "../types";
 import type { VisualCatalog } from "../visualAssets";
+import { readyAssetUrl } from "../visualAssets";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -33,6 +36,7 @@ interface PanelDrawerProps {
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
   visuals: VisualCatalog;
+  visualAssetFocusId: string | null;
   visualProfileError: string;
   visualProfileBusy: boolean;
   selectedTab: ModuleTab;
@@ -47,6 +51,9 @@ interface PanelDrawerProps {
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
   onVisualAssetsGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
+  onVisualAssetVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
+  onVisualAssetPromptSave: (assetId: string, payload: VisualAssetPromptUpdate) => Promise<void>;
+  onVisualAssetVersionSelect: (assetId: string, versionId: number) => Promise<void>;
   onCreateStory: (payload: StoryCreateEnvelope) => Promise<void> | void;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
@@ -66,6 +73,7 @@ export function PanelDrawer({
   visualProfile,
   visualAssets,
   visuals,
+  visualAssetFocusId,
   visualProfileError,
   visualProfileBusy,
   selectedTab,
@@ -80,6 +88,9 @@ export function PanelDrawer({
   onVisualProfileSave,
   onVisualAssetsGenerate,
   onVisualAssetsReload,
+  onVisualAssetVersionsLoad,
+  onVisualAssetPromptSave,
+  onVisualAssetVersionSelect,
   onCreateStory,
   onCreateSave,
   onLoadSave,
@@ -113,6 +124,7 @@ export function PanelDrawer({
             modelBusy={modelBusy}
             visualProfile={visualProfile}
             visualAssets={visualAssets}
+            visualAssetFocusId={visualAssetFocusId}
             visualProfileError={visualProfileError}
             visualProfileBusy={visualProfileBusy}
             onPreferencesChange={onPreferencesChange}
@@ -121,6 +133,9 @@ export function PanelDrawer({
             onVisualProfileSave={onVisualProfileSave}
             onVisualAssetsGenerate={onVisualAssetsGenerate}
             onVisualAssetsReload={onVisualAssetsReload}
+            onVisualAssetVersionsLoad={onVisualAssetVersionsLoad}
+            onVisualAssetPromptSave={onVisualAssetPromptSave}
+            onVisualAssetVersionSelect={onVisualAssetVersionSelect}
           />
         )}
         {overlay === "saves" && (
@@ -174,6 +189,7 @@ function OptionsContent({
   modelBusy,
   visualProfile,
   visualAssets,
+  visualAssetFocusId,
   visualProfileError,
   visualProfileBusy,
   onPreferencesChange,
@@ -182,6 +198,9 @@ function OptionsContent({
   onVisualProfileSave,
   onVisualAssetsGenerate,
   onVisualAssetsReload,
+  onVisualAssetVersionsLoad,
+  onVisualAssetPromptSave,
+  onVisualAssetVersionSelect,
 }: {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
@@ -190,6 +209,7 @@ function OptionsContent({
   modelBusy: boolean;
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
+  visualAssetFocusId: string | null;
   visualProfileError: string;
   visualProfileBusy: boolean;
   onPreferencesChange: (preferences: AppPreferences) => void;
@@ -198,6 +218,9 @@ function OptionsContent({
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
   onVisualAssetsGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
+  onVisualAssetVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
+  onVisualAssetPromptSave: (assetId: string, payload: VisualAssetPromptUpdate) => Promise<void>;
+  onVisualAssetVersionSelect: (assetId: string, versionId: number) => Promise<void>;
 }) {
   const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
     onPreferencesChange({ ...preferences, [key]: value });
@@ -266,11 +289,15 @@ function OptionsContent({
       <VisualDirectionSettings
         profile={visualProfile}
         assets={visualAssets}
+        focusedAssetId={visualAssetFocusId}
         error={visualProfileError}
         busy={visualProfileBusy}
         onSave={onVisualProfileSave}
         onGenerate={onVisualAssetsGenerate}
         onReload={onVisualAssetsReload}
+        onVersionsLoad={onVisualAssetVersionsLoad}
+        onAssetPromptSave={onVisualAssetPromptSave}
+        onVersionSelect={onVisualAssetVersionSelect}
       />
     </div>
   );
@@ -279,29 +306,85 @@ function OptionsContent({
 function VisualDirectionSettings({
   profile,
   assets,
+  focusedAssetId,
   error,
   busy,
   onSave,
   onGenerate,
   onReload,
+  onVersionsLoad,
+  onAssetPromptSave,
+  onVersionSelect,
 }: {
   profile: VisualProfile | null;
   assets: VisualAsset[];
+  focusedAssetId: string | null;
   error: string;
   busy: boolean;
   onSave: (payload: VisualProfileUpdate) => Promise<void>;
   onGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onReload: () => Promise<void> | void;
+  onVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
+  onAssetPromptSave: (assetId: string, payload: VisualAssetPromptUpdate) => Promise<void>;
+  onVersionSelect: (assetId: string, versionId: number) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<VisualProfileUpdate>(() => profileDraft(profile));
+  const [selectedAssetId, setSelectedAssetId] = useState(focusedAssetId ?? "");
+  const [assetDraft, setAssetDraft] = useState<VisualAssetPromptUpdate>({ prompt: "", negative_prompt: "" });
+  const [versions, setVersions] = useState<VisualAssetVersion[]>([]);
+  const [versionIndex, setVersionIndex] = useState(0);
+  const [versionsBusy, setVersionsBusy] = useState(false);
   const [saveError, setSaveError] = useState("");
   const readyCount = assets.filter((asset) => asset.status === "ready").length;
   const pendingCount = assets.filter((asset) => asset.status !== "ready").length;
+  const selectedAsset = useMemo(
+    () => assets.find((asset) => asset.id === selectedAssetId) ?? assets.find((asset) => asset.id === focusedAssetId) ?? assets[0] ?? null,
+    [assets, focusedAssetId, selectedAssetId],
+  );
+  const selectedImageUrl = readyAssetUrl(selectedAsset);
+  const activeVersion = versions[Math.min(versionIndex, Math.max(versions.length - 1, 0))] ?? null;
 
   useEffect(() => {
     setDraft(profileDraft(profile));
     setSaveError("");
   }, [profile]);
+
+  useEffect(() => {
+    if (focusedAssetId) setSelectedAssetId(focusedAssetId);
+  }, [focusedAssetId]);
+
+  useEffect(() => {
+    if (!selectedAssetId && assets[0]) setSelectedAssetId(assets[0].id);
+  }, [assets, selectedAssetId]);
+
+  useEffect(() => {
+    if (!selectedAsset) {
+      setAssetDraft({ prompt: "", negative_prompt: "" });
+      setVersions([]);
+      return;
+    }
+    setAssetDraft({ prompt: selectedAsset.prompt, negative_prompt: selectedAsset.negative_prompt });
+    let cancelled = false;
+    setVersionsBusy(true);
+    setSaveError("");
+    onVersionsLoad(selectedAsset.id)
+      .then((nextVersions) => {
+        if (cancelled) return;
+        setVersions(nextVersions);
+        setVersionIndex(0);
+      })
+      .catch((failure) => {
+        if (cancelled) return;
+        setVersions([]);
+        setSaveError(failure instanceof Error ? failure.message : String(failure));
+      })
+      .finally(() => {
+        if (!cancelled) setVersionsBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onVersionsLoad, selectedAsset]);
 
   const update = <K extends keyof VisualProfileUpdate>(key: K, value: VisualProfileUpdate[K]) => {
     setSaveError("");
@@ -321,6 +404,40 @@ function VisualDirectionSettings({
     setSaveError("");
     try {
       await onGenerate(payload);
+    } catch (failure) {
+      setSaveError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+
+  const saveAssetPrompt = async () => {
+    if (!selectedAsset) return;
+    setSaveError("");
+    try {
+      await onAssetPromptSave(selectedAsset.id, assetDraft);
+    } catch (failure) {
+      setSaveError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+
+  const regenerateSelectedAsset = async () => {
+    if (!selectedAsset) return;
+    setSaveError("");
+    try {
+      await onAssetPromptSave(selectedAsset.id, assetDraft);
+      await onGenerate({ asset_ids: [selectedAsset.id], force: true, limit: 1 });
+      const nextVersions = await onVersionsLoad(selectedAsset.id);
+      setVersions(nextVersions);
+      setVersionIndex(0);
+    } catch (failure) {
+      setSaveError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+
+  const selectVersion = async () => {
+    if (!selectedAsset || !activeVersion) return;
+    setSaveError("");
+    try {
+      await onVersionSelect(selectedAsset.id, activeVersion.id);
     } catch (failure) {
       setSaveError(failure instanceof Error ? failure.message : String(failure));
     }
@@ -358,24 +475,78 @@ function VisualDirectionSettings({
           </div>
           <div className="visual-asset-list">
             {assets.slice(0, 8).map((asset) => (
-              <div className={`visual-asset-row ${asset.status}`} key={asset.id} title={asset.prompt}>
+              <button
+                type="button"
+                className={`visual-asset-row ${asset.status} ${asset.id === selectedAsset?.id ? "selected" : ""}`}
+                key={asset.id}
+                title={asset.prompt}
+                onClick={() => setSelectedAssetId(asset.id)}
+              >
                 <span>{asset.kind}</span>
                 <strong>{asset.subject}</strong>
                 <small title={asset.error || asset.provider}>
                   {asset.status}
                   {asset.error ? " !" : ""}
                 </small>
-                <button
-                  type="button"
-                  onClick={() => void generate({ asset_ids: [asset.id], force: true, limit: 1 })}
-                  disabled={busy}
-                  title={asset.error || `Regenerate ${asset.subject}`}
-                >
-                  regen
-                </button>
-              </div>
+              </button>
             ))}
           </div>
+          {selectedAsset && (
+            <div className="visual-asset-editor">
+              <div className="visual-asset-preview">
+                {selectedImageUrl ? <img src={activeVersion?.url || selectedImageUrl} alt="" /> : <div>{selectedAsset.status}</div>}
+              </div>
+              <div className="visual-asset-editor-main">
+                <div className="visual-asset-editor-head">
+                  <span>{selectedAsset.kind}</span>
+                  <strong>{selectedAsset.subject}</strong>
+                  <small title={selectedAsset.provider}>{selectedAsset.status}</small>
+                </div>
+                <label>
+                  <span>Asset prompt</span>
+                  <textarea
+                    value={assetDraft.prompt}
+                    onChange={(event) => setAssetDraft((current) => ({ ...current, prompt: event.target.value }))}
+                    rows={5}
+                  />
+                </label>
+                <label>
+                  <span>Negative prompt</span>
+                  <input
+                    value={assetDraft.negative_prompt}
+                    onChange={(event) => setAssetDraft((current) => ({ ...current, negative_prompt: event.target.value }))}
+                  />
+                </label>
+                <div className="visual-version-bar">
+                  <button type="button" disabled={busy || versionIndex >= versions.length - 1} onClick={() => setVersionIndex((value) => Math.min(versions.length - 1, value + 1))}>
+                    Previous
+                  </button>
+                  <span>
+                    {versionsBusy ? "Loading versions" : versions.length ? `${versionIndex + 1} / ${versions.length}` : "No versions yet"}
+                  </span>
+                  <button type="button" disabled={busy || versionIndex <= 0} onClick={() => setVersionIndex((value) => Math.max(0, value - 1))}>
+                    Next
+                  </button>
+                </div>
+                {activeVersion && (
+                  <p className="model-note">
+                    Version from {displayTimestamp(activeVersion.created_at)} via {activeVersion.provider || "unknown provider"}.
+                  </p>
+                )}
+                <div className="model-actions">
+                  <button type="button" onClick={() => void saveAssetPrompt()} disabled={busy}>
+                    Save prompt
+                  </button>
+                  <button type="button" onClick={() => void selectVersion()} disabled={busy || !activeVersion}>
+                    Use shown version
+                  </button>
+                  <button type="button" className="primary-action" onClick={() => void regenerateSelectedAsset()} disabled={busy}>
+                    Regenerate
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="model-actions">
             <button type="button" onClick={() => void onReload()} disabled={busy}>
               Reload assets

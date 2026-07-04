@@ -807,6 +807,21 @@ input:disabled {
   opacity: 0.78;
 }
 
+.scene-image-button {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.scene-image-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
 .scene-scrim {
   position: absolute;
   inset: 0;
@@ -2659,13 +2674,15 @@ input:disabled {
 .visual-asset-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr) 74px 58px;
+  grid-template-columns: 82px minmax(0, 1fr) 74px;
   gap: 10px;
   align-items: center;
   border: 1px solid var(--line-soft);
   background: linear-gradient(180deg, #111511, #0b0e0c);
   padding: 8px 10px;
   font-size: 12px;
+  text-align: left;
+  cursor: pointer;
 }
 
 .visual-asset-row.ready {
@@ -2680,23 +2697,14 @@ input:disabled {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--line-soft));
 }
 
-.visual-asset-row button {
-  min-height: 24px;
-  border: 1px solid var(--line-soft);
-  border-radius: 3px;
-  background: #181712;
-  color: var(--accent);
-  cursor: pointer;
-  font-size: 10px;
-  text-transform: uppercase;
-}
-
-.visual-asset-row button:hover {
+.visual-asset-row:hover,
+.visual-asset-row:focus-visible,
+.visual-asset-row.selected {
   border-color: var(--accent-2);
-}
-
-.visual-asset-row button:disabled {
-  opacity: 0.5;
+  outline: 0;
+  background:
+    linear-gradient(90deg, rgba(245, 184, 63, 0.08), transparent),
+    linear-gradient(180deg, #141811, #0b0e0c);
 }
 
 .visual-asset-row span,
@@ -2713,6 +2721,119 @@ input:disabled {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.visual-asset-editor {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.74fr) minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line-soft));
+  background:
+    linear-gradient(180deg, rgba(245, 184, 63, 0.045), transparent 180px),
+    #0b1113;
+  padding: 12px;
+}
+
+.visual-asset-preview {
+  min-width: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  background: #070b0d;
+}
+
+.visual-asset-preview img,
+.visual-asset-preview div {
+  width: 100%;
+  height: 100%;
+}
+
+.visual-asset-preview img {
+  display: block;
+  object-fit: cover;
+}
+
+.visual-asset-preview div {
+  display: grid;
+  place-items: center;
+  color: var(--faint);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.visual-asset-editor-main {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.visual-asset-editor-head {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+}
+
+.visual-asset-editor-head span,
+.visual-asset-editor-head small {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.visual-asset-editor-head strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #f1f5f4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-asset-editor label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.visual-asset-editor label span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.visual-asset-editor textarea,
+.visual-asset-editor input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  outline: 0;
+  background: #070c0f;
+  color: var(--text);
+  padding: 8px 9px;
+}
+
+.visual-version-bar {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 94px minmax(0, 1fr) 94px;
+  gap: 8px;
+  align-items: center;
+}
+
+.visual-version-bar span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-version-bar button {
+  min-height: 28px;
 }
 
 .wide-action {
@@ -3105,6 +3226,24 @@ input:disabled {
   height: 100%;
   display: block;
   object-fit: cover;
+}
+
+.ws-thumb button,
+.ws-npc-img button {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.ws-thumb button:focus-visible,
+.ws-npc-img button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .ws-thumb.empty {

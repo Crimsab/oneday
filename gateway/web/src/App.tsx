@@ -12,10 +12,13 @@ import {
   getSnapshot,
   getStories,
   getVisualAssets,
+  getVisualAssetVersions,
   loadSave,
+  selectVisualAssetVersion,
   submitAction,
   submitMeta,
   updateModelSettings,
+  updateVisualAssetPrompt,
   updateVisualProfile,
 } from "./api";
 import { Composer } from "./components/Composer";
@@ -52,6 +55,8 @@ import type {
   TurnStreamEvent,
   VisualAssetsResponse,
   GenerateVisualAssetsRequest,
+  VisualAssetPromptUpdate,
+  VisualAssetVersion,
   VisualProfileUpdate,
 } from "./types";
 import { visualCatalog } from "./visualAssets";
@@ -88,6 +93,7 @@ function App() {
   const [visualAssetsError, setVisualAssetsError] = useState("");
   const [visualProfileSaving, setVisualProfileSaving] = useState(false);
   const [visualGenerationBusy, setVisualGenerationBusy] = useState(false);
+  const [visualAssetFocusId, setVisualAssetFocusId] = useState<string | null>(null);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -692,6 +698,52 @@ function App() {
     }
   };
 
+  const loadVisualAssetVersions = useCallback(async (assetId: string): Promise<VisualAssetVersion[]> => {
+    if (!storyId) return [];
+    return getVisualAssetVersions(storyId, assetId);
+  }, [storyId]);
+
+  const saveVisualAssetPrompt = useCallback(async (assetId: string, payload: VisualAssetPromptUpdate) => {
+    if (!storyId) return;
+    setVisualProfileSaving(true);
+    setNotice("");
+    try {
+      const nextAssets = await updateVisualAssetPrompt(storyId, assetId, payload);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+      setNotice("Image prompt saved. Regenerate the asset to create a new version from this prompt.");
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualProfileSaving(false);
+    }
+  }, [storyId]);
+
+  const chooseVisualAssetVersion = useCallback(async (assetId: string, versionId: number) => {
+    if (!storyId) return;
+    setVisualProfileSaving(true);
+    setNotice("");
+    try {
+      const nextAssets = await selectVisualAssetVersion(storyId, assetId, versionId);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+      setNotice("Visual version selected.");
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualProfileSaving(false);
+    }
+  }, [storyId]);
+
+  const openVisualAssetEditor = useCallback((assetId: string) => {
+    setVisualAssetFocusId(assetId);
+    setOverlay("options");
+  }, []);
+
   const toggleLeftRail = () => {
     setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
   };
@@ -767,7 +819,7 @@ function App() {
                 <button type="button" onClick={clearTranscript}>Clear</button>
               </div>
             </div>
-            <StoryPath snapshot={snapshot} locationAsset={visuals.location} />
+            <StoryPath snapshot={snapshot} locationAsset={visuals.location} onOpenVisualAsset={openVisualAssetEditor} />
             <Transcript
               messages={snapshot?.messages ?? []}
               hiddenBeforeId={hiddenBeforeMessageId}
@@ -803,6 +855,7 @@ function App() {
             onRefresh={() => void loadSnapshot()}
             onOpenModule={openModuleOverlay}
             onOpenNpcCodex={openNpcCodex}
+            onOpenVisualAsset={openVisualAssetEditor}
           />
         )}
       </div>
@@ -817,6 +870,7 @@ function App() {
         visualProfile={visualAssets?.profile ?? null}
         visualAssets={visualAssets?.assets ?? []}
         visuals={visuals}
+        visualAssetFocusId={visualAssetFocusId}
         visualProfileError={visualAssetsError}
         visualProfileBusy={visualProfileSaving || visualGenerationBusy}
         selectedTab={selectedTab}
@@ -831,6 +885,9 @@ function App() {
         onVisualProfileSave={(payload) => saveVisualProfile(payload)}
         onVisualAssetsGenerate={(payload) => generateMissingVisualAssets(payload)}
         onVisualAssetsReload={() => refreshVisualAssets()}
+        onVisualAssetVersionsLoad={loadVisualAssetVersions}
+        onVisualAssetPromptSave={saveVisualAssetPrompt}
+        onVisualAssetVersionSelect={chooseVisualAssetVersion}
         onCreateStory={(payload) => createBrowserStory(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
         onLoadSave={(save) => void loadManualSave(save)}

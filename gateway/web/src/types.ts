@@ -265,6 +265,20 @@ export interface VisualAsset {
   updated_at: string;
 }
 
+export interface VisualAssetVersion {
+  id: number;
+  asset_id: string;
+  story_id: string;
+  kind: VisualAssetKind;
+  subject: string;
+  url: string;
+  prompt: string;
+  negative_prompt: string;
+  provider: string;
+  turn: number;
+  created_at: string;
+}
+
 export interface VisualAssetsResponse {
   profile: VisualProfile;
   assets: VisualAsset[];
@@ -281,6 +295,11 @@ export interface VisualProfileUpdate {
   character_style_prompt: string;
   negative_prompt: string;
   palette: string;
+}
+
+export interface VisualAssetPromptUpdate {
+  prompt: string;
+  negative_prompt: string;
 }
 
 export interface StoryCreateEnvelope {
