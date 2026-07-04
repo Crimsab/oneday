@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cardsFromValue, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, sanitizePlayerVisibleValue } from "./Inspector";
-import type { JsonValue, StorySnapshot } from "../types";
+import { cardsFromValue, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, npcRelationSummary, sanitizePlayerVisibleValue } from "./Inspector";
+import type { JsonValue, RecordView, StorySnapshot } from "../types";
 
 describe("moduleTitle", () => {
   it("returns the visible label for module tabs", () => {
@@ -84,6 +84,36 @@ describe("meterRows", () => {
     ]);
   });
 });
+
+describe("npcRelationSummary", () => {
+  it("uses explicit relationship labels without hardcoding NPC names", () => {
+    expect(npcRelationSummary(npcRecord({ relationship: { status: "trusted ally" }, disposition: 92 }))).toMatchObject({
+      label: "Trusted Ally",
+      score: 92,
+      tone: "ally",
+      filledSegments: 9,
+    });
+  });
+
+  it("falls back to score thresholds when no label exists", () => {
+    expect(npcRelationSummary(npcRecord({ disposition: 22 }))).toMatchObject({
+      label: "Hostile",
+      score: 22,
+      tone: "hostile",
+      filledSegments: 2,
+    });
+    expect(npcRelationSummary(npcRecord({ relationship: { trust: 54 } }))).toMatchObject({
+      label: "Neutral",
+      score: 54,
+      tone: "neutral",
+      filledSegments: 5,
+    });
+  });
+});
+
+function npcRecord(fields: Record<string, JsonValue>): RecordView {
+  return { id: "npc", name: "Test NPC", fields };
+}
 
 function snapshotWithStats(stats: JsonValue): StorySnapshot {
   return {
