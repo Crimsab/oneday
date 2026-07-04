@@ -1,4 +1,5 @@
-import { HelpCircle, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Save, Settings } from "lucide-react";
+import type { ReactNode } from "react";
+import { Activity, Cloud, Gauge, HelpCircle, MapPin, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Save, Settings, Sun } from "lucide-react";
 import { deriveCondition, displayClock, weatherLabel } from "../format";
 import type { OverlayKind, StorySnapshot, SyncState } from "../types";
 
@@ -21,11 +22,11 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
     <header className="top-bar">
       <div className="brand-mark">OneDay</div>
       <div className="top-status" aria-label="Current story status">
-        <StatusCell label="Turn" value={snapshot ? String(snapshot.world.current_turn) : "-"} />
-        <StatusCell label="Location" value={snapshot?.world.current_location || "Select a story"} strong />
-        <StatusCell label="Time" value={snapshot ? clock.time : "-"} />
-        <StatusCell label="Weather" value={weather} />
-        <StatusCell label="Condition" value={condition} strong />
+        <StatusCell icon={<Gauge size={14} />} label="Turn" value={snapshot ? String(snapshot.world.current_turn) : "-"} />
+        <StatusCell icon={<MapPin size={14} />} label="Location" value={snapshot?.world.current_location || "Select a story"} strong />
+        <StatusCell icon={<Sun size={14} />} label="Time" value={snapshot ? clock.time : "-"} />
+        <StatusCell icon={<Cloud size={14} />} label="Weather" value={weather} />
+        <StatusCell icon={<Activity size={14} />} label="Condition" value={condition} strong />
         <div className={`status-cell sync-cell ${sync.toLowerCase()}`}>
           <span>Sync</span>
           <strong title={sync}>
@@ -70,9 +71,10 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
   );
 }
 
-function StatusCell({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
+function StatusCell({ icon, label, value, strong = false }: { icon?: ReactNode; label: string; value: string; strong?: boolean }) {
   return (
     <div className="status-cell">
+      {icon && <span className="status-icon" aria-hidden="true">{icon}</span>}
       <span>{label}</span>
       <strong className={strong ? "status-strong" : undefined} title={value}>
         {value}

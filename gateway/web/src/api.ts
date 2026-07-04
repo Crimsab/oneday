@@ -17,6 +17,8 @@ import type {
   StoryCreateResponse,
   StorySnapshot,
   StorySummary,
+  VisualAssetsResponse,
+  VisualProfileUpdate,
 } from "./types";
 
 interface ErrorPayload {
@@ -71,6 +73,18 @@ export function createStory(envelope: StoryCreateEnvelope): Promise<StoryCreateR
 
 export function getSnapshot(storyId: string): Promise<StorySnapshot> {
   return request<StorySnapshot>(`/api/stories/${encodeURIComponent(storyId)}/snapshot`);
+}
+
+export function getVisualAssets(storyId: string): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-assets`);
+}
+
+export function updateVisualProfile(storyId: string, payload: VisualProfileUpdate): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-profile`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 export function getCommandDescriptors(): Promise<CommandDescriptor[]> {

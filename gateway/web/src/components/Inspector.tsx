@@ -16,10 +16,13 @@ import {
   valueToText,
 } from "../format";
 import type { JsonObject, JsonValue, ModuleTab, StorySnapshot } from "../types";
+import type { VisualCatalog } from "../visualAssets";
+import { characterAsset, readyAssetUrl } from "../visualAssets";
 
 interface InspectorProps {
   snapshot: StorySnapshot | null;
   selectedTab: ModuleTab;
+  visuals?: VisualCatalog;
   onRefresh: () => void;
   onOpenModule: () => void;
 }
@@ -27,6 +30,8 @@ interface InspectorProps {
 interface CardView {
   title: string;
   rows: Array<[string, string]>;
+  imageUrl?: string;
+  imageState?: string;
 }
 
 const stackedRowLabels = new Set([
@@ -40,7 +45,7 @@ const stackedRowLabels = new Set([
   "value",
 ]);
 
-export function Inspector({ snapshot, selectedTab, onRefresh, onOpenModule }: InspectorProps) {
+export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule }: InspectorProps) {
   const title = moduleTitle(selectedTab);
 
   return (
@@ -59,27 +64,27 @@ export function Inspector({ snapshot, selectedTab, onRefresh, onOpenModule }: In
         <div className="empty-copy inspector-empty">Select a story to inspect canonical state.</div>
       ) : (
         <div className="inspector-body">
-          <ModuleContent tab={selectedTab} snapshot={snapshot} />
+          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} />
         </div>
       )}
     </aside>
   );
 }
 
-export function ModuleContent({ tab, snapshot, expanded = false }: { tab: ModuleTab; snapshot: StorySnapshot; expanded?: boolean }) {
+export function ModuleContent({ tab, snapshot, visuals, expanded = false }: { tab: ModuleTab; snapshot: StorySnapshot; visuals?: VisualCatalog; expanded?: boolean }) {
   return (
     <>
-      {renderModule(tab, snapshot)}
+      {renderModule(tab, snapshot, visuals)}
       {expanded && <RawStateSection tab={tab} snapshot={snapshot} />}
     </>
   );
 }
 
-function renderModule(tab: ModuleTab, snapshot: StorySnapshot) {
+function renderModule(tab: ModuleTab, snapshot: StorySnapshot, visuals?: VisualCatalog) {
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
   if (tab === "craft") return <CraftModule snapshot={snapshot} />;
   if (tab === "stats") return <StatsModule snapshot={snapshot} />;
-  if (tab === "codex") return <CodexModule snapshot={snapshot} />;
+  if (tab === "codex") return <CodexModule snapshot={snapshot} visuals={visuals} />;
   if (tab === "fronts") return <FrontsModule snapshot={snapshot} />;
   if (tab === "investigations") return <InvestigationsModule snapshot={snapshot} />;
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
@@ -222,11 +227,11 @@ function StatsModule({ snapshot }: { snapshot: StorySnapshot }) {
   );
 }
 
-function CodexModule({ snapshot }: { snapshot: StorySnapshot }) {
+function CodexModule({ snapshot, visuals }: { snapshot: StorySnapshot; visuals?: VisualCatalog }) {
   return (
     <>
       <CardsSection title="Chapters" cards={chapterCards(snapshot)} emptyLabel="No chapters recorded." />
-      <CardsSection title="Characters" cards={npcCards(snapshot)} emptyLabel="No characters recorded." />
+      <CardsSection title="Characters" cards={npcCards(snapshot, visuals)} emptyLabel="No characters recorded." />
       <CardsSection title="Known Locations" cards={cardsFromValue(snapshot.world.known_locations, "Location")} emptyLabel="No known locations." />
       <CardsSection title="Global Events" cards={cardsFromValue(snapshot.world.global_events, "Event")} emptyLabel="No global events." />
     </>
@@ -310,6 +315,12 @@ function CardsSection({ title, cards, emptyLabel }: { title: string; cards: Card
         ) : (
           cards.map((card, index) => (
             <article className="inspector-card" key={`${title}-${card.title}-${index}`}>
+              {card.imageUrl && (
+                <div className="inspector-card-image">
+                  <img src={card.imageUrl} alt="" />
+                </div>
+              )}
+              {!card.imageUrl && card.imageState && <div className="inspector-card-image pending">{card.imageState}</div>}
               <h3 title={card.title}>{card.title}</h3>
               {card.rows.length > 0 && (
                 <div className="kv-list compact">
@@ -571,9 +582,11 @@ function chapterCards(snapshot: StorySnapshot): CardView[] {
   }));
 }
 
-function npcCards(snapshot: StorySnapshot): CardView[] {
+function npcCards(snapshot: StorySnapshot, visuals?: VisualCatalog): CardView[] {
   return snapshot.panels.npcs.slice(0, 12).map((npc) => ({
     title: npc.name,
+    imageUrl: readyAssetUrl(visuals ? characterAsset(visuals, npc) : null),
+    imageState: visuals ? characterAsset(visuals, npc)?.status : undefined,
     rows: [
       ...fieldRows(npc.fields)
         .filter(([key]) => !["Name", "Id"].includes(key) && !isPlayerHiddenField(key))

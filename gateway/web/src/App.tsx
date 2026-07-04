@@ -10,10 +10,12 @@ import {
   getModelSettings,
   getSnapshot,
   getStories,
+  getVisualAssets,
   loadSave,
   submitAction,
   submitMeta,
   updateModelSettings,
+  updateVisualProfile,
 } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
@@ -47,7 +49,10 @@ import type {
   StorySummary,
   SyncState,
   TurnStreamEvent,
+  VisualAssetsResponse,
+  VisualProfileUpdate,
 } from "./types";
+import { visualCatalog } from "./visualAssets";
 
 function App() {
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -75,6 +80,9 @@ function App() {
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsError, setModelSettingsError] = useState("");
   const [modelSaving, setModelSaving] = useState(false);
+  const [visualAssets, setVisualAssets] = useState<VisualAssetsResponse | null>(null);
+  const [visualAssetsError, setVisualAssetsError] = useState("");
+  const [visualProfileSaving, setVisualProfileSaving] = useState(false);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -116,6 +124,20 @@ function App() {
     }
   }, []);
 
+  const refreshVisualAssets = useCallback(async (nextStoryId = storyId) => {
+    if (!nextStoryId) {
+      setVisualAssets(null);
+      return;
+    }
+    try {
+      const nextAssets = await getVisualAssets(nextStoryId);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+    }
+  }, [storyId]);
+
   const loadSnapshot = useCallback(async (nextStoryId = storyId) => {
     if (!nextStoryId) return;
     setSync("Loading");
@@ -123,11 +145,12 @@ function App() {
       const nextSnapshot = await getSnapshot(nextStoryId);
       setSnapshot(nextSnapshot);
       setSync(paused ? "Paused" : "Live");
+      void refreshVisualAssets(nextStoryId);
     } catch (error) {
       setSync("Error");
       setNotice(errorMessage(error));
     }
-  }, [paused, storyId]);
+  }, [paused, refreshVisualAssets, storyId]);
 
   useEffect(() => {
     void refreshHealth();
@@ -152,6 +175,7 @@ function App() {
     source.addEventListener("open", () => setSync("Live"));
     source.addEventListener("snapshot", (event) => {
       setSnapshot(JSON.parse(event.data) as StorySnapshot);
+      void refreshVisualAssets(storyId);
       setSync("Live");
     });
     source.addEventListener("turn", (event) => {
@@ -179,7 +203,7 @@ function App() {
     });
     source.addEventListener("error", () => setSync("Reconnecting"));
     return () => source.close();
-  }, [paused, storyId]);
+  }, [paused, refreshVisualAssets, storyId]);
 
   const filteredStories = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -251,6 +275,8 @@ function App() {
   const selectStory = (nextStoryId: string) => {
     setStoryId(nextStoryId);
     setSnapshot(null);
+    setVisualAssets(null);
+    setVisualAssetsError("");
     setLiveTurnEvents([]);
     setNotice("");
   };
@@ -405,6 +431,7 @@ function App() {
       const response = await createStory(payload);
       setSnapshot(response.snapshot);
       setStoryId(response.snapshot.story.id);
+      void refreshVisualAssets(response.snapshot.story.id);
       setStories((items) => [response.snapshot.story, ...items.filter((story) => story.id !== response.snapshot.story.id)]);
       setSelectedTab("history");
       setOverlay(null);
@@ -590,6 +617,24 @@ function App() {
     }
   };
 
+  const saveVisualProfile = async (payload: VisualProfileUpdate) => {
+    if (!storyId) return;
+    setVisualProfileSaving(true);
+    setNotice("");
+    try {
+      const nextAssets = await updateVisualProfile(storyId, payload);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+      setNotice("Visual profile saved. New missing assets will use the updated prompt direction.");
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualProfileSaving(false);
+    }
+  };
+
   const toggleLeftRail = () => {
     setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
   };
@@ -612,6 +657,8 @@ function App() {
       ...items.filter((item) => item.text.trim().toLowerCase() !== clean.toLowerCase()),
     ].slice(0, 10));
   };
+
+  const visuals = useMemo(() => visualCatalog(visualAssets, snapshot), [snapshot, visualAssets]);
 
   return (
     <div
@@ -663,7 +710,7 @@ function App() {
                 <button type="button" onClick={clearTranscript}>Clear</button>
               </div>
             </div>
-            <StoryPath snapshot={snapshot} />
+            <StoryPath snapshot={snapshot} locationAsset={visuals.location} />
             <Transcript
               messages={snapshot?.messages ?? []}
               hiddenBeforeId={hiddenBeforeMessageId}
@@ -695,6 +742,7 @@ function App() {
           <Inspector
             snapshot={snapshot}
             selectedTab={selectedTab}
+            visuals={visuals}
             onRefresh={() => void loadSnapshot()}
             onOpenModule={() => setOverlay("module")}
           />
@@ -708,6 +756,11 @@ function App() {
         modelSettings={modelSettings}
         modelError={modelSettingsError}
         modelBusy={modelSaving}
+        visualProfile={visualAssets?.profile ?? null}
+        visualAssets={visualAssets?.assets ?? []}
+        visuals={visuals}
+        visualProfileError={visualAssetsError}
+        visualProfileBusy={visualProfileSaving}
         selectedTab={selectedTab}
         commandDescriptors={commandDescriptors}
         busy={sending}
@@ -715,6 +768,8 @@ function App() {
         onPreferencesChange={updatePreferences}
         onModelSettingsSave={(payload) => saveModelSettings(payload)}
         onModelSettingsReload={() => refreshModelSettings()}
+        onVisualProfileSave={(payload) => saveVisualProfile(payload)}
+        onVisualAssetsReload={() => refreshVisualAssets()}
         onCreateStory={(payload) => createBrowserStory(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
         onLoadSave={(save) => void loadManualSave(save)}

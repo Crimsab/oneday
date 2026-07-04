@@ -15,7 +15,11 @@ import type {
   SaveView,
   StoryCreateEnvelope,
   StorySnapshot,
+  VisualAsset,
+  VisualProfile,
+  VisualProfileUpdate,
 } from "../types";
+import type { VisualCatalog } from "../visualAssets";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -25,6 +29,11 @@ interface PanelDrawerProps {
   modelSettings: ModelSettings | null;
   modelError: string;
   modelBusy: boolean;
+  visualProfile: VisualProfile | null;
+  visualAssets: VisualAsset[];
+  visuals: VisualCatalog;
+  visualProfileError: string;
+  visualProfileBusy: boolean;
   selectedTab: ModuleTab;
   commandDescriptors: CommandDescriptor[];
   busy: boolean;
@@ -32,6 +41,8 @@ interface PanelDrawerProps {
   onPreferencesChange: (preferences: AppPreferences) => void;
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
+  onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
+  onVisualAssetsReload: () => Promise<void> | void;
   onCreateStory: (payload: StoryCreateEnvelope) => Promise<void> | void;
   onCreateSave: (name: string) => void;
   onLoadSave: (save: SaveView) => void;
@@ -48,6 +59,11 @@ export function PanelDrawer({
   modelSettings,
   modelError,
   modelBusy,
+  visualProfile,
+  visualAssets,
+  visuals,
+  visualProfileError,
+  visualProfileBusy,
   selectedTab,
   commandDescriptors,
   busy,
@@ -55,6 +71,8 @@ export function PanelDrawer({
   onPreferencesChange,
   onModelSettingsSave,
   onModelSettingsReload,
+  onVisualProfileSave,
+  onVisualAssetsReload,
   onCreateStory,
   onCreateSave,
   onLoadSave,
@@ -85,9 +103,15 @@ export function PanelDrawer({
             modelSettings={modelSettings}
             modelError={modelError}
             modelBusy={modelBusy}
+            visualProfile={visualProfile}
+            visualAssets={visualAssets}
+            visualProfileError={visualProfileError}
+            visualProfileBusy={visualProfileBusy}
             onPreferencesChange={onPreferencesChange}
             onModelSettingsSave={onModelSettingsSave}
             onModelSettingsReload={onModelSettingsReload}
+            onVisualProfileSave={onVisualProfileSave}
+            onVisualAssetsReload={onVisualAssetsReload}
           />
         )}
         {overlay === "saves" && (
@@ -103,7 +127,7 @@ export function PanelDrawer({
         )}
         {overlay === "new-story" && <NewStoryContent busy={busy} onCreateStory={onCreateStory} />}
         {overlay === "meta" && <MetaContent metaResult={metaResult} />}
-        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={selectedTab} />}
+        {overlay === "module" && <ModuleOverlayContent snapshot={snapshot} selectedTab={selectedTab} visuals={visuals} />}
       </section>
     </div>
   );
@@ -139,18 +163,30 @@ function OptionsContent({
   modelSettings,
   modelError,
   modelBusy,
+  visualProfile,
+  visualAssets,
+  visualProfileError,
+  visualProfileBusy,
   onPreferencesChange,
   onModelSettingsSave,
   onModelSettingsReload,
+  onVisualProfileSave,
+  onVisualAssetsReload,
 }: {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
   modelSettings: ModelSettings | null;
   modelError: string;
   modelBusy: boolean;
+  visualProfile: VisualProfile | null;
+  visualAssets: VisualAsset[];
+  visualProfileError: string;
+  visualProfileBusy: boolean;
   onPreferencesChange: (preferences: AppPreferences) => void;
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
+  onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
+  onVisualAssetsReload: () => Promise<void> | void;
 }) {
   const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => {
     onPreferencesChange({ ...preferences, [key]: value });
@@ -216,8 +252,120 @@ function OptionsContent({
         </label>
       </div>
       <ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} />
+      <VisualDirectionSettings
+        profile={visualProfile}
+        assets={visualAssets}
+        error={visualProfileError}
+        busy={visualProfileBusy}
+        onSave={onVisualProfileSave}
+        onReload={onVisualAssetsReload}
+      />
     </div>
   );
+}
+
+function VisualDirectionSettings({
+  profile,
+  assets,
+  error,
+  busy,
+  onSave,
+  onReload,
+}: {
+  profile: VisualProfile | null;
+  assets: VisualAsset[];
+  error: string;
+  busy: boolean;
+  onSave: (payload: VisualProfileUpdate) => Promise<void>;
+  onReload: () => Promise<void> | void;
+}) {
+  const [draft, setDraft] = useState<VisualProfileUpdate>(() => profileDraft(profile));
+  const [saveError, setSaveError] = useState("");
+  const readyCount = assets.filter((asset) => asset.status === "ready").length;
+  const pendingCount = assets.filter((asset) => asset.status !== "ready").length;
+
+  useEffect(() => {
+    setDraft(profileDraft(profile));
+    setSaveError("");
+  }, [profile]);
+
+  const update = <K extends keyof VisualProfileUpdate>(key: K, value: VisualProfileUpdate[K]) => {
+    setSaveError("");
+    setDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const save = async () => {
+    setSaveError("");
+    try {
+      await onSave(draft);
+    } catch (saveFailure) {
+      setSaveError(saveFailure instanceof Error ? saveFailure.message : String(saveFailure));
+    }
+  };
+
+  return (
+    <div className="visual-direction">
+      <div className="model-routing-head">
+        <span>Visual Direction</span>
+        <strong>
+          {readyCount} ready / {pendingCount} pending
+        </strong>
+      </div>
+      {!profile ? (
+        <p className="model-error">{error || "Select a story to edit visual prompts."}</p>
+      ) : (
+        <>
+          <div className="settings-grid visual-settings">
+            <label>
+              <span>World/location prompt</span>
+              <textarea value={draft.world_style_prompt} onChange={(event) => update("world_style_prompt", event.target.value)} rows={4} />
+            </label>
+            <label>
+              <span>Character prompt</span>
+              <textarea value={draft.character_style_prompt} onChange={(event) => update("character_style_prompt", event.target.value)} rows={4} />
+            </label>
+            <label>
+              <span>Palette</span>
+              <input value={draft.palette} onChange={(event) => update("palette", event.target.value)} />
+            </label>
+            <label>
+              <span>Negative prompt</span>
+              <input value={draft.negative_prompt} onChange={(event) => update("negative_prompt", event.target.value)} />
+            </label>
+          </div>
+          <div className="visual-asset-list">
+            {assets.slice(0, 8).map((asset) => (
+              <div className={`visual-asset-row ${asset.status}`} key={asset.id} title={asset.prompt}>
+                <span>{asset.kind}</span>
+                <strong>{asset.subject}</strong>
+                <small>{asset.status}</small>
+              </div>
+            ))}
+          </div>
+          <div className="model-actions">
+            <button type="button" onClick={() => void onReload()} disabled={busy}>
+              Reload assets
+            </button>
+            <button type="button" className="primary-action" onClick={() => void save()} disabled={busy}>
+              {busy ? "Saving..." : "Save visual prompts"}
+            </button>
+          </div>
+          {error && <p className="model-error">{error}</p>}
+          {saveError && <p className="model-error">{saveError}</p>}
+          <p className="model-note">Missing images become pending asset requests. Ready images are served without blocking story turns.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+function profileDraft(profile: VisualProfile | null): VisualProfileUpdate {
+  return {
+    world_style_prompt: profile?.world_style_prompt ?? "",
+    character_style_prompt: profile?.character_style_prompt ?? "",
+    negative_prompt: profile?.negative_prompt ?? "",
+    palette: profile?.palette ?? "",
+  };
 }
 
 function ModelRoutingSettings({
@@ -563,7 +711,7 @@ function MetaContent({ metaResult }: { metaResult: MetaResult | null }) {
   );
 }
 
-function ModuleOverlayContent({ snapshot, selectedTab }: { snapshot: StorySnapshot | null; selectedTab: ModuleTab }) {
+function ModuleOverlayContent({ snapshot, selectedTab, visuals }: { snapshot: StorySnapshot | null; selectedTab: ModuleTab; visuals: VisualCatalog }) {
   if (!snapshot) {
     return (
       <div className="overlay-content">
@@ -573,7 +721,7 @@ function ModuleOverlayContent({ snapshot, selectedTab }: { snapshot: StorySnapsh
   }
   return (
     <div className="overlay-content module-content">
-      <ModuleContent tab={selectedTab} snapshot={snapshot} expanded />
+      <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} expanded />
     </div>
   );
 }
