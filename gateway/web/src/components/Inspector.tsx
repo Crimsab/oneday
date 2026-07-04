@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, ChevronDown, Clock3, Hash, MapPin, Maximize2, RefreshCw, Search, Sun, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import {
@@ -26,9 +26,11 @@ interface InspectorProps {
   visuals?: VisualCatalog;
   onRefresh: () => void;
   onOpenModule: () => void;
+  onOpenNpcCodex: (npcId: string) => void;
 }
 
 interface CardView {
+  id?: string;
   title: string;
   rows: Array<[string, string]>;
   imageUrl?: string;
@@ -46,7 +48,7 @@ const stackedRowLabels = new Set([
   "value",
 ]);
 
-export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule }: InspectorProps) {
+export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule, onOpenNpcCodex }: InspectorProps) {
   const title = moduleTitle(selectedTab);
 
   return (
@@ -67,32 +69,52 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
         <div className="empty-copy inspector-empty">Select a story to inspect canonical state.</div>
       ) : (
         <div className="inspector-body">
-          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} />
+          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} />
         </div>
       )}
     </aside>
   );
 }
 
-export function ModuleContent({ tab, snapshot, visuals, expanded = false }: { tab: ModuleTab; snapshot: StorySnapshot; visuals?: VisualCatalog; expanded?: boolean }) {
+export function ModuleContent({
+  tab,
+  snapshot,
+  visuals,
+  expanded = false,
+  focusCardId,
+  onOpenNpcCodex,
+}: {
+  tab: ModuleTab;
+  snapshot: StorySnapshot;
+  visuals?: VisualCatalog;
+  expanded?: boolean;
+  focusCardId?: string | null;
+  onOpenNpcCodex?: (npcId: string) => void;
+}) {
   return (
     <>
-      {renderModule(tab, snapshot, visuals)}
+      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex)}
       {expanded && <RawStateSection tab={tab} snapshot={snapshot} />}
     </>
   );
 }
 
-function renderModule(tab: ModuleTab, snapshot: StorySnapshot, visuals?: VisualCatalog) {
+function renderModule(
+  tab: ModuleTab,
+  snapshot: StorySnapshot,
+  visuals?: VisualCatalog,
+  focusCardId?: string | null,
+  onOpenNpcCodex?: (npcId: string) => void,
+) {
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
   if (tab === "craft") return <CraftModule snapshot={snapshot} />;
   if (tab === "stats") return <StatsModule snapshot={snapshot} />;
-  if (tab === "codex") return <CodexModule snapshot={snapshot} visuals={visuals} />;
+  if (tab === "codex") return <CodexModule snapshot={snapshot} visuals={visuals} focusCardId={focusCardId} />;
   if (tab === "fronts") return <FrontsModule snapshot={snapshot} />;
   if (tab === "investigations") return <InvestigationsModule snapshot={snapshot} />;
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
-  return <WorldStateModule snapshot={snapshot} visuals={visuals} />;
+  return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} />;
 }
 
 function RawStateSection({ tab, snapshot }: { tab: ModuleTab; snapshot: StorySnapshot }) {
@@ -183,7 +205,15 @@ function HistoryModule({ snapshot, visuals }: { snapshot: StorySnapshot; visuals
   return <WorldStateModule snapshot={snapshot} visuals={visuals} />;
 }
 
-function WorldStateModule({ snapshot, visuals }: { snapshot: StorySnapshot; visuals?: VisualCatalog }) {
+function WorldStateModule({
+  snapshot,
+  visuals,
+  onOpenNpcCodex,
+}: {
+  snapshot: StorySnapshot;
+  visuals?: VisualCatalog;
+  onOpenNpcCodex?: (npcId: string) => void;
+}) {
   const clock = displayClock(snapshot.world.current_turn);
   const condition = deriveCondition(snapshot);
   const conditionNote = conditionDetail(snapshot);
@@ -252,7 +282,7 @@ function WorldStateModule({ snapshot, visuals }: { snapshot: StorySnapshot; visu
             <span>Characters</span>
             <small>{npcs.length}</small>
           </header>
-          <NpcList npcs={npcs} visuals={visuals} />
+          <NpcList npcs={npcs} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} />
         </section>
       )}
 
@@ -316,12 +346,12 @@ function HeartbeatLine({ condition }: { condition: string }) {
   );
 }
 
-function NpcCard({ npc, asset }: { npc: RecordView; asset: VisualAsset | null }) {
+function NpcCard({ npc, asset, onOpenNpcCodex }: { npc: RecordView; asset: VisualAsset | null; onOpenNpcCodex?: (npcId: string) => void }) {
   const relation = npcRelationSummary(npc);
   const role = npcRole(npc);
   const imageUrl = readyAssetUrl(asset);
-  return (
-    <article className="ws-npc" data-relation-tone={relation.tone} title={`${npc.name}: ${relation.label} ${relation.score}/100`}>
+  const content = (
+    <>
       <div className={`ws-npc-img ${imageUrl ? "ready" : "empty"}`}>
         {imageUrl ? <img src={imageUrl} alt="" /> : <Users size={16} />}
       </div>
@@ -340,11 +370,39 @@ function NpcCard({ npc, asset }: { npc: RecordView; asset: VisualAsset | null })
           <em>{relation.score}/100</em>
         </div>
       </div>
-    </article>
+    </>
+  );
+  const title = `${npc.name}: ${relation.label} ${relation.score}/100`;
+  if (!onOpenNpcCodex) {
+    return (
+      <article className="ws-npc" data-relation-tone={relation.tone} title={title}>
+        {content}
+      </article>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="ws-npc"
+      data-relation-tone={relation.tone}
+      title={`${title}. Open in Codex.`}
+      aria-label={`Open ${npc.name} in Codex`}
+      onClick={() => onOpenNpcCodex(npc.id)}
+    >
+      {content}
+    </button>
   );
 }
 
-function NpcList({ npcs, visuals }: { npcs: RecordView[]; visuals?: VisualCatalog }) {
+function NpcList({
+  npcs,
+  visuals,
+  onOpenNpcCodex,
+}: {
+  npcs: RecordView[];
+  visuals?: VisualCatalog;
+  onOpenNpcCodex?: (npcId: string) => void;
+}) {
   const pageSize = 3;
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
@@ -381,7 +439,9 @@ function NpcList({ npcs, visuals }: { npcs: RecordView[]; visuals?: VisualCatalo
         {visibleNpcs.length === 0 ? (
           <div className="empty-copy small">No matching characters.</div>
         ) : (
-          visibleNpcs.map((npc) => <NpcCard key={npc.id} npc={npc} asset={visuals ? characterAsset(visuals, npc) : null} />)
+          visibleNpcs.map((npc) => (
+            <NpcCard key={npc.id} npc={npc} asset={visuals ? characterAsset(visuals, npc) : null} onOpenNpcCodex={onOpenNpcCodex} />
+          ))
         )}
       </div>
       {showPager && (
@@ -565,11 +625,11 @@ function StatsModule({ snapshot }: { snapshot: StorySnapshot }) {
   );
 }
 
-function CodexModule({ snapshot, visuals }: { snapshot: StorySnapshot; visuals?: VisualCatalog }) {
+function CodexModule({ snapshot, visuals, focusCardId }: { snapshot: StorySnapshot; visuals?: VisualCatalog; focusCardId?: string | null }) {
   return (
     <>
       <CardsSection title="Chapters" cards={chapterCards(snapshot)} emptyLabel="No chapters recorded." />
-      <CardsSection title="Characters" cards={npcCards(snapshot, visuals)} emptyLabel="No characters recorded." />
+      <CardsSection title="Characters" cards={npcCards(snapshot, visuals)} emptyLabel="No characters recorded." focusCardId={focusCardId} />
       <CardsSection title="Known Locations" cards={cardsFromValue(snapshot.world.known_locations, "Location")} emptyLabel="No known locations." />
       <CardsSection title="Global Events" cards={cardsFromValue(snapshot.world.global_events, "Event")} emptyLabel="No global events." />
     </>
@@ -640,7 +700,15 @@ function InspectorSection({ title, rows }: { title: string; rows: Array<[string,
   );
 }
 
-function CardsSection({ title, cards, emptyLabel }: { title: string; cards: CardView[]; emptyLabel: string }) {
+function CardsSection({ title, cards, emptyLabel, focusCardId }: { title: string; cards: CardView[]; emptyLabel: string; focusCardId?: string | null }) {
+  const focusedCardRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!focusCardId || !focusedCardRef.current) return;
+    focusedCardRef.current.scrollIntoView({ block: "center", behavior: "smooth" });
+    focusedCardRef.current.focus({ preventScroll: true });
+  }, [focusCardId, cards.length]);
+
   return (
     <details className="inspector-section card-section" data-section={sectionSlug(title)} open>
       <summary>
@@ -651,27 +719,36 @@ function CardsSection({ title, cards, emptyLabel }: { title: string; cards: Card
         {cards.length === 0 ? (
           <div className="empty-copy small">{emptyLabel}</div>
         ) : (
-          cards.map((card, index) => (
-            <article className="inspector-card" key={`${title}-${card.title}-${index}`}>
-              {card.imageUrl && (
-                <div className="inspector-card-image">
-                  <img src={card.imageUrl} alt="" />
-                </div>
-              )}
-              {!card.imageUrl && card.imageState && <div className="inspector-card-image pending">{card.imageState}</div>}
-              <h3 title={card.title}>{card.title}</h3>
-              {card.rows.length > 0 && (
-                <div className="kv-list compact">
-                  {card.rows.map(([label, value]) => (
-                    <div className={inspectorRowClass(label, value)} key={`${card.title}-${label}`}>
-                      <span>{label}</span>
-                      <strong title={value}>{value}</strong>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </article>
-          ))
+          cards.map((card, index) => {
+            const isFocused = Boolean(focusCardId && card.id === focusCardId);
+            return (
+              <article
+                className="inspector-card"
+                data-focused={isFocused ? "true" : undefined}
+                key={`${title}-${card.title}-${index}`}
+                ref={isFocused ? (node) => { focusedCardRef.current = node; } : undefined}
+                tabIndex={isFocused ? -1 : undefined}
+              >
+                {card.imageUrl && (
+                  <div className="inspector-card-image">
+                    <img src={card.imageUrl} alt="" />
+                  </div>
+                )}
+                {!card.imageUrl && card.imageState && <div className="inspector-card-image pending">{card.imageState}</div>}
+                <h3 title={card.title}>{card.title}</h3>
+                {card.rows.length > 0 && (
+                  <div className="kv-list compact">
+                    {card.rows.map(([label, value]) => (
+                      <div className={inspectorRowClass(label, value)} key={`${card.title}-${label}`}>
+                        <span>{label}</span>
+                        <strong title={value}>{value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </article>
+            );
+          })
         )}
       </div>
     </details>
@@ -877,6 +954,7 @@ function chapterCards(snapshot: StorySnapshot): CardView[] {
 
 function npcCards(snapshot: StorySnapshot, visuals?: VisualCatalog): CardView[] {
   return snapshot.panels.npcs.slice(0, 12).map((npc) => ({
+    id: npc.id,
     title: npc.name,
     imageUrl: readyAssetUrl(visuals ? characterAsset(visuals, npc) : null),
     imageState: visuals ? characterAsset(visuals, npc)?.status : undefined,
