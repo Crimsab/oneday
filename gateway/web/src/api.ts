@@ -19,6 +19,8 @@ import type {
   StorySnapshot,
   StorySummary,
   VisualAssetsResponse,
+  VisualAssetPromptUpdate,
+  VisualAssetVersion,
   VisualProfileUpdate,
 } from "./types";
 
@@ -94,6 +96,34 @@ export function generateVisualAssets(storyId: string, payload: GenerateVisualAss
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export function getVisualAssetVersions(storyId: string, assetId: string): Promise<VisualAssetVersion[]> {
+  return request<VisualAssetVersion[]>(
+    `/api/stories/${encodeURIComponent(storyId)}/visual-assets/${encodeURIComponent(assetId)}/versions`,
+  );
+}
+
+export function updateVisualAssetPrompt(
+  storyId: string,
+  assetId: string,
+  payload: VisualAssetPromptUpdate,
+): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(
+    `/api/stories/${encodeURIComponent(storyId)}/visual-assets/${encodeURIComponent(assetId)}`,
+    {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function selectVisualAssetVersion(storyId: string, assetId: string, versionId: number): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(
+    `/api/stories/${encodeURIComponent(storyId)}/visual-assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(String(versionId))}/select`,
+    { method: "POST" },
+  );
 }
 
 export function getCommandDescriptors(): Promise<CommandDescriptor[]> {

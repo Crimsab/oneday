@@ -29,6 +29,18 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
         .route(
+            "/api/stories/:story_id/visual-assets/:asset_id",
+            put(update_visual_asset_prompt),
+        )
+        .route(
+            "/api/stories/:story_id/visual-assets/:asset_id/versions",
+            get(visual_asset_versions),
+        )
+        .route(
+            "/api/stories/:story_id/visual-assets/:asset_id/versions/:version_id/select",
+            post(select_visual_asset_version),
+        )
+        .route(
             "/api/stories/:story_id/visual-assets/generate",
             post(generate_visual_assets),
         )
@@ -135,6 +147,34 @@ async fn visual_assets(
     Path(story_id): Path<String>,
 ) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
     Ok(Json(assets::visual_assets(&state.pool, &story_id).await?))
+}
+
+async fn visual_asset_versions(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, asset_id)): Path<(String, String)>,
+) -> Result<Json<Vec<assets::VisualAssetVersion>>, ApiError> {
+    Ok(Json(
+        assets::visual_asset_versions(&state.pool, &story_id, &asset_id).await?,
+    ))
+}
+
+async fn update_visual_asset_prompt(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, asset_id)): Path<(String, String)>,
+    Json(payload): Json<assets::VisualAssetPromptUpdate>,
+) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
+    Ok(Json(
+        assets::update_asset_prompt(&state.pool, &story_id, &asset_id, payload).await?,
+    ))
+}
+
+async fn select_visual_asset_version(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, asset_id, version_id)): Path<(String, String, i64)>,
+) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
+    Ok(Json(
+        assets::select_asset_version(&state.pool, &story_id, &asset_id, version_id).await?,
+    ))
 }
 
 async fn update_visual_profile(
@@ -400,8 +440,10 @@ impl From<anyhow::Error> for ApiError {
             || message.contains("turn idempotency key belongs to a different request")
             || message.contains("is required")
             || message.contains("belongs to story");
-        let is_not_found =
-            message.contains("no rows returned") || message.contains("no rows in result set");
+        let is_not_found = message.contains("no rows returned")
+            || message.contains("no rows in result set")
+            || message.contains("visual asset not found")
+            || message.contains("visual asset version not found");
         let status = if is_bad_request {
             StatusCode::BAD_REQUEST
         } else if is_conflict {

@@ -27,6 +27,7 @@ interface InspectorProps {
   onRefresh: () => void;
   onOpenModule: () => void;
   onOpenNpcCodex: (npcId: string) => void;
+  onOpenVisualAsset?: (assetId: string) => void;
 }
 
 interface CardView {
@@ -48,7 +49,7 @@ const stackedRowLabels = new Set([
   "value",
 ]);
 
-export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule, onOpenNpcCodex }: InspectorProps) {
+export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule, onOpenNpcCodex, onOpenVisualAsset }: InspectorProps) {
   const title = moduleTitle(selectedTab);
 
   return (
@@ -69,7 +70,7 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
         <div className="empty-copy inspector-empty">Select a story to inspect canonical state.</div>
       ) : (
         <div className="inspector-body">
-          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} />
+          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />
         </div>
       )}
     </aside>
@@ -83,6 +84,7 @@ export function ModuleContent({
   expanded = false,
   focusCardId,
   onOpenNpcCodex,
+  onOpenVisualAsset,
 }: {
   tab: ModuleTab;
   snapshot: StorySnapshot;
@@ -90,10 +92,11 @@ export function ModuleContent({
   expanded?: boolean;
   focusCardId?: string | null;
   onOpenNpcCodex?: (npcId: string) => void;
+  onOpenVisualAsset?: (assetId: string) => void;
 }) {
   return (
     <>
-      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex)}
+      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex, onOpenVisualAsset)}
       {expanded && <RawStateSection tab={tab} snapshot={snapshot} />}
     </>
   );
@@ -105,6 +108,7 @@ function renderModule(
   visuals?: VisualCatalog,
   focusCardId?: string | null,
   onOpenNpcCodex?: (npcId: string) => void,
+  onOpenVisualAsset?: (assetId: string) => void,
 ) {
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
   if (tab === "craft") return <CraftModule snapshot={snapshot} />;
@@ -114,7 +118,7 @@ function renderModule(
   if (tab === "investigations") return <InvestigationsModule snapshot={snapshot} />;
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
-  return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} />;
+  return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
 }
 
 function RawStateSection({ tab, snapshot }: { tab: ModuleTab; snapshot: StorySnapshot }) {
@@ -209,10 +213,12 @@ function WorldStateModule({
   snapshot,
   visuals,
   onOpenNpcCodex,
+  onOpenVisualAsset,
 }: {
   snapshot: StorySnapshot;
   visuals?: VisualCatalog;
   onOpenNpcCodex?: (npcId: string) => void;
+  onOpenVisualAsset?: (assetId: string) => void;
 }) {
   const clock = displayClock(snapshot.world.current_turn);
   const condition = deriveCondition(snapshot);
@@ -251,7 +257,11 @@ function WorldStateModule({
             </div>
           </div>
           <div className={`ws-thumb ${locationThumb ? "ready" : "empty"}`}>
-            {locationThumb ? (
+            {locationThumb && visuals?.location && onOpenVisualAsset ? (
+              <button type="button" onClick={() => onOpenVisualAsset(visuals.location!.id)} title={`Edit image prompt for ${visuals.location.subject}`}>
+                <img src={locationThumb} alt="" />
+              </button>
+            ) : locationThumb ? (
               <img src={locationThumb} alt="" />
             ) : (
               <span>{locationState ? `Image ${locationState}` : "No image"}</span>
@@ -290,7 +300,7 @@ function WorldStateModule({
             <span>Factions & NPCs</span>
             <small>{npcs.length}</small>
           </header>
-          <NpcList npcs={npcs} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} />
+          <NpcList npcs={npcs} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />
         </section>
       )}
 
@@ -358,14 +368,39 @@ function HeartbeatLine({ condition }: { condition: string }) {
   );
 }
 
-function NpcCard({ npc, asset, onOpenNpcCodex }: { npc: RecordView; asset: VisualAsset | null; onOpenNpcCodex?: (npcId: string) => void }) {
+function NpcCard({
+  npc,
+  asset,
+  onOpenNpcCodex,
+  onOpenVisualAsset,
+}: {
+  npc: RecordView;
+  asset: VisualAsset | null;
+  onOpenNpcCodex?: (npcId: string) => void;
+  onOpenVisualAsset?: (assetId: string) => void;
+}) {
   const relation = npcRelationSummary(npc);
   const role = npcRole(npc);
   const imageUrl = readyAssetUrl(asset);
   const content = (
     <>
       <div className={`ws-npc-img ${imageUrl ? "ready" : "empty"}`}>
-        {imageUrl ? <img src={imageUrl} alt="" /> : <Users size={16} />}
+        {imageUrl && asset && onOpenVisualAsset ? (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpenVisualAsset(asset.id);
+            }}
+            title={`Edit image prompt for ${asset.subject}`}
+          >
+            <img src={imageUrl} alt="" />
+          </button>
+        ) : imageUrl ? (
+          <img src={imageUrl} alt="" />
+        ) : (
+          <Users size={16} />
+        )}
       </div>
       <div className="ws-npc-body">
         <div className="ws-npc-title">
@@ -410,10 +445,12 @@ function NpcList({
   npcs,
   visuals,
   onOpenNpcCodex,
+  onOpenVisualAsset,
 }: {
   npcs: RecordView[];
   visuals?: VisualCatalog;
   onOpenNpcCodex?: (npcId: string) => void;
+  onOpenVisualAsset?: (assetId: string) => void;
 }) {
   const pageSize = 3;
   const [query, setQuery] = useState("");
@@ -452,7 +489,13 @@ function NpcList({
           <div className="empty-copy small">No matching characters.</div>
         ) : (
           visibleNpcs.map((npc) => (
-            <NpcCard key={npc.id} npc={npc} asset={visuals ? characterAsset(visuals, npc) : null} onOpenNpcCodex={onOpenNpcCodex} />
+            <NpcCard
+              key={npc.id}
+              npc={npc}
+              asset={visuals ? characterAsset(visuals, npc) : null}
+              onOpenNpcCodex={onOpenNpcCodex}
+              onOpenVisualAsset={onOpenVisualAsset}
+            />
           ))
         )}
       </div>
