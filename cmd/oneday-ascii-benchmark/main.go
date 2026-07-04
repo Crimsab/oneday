@@ -163,17 +163,6 @@ type asciiClient struct {
 }
 
 func main() {
-	defaultModels := strings.Join([]string{
-		"google/gemma-4-31b-it:free",
-		"google/gemma-4-26b-a4b-it:free",
-		"x-ai/grok-4.1-fast",
-		"google/gemini-2.5-flash-lite",
-		"z-ai/glm-4.5-air:free",
-		"minimax/minimax-m2.5:free",
-		"openai/gpt-oss-120b:free",
-		"nvidia/nemotron-3-super-120b-a12b:free",
-	}, ",")
-
 	baseURLFlag := flag.String("base-url", firstNonEmpty(
 		os.Getenv("ONEDAY_ASCII_BENCH_BASE_URL"),
 		os.Getenv("OPENAI_BASE_URL"),
@@ -184,7 +173,7 @@ func main() {
 		os.Getenv("OPENROUTER_API_KEY"),
 		os.Getenv("OPENAI_API_KEY"),
 	), "API key for the benchmark endpoint")
-	modelsFlag := flag.String("models", firstNonEmpty(os.Getenv("ONEDAY_ASCII_BENCH_MODELS"), defaultModels), "Comma-separated model list")
+	modelsFlag := flag.String("models", os.Getenv("ONEDAY_ASCII_BENCH_MODELS"), "Comma-separated model list; required unless ONEDAY_ASCII_BENCH_MODELS is set")
 	outputDirFlag := flag.String("output-dir", firstNonEmpty(os.Getenv("ONEDAY_ASCII_BENCH_OUTPUT_DIR"), "docs/benchmarks/runs"), "Directory for JSON and Markdown reports")
 	timeoutFlag := flag.Duration("timeout", 90*time.Second, "Per-request timeout")
 	modeFlag := flag.String("mode", string(asciiModeJSONSchema), "Benchmark mode: prompt, json_object, json_schema, all")

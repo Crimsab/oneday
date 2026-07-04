@@ -56,6 +56,7 @@ type ModelRoutingActive struct {
 	RepairModel          string   `json:"repair_model"`
 	RepairFallbackModels []string `json:"repair_fallback_models"`
 	ImageModel           string   `json:"image_model"`
+	ASCIIModel           string   `json:"ascii_model"`
 	EmbeddingProvider    string   `json:"embedding_provider"`
 	EmbeddingModel       string   `json:"embedding_model"`
 	CodexReasoning       string   `json:"codex_reasoning"`
@@ -70,6 +71,7 @@ type ModelRoutingSettings struct {
 	UtilityModels      []string               `json:"utility_models"`
 	RepairModels       []string               `json:"repair_models"`
 	ImageModels        []string               `json:"image_models"`
+	ASCIIModels        []string               `json:"ascii_models"`
 	EmbeddingProviders []string               `json:"embedding_providers"`
 	Active             ModelRoutingActive     `json:"active"`
 	TTSStatus          string                 `json:"tts_status"`
@@ -90,6 +92,7 @@ type ModelRoutingUpdate struct {
 	RepairModel          *string               `json:"repair_model,omitempty"`
 	RepairFallbackModels *[]string             `json:"repair_fallback_models,omitempty"`
 	ImageModel           *string               `json:"image_model,omitempty"`
+	ASCIIModel           *string               `json:"ascii_model,omitempty"`
 	EmbeddingProvider    *string               `json:"embedding_provider,omitempty"`
 	EmbeddingModel       *string               `json:"embedding_model,omitempty"`
 }
@@ -226,7 +229,8 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 		NarrativeModels:    uniqueNonEmpty(providerModel(cfg, "codex"), providerModel(cfg, "litellm"), providerModel(cfg, "openrouter"), activeNarrative),
 		UtilityModels:      uniqueNonEmpty(cfg.AI.Generation.UtilityModel, activeNarrative, providerModel(cfg, "litellm"), providerModel(cfg, "openrouter")),
 		RepairModels:       uniqueNonEmpty(append([]string{cfg.AI.Generation.RepairModel, cfg.AI.Generation.UtilityModel}, cfg.AI.Generation.RepairFallbackModels...)...),
-		ImageModels:        uniqueNonEmpty(cfg.AI.ASCIIArt.Model, activeNarrative),
+		ImageModels:        uniqueNonEmpty(cfg.AI.ImageGeneration.Model),
+		ASCIIModels:        uniqueNonEmpty(cfg.AI.ASCIIArt.Model, activeNarrative),
 		EmbeddingProviders: []string{"auto", "litellm", "openrouter", "local"},
 		Active: ModelRoutingActive{
 			Provider:             activeProvider,
@@ -234,7 +238,8 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 			UtilityModel:         cfg.AI.Generation.UtilityModel,
 			RepairModel:          firstNonEmpty(cfg.AI.Generation.RepairModel, firstString(repairModels)),
 			RepairFallbackModels: append([]string(nil), cfg.AI.Generation.RepairFallbackModels...),
-			ImageModel:           cfg.AI.ASCIIArt.Model,
+			ImageModel:           cfg.AI.ImageGeneration.Model,
+			ASCIIModel:           cfg.AI.ASCIIArt.Model,
 			EmbeddingProvider:    firstNonEmpty(cfg.AI.Embedding.Provider, "auto"),
 			EmbeddingModel:       cfg.AI.Embedding.Model,
 			CodexReasoning:       firstNonEmpty(cfg.AI.Codex.Reasoning, "off"),
@@ -296,7 +301,10 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 		cfg.AI.Generation.RepairFallbackModels = cleanStringSlice(*update.RepairFallbackModels)
 	}
 	if update.ImageModel != nil {
-		cfg.AI.ASCIIArt.Model = cleanString(*update.ImageModel)
+		cfg.AI.ImageGeneration.Model = cleanString(*update.ImageModel)
+	}
+	if update.ASCIIModel != nil {
+		cfg.AI.ASCIIArt.Model = cleanString(*update.ASCIIModel)
 	}
 	if update.EmbeddingProvider != nil {
 		cfg.AI.Embedding.Provider = cleanString(*update.EmbeddingProvider)
@@ -371,6 +379,7 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 			return setStringSlice(root, cfg.AI.Generation.RepairFallbackModels, "ai", "generation", "repair_fallback_models")
 		},
 		func() error { return setString(root, cfg.AI.ASCIIArt.Model, "ai", "ascii_art", "model") },
+		func() error { return setString(root, cfg.AI.ImageGeneration.Model, "ai", "image_generation", "model") },
 		func() error { return setString(root, cfg.AI.Embedding.Provider, "ai", "embedding", "provider") },
 		func() error { return setString(root, cfg.AI.Embedding.Model, "ai", "embedding", "model") },
 	} {

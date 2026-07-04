@@ -125,7 +125,10 @@ func (o *OpenAICompat) Name() string {
 // Complete sends a chat completion request to the OpenAI-compatible endpoint.
 func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Response, error) {
 	start := time.Now()
-	body := o.buildChatRequest(ctx, req, false)
+	body, err := o.buildChatRequest(ctx, req, false)
+	if err != nil {
+		return ai.Response{}, err
+	}
 	content, resolvedModel, usage, err := o.completeOnce(ctx, body)
 	if err != nil {
 		httpErr, ok := err.(*openAICompatHTTPError)
@@ -216,9 +219,9 @@ func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.E
 	if err := o.requireAPIKey(); err != nil {
 		return ai.EmbeddingResponse{}, err
 	}
-	model := req.Model
-	if model == "" {
-		model = o.defaultModel
+	model, err := o.resolveModel(req.Model)
+	if err != nil {
+		return ai.EmbeddingResponse{}, err
 	}
 
 	body := openAIEmbeddingRequest{
@@ -275,7 +278,10 @@ func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.E
 // Stream implements ai.StreamProvider using Server-Sent Events (SSE).
 // It calls /v1/chat/completions with stream:true and parses the event stream.
 func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
-	body := o.buildChatRequest(ctx, req, true)
+	body, err := o.buildChatRequest(ctx, req, true)
+	if err != nil {
+		return nil, err
+	}
 	resp, err := o.openStream(ctx, body)
 	if err != nil {
 		httpErr, ok := err.(*openAICompatHTTPError)
@@ -345,10 +351,10 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 	return ch, nil
 }
 
-func (o *OpenAICompat) buildChatRequest(ctx context.Context, req ai.Request, stream bool) openAIChatRequest {
-	model := req.Model
-	if model == "" {
-		model = o.defaultModel
+func (o *OpenAICompat) buildChatRequest(ctx context.Context, req ai.Request, stream bool) (openAIChatRequest, error) {
+	model, err := o.resolveModel(req.Model)
+	if err != nil {
+		return openAIChatRequest{}, err
 	}
 
 	body := openAIChatRequest{
@@ -365,7 +371,7 @@ func (o *OpenAICompat) buildChatRequest(ctx context.Context, req ai.Request, str
 		body.StreamOptions = &streamOptions{IncludeUsage: true}
 	}
 	o.applyStructuredJSONGuards(&body)
-	return body
+	return body, nil
 }
 
 func withoutResponseFormat(body openAIChatRequest) openAIChatRequest {
@@ -424,6 +430,24 @@ func (o *OpenAICompat) requireAPIKey() error {
 		return fmt.Errorf("OpenRouter authentication missing: set ONEDAY_OPENROUTER_API_KEY in .env or your shell, then run `oneday doctor`")
 	default:
 		return nil
+	}
+}
+
+func (o *OpenAICompat) resolveModel(requested string) (string, error) {
+	model := strings.TrimSpace(requested)
+	if model == "" {
+		model = strings.TrimSpace(o.defaultModel)
+	}
+	if model != "" {
+		return model, nil
+	}
+	switch o.name {
+	case "litellm", "litellm-embed":
+		return "", fmt.Errorf("LiteLLM model missing: set ai.litellm.default_model in config.yaml or choose a LiteLLM model in the browser Options panel")
+	case "openrouter":
+		return "", fmt.Errorf("OpenRouter model missing: set ai.openrouter.default_model in config.yaml or choose an OpenRouter model in the browser Options panel")
+	default:
+		return "", fmt.Errorf("%s model missing: set a request model or provider default model in config.yaml", o.name)
 	}
 }
 

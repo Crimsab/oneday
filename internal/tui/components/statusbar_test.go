@@ -13,7 +13,7 @@ func TestStatusBarFallsBackToTwoLinesOnNarrowWidths(t *testing.T) {
 			{Label: "HP", Current: 10, Max: 10},
 			{Label: "ENERGY", Current: 8, Max: 10},
 		},
-		Model:            "x-ai/grok-4.1-fast",
+		Model:            "test-status-model",
 		Latency:          10400,
 		TimeToFirstToken: 5500,
 		PromptTokens:     4980,

@@ -159,13 +159,6 @@ type client struct {
 }
 
 func main() {
-	defaultModels := strings.Join([]string{
-		"x-ai/grok-4.1-fast",
-		"qwen/qwen3.5-flash-02-23",
-		"google/gemini-2.5-flash-lite",
-		"google/gemini-3.1-flash-lite-preview",
-	}, ",")
-
 	baseURLFlag := flag.String("base-url", firstNonEmpty(
 		os.Getenv("ONEDAY_BENCH_BASE_URL"),
 		os.Getenv("OPENAI_BASE_URL"),
@@ -176,7 +169,7 @@ func main() {
 		os.Getenv("OPENROUTER_API_KEY"),
 		os.Getenv("OPENAI_API_KEY"),
 	), "API key for the benchmark endpoint")
-	modelsFlag := flag.String("models", firstNonEmpty(os.Getenv("ONEDAY_BENCH_MODELS"), defaultModels), "Comma-separated model list")
+	modelsFlag := flag.String("models", os.Getenv("ONEDAY_BENCH_MODELS"), "Comma-separated model list; required unless ONEDAY_BENCH_MODELS is set")
 	outputDirFlag := flag.String("output-dir", firstNonEmpty(os.Getenv("ONEDAY_BENCH_OUTPUT_DIR"), "docs/benchmarks/runs"), "Directory for JSON and Markdown reports")
 	timeoutFlag := flag.Duration("timeout", 90*time.Second, "Per-request timeout")
 	modeFlag := flag.String("mode", string(modePrompt), "Benchmark mode: prompt, json_object, json_schema, all")

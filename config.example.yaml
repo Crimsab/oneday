@@ -75,6 +75,30 @@ ai:
     max_tokens: 400
     timeout_seconds: 25
 
+  # Non-blocking visual asset generation for locations, characters, and story art.
+  # Environment variables with ONEDAY_IMAGEGEN_* override these values at runtime.
+  image_generation:
+    provider: "openclaw-bridge"
+    base_url: ""
+    api_key: ""
+    model: "gpt-image-2"
+    openclaw_bridge_url: "http://openclaw-imagegen:8099/generate"
+    default_size: "1024x1024"
+    location_size: "1536x1024"
+    character_size: "1024x1024"
+    default_resolution: ""
+    location_resolution: ""
+    character_resolution: ""
+    default_aspect_ratio: ""
+    location_aspect_ratio: ""
+    character_aspect_ratio: ""
+    quality: ""
+    output_format: "png"
+    background: ""
+    timeout_seconds: 360
+    auto_generate: true
+    append_negative_prompt: true
+
   # Generation settings
   generation:
     temperature: 0.8
