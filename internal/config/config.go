@@ -170,7 +170,7 @@ func Default() Config {
 				MaxTokens:            2048,
 				TimeoutSeconds:       60,
 				UtilityModel:         "gpt-5.4-mini",
-				RepairModel:          "gemini-3.1-flash-lite-preview",
+				RepairModel:          "gpt-5.4-mini",
 				RepairFallbackModels: []string{"gpt-5.4-mini"},
 			},
 		},

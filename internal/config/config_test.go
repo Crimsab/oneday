@@ -302,7 +302,7 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	if len(settings.Providers) != 4 {
 		t.Fatalf("Providers length = %d, want 4", len(settings.Providers))
 	}
-	if got := settings.RepairModels; len(got) != 2 || got[0] != "gemini-3.1-flash-lite-preview" || got[1] != "gpt-5.4-mini" {
+	if got := settings.RepairModels; len(got) != 1 || got[0] != "gpt-5.4-mini" {
 		t.Fatalf("RepairModels = %#v", got)
 	}
 }

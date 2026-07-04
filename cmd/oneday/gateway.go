@@ -54,6 +54,20 @@ type gatewayStoryCreateRequest struct {
 	Start               bool   `json:"start"`
 }
 
+type gatewayStoryWizardRequest struct {
+	State  *engine.StoryCreatorState `json:"state,omitempty"`
+	Input  string                    `json:"input,omitempty"`
+	Action string                    `json:"action,omitempty"`
+	Start  bool                      `json:"start"`
+}
+
+type gatewayStoryEnhanceRequest struct {
+	Stage   string                    `json:"stage,omitempty"`
+	Text    string                    `json:"text,omitempty"`
+	Context string                    `json:"context,omitempty"`
+	State   *engine.StoryCreatorState `json:"state,omitempty"`
+}
+
 type gatewayStoryCreateResponse struct {
 	StoryID     string `json:"story_id,omitempty"`
 	CharacterID string `json:"character_id,omitempty"`
@@ -61,6 +75,33 @@ type gatewayStoryCreateResponse struct {
 	Started     bool   `json:"started,omitempty"`
 	StartError  string `json:"start_error,omitempty"`
 	Error       string `json:"error,omitempty"`
+}
+
+type gatewayStoryWizardResponse struct {
+	State       engine.StoryCreatorState `json:"state,omitempty"`
+	Phase       string                   `json:"phase,omitempty"`
+	Stage       string                   `json:"stage,omitempty"`
+	StageLabel  string                   `json:"stage_label,omitempty"`
+	Placeholder string                   `json:"placeholder,omitempty"`
+	Message     string                   `json:"message,omitempty"`
+	Actions     []engine.CreationAction  `json:"actions,omitempty"`
+	Definition  *engine.StoryDefinition  `json:"definition,omitempty"`
+	LastModel   string                   `json:"last_model,omitempty"`
+	LastLatency int64                    `json:"last_latency_ms,omitempty"`
+	StoryID     string                   `json:"story_id,omitempty"`
+	CharacterID string                   `json:"character_id,omitempty"`
+	SessionID   string                   `json:"session_id,omitempty"`
+	Started     bool                     `json:"started,omitempty"`
+	StartError  string                   `json:"start_error,omitempty"`
+	Error       string                   `json:"error,omitempty"`
+}
+
+type gatewayStoryEnhanceResponse struct {
+	Text      string `json:"text,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	LatencyMs int64  `json:"latency_ms,omitempty"`
+	Error     string `json:"error,omitempty"`
 }
 
 type gatewayModelSettingsResponse struct {
@@ -133,12 +174,180 @@ func runGatewayStoryCreate(ctx context.Context, cfg config.Config, db *storage.D
 			resp.SessionID = sessionID
 			resp.Started = true
 		}
+	} else {
+		sessionID, err := ensureCreatedStorySession(cfg, db, story.ID)
+		if err != nil {
+			resp.StartError = fmt.Sprintf("creating session: %v", err)
+		} else {
+			resp.SessionID = sessionID
+		}
 	}
 
 	if err := json.NewEncoder(out).Encode(resp); err != nil {
 		return fmt.Errorf("writing gateway-story-create response: %w", err)
 	}
 	return nil
+}
+
+func runGatewayStoryWizard(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
+	var req gatewayStoryWizardRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return writeGatewayStoryWizardError(out, fmt.Errorf("invalid gateway-story-wizard JSON: %w", err))
+	}
+
+	creator := engine.NewStoryCreator(router, db, cfg.AI.Generation)
+	if req.State != nil {
+		if err := creator.RestoreState(*req.State); err != nil {
+			return writeGatewayStoryWizardError(out, err)
+		}
+	}
+
+	input := strings.TrimSpace(req.Input)
+	action := strings.TrimSpace(req.Action)
+	var message string
+	var err error
+	switch {
+	case req.State == nil && input == "" && action == "":
+		message, err = creator.StartConversation(ctx)
+	case action != "":
+		message, err = creator.ExecuteAction(ctx, action)
+	case input != "":
+		message, err = creator.SendMessage(ctx, input)
+	default:
+		message = "Wizard state restored. Continue with a quick choice or typed input."
+	}
+	if err != nil {
+		return writeGatewayStoryWizardError(out, err)
+	}
+
+	resp := gatewayStoryWizardResponse{
+		State:       creator.ExportState(),
+		Phase:       storyCreatorPhaseKey(creator.Phase()),
+		Stage:       creator.StageKey(),
+		StageLabel:  creator.StageLabel(),
+		Placeholder: creator.InputPlaceholder(),
+		Message:     message,
+		Actions:     creator.Actions(),
+		Definition:  creator.Definition(),
+		LastModel:   creator.LastModel(),
+		LastLatency: creator.LastLatency(),
+	}
+
+	if creator.Phase() == engine.PhaseDone && creator.Story() != nil && creator.Character() != nil {
+		resp.StoryID = creator.Story().ID
+		resp.CharacterID = creator.Character().ID
+		resp.State = creator.ExportState()
+		if req.Start {
+			sessionID, err := startCreatedStory(ctx, cfg, db, router, creator.Story().ID)
+			if err != nil {
+				resp.StartError = fmt.Sprintf("starting story: %v", err)
+			} else {
+				resp.SessionID = sessionID
+				resp.Started = true
+			}
+		} else {
+			sessionID, err := ensureCreatedStorySession(cfg, db, creator.Story().ID)
+			if err != nil {
+				resp.StartError = fmt.Sprintf("creating session: %v", err)
+			} else {
+				resp.SessionID = sessionID
+			}
+		}
+	}
+
+	if err := json.NewEncoder(out).Encode(resp); err != nil {
+		return fmt.Errorf("writing gateway-story-wizard response: %w", err)
+	}
+	return nil
+}
+
+func runGatewayStoryEnhance(ctx context.Context, cfg config.Config, router *ai.Router, in io.Reader, out io.Writer) error {
+	var req gatewayStoryEnhanceRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return writeGatewayStoryEnhanceError(out, fmt.Errorf("invalid gateway-story-enhance JSON: %w", err))
+	}
+	seed := strings.TrimSpace(req.Text)
+	if seed == "" {
+		seed = "Create a concise playable OneDay story setup entry for this stage."
+	}
+	stateJSON := ""
+	if req.State != nil {
+		if data, err := json.Marshal(req.State); err == nil {
+			stateJSON = string(data)
+			if len(stateJSON) > 5000 {
+				stateJSON = stateJSON[:5000] + "..."
+			}
+		}
+	}
+	userPrompt := strings.Join([]string{
+		"Stage: " + strings.TrimSpace(req.Stage),
+		"Current text:",
+		seed,
+		"Context:",
+		strings.TrimSpace(req.Context),
+		"Wizard state JSON, possibly truncated:",
+		stateJSON,
+	}, "\n\n")
+
+	maxTokens := cfg.AI.Generation.MaxTokens
+	if maxTokens == 0 || maxTokens > 700 {
+		maxTokens = 700
+	}
+	resp, err := router.Complete(ctx, ai.Request{
+		Messages: []ai.Message{
+			{
+				Role:    ai.RoleSystem,
+				Content: "You improve text for the OneDay guided story setup wizard. Return only the improved text. No markdown fences, no commentary, no image prompts. Preserve the user's intended language. Make it more playable, concrete, coherent, anti-loop, and not overpowered. Keep it concise enough to paste back into the current wizard field.",
+			},
+			{Role: ai.RoleUser, Content: userPrompt},
+		},
+		Temperature: 0.45,
+		MaxTokens:   maxTokens,
+	})
+	if err != nil {
+		return writeGatewayStoryEnhanceError(out, fmt.Errorf("enhancing story text: %w", err))
+	}
+	text := cleanupEnhancedStoryText(resp.Content)
+	if text == "" {
+		return writeGatewayStoryEnhanceError(out, fmt.Errorf("enhance returned empty text"))
+	}
+	if err := json.NewEncoder(out).Encode(gatewayStoryEnhanceResponse{
+		Text:      text,
+		Model:     resp.Model,
+		Provider:  resp.Provider,
+		LatencyMs: resp.LatencyMs,
+	}); err != nil {
+		return fmt.Errorf("writing gateway-story-enhance response: %w", err)
+	}
+	return nil
+}
+
+func cleanupEnhancedStoryText(text string) string {
+	clean := strings.TrimSpace(text)
+	clean = strings.TrimPrefix(clean, "```text")
+	clean = strings.TrimPrefix(clean, "```")
+	clean = strings.TrimSuffix(clean, "```")
+	clean = strings.TrimSpace(clean)
+	if strings.HasPrefix(clean, "\"") && strings.HasSuffix(clean, "\"") {
+		var decoded string
+		if err := json.Unmarshal([]byte(clean), &decoded); err == nil {
+			clean = strings.TrimSpace(decoded)
+		}
+	}
+	return clean
+}
+
+func storyCreatorPhaseKey(phase engine.StoryCreationPhase) string {
+	switch phase {
+	case engine.PhaseConversation:
+		return "conversation"
+	case engine.PhaseCharacter:
+		return "character"
+	case engine.PhaseDone:
+		return "done"
+	default:
+		return "conversation"
+	}
 }
 
 func startCreatedStory(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, storyID string) (string, error) {
@@ -184,6 +393,15 @@ func startCreatedStory(ctx context.Context, cfg config.Config, db *storage.DB, r
 			return "", chunk.Err
 		}
 	}
+	return session.SessionID(), nil
+}
+
+func ensureCreatedStorySession(cfg config.Config, db *storage.DB, storyID string) (string, error) {
+	session, err := engine.NewGameSession(db, storyID, cfg.DataDir)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = session.CloseMirrors() }()
 	return session.SessionID(), nil
 }
 
@@ -310,6 +528,16 @@ func writeGatewayTurnError(out io.Writer, err error) error {
 
 func writeGatewayStoryCreateError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayStoryCreateResponse{Error: err.Error()})
+	return err
+}
+
+func writeGatewayStoryWizardError(out io.Writer, err error) error {
+	_ = json.NewEncoder(out).Encode(gatewayStoryWizardResponse{Error: err.Error()})
+	return err
+}
+
+func writeGatewayStoryEnhanceError(out io.Writer, err error) error {
+	_ = json.NewEncoder(out).Encode(gatewayStoryEnhanceResponse{Error: err.Error()})
 	return err
 }
 

@@ -3,8 +3,8 @@ import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
   ApiRequestError,
   createSave,
-  createStory,
   deleteSave,
+  enhanceStoryText,
   generateVisualAssets,
   getCommandDescriptors,
   getHealth,
@@ -14,6 +14,7 @@ import {
   getVisualAssets,
   getVisualAssetVersions,
   loadSave,
+  runStoryWizard,
   selectVisualAssetVersion,
   submitAction,
   submitMeta,
@@ -48,9 +49,12 @@ import type {
   PlayerAction,
   RecentCommand,
   SaveView,
-  StoryCreateEnvelope,
+  StoryEnhanceEnvelope,
+  StoryEnhanceResponse,
   StorySnapshot,
   StorySummary,
+  StoryWizardEnvelope,
+  StoryWizardResponse,
   SyncState,
   TurnStreamEvent,
   VisualAssetsResponse,
@@ -443,29 +447,54 @@ function App() {
     }
   };
 
-  const createBrowserStory = async (payload: StoryCreateEnvelope) => {
-    if (sending) return;
+  const runBrowserStoryWizard = async (payload: StoryWizardEnvelope): Promise<StoryWizardResponse> => {
+    if (sending) throw new Error("Another OneDay request is already running.");
     setSending(true);
     setNotice("");
     setSync("Sending");
     try {
-      const response = await createStory(payload);
-      setSnapshot(response.snapshot);
-      setStoryId(response.snapshot.story.id);
-      void refreshVisualAssets(response.snapshot.story.id);
-      setStories((items) => [response.snapshot.story, ...items.filter((story) => story.id !== response.snapshot.story.id)]);
-      selectModuleTab("history");
-      setOverlay(null);
-      setHiddenBeforeMessageId(0);
-      setLiveTurnEvents([]);
-      const startNotice = response.story.start_error
-        ? ` created, but first turn did not start: ${response.story.start_error}`
-        : ` created${response.story.started ? " and started" : ""}.`;
-      setNotice(`${response.snapshot.story.name}${startNotice}`);
+      const response = await runStoryWizard(payload);
+      if (response.snapshot) {
+        setSnapshot(response.snapshot);
+        setStoryId(response.snapshot.story.id);
+        setVisualAssets(null);
+        setStories((items) => [response.snapshot!.story, ...items.filter((story) => story.id !== response.snapshot!.story.id)]);
+        selectModuleTab("history");
+        setOverlay(null);
+        setHiddenBeforeMessageId(0);
+        setLiveTurnEvents([]);
+        const startNotice = response.wizard.start_error
+          ? ` created, but first turn did not start: ${response.wizard.start_error}`
+          : ` created${response.wizard.started ? " and started" : ""}.`;
+        setNotice(`${response.snapshot.story.name}${startNotice}`);
+      } else {
+        setNotice(response.wizard.stage_label || "Story wizard updated.");
+      }
       setSync(paused ? "Paused" : "Live");
+      return response;
     } catch (error) {
       setSync("Error");
       setNotice(actionErrorMessage(error));
+      throw error;
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const runBrowserStoryEnhance = async (payload: StoryEnhanceEnvelope): Promise<StoryEnhanceResponse> => {
+    if (sending) throw new Error("Another OneDay request is already running.");
+    setSending(true);
+    setNotice("");
+    setSync("Sending");
+    try {
+      const response = await enhanceStoryText(payload);
+      setNotice(response.model ? `Enhanced text with ${response.model}.` : "Enhanced text.");
+      setSync(paused ? "Paused" : "Live");
+      return response;
+    } catch (error) {
+      setSync("Error");
+      setNotice(actionErrorMessage(error));
+      throw error;
     } finally {
       setSending(false);
     }
@@ -888,7 +917,8 @@ function App() {
         onVisualAssetVersionsLoad={loadVisualAssetVersions}
         onVisualAssetPromptSave={saveVisualAssetPrompt}
         onVisualAssetVersionSelect={chooseVisualAssetVersion}
-        onCreateStory={(payload) => createBrowserStory(payload)}
+        onRunStoryWizard={(payload) => runBrowserStoryWizard(payload)}
+        onEnhanceStoryText={(payload) => runBrowserStoryEnhance(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
         onLoadSave={(save) => void loadManualSave(save)}
         onDeleteSave={(save) => void deleteManualSave(save)}

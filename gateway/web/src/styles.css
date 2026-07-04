@@ -2095,6 +2095,11 @@ input:disabled {
   width: min(1120px, calc(100vw - 28px));
 }
 
+.new-story-overlay {
+  width: min(940px, calc(100vw - 32px));
+  max-height: min(840px, calc(100dvh - 32px));
+}
+
 .overlay-head {
   display: flex;
   align-items: center;
@@ -2265,6 +2270,240 @@ input:disabled {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
+}
+
+.story-wizard-form {
+  gap: 14px;
+}
+
+.story-wizard-status {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line-soft));
+  background:
+    linear-gradient(180deg, rgba(255, 178, 56, 0.055), transparent 130%),
+    #111411;
+  padding: 12px;
+}
+
+.story-wizard-status > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.story-wizard-status span,
+.story-wizard-card > span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.story-wizard-status strong {
+  min-width: 0;
+  color: #fff3d6;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.story-wizard-status .checkbox-line {
+  min-width: 260px;
+  border-color: var(--line);
+  background: #0b1010;
+}
+
+.story-wizard-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 32%);
+  gap: 12px;
+  align-items: start;
+}
+
+.story-wizard-main,
+.story-wizard-side {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.story-wizard-message {
+  min-width: 0;
+  border: 1px solid var(--line-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025), transparent),
+    #0a0d0d;
+  padding: 12px 14px;
+}
+
+.story-wizard-message pre {
+  margin: 0;
+  min-width: 0;
+  max-height: 26dvh;
+  overflow: auto;
+  color: #f4ead8;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.48;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.story-wizard-actions {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.story-wizard-actions button {
+  min-width: 0;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(255, 178, 56, 0.1), transparent 58%),
+    #111514;
+  padding: 8px 10px;
+  color: var(--text);
+  text-align: left;
+}
+
+.story-wizard-actions button:hover:not(:disabled),
+.story-wizard-actions button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(255, 178, 56, 0.15), transparent 60%),
+    #171a16;
+}
+
+.story-wizard-actions button span {
+  min-width: 0;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--line));
+  border-radius: 4px;
+  background: #0a0e0f;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.story-wizard-actions button strong {
+  min-width: 0;
+  color: #f5efe2;
+  font-size: 13px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.new-story-form label.story-wizard-input {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+    #0b1010;
+}
+
+.story-wizard-input textarea {
+  min-height: 96px;
+  max-height: 34dvh;
+  line-height: 1.45;
+}
+
+.story-wizard-submit {
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.story-wizard-submit button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  background: #151815;
+  padding: 0 14px;
+}
+
+.story-wizard-submit button:not(.primary):hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  color: var(--accent);
+}
+
+.story-wizard-side {
+  max-height: calc(100dvh - 220px);
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.story-wizard-card {
+  min-width: 0;
+  display: grid;
+  gap: 9px;
+  border: 1px solid var(--line-soft);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent),
+    #101514;
+  padding: 12px;
+}
+
+.story-wizard-card strong {
+  min-width: 0;
+  color: #fff2d0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.story-wizard-card p {
+  min-width: 0;
+  margin: 0;
+  color: #d6cdbb;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.story-wizard-card dl {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 7px 10px;
+  margin: 0;
+}
+
+.story-wizard-card dt,
+.story-wizard-card dd {
+  min-width: 0;
+  margin: 0;
+  font-size: 12px;
+}
+
+.story-wizard-card dt {
+  color: var(--muted);
+}
+
+.story-wizard-card dd {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.story-wizard-card ol {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.story-wizard-card li {
+  min-width: 0;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
 }
 
 .form-error {
@@ -3005,6 +3244,19 @@ input:disabled {
 
   .two-column-form {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .story-wizard-status,
+  .story-wizard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .story-wizard-status .checkbox-line {
+    min-width: 0;
+  }
+
+  .story-wizard-side {
+    max-height: none;
   }
 
   .drawer-actions {

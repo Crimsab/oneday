@@ -150,6 +150,20 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayStoryWizard(os.Args[1:]) {
+		if err := runGatewayStoryWizard(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway story wizard failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayStoryEnhance(os.Args[1:]) {
+		if err := runGatewayStoryEnhance(context.Background(), cfg, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway story enhance failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if wantsGatewayMeta(os.Args[1:]) {
 		if err := runGatewayMeta(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway meta failed: %v\n", err)
@@ -323,6 +337,14 @@ func wantsGatewayTurn(args []string) bool {
 
 func wantsGatewayStoryCreate(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-story-create"
+}
+
+func wantsGatewayStoryWizard(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-story-wizard"
+}
+
+func wantsGatewayStoryEnhance(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-story-enhance"
 }
 
 func wantsGatewayMeta(args []string) bool {
