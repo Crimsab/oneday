@@ -273,6 +273,10 @@ function App() {
   }, []);
 
   const selectStory = (nextStoryId: string) => {
+    if (nextStoryId === storyId) {
+      void loadSnapshot(nextStoryId);
+      return;
+    }
     setStoryId(nextStoryId);
     setSnapshot(null);
     setVisualAssets(null);
