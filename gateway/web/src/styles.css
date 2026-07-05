@@ -4091,6 +4091,44 @@ button.ws-npc:focus-visible {
   white-space: nowrap;
 }
 
+.ws-npc-meta {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ws-npc-meta span {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.022);
+  padding: 2px 5px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ws-npc-meta span[data-stage="rumor"] {
+  border-color: color-mix(in srgb, #8ea0aa 36%, var(--line-soft));
+  color: #b8c5ca;
+}
+
+.ws-npc-meta span[data-stage="observed"],
+.ws-npc-meta span[data-stage="identified"] {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line-soft));
+  color: #e7bd73;
+}
+
+.ws-npc-meta span[data-stage="established"] {
+  border-color: color-mix(in srgb, var(--good) 36%, var(--line-soft));
+  color: #bfe0a4;
+}
+
 .ws-relation {
   min-width: 0;
   display: grid;
