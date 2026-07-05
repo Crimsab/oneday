@@ -40,7 +40,7 @@ pub struct VisualProfileUpdate {
     pub palette: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct GenerateVisualAssetsRequest {
     #[serde(default)]
     pub asset_ids: Vec<String>,
@@ -194,6 +194,14 @@ struct VisualSpec {
     turn: i64,
 }
 
+#[derive(Debug)]
+struct VisualGenerationJob {
+    id: i64,
+    asset: VisualAsset,
+    attempts: i64,
+    max_attempts: i64,
+}
+
 pub async fn visual_assets(
     pool: &SqlitePool,
     story_id: &str,
@@ -286,6 +294,73 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
         "TEXT NOT NULL DEFAULT ''",
     )
     .await?;
+    ensure_visual_generation_job_schema(pool).await?;
+    recover_stale_visual_jobs(pool).await?;
+    Ok(())
+}
+
+async fn ensure_visual_generation_job_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS visual_generation_jobs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+            story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+            status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+            attempts INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 3,
+            locked_until TEXT NOT NULL DEFAULT '',
+            request_payload_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT NOT NULL DEFAULT '',
+            provider TEXT NOT NULL DEFAULT '',
+            started_at TEXT NOT NULL DEFAULT '',
+            finished_at TEXT NOT NULL DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual_generation_jobs table")?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_visual_generation_jobs_status_lock
+           ON visual_generation_jobs(status, locked_until, created_at)"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual generation job status index")?;
+    sqlx::query(
+        r#"CREATE INDEX IF NOT EXISTS idx_visual_generation_jobs_story
+           ON visual_generation_jobs(story_id, status, created_at)"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual generation job story index")?;
+    sqlx::query(
+        r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_visual_generation_jobs_active_asset
+           ON visual_generation_jobs(asset_id)
+           WHERE status IN ('queued', 'running')"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual generation active asset index")?;
+    Ok(())
+}
+
+async fn recover_stale_visual_jobs(pool: &SqlitePool) -> anyhow::Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        r#"UPDATE visual_generation_jobs
+           SET status = 'queued',
+               locked_until = '',
+               error = CASE WHEN error = '' THEN 'Recovered after gateway restart or stale lock.' ELSE error END,
+               updated_at = ?
+           WHERE status = 'running' AND locked_until != '' AND locked_until <= ?"#,
+    )
+    .bind(&now)
+    .bind(&now)
+    .execute(pool)
+    .await
+    .context("recovering stale visual generation jobs")?;
     Ok(())
 }
 
@@ -444,19 +519,19 @@ pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
             force: false,
             limit: Some(3),
         };
-        if let Err(err) = generate_visual_assets(state.as_ref(), &story_id, request).await {
+        if let Err(err) = generate_visual_assets(state.clone(), &story_id, request).await {
             tracing::warn!(story_id = %story_id, error = %err, "visual asset auto-generation failed");
         }
     });
 }
 
 pub async fn generate_visual_assets(
-    state: &AppState,
+    state: Arc<AppState>,
     story_id: &str,
     request: GenerateVisualAssetsRequest,
 ) -> anyhow::Result<VisualAssetsResponse> {
     visual_assets(&state.pool, story_id).await?;
-    let config = image_generation_config(state)?;
+    let config = image_generation_config(&state)?;
     if !image_generation_available(&config) {
         return Err(anyhow!(
             "image generation provider is not configured; set ONEDAY_IMAGEGEN_PROVIDER=openclaw-bridge or configure ONEDAY_IMAGEGEN_API_KEY/ONEDAY_LITELLM_API_KEY"
@@ -464,40 +539,61 @@ pub async fn generate_visual_assets(
     }
 
     let targets = generation_targets(&state.pool, story_id, &request).await?;
+    enqueue_visual_generation_jobs(&state.pool, &targets, &request, &config).await?;
+    spawn_visual_generation_worker(state.clone());
+
+    visual_assets(&state.pool, story_id).await
+}
+
+pub fn spawn_visual_generation_worker(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        if let Err(err) = run_visual_generation_worker(state).await {
+            tracing::warn!(error = %err, "visual generation worker stopped");
+        }
+    });
+}
+
+async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()> {
+    let config = image_generation_config(&state)?;
+    if !image_generation_available(&config) {
+        return Ok(());
+    }
     let client = Client::builder()
         .timeout(Duration::from_secs(config.timeout_seconds))
         .build()
         .context("building image generation HTTP client")?;
 
-    for asset in targets {
-        if let Err(err) = mark_asset_running(&state.pool, &asset.id, &config).await {
-            tracing::warn!(asset_id = %asset.id, error = %err, "could not mark visual asset running");
+    while let Some(job) = claim_visual_generation_job(&state.pool, &config).await? {
+        if let Err(err) = mark_asset_running(&state.pool, &job.asset.id, &config).await {
+            tracing::warn!(asset_id = %job.asset.id, error = %err, "could not mark visual asset running");
             continue;
         }
-        match generate_one_asset(&client, state, &config, &asset).await {
+        match generate_one_asset(&client, &state, &config, &job.asset).await {
             Ok(generated) => {
                 mark_asset_ready(
                     &state.pool,
-                    &asset.id,
+                    &job.asset.id,
                     &generated.url,
                     &generated.file_path,
                     &config,
                 )
                 .await
-                .with_context(|| format!("marking visual asset {} ready", asset.id))?;
+                .with_context(|| format!("marking visual asset {} ready", job.asset.id))?;
                 if let Err(err) =
-                    record_asset_version(&state.pool, &asset, &generated, &config).await
+                    record_asset_version(&state.pool, &job.asset, &generated, &config).await
                 {
-                    tracing::warn!(asset_id = %asset.id, error = %err, "could not record visual asset version");
+                    tracing::warn!(asset_id = %job.asset.id, error = %err, "could not record visual asset version");
                 }
+                mark_generation_job_succeeded(&state.pool, job.id).await?;
             }
             Err(err) => {
-                let _ = mark_asset_failed(&state.pool, &asset.id, &err.to_string(), &config).await;
+                mark_generation_job_failed_or_retry(&state.pool, &job, &err.to_string(), &config)
+                    .await?;
             }
         }
     }
 
-    visual_assets(&state.pool, story_id).await
+    Ok(())
 }
 
 async fn generation_targets(
@@ -515,6 +611,188 @@ async fn generation_targets(
         .filter(|asset| asset.status != "running")
         .take(limit)
         .collect())
+}
+
+async fn enqueue_visual_generation_jobs(
+    pool: &SqlitePool,
+    targets: &[VisualAsset],
+    request: &GenerateVisualAssetsRequest,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<()> {
+    if targets.is_empty() {
+        return Ok(());
+    }
+    let request_payload = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
+    for asset in targets {
+        sqlx::query(
+            r#"UPDATE visual_assets
+               SET status = CASE WHEN status = 'running' THEN status ELSE 'queued' END,
+                   provider = ?,
+                   error = '',
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?"#,
+        )
+        .bind(provider_label(config))
+        .bind(&asset.id)
+        .execute(pool)
+        .await
+        .with_context(|| format!("marking visual asset {} queued", asset.id))?;
+
+        sqlx::query(
+            r#"INSERT OR IGNORE INTO visual_generation_jobs (
+                  asset_id, story_id, status, attempts, max_attempts,
+                  locked_until, request_payload_json, error, provider
+               )
+               VALUES (?, ?, 'queued', 0, 3, '', ?, '', ?)"#,
+        )
+        .bind(&asset.id)
+        .bind(&asset.story_id)
+        .bind(&request_payload)
+        .bind(provider_label(config))
+        .execute(pool)
+        .await
+        .with_context(|| format!("enqueueing visual generation job {}", asset.id))?;
+    }
+    Ok(())
+}
+
+async fn claim_visual_generation_job(
+    pool: &SqlitePool,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<Option<VisualGenerationJob>> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let lock_until = (chrono::Utc::now()
+        + chrono::Duration::seconds((config.timeout_seconds.max(30) * 2) as i64))
+    .to_rfc3339();
+    let row = sqlx::query(
+        r#"UPDATE visual_generation_jobs
+           SET status = 'running',
+               attempts = attempts + 1,
+               locked_until = ?,
+               started_at = CASE WHEN started_at = '' THEN ? ELSE started_at END,
+               updated_at = ?
+           WHERE id = (
+               SELECT id FROM visual_generation_jobs
+               WHERE (
+                    status = 'queued'
+                    AND (locked_until = '' OR locked_until <= ?)
+               ) OR (
+                    status = 'running'
+                    AND locked_until != ''
+                    AND locked_until <= ?
+               )
+               ORDER BY created_at ASC, id ASC
+               LIMIT 1
+           )
+           RETURNING id, asset_id, story_id, attempts, max_attempts"#,
+    )
+    .bind(&lock_until)
+    .bind(&now)
+    .bind(&now)
+    .bind(&now)
+    .bind(&now)
+    .fetch_optional(pool)
+    .await
+    .context("claiming visual generation job")?;
+
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let story_id = row_string(&row, "story_id");
+    let asset_id = row_string(&row, "asset_id");
+    let Some(asset) = load_asset(pool, &story_id, &asset_id).await? else {
+        mark_generation_job_terminal(
+            pool,
+            row.try_get("id").unwrap_or_default(),
+            "failed",
+            "visual asset was deleted before generation",
+        )
+        .await?;
+        return Ok(None);
+    };
+    Ok(Some(VisualGenerationJob {
+        id: row.try_get("id").unwrap_or_default(),
+        asset,
+        attempts: row.try_get("attempts").unwrap_or_default(),
+        max_attempts: row.try_get("max_attempts").unwrap_or(3),
+    }))
+}
+
+async fn mark_generation_job_succeeded(pool: &SqlitePool, job_id: i64) -> anyhow::Result<()> {
+    mark_generation_job_terminal(pool, job_id, "succeeded", "").await
+}
+
+async fn mark_generation_job_terminal(
+    pool: &SqlitePool,
+    job_id: i64,
+    status: &str,
+    error: &str,
+) -> anyhow::Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    sqlx::query(
+        r#"UPDATE visual_generation_jobs
+           SET status = ?,
+               locked_until = '',
+               error = ?,
+               finished_at = ?,
+               updated_at = ?
+           WHERE id = ?"#,
+    )
+    .bind(status)
+    .bind(compact_error(error))
+    .bind(&now)
+    .bind(&now)
+    .bind(job_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("marking visual generation job {job_id} {status}"))?;
+    Ok(())
+}
+
+async fn mark_generation_job_failed_or_retry(
+    pool: &SqlitePool,
+    job: &VisualGenerationJob,
+    error: &str,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<()> {
+    let message = compact_error(error);
+    if job.attempts >= job.max_attempts {
+        mark_asset_failed(pool, &job.asset.id, &message, config).await?;
+        mark_generation_job_terminal(pool, job.id, "failed", &message).await?;
+        return Ok(());
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let retry_after =
+        (chrono::Utc::now() + chrono::Duration::seconds(30 * job.attempts.max(1))).to_rfc3339();
+    sqlx::query(
+        r#"UPDATE visual_generation_jobs
+           SET status = 'queued',
+               locked_until = ?,
+               error = ?,
+               updated_at = ?
+           WHERE id = ?"#,
+    )
+    .bind(&retry_after)
+    .bind(&message)
+    .bind(&now)
+    .bind(job.id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("requeueing visual generation job {}", job.id))?;
+
+    sqlx::query(
+        r#"UPDATE visual_assets
+           SET status = 'queued', provider = ?, error = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?"#,
+    )
+    .bind(provider_label(config))
+    .bind(message)
+    .bind(&job.asset.id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("marking visual asset {} queued after retry", job.asset.id))?;
+    Ok(())
 }
 
 async fn mark_asset_running(
@@ -1234,25 +1512,45 @@ async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Vi
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|row| VisualAsset {
-            id: row_string(&row, "id"),
-            story_id: row_string(&row, "story_id"),
-            kind: row_string(&row, "kind"),
-            subject: row_string(&row, "subject"),
-            entity_id: row_string(&row, "entity_id"),
-            prompt: row_string(&row, "prompt"),
-            negative_prompt: row_string(&row, "negative_prompt"),
-            status: row_string(&row, "status"),
-            url: row_string(&row, "url"),
-            provider: row_string(&row, "provider"),
-            source: row_string(&row, "source"),
-            error: row_string(&row, "error"),
-            turn: row.try_get("turn").unwrap_or_default(),
-            updated_at: row_string(&row, "updated_at"),
-        })
-        .collect())
+    Ok(rows.into_iter().map(visual_asset_from_row).collect())
+}
+
+async fn load_asset(
+    pool: &SqlitePool,
+    story_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<Option<VisualAsset>> {
+    let row = sqlx::query(
+        r#"SELECT id, story_id, kind, subject, entity_id, prompt, negative_prompt,
+                  status, url, provider, source, error, turn,
+                  CAST(updated_at AS TEXT) AS updated_at
+           FROM visual_assets
+           WHERE story_id = ? AND id = ?"#,
+    )
+    .bind(story_id)
+    .bind(asset_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(visual_asset_from_row))
+}
+
+fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
+    VisualAsset {
+        id: row_string(&row, "id"),
+        story_id: row_string(&row, "story_id"),
+        kind: row_string(&row, "kind"),
+        subject: row_string(&row, "subject"),
+        entity_id: row_string(&row, "entity_id"),
+        prompt: row_string(&row, "prompt"),
+        negative_prompt: row_string(&row, "negative_prompt"),
+        status: row_string(&row, "status"),
+        url: row_string(&row, "url"),
+        provider: row_string(&row, "provider"),
+        source: row_string(&row, "source"),
+        error: row_string(&row, "error"),
+        turn: row.try_get("turn").unwrap_or_default(),
+        updated_at: row_string(&row, "updated_at"),
+    }
 }
 
 async fn ensure_asset_belongs_to_story(
@@ -1375,6 +1673,93 @@ fn value_to_text(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    fn test_config() -> ImageGenerationConfig {
+        ImageGenerationConfig {
+            base_url: "http://example.test/v1".to_string(),
+            api_key: "key".to_string(),
+            model: "test-image-model".to_string(),
+            provider: "test".to_string(),
+            openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
+            default_size: "1024x1024".to_string(),
+            location_size: "1536x1024".to_string(),
+            character_size: "768x768".to_string(),
+            default_resolution: String::new(),
+            location_resolution: String::new(),
+            character_resolution: String::new(),
+            default_aspect_ratio: String::new(),
+            location_aspect_ratio: String::new(),
+            character_aspect_ratio: String::new(),
+            quality: String::new(),
+            output_format: "png".to_string(),
+            background: String::new(),
+            timeout_seconds: 10,
+            auto_generate: true,
+            append_negative_prompt: true,
+        }
+    }
+
+    async fn visual_job_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("memory sqlite pool");
+        sqlx::query(
+            r#"CREATE TABLE stories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL DEFAULT ''
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create stories");
+        sqlx::query(
+            r#"CREATE TABLE visual_assets (
+                id TEXT PRIMARY KEY,
+                story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                entity_id TEXT NOT NULL DEFAULT '',
+                prompt TEXT NOT NULL DEFAULT '',
+                negative_prompt TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'pending',
+                url TEXT NOT NULL DEFAULT '',
+                file_path TEXT NOT NULL DEFAULT '',
+                provider TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT '',
+                error TEXT NOT NULL DEFAULT '',
+                turn INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(story_id, kind, subject)
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create visual assets");
+        sqlx::query("INSERT INTO stories (id, name) VALUES ('story', 'Story')")
+            .execute(&pool)
+            .await
+            .expect("insert story");
+        sqlx::query(
+            r#"INSERT INTO visual_assets (
+                id, story_id, kind, subject, entity_id, prompt, negative_prompt,
+                status, provider, source, turn
+            ) VALUES (
+                'asset-location', 'story', 'location', 'Station', 'world',
+                'wide station', 'no text', 'pending', '', 'auto-profile', 3
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert asset");
+        ensure_visual_generation_job_schema(&pool)
+            .await
+            .expect("job schema");
+        pool
+    }
 
     #[test]
     fn expands_simple_env_reference() {
@@ -1555,5 +1940,77 @@ mod tests {
             append_negative_prompt: true,
         };
         assert!(!image_generation_available(&config));
+    }
+
+    #[tokio::test]
+    async fn enqueue_visual_generation_jobs_marks_assets_queued_and_deduplicates() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+        let asset = load_asset(&pool, "story", "asset-location")
+            .await
+            .expect("load asset")
+            .expect("asset");
+        let request = GenerateVisualAssetsRequest {
+            asset_ids: vec!["asset-location".to_string()],
+            force: false,
+            limit: Some(1),
+        };
+
+        enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
+            .await
+            .expect("first enqueue");
+        enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
+            .await
+            .expect("second enqueue");
+
+        let status: String = sqlx::query_scalar("SELECT status FROM visual_assets WHERE id = ?")
+            .bind("asset-location")
+            .fetch_one(&pool)
+            .await
+            .expect("asset status");
+        let jobs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_generation_jobs WHERE asset_id = ? AND status = 'queued'",
+        )
+        .bind("asset-location")
+        .fetch_one(&pool)
+        .await
+        .expect("job count");
+
+        assert_eq!(status, "queued");
+        assert_eq!(jobs, 1);
+    }
+
+    #[tokio::test]
+    async fn claim_visual_generation_job_recovers_stale_running_jobs() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+        let stale = (chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339();
+        sqlx::query(
+            r#"INSERT INTO visual_generation_jobs (
+                asset_id, story_id, status, attempts, max_attempts, locked_until, provider
+            ) VALUES (?, ?, 'running', 1, 3, ?, ?)"#,
+        )
+        .bind("asset-location")
+        .bind("story")
+        .bind(stale)
+        .bind(provider_label(&config))
+        .execute(&pool)
+        .await
+        .expect("insert stale job");
+
+        let job = claim_visual_generation_job(&pool, &config)
+            .await
+            .expect("claim job")
+            .expect("job");
+
+        assert_eq!(job.asset.id, "asset-location");
+        assert_eq!(job.attempts, 2);
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM visual_generation_jobs WHERE id = ?")
+                .bind(job.id)
+                .fetch_one(&pool)
+                .await
+                .expect("job status");
+        assert_eq!(status, "running");
     }
 }
