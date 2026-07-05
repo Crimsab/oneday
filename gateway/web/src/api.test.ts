@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, createStory, deleteStory, generateVisualAssets, getStories, updateStory } from "./api";
+import { ApiRequestError, createStory, deleteStory, generateVisualAssets, getStories, getStoryDeletePlan, updateStory } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -96,6 +96,12 @@ describe("api request handling", () => {
     );
   });
 
+  it("loads story delete plans before destructive deletion", async () => {
+    mockFetch(new Response(JSON.stringify({ story_id: "story-1", total_rows: 42, counts: [], retained_asset_files: [] }), { status: 200 }));
+
+    await expect(getStoryDeletePlan("story-1")).resolves.toMatchObject({ story_id: "story-1", total_rows: 42 });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/delete-plan", {});
+  });
 
   it("rejects successful non-JSON responses before they crash React state", async () => {
     mockFetch(new Response("<html>vite fallback</html>", { status: 200, headers: { "content-type": "text/html" } }));

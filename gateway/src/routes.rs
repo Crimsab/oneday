@@ -32,6 +32,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/stories/:story_id",
             patch(update_story).delete(delete_story),
         )
+        .route("/api/stories/:story_id/delete-plan", get(story_delete_plan))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
         .route(
@@ -124,6 +125,13 @@ async fn delete_story(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     db::delete_story(&state.pool, &story_id).await?;
     Ok(Json(json!({ "story_id": story_id })))
+}
+
+async fn story_delete_plan(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<db::StoryDeletePlan>, ApiError> {
+    Ok(Json(db::story_delete_plan(&state.pool, &story_id).await?))
 }
 
 async fn create_story(
