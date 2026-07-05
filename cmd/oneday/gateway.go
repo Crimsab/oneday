@@ -21,6 +21,12 @@ type gatewayTurnResponse struct {
 	Error  string                `json:"error,omitempty"`
 }
 
+type gatewayTurnStreamLine struct {
+	Event *contracts.TurnEvent `json:"event,omitempty"`
+	Error string               `json:"error,omitempty"`
+	Done  bool                 `json:"done,omitempty"`
+}
+
 type gatewayMetaResponse struct {
 	Meta  *contracts.BrowserMetaResponse `json:"meta,omitempty"`
 	Error string                         `json:"error,omitempty"`
@@ -438,6 +444,24 @@ func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, rout
 	}
 
 	turns := gameservice.NewInProcessTurnService(cfg, db, router)
+	if req.Stream {
+		stream, err := turns.SubmitActionStream(ctx, req)
+		if err != nil {
+			return writeGatewayTurnStreamError(out, err)
+		}
+		encoder := json.NewEncoder(out)
+		for event := range stream {
+			eventCopy := event
+			if err := encoder.Encode(gatewayTurnStreamLine{Event: &eventCopy}); err != nil {
+				return fmt.Errorf("writing gateway-turn stream event: %w", err)
+			}
+		}
+		if err := encoder.Encode(gatewayTurnStreamLine{Done: true}); err != nil {
+			return fmt.Errorf("writing gateway-turn stream done: %w", err)
+		}
+		return nil
+	}
+
 	stream, err := turns.SubmitAction(ctx, req)
 	if err != nil {
 		return writeGatewayTurnError(out, err)
@@ -523,6 +547,11 @@ func runGatewayDeleteSave(ctx context.Context, cfg config.Config, db *storage.DB
 
 func writeGatewayTurnError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{Error: err.Error()})
+	return err
+}
+
+func writeGatewayTurnStreamError(out io.Writer, err error) error {
+	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{Error: err.Error()})
 	return err
 }
 

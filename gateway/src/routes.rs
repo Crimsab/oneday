@@ -228,6 +228,7 @@ async fn submit_action(
     Json(payload): Json<engine::ActionEnvelope>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let client_turn = payload.client_turn;
+    let stream_requested = payload.stream;
     let action_kind = payload.action.kind.clone();
     let action_text = payload.action.text.clone();
     emit_turn_stream(
@@ -259,11 +260,19 @@ async fn submit_action(
             return Err(err.into());
         }
     };
-    for event in &events.events {
-        emit_turn_stream(
-            &state,
-            TurnStreamEvent::contract(&story_id, client_turn, &action_kind, &action_text, event),
-        );
+    if !stream_requested {
+        for event in &events.events {
+            emit_turn_stream(
+                &state,
+                TurnStreamEvent::contract(
+                    &story_id,
+                    client_turn,
+                    &action_kind,
+                    &action_text,
+                    event,
+                ),
+            );
+        }
     }
     let snapshot = db::snapshot(&state.pool, &story_id).await?;
     assets::spawn_auto_generation(state.clone(), story_id.clone());
