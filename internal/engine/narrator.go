@@ -620,8 +620,10 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 		guidance, usage, latency, err := n.evaluateSceneProgression(ctx, recentMsgs, signal)
 		preflightUsage = mergeUsage(preflightUsage, usage)
 		preflightLatency += latency
-		if err == nil {
+		if err == nil && guidance != nil {
 			sceneProgression = guidance
+		} else {
+			sceneProgression = fallbackSceneProgressionGuidance(signal)
 		}
 	}
 
