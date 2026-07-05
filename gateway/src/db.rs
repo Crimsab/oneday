@@ -164,10 +164,21 @@ pub struct StorySnapshot {
 pub struct StoryVersion {
     pub turn: i64,
     pub revision: i64,
+    pub story_updated_at: String,
+    pub active_session_id: String,
     pub last_message_id: i64,
     pub world_updated_at: String,
+    pub character_updated_at: String,
+    pub npc_count: i64,
+    pub npc_updated_at: String,
+    pub chapter_count: i64,
     pub achievement_count: i64,
+    pub latest_achievement_at: String,
     pub save_count: i64,
+    pub latest_save_at: String,
+    pub visual_asset_updated_at: String,
+    pub visual_job_updated_at: String,
+    pub active_visual_job_count: i64,
 }
 
 pub async fn list_stories(pool: &SqlitePool) -> anyhow::Result<Vec<StorySummary>> {
@@ -282,7 +293,7 @@ pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Story
     let world = load_world(pool, story_id).await?;
     let active_session = load_active_session(pool, story_id).await?;
     let messages = load_messages(pool, story_id, 500).await?;
-    let choices = latest_choices(&messages);
+    let choices = latest_choices(&messages, &active_session.id, world.current_turn);
     let panels = PanelsView {
         chapters: load_chapters(pool, story_id).await?,
         achievements: load_achievements(pool, story_id).await?,
@@ -308,11 +319,36 @@ pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<
     let row = sqlx::query(r#"SELECT
            COALESCE((SELECT current_turn FROM world_state WHERE story_id = ?), 0) AS turn,
            COALESCE((SELECT revision FROM stories WHERE id = ?), 0) AS revision,
+           COALESCE((SELECT CAST(updated_at AS TEXT) FROM stories WHERE id = ?), '') AS story_updated_at,
+           COALESCE((SELECT id FROM sessions WHERE story_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1),
+                    (SELECT id FROM sessions WHERE story_id = ? ORDER BY started_at DESC LIMIT 1),
+                    '') AS active_session_id,
            COALESCE((SELECT MAX(id) FROM chat_messages WHERE story_id = ?), 0) AS last_message_id,
            COALESCE((SELECT CAST(updated_at AS TEXT) FROM world_state WHERE story_id = ?), '') AS world_updated_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM characters WHERE story_id = ?), '') AS character_updated_at,
+           COALESCE((SELECT COUNT(*) FROM npcs WHERE story_id = ?), 0) AS npc_count,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM npcs WHERE story_id = ?), '') AS npc_updated_at,
+           COALESCE((SELECT COUNT(*) FROM chapters WHERE story_id = ?), 0) AS chapter_count,
            COALESCE((SELECT COUNT(*) FROM achievements WHERE story_id = ?), 0) AS achievement_count,
-           COALESCE((SELECT COUNT(*) FROM saves WHERE story_id = ?), 0) AS save_count"#,
+           COALESCE((SELECT CAST(MAX(earned_at) AS TEXT) FROM achievements WHERE story_id = ?), '') AS latest_achievement_at,
+           COALESCE((SELECT COUNT(*) FROM saves WHERE story_id = ?), 0) AS save_count,
+           COALESCE((SELECT CAST(MAX(created_at) AS TEXT) FROM saves WHERE story_id = ?), '') AS latest_save_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_assets WHERE story_id = ?), '') AS visual_asset_updated_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_generation_jobs WHERE story_id = ?), '') AS visual_job_updated_at,
+           COALESCE((SELECT COUNT(*) FROM visual_generation_jobs WHERE story_id = ? AND status IN ('queued', 'running')), 0) AS active_visual_job_count"#,
     )
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(story_id)
     .bind(story_id)
     .bind(story_id)
     .bind(story_id)
@@ -324,10 +360,21 @@ pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<
     Ok(StoryVersion {
         turn: row.try_get("turn")?,
         revision: row.try_get("revision")?,
+        story_updated_at: row.try_get("story_updated_at")?,
+        active_session_id: row.try_get("active_session_id")?,
         last_message_id: row.try_get("last_message_id")?,
         world_updated_at: row.try_get("world_updated_at")?,
+        character_updated_at: row.try_get("character_updated_at")?,
+        npc_count: row.try_get("npc_count")?,
+        npc_updated_at: row.try_get("npc_updated_at")?,
+        chapter_count: row.try_get("chapter_count")?,
         achievement_count: row.try_get("achievement_count")?,
+        latest_achievement_at: row.try_get("latest_achievement_at")?,
         save_count: row.try_get("save_count")?,
+        latest_save_at: row.try_get("latest_save_at")?,
+        visual_asset_updated_at: row.try_get("visual_asset_updated_at")?,
+        visual_job_updated_at: row.try_get("visual_job_updated_at")?,
+        active_visual_job_count: row.try_get("active_visual_job_count")?,
     })
 }
 
@@ -605,9 +652,16 @@ async fn load_saves(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Sav
         .collect()
 }
 
-fn latest_choices(messages: &[MessageView]) -> Vec<ChoiceView> {
+fn latest_choices(
+    messages: &[MessageView],
+    active_session_id: &str,
+    current_turn: i64,
+) -> Vec<ChoiceView> {
     for message in messages.iter().rev() {
-        if message.role != "assistant" {
+        if message.role != "assistant"
+            || message.session_id != active_session_id
+            || message.turn != current_turn
+        {
             continue;
         }
         let output = message.metadata.get("output").unwrap_or(&Value::Null);
@@ -797,7 +851,28 @@ mod tests {
         .execute(&pool)
         .await
         .expect("insert story");
+        create_story_version_tables(&pool).await;
         pool
+    }
+
+    async fn create_story_version_tables(pool: &SqlitePool) {
+        for statement in [
+            "CREATE TABLE world_state (story_id TEXT NOT NULL, current_turn INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE sessions (id TEXT NOT NULL, story_id TEXT NOT NULL, started_at TEXT NOT NULL DEFAULT '', ended_at TEXT)",
+            "CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, story_id TEXT NOT NULL, session_id TEXT NOT NULL, turn INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL, content TEXT NOT NULL DEFAULT '', message_type TEXT NOT NULL DEFAULT 'narrative', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE characters (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE npcs (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE chapters (story_id TEXT NOT NULL)",
+            "CREATE TABLE achievements (story_id TEXT NOT NULL, earned_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE saves (story_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE visual_assets (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', file_path TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE visual_generation_jobs (story_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', updated_at TEXT NOT NULL DEFAULT '')",
+        ] {
+            sqlx::query(statement)
+                .execute(pool)
+                .await
+                .expect("create story version table");
+        }
     }
 
     fn story_update() -> StoryUpdate {
@@ -874,5 +949,80 @@ mod tests {
             .iter()
             .any(|count| count.table == "stories" && count.rows == 1));
         assert!(plan.retained_asset_files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn story_version_includes_session_panels_and_visual_job_state() {
+        let pool = story_pool().await;
+        for statement in [
+            "INSERT INTO world_state (story_id, current_turn, updated_at) VALUES ('story-1', 3, 'world-v3')",
+            "INSERT INTO sessions (id, story_id, started_at, ended_at) VALUES ('old-session', 'story-1', '2026-01-01T00:00:00Z', '2026-01-01T01:00:00Z')",
+            "INSERT INTO sessions (id, story_id, started_at, ended_at) VALUES ('active-session', 'story-1', '2026-01-01T02:00:00Z', NULL)",
+            "INSERT INTO chat_messages (story_id, session_id, turn, role, metadata_json, created_at) VALUES ('story-1', 'active-session', 3, 'assistant', '{}', 'm1')",
+            "INSERT INTO characters (story_id, updated_at) VALUES ('story-1', 'character-v2')",
+            "INSERT INTO npcs (story_id, updated_at) VALUES ('story-1', 'npc-v1')",
+            "INSERT INTO npcs (story_id, updated_at) VALUES ('story-1', 'npc-v2')",
+            "INSERT INTO chapters (story_id) VALUES ('story-1')",
+            "INSERT INTO achievements (story_id, earned_at) VALUES ('story-1', 'achievement-v1')",
+            "INSERT INTO saves (story_id, created_at) VALUES ('story-1', 'save-v1')",
+            "INSERT INTO visual_assets (story_id, updated_at, file_path) VALUES ('story-1', 'asset-v1', '')",
+            "INSERT INTO visual_generation_jobs (story_id, status, updated_at) VALUES ('story-1', 'queued', 'job-v1')",
+        ] {
+            sqlx::query(statement)
+                .execute(&pool)
+                .await
+                .expect("insert version fixture");
+        }
+
+        let version = story_version(&pool, "story-1")
+            .await
+            .expect("story version");
+
+        assert_eq!(version.turn, 3);
+        assert_eq!(version.active_session_id, "active-session");
+        assert_eq!(version.story_updated_at, "2026-01-01T00:00:00Z");
+        assert_eq!(version.world_updated_at, "world-v3");
+        assert_eq!(version.character_updated_at, "character-v2");
+        assert_eq!(version.npc_count, 2);
+        assert_eq!(version.npc_updated_at, "npc-v2");
+        assert_eq!(version.chapter_count, 1);
+        assert_eq!(version.latest_achievement_at, "achievement-v1");
+        assert_eq!(version.latest_save_at, "save-v1");
+        assert_eq!(version.visual_asset_updated_at, "asset-v1");
+        assert_eq!(version.visual_job_updated_at, "job-v1");
+        assert_eq!(version.active_visual_job_count, 1);
+    }
+
+    #[test]
+    fn latest_choices_only_uses_current_active_session_turn() {
+        let messages = vec![
+            assistant_choice("old-session", 3, "Old session choice"),
+            assistant_choice("active-session", 2, "Old turn choice"),
+            assistant_choice("active-session", 3, "Current choice"),
+        ];
+
+        let choices = latest_choices(&messages, "active-session", 3);
+
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].text, "Current choice");
+        assert!(latest_choices(&messages, "active-session", 4).is_empty());
+    }
+
+    fn assistant_choice(session_id: &str, turn: i64, text: &str) -> MessageView {
+        MessageView {
+            id: turn,
+            session_id: session_id.to_string(),
+            story_id: "story-1".to_string(),
+            turn,
+            role: "assistant".to_string(),
+            content: text.to_string(),
+            message_type: "narrative".to_string(),
+            metadata: serde_json::json!({
+                "output": {
+                    "choices_data": [{ "id": 1, "text": text, "risk": "Low" }]
+                }
+            }),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
     }
 }
