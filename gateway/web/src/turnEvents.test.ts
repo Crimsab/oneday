@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendTurnEvent, turnEventDetail, turnEventFromContract, turnEventTitle } from "./turnEvents";
+import { appendTurnEvent, streamingDeltaText, turnEventDetail, turnEventFromContract, turnEventTitle } from "./turnEvents";
 import type { TurnStreamEvent } from "./types";
 
 describe("turn event helpers", () => {
@@ -7,7 +7,7 @@ describe("turn event helpers", () => {
     const first = event({ created_at: "2026-01-01T00:00:00Z" });
     const duplicate = event({ created_at: "2026-01-01T00:00:02Z", message: "Updated label" });
 
-    expect(appendTurnEvent(appendTurnEvent([], first), duplicate)).toEqual([duplicate]);
+    expect(appendTurnEvent(appendTurnEvent([], first), duplicate)).toEqual([first]);
   });
 
   it("keeps the newest bounded live events", () => {
@@ -26,6 +26,16 @@ describe("turn event helpers", () => {
     expect(turnEventDetail(event({ status: "submitted", event_type: null }))).toContain("Rust gateway");
     expect(turnEventDetail(event({ event_type: "narrative.final" }))).toContain("Narrative generated");
     expect(turnEventTitle(event({ event_type: "turn.committed" }))).toBe("turn.committed");
+  });
+
+  it("extracts narrative delta text for provisional streaming display", () => {
+    const delta = event({
+      event_type: "narrative.delta",
+      event: { id: "turn-1:live:2", type: "narrative.delta", payload: { text: "La porta si apre." } },
+    });
+
+    expect(streamingDeltaText(delta)).toBe("La porta si apre.");
+    expect(turnEventDetail(delta)).toBe("La porta si apre.");
   });
 
   it("wraps contract events returned by the action response", () => {

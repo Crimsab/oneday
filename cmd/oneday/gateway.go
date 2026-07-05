@@ -23,6 +23,7 @@ type gatewayTurnResponse struct {
 
 type gatewayTurnStreamLine struct {
 	Event *contracts.TurnEvent `json:"event,omitempty"`
+	Phase string               `json:"phase,omitempty"`
 	Error string               `json:"error,omitempty"`
 	Done  bool                 `json:"done,omitempty"`
 }
@@ -452,7 +453,10 @@ func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, rout
 		encoder := json.NewEncoder(out)
 		for event := range stream {
 			eventCopy := event
-			if err := encoder.Encode(gatewayTurnStreamLine{Event: &eventCopy}); err != nil {
+			if err := encoder.Encode(gatewayTurnStreamLine{
+				Event: &eventCopy,
+				Phase: gatewayTurnEventPhase(eventCopy),
+			}); err != nil {
 				return fmt.Errorf("writing gateway-turn stream event: %w", err)
 			}
 		}
@@ -553,6 +557,13 @@ func writeGatewayTurnError(out io.Writer, err error) error {
 func writeGatewayTurnStreamError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{Error: err.Error()})
 	return err
+}
+
+func gatewayTurnEventPhase(event contracts.TurnEvent) string {
+	if strings.Contains(event.ID, ":live:") || event.Type == contracts.EventNarrativeDelta {
+		return "live"
+	}
+	return "final"
 }
 
 func writeGatewayStoryCreateError(out io.Writer, err error) error {

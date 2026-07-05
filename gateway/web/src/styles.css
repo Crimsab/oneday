@@ -1018,6 +1018,22 @@ input:disabled {
   font-size: 12px;
 }
 
+.pending-streaming-draft {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line-soft));
+  background: color-mix(in srgb, var(--panel-strong) 68%, transparent);
+  color: var(--text);
+}
+
+.pending-streaming-draft small {
+  color: var(--accent);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
 .pending-pulse {
   width: 7px;
   height: 7px;
