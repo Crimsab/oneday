@@ -81,7 +81,7 @@ ai:
     provider: "openclaw-bridge"
     base_url: ""
     api_key: ""
-    model: "gpt-image-2"
+    model: "openai/gpt-image-2"
     openclaw_bridge_url: "http://openclaw-imagegen:8099/generate"
     default_size: "1024x1024"
     location_size: "1536x1024"
