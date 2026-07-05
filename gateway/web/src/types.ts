@@ -354,6 +354,17 @@ export interface VisualAssetsResponse {
   jobs: VisualGenerationJobView[];
 }
 
+export interface VisualAssetCleanupRequest {
+  dry_run?: boolean;
+}
+
+export interface VisualAssetCleanupResponse {
+  story_id: string;
+  dry_run: boolean;
+  deleted_files: string[];
+  kept_files: string[];
+}
+
 export interface GenerateVisualAssetsRequest {
   asset_ids?: string[];
   force?: boolean;

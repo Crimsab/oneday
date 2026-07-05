@@ -26,6 +26,8 @@ import type {
   StorySummary,
   StoryUpdatePayload,
   VisualAssetsResponse,
+  VisualAssetCleanupRequest,
+  VisualAssetCleanupResponse,
   VisualAssetPromptUpdate,
   VisualAssetVersion,
   VisualProfileUpdate,
@@ -137,6 +139,27 @@ export function generateVisualAssets(storyId: string, payload: GenerateVisualAss
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
+}
+
+export function cancelVisualGenerationJob(storyId: string, jobId: number): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(
+    `/api/stories/${encodeURIComponent(storyId)}/visual-assets/jobs/${encodeURIComponent(String(jobId))}/cancel`,
+    { method: "POST" },
+  );
+}
+
+export function cleanupVisualAssetFiles(
+  storyId: string,
+  payload: VisualAssetCleanupRequest = {},
+): Promise<VisualAssetCleanupResponse> {
+  return request<VisualAssetCleanupResponse>(
+    `/api/stories/${encodeURIComponent(storyId)}/visual-assets/cleanup`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export function getVisualAssetVersions(storyId: string, assetId: string): Promise<VisualAssetVersion[]> {

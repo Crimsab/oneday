@@ -69,6 +69,8 @@ interface PanelDrawerProps {
     payload: GenerateVisualAssetsRequest,
   ) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
+  onVisualJobCancel: (jobId: number) => Promise<void>;
+  onVisualAssetsCleanup: (dryRun?: boolean) => Promise<void>;
   onVisualAssetVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
   onVisualAssetPromptSave: (
     assetId: string,
@@ -118,6 +120,8 @@ export function PanelDrawer({
   onVisualProfileSave,
   onVisualAssetsGenerate,
   onVisualAssetsReload,
+  onVisualJobCancel,
+  onVisualAssetsCleanup,
   onVisualAssetVersionsLoad,
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
@@ -172,6 +176,8 @@ export function PanelDrawer({
             onVisualProfileSave={onVisualProfileSave}
             onVisualAssetsGenerate={onVisualAssetsGenerate}
             onVisualAssetsReload={onVisualAssetsReload}
+            onVisualJobCancel={onVisualJobCancel}
+            onVisualAssetsCleanup={onVisualAssetsCleanup}
             onVisualAssetVersionsLoad={onVisualAssetVersionsLoad}
             onVisualAssetPromptSave={onVisualAssetPromptSave}
             onVisualAssetVersionSelect={onVisualAssetVersionSelect}
@@ -257,6 +263,8 @@ function OptionsContent({
   onVisualProfileSave,
   onVisualAssetsGenerate,
   onVisualAssetsReload,
+  onVisualJobCancel,
+  onVisualAssetsCleanup,
   onVisualAssetVersionsLoad,
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
@@ -280,6 +288,8 @@ function OptionsContent({
     payload: GenerateVisualAssetsRequest,
   ) => Promise<void>;
   onVisualAssetsReload: () => Promise<void> | void;
+  onVisualJobCancel: (jobId: number) => Promise<void>;
+  onVisualAssetsCleanup: (dryRun?: boolean) => Promise<void>;
   onVisualAssetVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
   onVisualAssetPromptSave: (
     assetId: string,
@@ -405,6 +415,8 @@ function OptionsContent({
         onSave={onVisualProfileSave}
         onGenerate={onVisualAssetsGenerate}
         onReload={onVisualAssetsReload}
+        onJobCancel={onVisualJobCancel}
+        onCleanup={onVisualAssetsCleanup}
         onVersionsLoad={onVisualAssetVersionsLoad}
         onAssetPromptSave={onVisualAssetPromptSave}
         onVersionSelect={onVisualAssetVersionSelect}
@@ -423,6 +435,8 @@ function VisualDirectionSettings({
   onSave,
   onGenerate,
   onReload,
+  onJobCancel,
+  onCleanup,
   onVersionsLoad,
   onAssetPromptSave,
   onVersionSelect,
@@ -436,6 +450,8 @@ function VisualDirectionSettings({
   onSave: (payload: VisualProfileUpdate) => Promise<void>;
   onGenerate: (payload: GenerateVisualAssetsRequest) => Promise<void>;
   onReload: () => Promise<void> | void;
+  onJobCancel: (jobId: number) => Promise<void>;
+  onCleanup: (dryRun?: boolean) => Promise<void>;
   onVersionsLoad: (assetId: string) => Promise<VisualAssetVersion[]>;
   onAssetPromptSave: (
     assetId: string,
@@ -547,6 +563,28 @@ function VisualDirectionSettings({
     setSaveError("");
     try {
       await onGenerate(payload);
+    } catch (failure) {
+      setSaveError(
+        failure instanceof Error ? failure.message : String(failure),
+      );
+    }
+  };
+
+  const cancelJob = async (jobId: number) => {
+    setSaveError("");
+    try {
+      await onJobCancel(jobId);
+    } catch (failure) {
+      setSaveError(
+        failure instanceof Error ? failure.message : String(failure),
+      );
+    }
+  };
+
+  const cleanup = async (dryRun: boolean) => {
+    setSaveError("");
+    try {
+      await onCleanup(dryRun);
     } catch (failure) {
       setSaveError(
         failure instanceof Error ? failure.message : String(failure),
@@ -679,6 +717,16 @@ function VisualDirectionSettings({
                     attempt {job.attempts}/{job.max_attempts || 1}
                     {job.provider ? ` - ${job.provider}` : ""}
                   </small>
+                  <button
+                    type="button"
+                    onClick={() => void cancelJob(job.id)}
+                    disabled={
+                      busy ||
+                      !(job.status === "queued" || job.status === "running")
+                    }
+                  >
+                    Cancel
+                  </button>
                 </div>
               ))}
             </div>
@@ -799,6 +847,20 @@ function VisualDirectionSettings({
               disabled={busy}
             >
               Reload assets
+            </button>
+            <button
+              type="button"
+              onClick={() => void cleanup(true)}
+              disabled={busy}
+            >
+              Preview cleanup
+            </button>
+            <button
+              type="button"
+              onClick={() => void cleanup(false)}
+              disabled={busy}
+            >
+              Clean files
             </button>
             <button
               type="button"
