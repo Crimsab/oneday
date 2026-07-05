@@ -220,6 +220,8 @@ pub struct GatewayTurnResponse {
 struct GatewayTurnStreamLine {
     pub event: Option<serde_json::Value>,
     #[serde(default)]
+    pub phase: String,
+    #[serde(default)]
     pub error: String,
     #[serde(default)]
     pub done: bool,
@@ -618,6 +620,7 @@ async fn call_gateway_turn_stream(
     });
 
     let mut events = Vec::new();
+    let mut saw_done = false;
     let mut lines = BufReader::new(stdout).lines();
     let read_result = tokio::time::timeout(Duration::from_secs(360), async {
         while let Some(line) = lines.next_line().await? {
@@ -650,14 +653,20 @@ async fn call_gateway_turn_stream(
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("gateway-turn stream failed")
                     .to_string();
-                events.push(event);
+                if parsed.phase != "live" {
+                    events.push(event);
+                }
                 if is_error {
                     return Err(anyhow!(error_message));
                 }
             }
             if parsed.done {
+                saw_done = true;
                 break;
             }
+        }
+        if !saw_done {
+            return Err(anyhow!("gateway-turn stream ended before done line"));
         }
         Ok::<(), anyhow::Error>(())
     })
@@ -910,4 +919,190 @@ fn compact_stderr(stderr: &str) -> String {
         text.push_str("...");
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{config, AppState};
+    use std::fs;
+    use std::io::Write;
+    use std::path::{Path, PathBuf};
+    use tokio::sync::broadcast;
+
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
+    #[tokio::test]
+    async fn call_gateway_turn_stream_broadcasts_live_but_returns_final_only() {
+        let script = fake_oneday_script(&[
+            r#"{"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"narrative.delta","payload":{"text":"Hello"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
+            r#"{"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.started","payload":{},"created_at":"2026-01-01T00:00:01Z"},"phase":"final"}"#,
+            r#"{"event":{"id":"idem:2","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:02Z"},"phase":"final"}"#,
+            r#"{"done":true}"#,
+        ]);
+        let state = test_state(script).await;
+        let mut rx = state.turn_events.subscribe();
+        let action = PlayerAction {
+            kind: "free_text".to_string(),
+            text: "look".to_string(),
+            choice_id: 0,
+        };
+        let caps = ClientCapabilities::default();
+        let req = GatewayTurnRequest {
+            story_id: "story-1",
+            session_id: "session-1",
+            client_turn: 1,
+            client_revision: 1,
+            idempotency_key: "idem",
+            action: &action,
+            stream: true,
+            capabilities: &caps,
+        };
+
+        let resp = call_gateway_turn_stream(
+            state.clone(),
+            &req,
+            "story-1",
+            1,
+            "free_text".to_string(),
+            "look".to_string(),
+        )
+        .await
+        .expect("stream response");
+
+        assert_eq!(resp.events.len(), 2);
+        assert_eq!(resp.events[0]["id"], "idem:1");
+        assert_eq!(resp.events[1]["id"], "idem:2");
+
+        let live = rx.recv().await.expect("live event");
+        let final_started = rx.recv().await.expect("final started event");
+        let final_committed = rx.recv().await.expect("final committed event");
+        assert_eq!(live.event_type.as_deref(), Some("narrative.delta"));
+        assert_eq!(final_started.event_type.as_deref(), Some("turn.started"));
+        assert_eq!(
+            final_committed.event_type.as_deref(),
+            Some("turn.committed")
+        );
+    }
+
+    #[tokio::test]
+    async fn call_gateway_turn_stream_requires_done_line() {
+        let script = fake_oneday_script(&[
+            r#"{"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:00Z"},"phase":"final"}"#,
+        ]);
+        let state = test_state(script).await;
+        let action = PlayerAction {
+            kind: "free_text".to_string(),
+            text: "look".to_string(),
+            choice_id: 0,
+        };
+        let caps = ClientCapabilities::default();
+        let req = GatewayTurnRequest {
+            story_id: "story-1",
+            session_id: "session-1",
+            client_turn: 1,
+            client_revision: 1,
+            idempotency_key: "idem",
+            action: &action,
+            stream: true,
+            capabilities: &caps,
+        };
+
+        let err = call_gateway_turn_stream(
+            state,
+            &req,
+            "story-1",
+            1,
+            "free_text".to_string(),
+            "look".to_string(),
+        )
+        .await
+        .expect_err("missing done should fail");
+
+        assert!(err.to_string().contains("before done line"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn call_gateway_turn_stream_error_event_returns_error() {
+        let script = fake_oneday_script(&[
+            r#"{"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"error","payload":{"message":"provider failed"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
+        ]);
+        let state = test_state(script).await;
+        let mut rx = state.turn_events.subscribe();
+        let action = PlayerAction {
+            kind: "free_text".to_string(),
+            text: "look".to_string(),
+            choice_id: 0,
+        };
+        let caps = ClientCapabilities::default();
+        let req = GatewayTurnRequest {
+            story_id: "story-1",
+            session_id: "session-1",
+            client_turn: 1,
+            client_revision: 1,
+            idempotency_key: "idem",
+            action: &action,
+            stream: true,
+            capabilities: &caps,
+        };
+
+        let err = call_gateway_turn_stream(
+            state,
+            &req,
+            "story-1",
+            1,
+            "free_text".to_string(),
+            "look".to_string(),
+        )
+        .await
+        .expect_err("error event should fail");
+
+        assert!(err.to_string().contains("provider failed"), "{err}");
+        let event = rx.recv().await.expect("broadcast error event");
+        assert_eq!(event.event_type.as_deref(), Some("error"));
+    }
+
+    async fn test_state(oneday_bin: PathBuf) -> Arc<AppState> {
+        let pool = sqlx::SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("memory sqlite");
+        let root = oneday_bin.parent().expect("script parent").to_path_buf();
+        let (turn_events, _) = broadcast::channel(16);
+        Arc::new(AppState {
+            pool,
+            paths: config::ResolvedPaths {
+                oneday_root: root.clone(),
+                config_path: root.join("config.yaml"),
+                db_path: root.join("oneday.db"),
+                oneday_bin,
+                static_dir: root.clone(),
+                visual_asset_dir: root.join("visual_assets"),
+            },
+            turn_events,
+        })
+    }
+
+    fn fake_oneday_script(lines: &[&str]) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("oneday-gateway-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create temp root");
+        let script = root.join("oneday-fake");
+        write_script(&script, lines);
+        script
+    }
+
+    fn write_script(path: &Path, lines: &[&str]) {
+        let mut file = fs::File::create(path).expect("create fake oneday script");
+        writeln!(file, "#!/usr/bin/env bash").expect("write shebang");
+        for line in lines {
+            writeln!(file, "printf '%s\\n' '{}'", line.replace('\'', "'\\''"))
+                .expect("write stream line");
+        }
+        #[cfg(unix)]
+        {
+            let mut permissions = file.metadata().expect("script metadata").permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).expect("chmod fake script");
+        }
+    }
 }

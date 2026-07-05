@@ -1,9 +1,9 @@
 import type { JsonObject, JsonValue, PlayerAction, TurnStreamEvent } from "./types";
 
 export function appendTurnEvent(events: TurnStreamEvent[], next: TurnStreamEvent, limit = 8): TurnStreamEvent[] {
-  const key = turnEventKey(next);
-  const withoutDuplicate = events.filter((event) => turnEventKey(event) !== key);
-  return [...withoutDuplicate, next].slice(-limit);
+	const key = turnEventKey(next);
+	if (events.some((event) => turnEventKey(event) === key)) return events;
+	return [...events, next].slice(-limit);
 }
 
 export function turnEventDetail(event: TurnStreamEvent): string {
@@ -16,6 +16,8 @@ export function turnEventDetail(event: TurnStreamEvent): string {
   switch (event.event_type) {
     case "turn.started":
       return "Engine started resolving the turn.";
+    case "narrative.delta":
+      return streamingDeltaText(event) || "Narrative is streaming.";
     case "narrative.final":
       return "Narrative generated; applying state updates.";
     case "state.delta":
@@ -29,6 +31,13 @@ export function turnEventDetail(event: TurnStreamEvent): string {
     default:
       return event.message || event.event_type || "Live engine event received.";
   }
+}
+
+export function streamingDeltaText(event: TurnStreamEvent): string {
+  if (event.event_type !== "narrative.delta") return "";
+  const eventObject = isObject(event.event) ? event.event : {};
+  const payload = isObject(eventObject.payload) ? eventObject.payload : {};
+  return typeof payload.text === "string" ? payload.text : "";
 }
 
 export function turnEventTitle(event: TurnStreamEvent): string {

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/game/contracts"
 )
 
 func TestWantsVersion(t *testing.T) {
@@ -58,6 +59,18 @@ func TestWantsOperatorCommands(t *testing.T) {
 	}
 	if !wantsGatewayStoryEnhance([]string{"gateway-story-enhance"}) {
 		t.Fatal("expected gateway-story-enhance")
+	}
+}
+
+func TestGatewayTurnEventPhase(t *testing.T) {
+	if got := gatewayTurnEventPhase(contracts.TurnEvent{ID: "turn-key:live:1", Type: contracts.EventTurnStarted}); got != "live" {
+		t.Fatalf("live phase = %q", got)
+	}
+	if got := gatewayTurnEventPhase(contracts.TurnEvent{ID: "turn-key:2", Type: contracts.EventNarrativeDelta}); got != "live" {
+		t.Fatalf("delta phase = %q", got)
+	}
+	if got := gatewayTurnEventPhase(contracts.TurnEvent{ID: "turn-key:3", Type: contracts.EventTurnCommitted}); got != "final" {
+		t.Fatalf("final phase = %q", got)
 	}
 }
 

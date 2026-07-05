@@ -34,7 +34,7 @@ import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
-import { appendTurnEvent, turnEventDetail, turnEventFromContract } from "./turnEvents";
+import { appendTurnEvent, streamingDeltaText, turnEventDetail, turnEventFromContract } from "./turnEvents";
 import type {
   AppPreferences,
   ChoiceView,
@@ -202,7 +202,16 @@ function App() {
         return;
       }
       setLiveTurnEvents((items) => appendTurnEvent(items, liveEvent));
-      setPendingTurn((pending) => (pending ? { ...pending, detail: turnEventDetail(liveEvent) } : pending));
+      setPendingTurn((pending) => {
+        if (!pending) return pending;
+        const delta = streamingDeltaText(liveEvent);
+        if (!delta) return { ...pending, detail: turnEventDetail(liveEvent) };
+        return {
+          ...pending,
+          detail: "Assistant draft streaming. This text becomes canonical only after commit.",
+          streamingText: `${pending.streamingText ?? ""}${delta}`,
+        };
+      });
       if (liveEvent.status === "failed") {
         setSync("Error");
         setNotice(liveEvent.message);
