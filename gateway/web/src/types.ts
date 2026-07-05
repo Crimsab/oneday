@@ -116,6 +116,7 @@ export interface StoryUpdatePayload {
 
 export interface StoryDeleteResponse {
   story_id: string;
+  cancelled_visual_jobs?: number;
 }
 
 export interface StoryDeleteCount {

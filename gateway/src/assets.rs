@@ -568,6 +568,26 @@ pub async fn generate_visual_assets(
     visual_assets(&state.pool, story_id).await
 }
 
+pub async fn cancel_story_visual_jobs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<u64> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let result = sqlx::query(
+        r#"UPDATE visual_generation_jobs
+           SET status = 'cancelled',
+               locked_until = '',
+               error = 'Cancelled because the story was deleted.',
+               finished_at = ?,
+               updated_at = ?
+           WHERE story_id = ? AND status IN ('queued', 'running')"#,
+    )
+    .bind(&now)
+    .bind(&now)
+    .bind(story_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("cancelling visual generation jobs for story {story_id}"))?;
+    Ok(result.rows_affected())
+}
+
 pub fn spawn_visual_generation_worker(state: Arc<AppState>) {
     tokio::spawn(async move {
         if let Err(err) = run_visual_generation_worker(state).await {
@@ -593,6 +613,17 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
         }
         match generate_one_asset(&client, &state, &config, &job.asset).await {
             Ok(generated) => {
+                if !visual_asset_exists(&state.pool, &job.asset.story_id, &job.asset.id).await? {
+                    discard_generated_asset(&generated).await;
+                    mark_generation_job_terminal(
+                        &state.pool,
+                        job.id,
+                        "cancelled",
+                        "visual asset was deleted before generation completed",
+                    )
+                    .await?;
+                    continue;
+                }
                 mark_asset_ready(
                     &state.pool,
                     &job.asset.id,
@@ -1074,6 +1105,9 @@ async fn persist_generated_asset(
     bytes: Vec<u8>,
     extension: &str,
 ) -> anyhow::Result<GeneratedAsset> {
+    if !visual_asset_exists(&state.pool, &asset.story_id, &asset.id).await? {
+        anyhow::bail!("visual asset was deleted before image persistence");
+    }
     let story_slug = slug(&asset.story_id);
     let subject_slug = slug(&format!("{}-{}", asset.kind, asset.subject));
     let hash = short_hash(&bytes);
@@ -1098,6 +1132,29 @@ async fn persist_generated_asset(
         file_path: file_path.to_string_lossy().to_string(),
         revised_prompt: String::new(),
     })
+}
+
+async fn visual_asset_exists(
+    pool: &SqlitePool,
+    story_id: &str,
+    asset_id: &str,
+) -> anyhow::Result<bool> {
+    let exists: Option<i64> =
+        sqlx::query_scalar("SELECT 1 FROM visual_assets WHERE story_id = ? AND id = ?")
+            .bind(story_id)
+            .bind(asset_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(exists.is_some())
+}
+
+async fn discard_generated_asset(generated: &GeneratedAsset) {
+    if generated.file_path.trim().is_empty() {
+        return;
+    }
+    if let Err(err) = fs::remove_file(&generated.file_path).await {
+        tracing::warn!(file_path = %generated.file_path, error = %err, "could not remove discarded generated asset");
+    }
 }
 
 fn final_prompt(asset: &VisualAsset, config: &ImageGenerationConfig) -> String {
@@ -2085,5 +2142,34 @@ mod tests {
                 .await
                 .expect("job status");
         assert_eq!(status, "running");
+    }
+
+    #[tokio::test]
+    async fn cancel_story_visual_jobs_marks_active_jobs_cancelled() {
+        let pool = visual_job_pool().await;
+        sqlx::query(
+            r#"INSERT INTO visual_generation_jobs (
+                asset_id, story_id, status, attempts, max_attempts, locked_until, provider
+            ) VALUES (?, ?, 'queued', 0, 3, '', ?)"#,
+        )
+        .bind("asset-location")
+        .bind("story")
+        .bind("test")
+        .execute(&pool)
+        .await
+        .expect("insert job");
+
+        let cancelled = cancel_story_visual_jobs(&pool, "story")
+            .await
+            .expect("cancel jobs");
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM visual_generation_jobs WHERE story_id = ?")
+                .bind("story")
+                .fetch_one(&pool)
+                .await
+                .expect("job status");
+
+        assert_eq!(cancelled, 1);
+        assert_eq!(status, "cancelled");
     }
 }
