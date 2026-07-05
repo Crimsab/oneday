@@ -589,6 +589,7 @@ function App() {
         client_revision: readySnapshot.version.revision,
         idempotency_key: clientId("turn"),
         action,
+        stream: true,
         capabilities: { images: true, ascii: true, roll_log: true },
       });
       setLiveTurnEvents((items) =>

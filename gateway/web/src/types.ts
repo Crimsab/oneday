@@ -439,6 +439,7 @@ export interface ActionEnvelope {
   client_revision: number;
   idempotency_key: string;
   action: PlayerAction;
+  stream?: boolean;
   capabilities: {
     images: boolean;
     ascii: boolean;
