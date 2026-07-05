@@ -105,11 +105,37 @@ Use state_changes to trigger game engine updates. All keys are optional — only
 - "skill_learn": "Skill Name" — teach a brand new skill at level 1 when first attempted.
 
 ### NPC Generation
-When you introduce a NEW named NPC the protagonist interacts with meaningfully, include their full profile:
+NPC discovery is progressive. Do not create a full NPC profile just because a person is mentioned.
+
+Use "npc_reference" for rumors, suspects, names in clues, observed silhouettes, voices, aliases, or people who may matter later but have not had meaningful interaction yet:
+- "npc_reference": {
+    "name": "Marek",
+    "public_label": "Marek",
+    "stage": "rumor|observed|identified",
+    "source": "clue|dialogue|narrative|investigation",
+    "confidence": "inferred|rumored|observed|confirmed",
+    "detail": "What was learned without inventing a full profile",
+    "visual_facts": {"clothing": "dark coat", "silhouette": "thin figure hiding their face"}
+  }
+
+Use "npc_discovery_update" when a rumor becomes observed, an observed figure becomes identified, aliases are linked, or new public facts/visual details are confirmed:
+- "npc_discovery_update": {
+    "name": "the woman in red",
+    "canonical_name": "Serra Vale",
+    "stage": "identified|established",
+    "confidence": "observed|confirmed",
+    "aliases": ["the woman in red"],
+    "facts": [{"field": "appearance", "value": "red lacquered raincoat, silver cane", "confidence": "observed", "public": true}],
+    "visual_facts": {"clothing": "red lacquered raincoat", "distinguishing": ["silver cane"]}
+  }
+
+Use "new_npc" only when the person is named or stably identified, the protagonist meaningfully interacts with them, and they are likely recurring or narratively important. Include their full profile:
 - "new_npc": {
     "name": "Full Name",
+    "aliases": ["optional previous labels"],
     "role": "merchant|guard|noble|peasant|mage|warrior|thief|priest|innkeeper|etc",
     "appearance": "Brief physical description",
+    "discovery": {"stage": "established", "confidence": "confirmed", "visual_readiness": "canonical"},
     "personality": {
       "traits": ["trait1", "trait2"],
       "speech_style": "How they talk (formal, blunt, evasive, warm, etc.)",
@@ -124,7 +150,8 @@ When you introduce a NEW named NPC the protagonist interacts with meaningfully, 
   }
 
 Background/unnamed characters (generic guards, unnamed shopkeepers) do NOT need NPC profiles.
-If a scene reveals a person's name, gives them direct dialogue, or makes future choices refer to them by name, they are no longer background: include "new_npc" in the same response unless that NPC already exists. Do not leave a newly named recurring person only in prose.
+If a scene reveals a person's name, gives them direct dialogue, or makes future choices refer to them by name, include either "npc_reference", "npc_discovery_update", or "new_npc" in the same response. Use "new_npc" only when the person is now meaningfully established. Do not leave a newly named recurring person only in prose.
+Never invent hidden visual identity from weak clues. If only a name is known, use "npc_reference" with stage "rumor" and omit appearance. If only a silhouette is seen, use stage "observed" and include only observed visual_facts.
 
 ### NPC Updates (for existing NPCs by name)
 - "npc_disposition": {"name": "NPC Name", "change": N} — adjust disposition by N.
@@ -231,7 +258,7 @@ Do NOT emit full ASCII art unless specifically asked elsewhere. Use only the cue
 4. Titles: rare rewards for significant achievements. Weight them accordingly.
 
 ## Rules for NPCs
-1. Generate full NPC profiles for any named character the protagonist interacts with meaningfully.
+1. Track NPC discovery progressively: rumors and silhouettes use "npc_reference"; aliases/facts use "npc_discovery_update"; full profiles use "new_npc" only for meaningful recurring characters.
 2. Private thoughts and desires are YOUR narrative tools — use them to maintain consistent behavior.
 3. Update disposition after EVERY meaningful interaction with an NPC.
 4. After any interaction where the NPC forms an opinion or observes the protagonist:

@@ -587,6 +587,7 @@ async fn load_achievements(
 
 async fn load_npcs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<RecordView>> {
     let rows = sqlx::query(r#"SELECT id, name, role, appearance, personality_json, relationship_json,
+                discovery_json,
                 disposition, is_alive,
                 first_appeared_turn, last_seen_turn, can_help, CAST(updated_at AS TEXT) AS updated_at
          FROM npcs WHERE story_id = ? ORDER BY last_seen_turn DESC, name ASC"#,
@@ -596,21 +597,35 @@ async fn load_npcs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Reco
     .await?;
     Ok(rows
         .into_iter()
-        .map(|row| RecordView {
-            id: row_string(&row, "id"),
-            name: row_string(&row, "name"),
-            fields: json!({
+        .map(|row| {
+            let discovery = json_field(&row, "discovery_json", json!({}));
+            let discovery_stage = value_string(&discovery, "stage");
+            let profile_completeness = value_i64(&discovery, "profile_completeness");
+            let visual_completeness = value_i64(&discovery, "visual_completeness");
+            let visual_readiness = value_string(&discovery, "visual_readiness");
+            let public_label = value_string(&discovery, "public_label");
+            RecordView {
+                id: row_string(&row, "id"),
+                name: row_string(&row, "name"),
+                fields: json!({
                 "role": row_string(&row, "role"),
                 "appearance": row_string(&row, "appearance"),
                 "personality": json_field(&row, "personality_json", json!({})),
                 "relationship": json_field(&row, "relationship_json", json!({})),
+                "discovery": discovery,
+                "discovery_stage": discovery_stage,
+                "profile_completeness": profile_completeness,
+                "visual_completeness": visual_completeness,
+                "visual_readiness": visual_readiness,
+                "public_label": public_label,
                 "disposition": row.try_get::<i64, _>("disposition").unwrap_or_default(),
                 "is_alive": row.try_get::<i64, _>("is_alive").unwrap_or(1) != 0,
                 "first_appeared_turn": row.try_get::<i64, _>("first_appeared_turn").unwrap_or_default(),
                 "last_seen_turn": row.try_get::<i64, _>("last_seen_turn").unwrap_or_default(),
                 "can_help": row.try_get::<i64, _>("can_help").unwrap_or_default() != 0,
                 "updated_at": row_string(&row, "updated_at"),
-            }),
+                }),
+            }
         })
         .collect())
 }
@@ -806,6 +821,18 @@ fn json_field(row: &sqlx::sqlite::SqliteRow, key: &str, fallback: Value) -> Valu
         return fallback;
     }
     serde_json::from_str(&raw).unwrap_or(fallback)
+}
+
+fn value_string(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn value_i64(value: &Value, key: &str) -> i64 {
+    value.get(key).and_then(Value::as_i64).unwrap_or_default()
 }
 
 #[cfg(test)]
