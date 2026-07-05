@@ -739,20 +739,17 @@ function App() {
   };
 
   const snapshotForSubmit = async (baseSnapshot: StorySnapshot): Promise<StorySnapshot | null> => {
-    if (!paused) return baseSnapshot;
+    const shouldRefresh = paused || sync !== "Live" || isSnapshotStale(baseSnapshot);
+    if (!shouldRefresh) return baseSnapshot;
     setSync("Loading");
     const latest = await getSnapshot(storyId);
     setSnapshot(latest);
-    if (
-      latest.active_session.id !== baseSnapshot.active_session.id ||
-      latest.world.current_turn !== baseSnapshot.world.current_turn ||
-      latest.version.revision !== baseSnapshot.version.revision ||
-      latest.version.last_message_id !== baseSnapshot.version.last_message_id
-    ) {
-      setSync("Paused");
-      setNotice("The story changed while sync was paused. Review the latest turn before sending.");
+    if (submitSnapshotChanged(baseSnapshot, latest)) {
+      setSync(paused ? "Paused" : "Live");
+      setNotice("The story changed before sending. Review the latest turn before sending again.");
       return null;
     }
+    setSync(paused ? "Paused" : "Live");
     return latest;
   };
 
@@ -1072,6 +1069,23 @@ function actionErrorMessage(error: unknown): string {
     return "The story advanced elsewhere. Review the latest choices before sending again.";
   }
   return message;
+}
+
+function isSnapshotStale(snapshot: StorySnapshot, maxAgeMs = 30_000): boolean {
+  const serverTime = Date.parse(snapshot.server_time);
+  if (!Number.isFinite(serverTime)) return false;
+  return Date.now() - serverTime > maxAgeMs;
+}
+
+function submitSnapshotChanged(previous: StorySnapshot, latest: StorySnapshot): boolean {
+  return (
+    latest.active_session.id !== previous.active_session.id ||
+    latest.version.active_session_id !== previous.version.active_session_id ||
+    latest.world.current_turn !== previous.world.current_turn ||
+    latest.version.revision !== previous.version.revision ||
+    latest.version.last_message_id !== previous.version.last_message_id ||
+    latest.version.world_updated_at !== previous.version.world_updated_at
+  );
 }
 
 function npcNamesFromSnapshot(snapshot: StorySnapshot): string[] {
