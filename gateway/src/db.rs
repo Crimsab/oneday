@@ -1,5 +1,5 @@
 use anyhow::Context;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
 
@@ -13,6 +13,15 @@ pub struct StorySummary {
     pub language: String,
     pub is_archived: bool,
     pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct StoryUpdate {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub genre: Option<String>,
+    pub tone: Option<String>,
+    pub is_archived: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -154,6 +163,54 @@ pub async fn list_stories(pool: &SqlitePool) -> anyhow::Result<Vec<StorySummary>
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(story_summary_from_row).collect())
+}
+
+pub async fn update_story(
+    pool: &SqlitePool,
+    story_id: &str,
+    update: StoryUpdate,
+) -> anyhow::Result<StorySummary> {
+    let name = normalize_story_name(update.name)?;
+    let description = update.description.map(|value| value.trim().to_string());
+    let genre = update.genre.map(|value| value.trim().to_string());
+    let tone = update.tone.map(|value| value.trim().to_string());
+    let archived = update
+        .is_archived
+        .map(|value| if value { 1_i64 } else { 0_i64 });
+    let result = sqlx::query(
+        r#"UPDATE stories
+           SET name = COALESCE(?, name),
+               description = COALESCE(?, description),
+               genre = COALESCE(?, genre),
+               tone = COALESCE(?, tone),
+               is_archived = COALESCE(?, is_archived),
+               updated_at = ?
+           WHERE id = ?"#,
+    )
+    .bind(name)
+    .bind(description)
+    .bind(genre)
+    .bind(tone)
+    .bind(archived)
+    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(story_id)
+    .execute(pool)
+    .await?;
+    if result.rows_affected() == 0 {
+        anyhow::bail!("story not found: {story_id}");
+    }
+    load_story(pool, story_id).await
+}
+
+pub async fn delete_story(pool: &SqlitePool, story_id: &str) -> anyhow::Result<()> {
+    let result = sqlx::query("DELETE FROM stories WHERE id = ?")
+        .bind(story_id)
+        .execute(pool)
+        .await?;
+    if result.rows_affected() == 0 {
+        anyhow::bail!("story not found: {story_id}");
+    }
+    Ok(())
 }
 
 pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StorySnapshot> {
@@ -544,6 +601,19 @@ fn story_summary_from_row(row: sqlx::sqlite::SqliteRow) -> StorySummary {
         language: row_string(&row, "language"),
         is_archived: row.try_get::<i64, _>("is_archived").unwrap_or_default() != 0,
         updated_at: row_string(&row, "updated_at"),
+    }
+}
+
+fn normalize_story_name(value: Option<String>) -> anyhow::Result<Option<String>> {
+    match value {
+        Some(raw) => {
+            let name = raw.trim().to_string();
+            if name.is_empty() {
+                anyhow::bail!("story name cannot be empty");
+            }
+            Ok(Some(name))
+        }
+        None => Ok(None),
     }
 }
 

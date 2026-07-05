@@ -3,6 +3,7 @@ import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
   ApiRequestError,
   createSave,
+  deleteStory,
   deleteSave,
   enhanceStoryText,
   generateVisualAssets,
@@ -18,6 +19,7 @@ import {
   selectVisualAssetVersion,
   submitAction,
   submitMeta,
+  updateStory,
   updateModelSettings,
   updateVisualAssetPrompt,
   updateVisualProfile,
@@ -53,6 +55,7 @@ import type {
   StoryEnhanceResponse,
   StorySnapshot,
   StorySummary,
+  StoryUpdatePayload,
   StoryWizardEnvelope,
   StoryWizardResponse,
   SyncState,
@@ -98,6 +101,7 @@ function App() {
   const [visualProfileSaving, setVisualProfileSaving] = useState(false);
   const [visualGenerationBusy, setVisualGenerationBusy] = useState(false);
   const [visualAssetFocusId, setVisualAssetFocusId] = useState<string | null>(null);
+  const [storyMutatingId, setStoryMutatingId] = useState("");
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -115,9 +119,11 @@ function App() {
       setStories(nextStories);
       setSync(storyId ? "Live" : "Idle");
       if (!storyId && nextStories[0]) setStoryId(nextStories[0].id);
+      return nextStories;
     } catch (error) {
       setSync("Error");
       setNotice(errorMessage(error));
+      return [] as StorySummary[];
     }
   }, [storyId]);
 
@@ -313,6 +319,63 @@ function App() {
     setVisualAssetsError("");
     setLiveTurnEvents([]);
     setNotice("");
+  };
+
+  const handleUpdateStory = async (targetStoryId: string, payload: StoryUpdatePayload) => {
+    if (!targetStoryId || storyMutatingId) return;
+    setStoryMutatingId(targetStoryId);
+    setSync("Saving");
+    try {
+      const updated = await updateStory(targetStoryId, payload);
+      setStories((items) => items.map((story) => (story.id === targetStoryId ? updated : story)));
+      if (targetStoryId === storyId) {
+        setSnapshot((current) => (current ? { ...current, story: updated } : current));
+      }
+      setNotice(updated.is_archived ? `Archived ${updated.name}.` : `Updated ${updated.name}.`);
+      setSync(paused ? "Paused" : "Live");
+    } catch (error) {
+      setSync("Error");
+      setNotice(errorMessage(error));
+    } finally {
+      setStoryMutatingId("");
+    }
+  };
+
+  const handleSetStoryArchived = async (targetStoryId: string, archived: boolean) => {
+    await handleUpdateStory(targetStoryId, { is_archived: archived });
+  };
+
+  const handleDeleteStory = async (targetStoryId: string) => {
+    if (!targetStoryId || storyMutatingId) return;
+    setStoryMutatingId(targetStoryId);
+    setSync("Saving");
+    try {
+      await deleteStory(targetStoryId);
+      const nextStories = await getStories();
+      setStories(nextStories);
+      void refreshHealth();
+      if (targetStoryId === storyId) {
+        const nextActive = nextStories.find((story) => !story.is_archived) ?? nextStories[0] ?? null;
+        setStoryId(nextActive?.id ?? "");
+        setSnapshot(null);
+        setVisualAssets(null);
+        setVisualAssetsError("");
+        setLiveTurnEvents([]);
+        if (nextActive) {
+          await loadSnapshot(nextActive.id);
+        } else {
+          setSync("Idle");
+        }
+      } else {
+        setSync(paused ? "Paused" : "Live");
+      }
+      setNotice("Story deleted.");
+    } catch (error) {
+      setSync("Error");
+      setNotice(errorMessage(error));
+    } finally {
+      setStoryMutatingId("");
+    }
   };
 
   const executeDraft = async () => {
@@ -837,7 +900,11 @@ function App() {
             onSelectStory={selectStory}
             onSelectTab={selectModuleTab}
             onRefreshStories={refreshStories}
+            onUpdateStory={handleUpdateStory}
+            onSetStoryArchived={handleSetStoryArchived}
+            onDeleteStory={handleDeleteStory}
             onOpen={openOverlay}
+            busyStoryId={storyMutatingId}
           />
         ) : (
           <CollapsedLeftRail
