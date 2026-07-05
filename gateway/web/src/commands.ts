@@ -155,7 +155,7 @@ export function commandToAction(rawText: string, context: CommandContext = {}): 
 
   const descriptors = commandDescriptors(context.descriptors);
   const command = findCommandDescriptor(parsed.name, descriptors);
-  if (!command) return {};
+  if (!command) return { handled: true, notice: unknownCommandNotice(parsed.name, descriptors) };
   if (!isCommandEnabled(command, context)) {
     return { handled: true, notice: disabledCommandNotice(command) };
   }
@@ -437,6 +437,22 @@ function disabledCommandNotice(command: CommandDescriptor): string {
     return `${name} needs a saved snapshot. Use /save <name> first.`;
   }
   return `${name} is not available in the current browser state.`;
+}
+
+function unknownCommandNotice(name: string, descriptors: CommandDescriptor[]): string {
+  if (!name.trim()) {
+    return "Type a command after /. Press Ctrl+K or use /help to browse available commands.";
+  }
+
+  const commandName = `/${stripSlash(name)}`;
+  const suggestions = commandSuggestions(commandName, descriptors)
+    .filter((item) => item.kind === "command")
+    .slice(0, 3)
+    .map((item) => item.name);
+  if (suggestions.length > 0) {
+    return `Unknown command ${commandName}. Did you mean ${suggestions.join(", ")}?`;
+  }
+  return `Unknown command ${commandName}. Press Ctrl+K or use /help to browse available commands.`;
 }
 
 function talkCommandToAction(argsText: string, context: CommandContext): CommandResult {

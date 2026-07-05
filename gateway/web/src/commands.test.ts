@@ -98,6 +98,17 @@ describe("commandToAction", () => {
     expect(result.saveDeleteFilter).toBe("Before docks");
   });
 
+  it("blocks unknown slash commands from becoming narrative actions", () => {
+    expect(commandToAction("/frobnicate the door")).toMatchObject({
+      handled: true,
+      notice: expect.stringContaining("Unknown command /frobnicate"),
+    });
+    expect(commandToAction("/")).toMatchObject({
+      handled: true,
+      notice: expect.stringContaining("Type a command after /"),
+    });
+  });
+
   it("honors player-safe enabled_when gates before opening debug panels", () => {
     expect(commandToAction("/thoughts")).toMatchObject({
       handled: true,
