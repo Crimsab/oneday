@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendTurnEvent,
+  parseStorySnapshotEvent,
   shouldSuppressStreamingDelta,
   streamingDeltaText,
   turnEventDetail,
@@ -49,6 +50,15 @@ describe("turn event helpers", () => {
     expect(shouldSuppressStreamingDelta(undefined, '{"narrative":"La porta')).toBe(true);
     expect(shouldSuppressStreamingDelta("   ", "[{\"text\":\"raw\"}]")).toBe(true);
     expect(shouldSuppressStreamingDelta(undefined, "La porta si apre.")).toBe(false);
+  });
+
+  it("parses snapshot SSE payloads without throwing on malformed data", () => {
+    expect(parseStorySnapshotEvent("{bad json")).toBeNull();
+    expect(parseStorySnapshotEvent("null")).toBeNull();
+    expect(parseStorySnapshotEvent(JSON.stringify({ story: { id: "story-1" }, version: { revision: 2 } }))).toMatchObject({
+      story: { id: "story-1" },
+      version: { revision: 2 },
+    });
   });
 
   it("wraps contract events returned by the action response", () => {

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { actionFingerprint, resolvePendingActionIdentity, type PendingActionIdentity } from "./actionIdentity";
 import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
   ApiRequestError,
@@ -37,7 +38,14 @@ import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
-import { appendTurnEvent, shouldSuppressStreamingDelta, streamingDeltaText, turnEventDetail, turnEventFromContract } from "./turnEvents";
+import {
+  appendTurnEvent,
+  parseStorySnapshotEvent,
+  shouldSuppressStreamingDelta,
+  streamingDeltaText,
+  turnEventDetail,
+  turnEventFromContract,
+} from "./turnEvents";
 import type {
   AppPreferences,
   ChoiceView,
@@ -103,6 +111,7 @@ function App() {
   const [visualGenerationBusy, setVisualGenerationBusy] = useState(false);
   const [visualAssetFocusId, setVisualAssetFocusId] = useState<string | null>(null);
   const [storyMutatingId, setStoryMutatingId] = useState("");
+  const pendingActionIdentity = useRef<PendingActionIdentity | null>(null);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -196,7 +205,13 @@ function App() {
     const source = new EventSource(`/api/stories/${encodeURIComponent(storyId)}/events`);
     source.addEventListener("open", () => setSync("Live"));
     source.addEventListener("snapshot", (event) => {
-      setSnapshot(JSON.parse(event.data) as StorySnapshot);
+      const nextSnapshot = parseStorySnapshotEvent(event.data);
+      if (!nextSnapshot) {
+        setNotice("Received an unreadable live snapshot; keeping the current story state.");
+        setSync("Reconnecting");
+        return;
+      }
+      setSnapshot(nextSnapshot);
       void refreshVisualAssets(storyId);
       setSync("Live");
     });
@@ -233,6 +248,7 @@ function App() {
         return;
       }
       if (liveEvent.status === "completed" || liveEvent.status === "snapshot_changed") {
+        pendingActionIdentity.current = null;
         setSync(paused ? "Paused" : "Live");
         return;
       }
@@ -327,6 +343,7 @@ function App() {
     setVisualAssets(null);
     setVisualAssetsError("");
     setLiveTurnEvents([]);
+    pendingActionIdentity.current = null;
     setNotice("");
   };
 
@@ -338,7 +355,7 @@ function App() {
       const updated = await updateStory(targetStoryId, payload);
       setStories((items) => items.map((story) => (story.id === targetStoryId ? updated : story)));
       if (targetStoryId === storyId) {
-        setSnapshot((current) => (current ? { ...current, story: updated } : current));
+        await loadSnapshot(targetStoryId);
       }
       setNotice(updated.is_archived ? `Archived ${updated.name}.` : `Updated ${updated.name}.`);
       setSync(paused ? "Paused" : "Live");
@@ -390,6 +407,7 @@ function App() {
         setVisualAssets(null);
         setVisualAssetsError("");
         setLiveTurnEvents([]);
+        pendingActionIdentity.current = null;
         if (nextActive) {
           await loadSnapshot(nextActive.id);
         } else {
@@ -564,6 +582,7 @@ function App() {
         setOverlay(null);
         setHiddenBeforeMessageId(0);
         setLiveTurnEvents([]);
+        pendingActionIdentity.current = null;
         const startNotice = response.wizard.start_error
           ? ` created, but first turn did not start: ${response.wizard.start_error}`
           : ` created${response.wizard.started ? " and started" : ""}.`;
@@ -684,11 +703,14 @@ function App() {
         detail: action.kind === "choice" ? "Resolving selected choice through the live engine..." : "Waiting for final bridge response from OneDay...",
         kind: action.kind,
       });
+      const fingerprint = actionFingerprint(storyId, readySnapshot, action);
+      const identity = resolvePendingActionIdentity(pendingActionIdentity.current, fingerprint, () => clientId("turn"));
+      pendingActionIdentity.current = identity;
       const response = await submitAction(storyId, {
         session_id: readySnapshot.active_session.id,
         client_turn: currentTurn,
         client_revision: readySnapshot.version.revision,
-        idempotency_key: clientId("turn"),
+        idempotency_key: identity.idempotencyKey,
         action,
         stream: true,
         capabilities: { images: true, ascii: true, roll_log: true },
@@ -705,6 +727,7 @@ function App() {
         ...items,
       ].slice(0, 10));
       setSync(paused ? "Paused" : "Live");
+      pendingActionIdentity.current = null;
     } catch (error) {
       setSync("Error");
       setNotice(actionErrorMessage(error));
