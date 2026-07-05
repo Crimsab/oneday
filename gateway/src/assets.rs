@@ -1555,11 +1555,18 @@ async fn ensure_asset_rows(
                )
                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'codex-imagegen', 'auto-profile', ?)
                ON CONFLICT(story_id, kind, subject) DO UPDATE SET
+                  updated_at = CASE
+                    WHEN visual_assets.entity_id = ''
+                      OR visual_assets.prompt = ''
+                      OR visual_assets.negative_prompt = ''
+                      OR visual_assets.turn != excluded.turn
+                    THEN CURRENT_TIMESTAMP
+                    ELSE visual_assets.updated_at
+                  END,
                   entity_id = CASE WHEN visual_assets.entity_id = '' THEN excluded.entity_id ELSE visual_assets.entity_id END,
                   prompt = CASE WHEN visual_assets.prompt = '' THEN excluded.prompt ELSE visual_assets.prompt END,
                   negative_prompt = CASE WHEN visual_assets.negative_prompt = '' THEN excluded.negative_prompt ELSE visual_assets.negative_prompt END,
-                  turn = excluded.turn,
-                  updated_at = CURRENT_TIMESTAMP"#,
+                  turn = CASE WHEN visual_assets.turn != excluded.turn THEN excluded.turn ELSE visual_assets.turn END"#,
         )
         .bind(id)
         .bind(story_id)
@@ -2108,6 +2115,36 @@ mod tests {
         assert_eq!(job_views[0].status, "queued");
         assert_eq!(job_views[0].attempts, 0);
         assert_eq!(job_views[0].max_attempts, 3);
+    }
+
+    #[tokio::test]
+    async fn ensure_asset_rows_does_not_touch_updated_at_when_nothing_changes() {
+        let pool = visual_job_pool().await;
+        sqlx::query("UPDATE visual_assets SET updated_at = 'fixed', turn = 3 WHERE id = ?")
+            .bind("asset-location")
+            .execute(&pool)
+            .await
+            .expect("pin updated_at");
+        let spec = VisualSpec {
+            kind: "location".to_string(),
+            subject: "Station".to_string(),
+            entity_id: "world".to_string(),
+            prompt: "wide station".to_string(),
+            negative_prompt: "no text".to_string(),
+            turn: 3,
+        };
+
+        ensure_asset_rows(&pool, "story", &[spec])
+            .await
+            .expect("ensure asset rows");
+
+        let updated_at: String =
+            sqlx::query_scalar("SELECT updated_at FROM visual_assets WHERE id = ?")
+                .bind("asset-location")
+                .fetch_one(&pool)
+                .await
+                .expect("updated_at");
+        assert_eq!(updated_at, "fixed");
     }
 
     #[tokio::test]
