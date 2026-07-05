@@ -221,6 +221,61 @@ func TestNPCMutationRecorderStagesUntilCommit(t *testing.T) {
 	}
 }
 
+func TestApplyStateChangesCreatesPlaceholderNPCForUnknownUpdates(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+	story := &storage.Story{
+		ID:              "story-unknown-npc",
+		Name:            "Unknown NPC Story",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	world := newTestWorld()
+	world.StoryID = story.ID
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"npc_disposition": map[string]interface{}{
+			"name":   "Uomo col giornale",
+			"change": -3,
+		},
+		"npc_notes": map[string]interface{}{
+			"name": "Uomo col giornale",
+			"note": "Ha notato domande brevi e mirate.",
+		},
+	}, char, world, db, story.ID, 5)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+	if len(applied) == 0 {
+		t.Fatal("expected applied NPC updates")
+	}
+
+	npc, err := db.GetNPCByName(story.ID, "Uomo col giornale")
+	if err != nil || npc == nil {
+		t.Fatalf("GetNPCByName: %v, npc=%+v", err, npc)
+	}
+	if npc.Role != "person of interest" {
+		t.Fatalf("Role = %q, want placeholder role", npc.Role)
+	}
+	if npc.Disposition != -3 {
+		t.Fatalf("Disposition = %d, want -3", npc.Disposition)
+	}
+	if npc.FirstAppearedTurn != 5 || npc.LastSeenTurn != 5 {
+		t.Fatalf("turn tracking = %d/%d, want 5/5", npc.FirstAppearedTurn, npc.LastSeenTurn)
+	}
+	if !strings.Contains(npc.NotesOnProtagonist, "domande brevi") {
+		t.Fatalf("NotesOnProtagonist = %q, want note preserved", npc.NotesOnProtagonist)
+	}
+}
+
 // TestApplyStateChanges_TitleAdd verifies that a new title is added.
 func TestApplyStateChanges_TitleAdd(t *testing.T) {
 	char := newTestChar()
