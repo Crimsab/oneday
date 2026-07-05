@@ -331,9 +331,26 @@ export interface VisualAssetVersion {
   created_at: string;
 }
 
+export interface VisualGenerationJobView {
+  id: number;
+  asset_id: string;
+  story_id: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  locked_until: string;
+  error: string;
+  provider: string;
+  started_at: string;
+  finished_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface VisualAssetsResponse {
   profile: VisualProfile;
   assets: VisualAsset[];
+  jobs: VisualGenerationJobView[];
 }
 
 export interface GenerateVisualAssetsRequest {

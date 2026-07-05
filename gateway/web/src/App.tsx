@@ -1025,6 +1025,7 @@ function App() {
         modelBusy={modelSaving}
         visualProfile={visualAssets?.profile ?? null}
         visualAssets={visualAssets?.assets ?? []}
+        visualJobs={visualAssets?.jobs ?? []}
         visuals={visuals}
         visualAssetFocusId={visualAssetFocusId}
         visualProfileError={visualAssetsError}
