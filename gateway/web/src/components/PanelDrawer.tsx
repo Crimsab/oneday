@@ -33,6 +33,7 @@ import type {
   VisualAsset,
   VisualAssetPromptUpdate,
   VisualAssetVersion,
+  VisualGenerationJobView,
   VisualProfile,
   VisualProfileUpdate,
 } from "../types";
@@ -49,6 +50,7 @@ interface PanelDrawerProps {
   modelBusy: boolean;
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
+  visualJobs: VisualGenerationJobView[];
   visuals: VisualCatalog;
   visualAssetFocusId: string | null;
   visualProfileError: string;
@@ -99,6 +101,7 @@ export function PanelDrawer({
   modelBusy,
   visualProfile,
   visualAssets,
+  visualJobs,
   visuals,
   visualAssetFocusId,
   visualProfileError,
@@ -159,6 +162,7 @@ export function PanelDrawer({
             modelBusy={modelBusy}
             visualProfile={visualProfile}
             visualAssets={visualAssets}
+            visualJobs={visualJobs}
             visualAssetFocusId={visualAssetFocusId}
             visualProfileError={visualProfileError}
             visualProfileBusy={visualProfileBusy}
@@ -243,6 +247,7 @@ function OptionsContent({
   modelBusy,
   visualProfile,
   visualAssets,
+  visualJobs,
   visualAssetFocusId,
   visualProfileError,
   visualProfileBusy,
@@ -263,6 +268,7 @@ function OptionsContent({
   modelBusy: boolean;
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
+  visualJobs: VisualGenerationJobView[];
   visualAssetFocusId: string | null;
   visualProfileError: string;
   visualProfileBusy: boolean;
@@ -392,6 +398,7 @@ function OptionsContent({
       <VisualDirectionSettings
         profile={visualProfile}
         assets={visualAssets}
+        jobs={visualJobs}
         focusedAssetId={visualAssetFocusId}
         error={visualProfileError}
         busy={visualProfileBusy}
@@ -409,6 +416,7 @@ function OptionsContent({
 function VisualDirectionSettings({
   profile,
   assets,
+  jobs,
   focusedAssetId,
   error,
   busy,
@@ -421,6 +429,7 @@ function VisualDirectionSettings({
 }: {
   profile: VisualProfile | null;
   assets: VisualAsset[];
+  jobs: VisualGenerationJobView[];
   focusedAssetId: string | null;
   error: string;
   busy: boolean;
@@ -450,6 +459,10 @@ function VisualDirectionSettings({
   const pendingCount = assets.filter(
     (asset) => asset.status !== "ready",
   ).length;
+  const activeJobs = jobs.filter(
+    (job) => job.status === "queued" || job.status === "running",
+  );
+  const visibleJobs = jobs.slice(0, 6);
   const selectedAsset = useMemo(
     () =>
       assets.find((asset) => asset.id === selectedAssetId) ??
@@ -591,6 +604,7 @@ function VisualDirectionSettings({
         <span>Visual Direction</span>
         <strong>
           {readyCount} ready / {pendingCount} pending
+          {activeJobs.length ? ` / ${activeJobs.length} active jobs` : ""}
         </strong>
       </div>
       {!profile ? (
@@ -655,6 +669,20 @@ function VisualDirectionSettings({
               </button>
             ))}
           </div>
+          {visibleJobs.length > 0 && (
+            <div className="visual-job-list" aria-label="Visual generation jobs">
+              {visibleJobs.map((job) => (
+                <div className={`visual-job-row ${job.status}`} key={job.id}>
+                  <span>{job.status}</span>
+                  <strong>{assetLabel(assets, job.asset_id)}</strong>
+                  <small title={job.error || job.provider || job.updated_at}>
+                    attempt {job.attempts}/{job.max_attempts || 1}
+                    {job.provider ? ` - ${job.provider}` : ""}
+                  </small>
+                </div>
+              ))}
+            </div>
+          )}
           {selectedAsset && (
             <div className="visual-asset-editor">
               <div className="visual-asset-preview">
@@ -814,6 +842,12 @@ function profileDraft(profile: VisualProfile | null): VisualProfileUpdate {
     negative_prompt: profile?.negative_prompt ?? "",
     palette: profile?.palette ?? "",
   };
+}
+
+function assetLabel(assets: VisualAsset[], assetId: string): string {
+  const asset = assets.find((item) => item.id === assetId);
+  if (!asset) return assetId;
+  return `${asset.kind}: ${asset.subject}`;
 }
 
 function ModelRoutingSettings({
