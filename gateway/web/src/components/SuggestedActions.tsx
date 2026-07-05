@@ -17,6 +17,8 @@ const choiceIcons = [MessageSquare, FileSearch, Search, PackageSearch, Users, Do
 export function SuggestedActions({ choices, snapshot, disabled = false, onChoice, onDraft }: SuggestedActionsProps) {
   const fallback = fallbackActions(snapshot);
   const visibleChoices = choices.slice(0, 6);
+  const primaryChoices = visibleChoices.slice(0, 3);
+  const secondaryChoices = visibleChoices.slice(3);
   const choiceKey = visibleChoices.map((choice) => choice.id).join("|");
   const [activeChoiceId, setActiveChoiceId] = useState<number | null>(null);
 
@@ -26,43 +28,77 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
 
   return (
     <div className="choice-stack" onMouseLeave={() => setActiveChoiceId(null)}>
-      {visibleChoices.length > 0
-        ? visibleChoices.map((choice) => {
-            const presentation = choicePresentation(choice, choice.id - 1);
-            const isActive = choice.id === activeChoiceId;
-            const outcome = choiceOutcome(presentation);
-            const metadataTitle = [presentation.gain, presentation.tradeoff, presentation.meta.join(" ")]
-              .filter(Boolean)
-              .join("\n");
-            return (
-              <button
-                type="button"
-                className="choice-row"
-                data-active={isActive ? "true" : "false"}
-                data-choice-tone={presentation.tone}
-                disabled={disabled}
-                key={choice.id}
-                onFocus={() => setActiveChoiceId(choice.id)}
-                onMouseEnter={() => setActiveChoiceId(choice.id)}
-                onClick={() => onChoice(choice)}
-                title={metadataTitle || "Suggested action"}
-              >
-                <span className="choice-index" aria-label={`Choice ${choice.id}`}>
-                  <kbd>{choice.id}</kbd>
-                </span>
-                <span className="choice-copy">
-                  <strong>{choice.text}</strong>
-                  <ChoiceMetadata choice={choice} presentation={presentation} />
-                  {outcome && (
-                    <small className="choice-outcome" title={metadataTitle}>
-                      {outcome}
-                    </small>
-                  )}
-                </span>
-              </button>
-            );
-          })
-        : fallback.map((action, index) => {
+      {visibleChoices.length > 0 ? (
+          <>
+            {primaryChoices.map((choice) => {
+              const presentation = choicePresentation(choice, choice.id - 1);
+              const isActive = choice.id === activeChoiceId;
+              const outcome = choiceOutcome(presentation);
+              const metadataTitle = [presentation.gain, presentation.tradeoff, presentation.meta.join(" ")]
+                .filter(Boolean)
+                .join("\n");
+              return (
+                <button
+                  type="button"
+                  className="choice-row"
+                  data-active={isActive ? "true" : "false"}
+                  data-choice-tone={presentation.tone}
+                  disabled={disabled}
+                  key={choice.id}
+                  onFocus={() => setActiveChoiceId(choice.id)}
+                  onMouseEnter={() => setActiveChoiceId(choice.id)}
+                  onClick={() => onChoice(choice)}
+                  title={metadataTitle || "Suggested action"}
+                >
+                  <span className="choice-index" aria-label={`Choice ${choice.id}`}>
+                    <kbd>{choice.id}</kbd>
+                  </span>
+                  <span className="choice-copy">
+                    <strong>{choice.text}</strong>
+                    <ChoiceMetadata choice={choice} presentation={presentation} />
+                    {outcome && (
+                      <small className="choice-outcome" title={metadataTitle}>
+                        {outcome}
+                      </small>
+                    )}
+                  </span>
+                </button>
+              );
+            })}
+            {secondaryChoices.length > 0 && (
+              <div className="choice-secondary-strip" aria-label="More suggested actions">
+                {secondaryChoices.map((choice) => {
+                  const presentation = choicePresentation(choice, choice.id - 1);
+                  const metadataTitle = [presentation.gain, presentation.tradeoff, presentation.meta.join(" ")]
+                    .filter(Boolean)
+                    .join("\n");
+                  return (
+                    <button
+                      type="button"
+                      className="choice-row secondary"
+                      data-choice-tone={presentation.tone}
+                      disabled={disabled}
+                      key={choice.id}
+                      onFocus={() => setActiveChoiceId(choice.id)}
+                      onMouseEnter={() => setActiveChoiceId(choice.id)}
+                      onClick={() => onChoice(choice)}
+                      title={metadataTitle || "Suggested action"}
+                    >
+                      <span className="choice-index" aria-label={`Choice ${choice.id}`}>
+                        <kbd>{choice.id}</kbd>
+                      </span>
+                      <span className="choice-copy">
+                        <strong>{choice.text}</strong>
+                        <ChoiceMetadata choice={choice} presentation={presentation} />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ) : (
+          fallback.map((action, index) => {
             const Icon = choiceIcons[index % choiceIcons.length];
             return (
               <button type="button" className="choice-row ghost" disabled={disabled} key={action.command} onClick={() => onDraft(action.command)}>
@@ -75,7 +111,8 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
                 </span>
               </button>
             );
-          })}
+          })
+        )}
     </div>
   );
 }

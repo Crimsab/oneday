@@ -80,6 +80,40 @@ impl TurnStreamEvent {
         }
     }
 
+    pub fn visual_asset(
+        story_id: &str,
+        event_type: &str,
+        asset_id: &str,
+        job_id: Option<i64>,
+        status: &str,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        Self {
+            story_id: story_id.to_string(),
+            status: "event".to_string(),
+            client_turn: None,
+            action_kind: None,
+            action_text: None,
+            event_type: Some(event_type.to_string()),
+            event: Some(json!({
+                "type": event_type,
+                "asset_id": asset_id,
+                "job_id": job_id,
+                "status": status,
+                "message": message,
+                "payload": {
+                    "asset_id": asset_id,
+                    "job_id": job_id,
+                    "status": status,
+                    "message": message,
+                },
+            })),
+            message,
+            created_at: Utc::now().to_rfc3339(),
+        }
+    }
+
     pub fn lagged(story_id: &str, skipped: u64) -> Self {
         Self {
             story_id: story_id.to_string(),
@@ -112,10 +146,39 @@ fn contract_event_message(event_type: &str) -> String {
         "social.started" => "Social exchange started.".to_string(),
         "social.updated" => "Social exchange updated.".to_string(),
         "asset.queued" => "Visual asset request queued.".to_string(),
+        "asset.running" => "Visual asset generation started.".to_string(),
         "asset.ready" => "Visual asset is ready.".to_string(),
         "asset.failed" => "Visual asset generation failed.".to_string(),
+        "asset.cancelled" => "Visual asset generation cancelled.".to_string(),
         "turn.committed" => "Turn committed to the shared story.".to_string(),
         "error" => "The engine reported an error.".to_string(),
         other => format!("Engine event: {other}."),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visual_asset_event_carries_refreshable_asset_identity() {
+        let event = TurnStreamEvent::visual_asset(
+            "story-1",
+            "asset.ready",
+            "asset-location",
+            Some(42),
+            "ready",
+            "Image ready.",
+        );
+
+        assert_eq!(event.story_id, "story-1");
+        assert_eq!(event.status, "event");
+        assert_eq!(event.event_type.as_deref(), Some("asset.ready"));
+        assert_eq!(event.client_turn, None);
+        let payload = event.event.expect("payload");
+        assert_eq!(payload["type"], "asset.ready");
+        assert_eq!(payload["asset_id"], "asset-location");
+        assert_eq!(payload["job_id"], 42);
+        assert_eq!(payload["status"], "ready");
     }
 }
