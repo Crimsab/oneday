@@ -52,11 +52,13 @@ jobs:
       - name: Compute build metadata
         if: steps.release.outputs.release_created == 'true'
         run: |
-          echo "VERSION=${{ steps.release.outputs.tag_name }}" >> "$GITHUB_ENV"
-          echo "COMMIT=${GITHUB_SHA}" >> "$GITHUB_ENV"
-          echo "BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> "$GITHUB_ENV"
-          echo "DIRTY=false" >> "$GITHUB_ENV"
-          echo "LDFLAGS=$(bash ./scripts/build-ldflags.sh)" >> "$GITHUB_ENV"
+          {
+            echo "VERSION=${{ steps.release.outputs.tag_name }}"
+            echo "COMMIT=${GITHUB_SHA}"
+            echo "BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            echo "DIRTY=false"
+            echo "LDFLAGS=$(bash ./scripts/build-ldflags.sh)"
+          } >> "$GITHUB_ENV"
 
       - name: Run release gate
         if: steps.release.outputs.release_created == 'true'
