@@ -47,6 +47,51 @@ func (f *fakeTurnProvider) callCount() int {
 	return f.calls
 }
 
+type fakeStreamTurnProvider struct {
+	mu    sync.Mutex
+	calls int
+}
+
+func (f *fakeStreamTurnProvider) Name() string { return "fake-stream-turn" }
+
+func (f *fakeStreamTurnProvider) Complete(_ context.Context, _ ai.Request) (ai.Response, error) {
+	f.mu.Lock()
+	f.calls++
+	f.mu.Unlock()
+	return ai.Response{Model: "fake-stream-model", Content: fakeStreamNarrativeContent()}, nil
+}
+
+func (f *fakeStreamTurnProvider) Stream(_ context.Context, _ ai.Request) (<-chan ai.StreamChunk, error) {
+	f.mu.Lock()
+	f.calls++
+	f.mu.Unlock()
+	ch := make(chan ai.StreamChunk, 4)
+	go func() {
+		defer close(ch)
+		content := fakeStreamNarrativeContent()
+		midpoint := len(content) / 2
+		ch <- ai.StreamChunk{Content: content[:midpoint], Model: "fake-stream-model"}
+		ch <- ai.StreamChunk{Content: content[midpoint:], Model: "fake-stream-model"}
+		ch <- ai.StreamChunk{Model: "fake-stream-model", Done: true}
+	}()
+	return ch, nil
+}
+
+func (f *fakeStreamTurnProvider) callCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.calls
+}
+
+func fakeStreamNarrativeContent() string {
+	return `{
+		"narrative": "The streamed bridge resolves into one canonical turn.",
+		"choices": [{"id": 1, "text": "Continue through the arch.", "intent": "act", "risk": "low", "scope": "scene", "certainty": "safe"}],
+		"mood": "steady",
+		"location": "Archive"
+	}`
+}
+
 type blockingTurnProvider struct {
 	mu      sync.Mutex
 	calls   int
@@ -212,6 +257,67 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 	}
 	if providerAfterRestart.callCount() != 0 {
 		t.Fatalf("provider calls after restart = %d, want 0", providerAfterRestart.callCount())
+	}
+}
+
+func TestInProcessTurnServiceSubmitActionStreamReplayReturnsCanonicalEvents(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-stream", 0)
+
+	provider := &fakeStreamTurnProvider{}
+	router, err := ai.NewRouter([]ai.Provider{provider})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+
+	svc := NewInProcessTurnService(cfg, db, router)
+	snapshot, err := svc.Snapshot(context.Background(), "story-stream")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	req := contracts.SubmitActionRequest{
+		StoryID:        "story-stream",
+		SessionID:      snapshot.SessionID,
+		ClientTurn:     snapshot.Turn,
+		ClientRevision: snapshot.Revision,
+		IdempotencyKey: "stream-key",
+		Action: contracts.PlayerAction{
+			Kind: contracts.ActionKindFreeText,
+			Text: "Open the archive.",
+		},
+	}
+
+	stream, err := svc.SubmitActionStream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SubmitActionStream: %v", err)
+	}
+	firstEvents := collectTurnEvents(stream)
+	firstFinal := canonicalTurnEvents(firstEvents)
+	if len(firstFinal) == len(firstEvents) {
+		t.Fatalf("first stream did not include provisional live events: %#v", firstEvents)
+	}
+	if len(firstFinal) == 0 || firstFinal[0].Type != contracts.EventTurnStarted || firstFinal[0].ID != "stream-key:1" {
+		t.Fatalf("first canonical events start = %#v", firstFinal)
+	}
+	if !hasLiveNarrativeDelta(firstEvents) {
+		t.Fatalf("first stream missing live narrative delta: %#v", firstEvents)
+	}
+
+	replay, err := svc.SubmitActionStream(context.Background(), req)
+	if err != nil {
+		t.Fatalf("SubmitActionStream replay: %v", err)
+	}
+	replayEvents := collectTurnEvents(replay)
+	if !turnEventSlicesEqual(firstFinal, replayEvents) {
+		t.Fatalf("replay events differ from canonical first events\nfirst=%#v\nreplay=%#v", firstFinal, replayEvents)
+	}
+	if provider.callCount() != 1 {
+		t.Fatalf("provider calls = %d, want 1 after stream replay", provider.callCount())
 	}
 }
 
@@ -776,6 +882,43 @@ func collectTurnEvents(stream <-chan contracts.TurnEvent) []contracts.TurnEvent 
 		events = append(events, event)
 	}
 	return events
+}
+
+func canonicalTurnEvents(events []contracts.TurnEvent) []contracts.TurnEvent {
+	var out []contracts.TurnEvent
+	for _, event := range events {
+		if strings.Contains(event.ID, ":live:") || event.Type == contracts.EventNarrativeDelta {
+			continue
+		}
+		out = append(out, event)
+	}
+	return out
+}
+
+func hasLiveNarrativeDelta(events []contracts.TurnEvent) bool {
+	for _, event := range events {
+		if strings.Contains(event.ID, ":live:") && event.Type == contracts.EventNarrativeDelta {
+			return true
+		}
+	}
+	return false
+}
+
+func turnEventSlicesEqual(a, b []contracts.TurnEvent) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].ID != b[i].ID ||
+			a[i].StoryID != b[i].StoryID ||
+			a[i].SessionID != b[i].SessionID ||
+			a[i].Turn != b[i].Turn ||
+			a[i].Type != b[i].Type ||
+			string(a[i].Payload) != string(b[i].Payload) {
+			return false
+		}
+	}
+	return true
 }
 
 func newTurnServiceTestDB(t *testing.T, root string) *storage.DB {

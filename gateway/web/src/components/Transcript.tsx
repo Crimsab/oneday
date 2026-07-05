@@ -71,6 +71,12 @@ function PendingTurnMessage({ pendingTurn }: { pendingTurn: PendingTurnView }) {
           <span className="pending-pulse" aria-hidden="true" />
           <span>{pendingTurn.detail}</span>
         </div>
+        {pendingTurn.streamingText && (
+          <div className="pending-streaming-draft">
+            <small>Provisional assistant draft</small>
+            <MarkdownText>{pendingTurn.streamingText}</MarkdownText>
+          </div>
+        )}
       </div>
     </article>
   );

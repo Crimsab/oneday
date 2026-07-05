@@ -509,7 +509,7 @@ func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.
 	seq := 1
 	emit := func(eventType contracts.TurnEventType, payload any) (contracts.TurnEvent, error) {
 		event, err := contracts.NewTurnEvent(
-			fmt.Sprintf("%s:%d", req.IdempotencyKey, seq),
+			fmt.Sprintf("%s:live:%d", req.IdempotencyKey, seq),
 			req.StoryID,
 			sessionID,
 			snapshot.Turn,
@@ -583,11 +583,7 @@ func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.
 			return nil, err
 		}
 	}
-	outputFinalEvents := reindexTurnEvents(finalEvents, req.IdempotencyKey, seq)
-	for _, event := range outputFinalEvents {
-		if event.Type == contracts.EventTurnStarted {
-			continue
-		}
+	for _, event := range finalEvents {
 		out <- event
 	}
 	return cloneEvents(finalEvents), nil
