@@ -11,6 +11,10 @@ permissions:
   issues: write
   pull-requests: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   release:
     name: Release Please
@@ -24,19 +28,29 @@ jobs:
           release-type: go
 
       - name: Check out release tag
-        if: steps.release.outputs.release_created
+        if: steps.release.outputs.release_created == 'true'
         uses: actions/checkout@v6
         with:
           ref: ${{ steps.release.outputs.tag_name }}
 
       - name: Set up Go
-        if: steps.release.outputs.release_created
+        if: steps.release.outputs.release_created == 'true'
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
+      - name: Set up Rust
+        if: steps.release.outputs.release_created == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Bun
+        if: steps.release.outputs.release_created == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
       - name: Compute build metadata
-        if: steps.release.outputs.release_created
+        if: steps.release.outputs.release_created == 'true'
         run: |
           echo "VERSION=${{ steps.release.outputs.tag_name }}" >> "$GITHUB_ENV"
           echo "COMMIT=${GITHUB_SHA}" >> "$GITHUB_ENV"
@@ -45,11 +59,21 @@ jobs:
           echo "LDFLAGS=$(bash ./scripts/build-ldflags.sh)" >> "$GITHUB_ENV"
 
       - name: Run release gate
-        if: steps.release.outputs.release_created
+        if: steps.release.outputs.release_created == 'true'
         run: make release-check
 
+      - name: Run gateway release gate
+        if: steps.release.outputs.release_created == 'true'
+        run: |
+          cargo test --manifest-path gateway/Cargo.toml
+          cargo build --manifest-path gateway/Cargo.toml
+          cd gateway/web
+          bun install --frozen-lockfile
+          bun test src
+          bun run build
+
       - name: Build release artifacts
-        if: steps.release.outputs.release_created
+        if: steps.release.outputs.release_created == 'true'
         run: |
           mkdir -p dist package release
 
@@ -79,7 +103,7 @@ jobs:
           zip -r ../release/oneday-windows-amd64.zip oneday-windows-amd64
 
       - name: Upload artifacts to GitHub Release
-        if: steps.release.outputs.release_created
+        if: steps.release.outputs.release_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ steps.release.outputs.tag_name }}" release/* --clobber
