@@ -489,7 +489,7 @@ func applyStateChangesWithNPCStore(
 			if npcName == "" {
 				continue
 			}
-			npc, err := npcs.GetNPCByName(storyID, npcName)
+			npc, err := ensureNPCForStateChange(npcs, storyID, npcName, currentTurn)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -533,7 +533,7 @@ func applyStateChangesWithNPCStore(
 			if npcName == "" || thought == "" {
 				continue
 			}
-			npc, err := npcs.GetNPCByName(storyID, npcName)
+			npc, err := ensureNPCForStateChange(npcs, storyID, npcName, currentTurn)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -561,7 +561,7 @@ func applyStateChangesWithNPCStore(
 			if npcName == "" || note == "" {
 				continue
 			}
-			npc, err := npcs.GetNPCByName(storyID, npcName)
+			npc, err := ensureNPCForStateChange(npcs, storyID, npcName, currentTurn)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -590,7 +590,7 @@ func applyStateChangesWithNPCStore(
 			if npcName == "" || desire == "" {
 				continue
 			}
-			npc, err := npcs.GetNPCByName(storyID, npcName)
+			npc, err := ensureNPCForStateChange(npcs, storyID, npcName, currentTurn)
 			if err != nil || npc == nil {
 				continue
 			}
@@ -616,7 +616,7 @@ func applyStateChangesWithNPCStore(
 				if npcName == "" {
 					continue
 				}
-				npc, err := npcs.GetNPCByName(storyID, npcName)
+				npc, err := ensureNPCForStateChange(npcs, storyID, npcName, currentTurn)
 				if err != nil || npc == nil {
 					continue
 				}
@@ -988,6 +988,36 @@ func isNarratorManagedStateChangeKey(key string) bool {
 	default:
 		return false
 	}
+}
+
+func ensureNPCForStateChange(npcs npcStateStore, storyID, npcName string, currentTurn int) (*storage.NPC, error) {
+	npcName = strings.TrimSpace(npcName)
+	if npcs == nil || npcName == "" {
+		return nil, nil
+	}
+	npc, err := npcs.GetNPCByName(storyID, npcName)
+	if err != nil || npc != nil {
+		return npc, err
+	}
+	npc, err = NPCToStorage(&NPCData{
+		Name:       npcName,
+		Role:       "person of interest",
+		Appearance: "Unidentified figure first noticed in the current scene; preserve any concrete details implied by the name and story context.",
+		Personality: NPCPersonality{
+			Traits:      []string{"unknown"},
+			SpeechStyle: "not established",
+		},
+		Desires:     []NPCDesire{},
+		Disposition: 0,
+		CanHelp:     true,
+	}, storyID, currentTurn)
+	if err != nil {
+		return nil, err
+	}
+	if err := npcs.CreateNPC(npc); err != nil {
+		return nil, err
+	}
+	return npc, nil
 }
 
 // toStringMap attempts to cast val to map[string]interface{}.
