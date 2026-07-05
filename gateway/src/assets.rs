@@ -1,4 +1,4 @@
-use crate::{db, AppState};
+use crate::{db, events::TurnStreamEvent, AppState};
 use anyhow::{anyhow, Context};
 use base64::Engine;
 use reqwest::Client;
@@ -232,6 +232,12 @@ struct VisualGenerationJob {
     asset: VisualAsset,
     attempts: i64,
     max_attempts: i64,
+}
+
+#[derive(Debug, Clone)]
+struct QueuedVisualGenerationJob {
+    asset: VisualAsset,
+    job_id: i64,
 }
 
 pub async fn visual_assets(
@@ -576,7 +582,17 @@ pub async fn generate_visual_assets(
     }
 
     let targets = generation_targets(&state.pool, story_id, &request).await?;
-    enqueue_visual_generation_jobs(&state.pool, &targets, &request, &config).await?;
+    let queued = enqueue_visual_generation_jobs(&state.pool, &targets, &request, &config).await?;
+    for queued_job in &queued {
+        emit_visual_asset_event(
+            &state,
+            "asset.queued",
+            &queued_job.asset,
+            Some(queued_job.job_id),
+            "queued",
+            format!("Queued image generation for {}.", queued_job.asset.subject),
+        );
+    }
     spawn_visual_generation_worker(state.clone());
 
     visual_assets(&state.pool, story_id).await
@@ -756,10 +772,26 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             tracing::warn!(asset_id = %job.asset.id, error = %err, "could not mark visual asset running");
             continue;
         }
+        emit_visual_asset_event(
+            &state,
+            "asset.running",
+            &job.asset,
+            Some(job.id),
+            "running",
+            format!("Generating image for {}.", job.asset.subject),
+        );
         match generate_one_asset(&client, &state, &config, &job.asset).await {
             Ok(generated) => {
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
                     discard_generated_asset(&generated).await;
+                    emit_visual_asset_event(
+                        &state,
+                        "asset.cancelled",
+                        &job.asset,
+                        Some(job.id),
+                        "cancelled",
+                        format!("Image generation cancelled for {}.", job.asset.subject),
+                    );
                     continue;
                 }
                 if !visual_asset_exists(&state.pool, &job.asset.story_id, &job.asset.id).await? {
@@ -788,18 +820,72 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                     tracing::warn!(asset_id = %job.asset.id, error = %err, "could not record visual asset version");
                 }
                 mark_generation_job_succeeded(&state.pool, job.id).await?;
+                emit_visual_asset_event(
+                    &state,
+                    "asset.ready",
+                    &job.asset,
+                    Some(job.id),
+                    "ready",
+                    format!("Image ready for {}.", job.asset.subject),
+                );
             }
             Err(err) => {
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
+                    emit_visual_asset_event(
+                        &state,
+                        "asset.cancelled",
+                        &job.asset,
+                        Some(job.id),
+                        "cancelled",
+                        format!("Image generation cancelled for {}.", job.asset.subject),
+                    );
                     continue;
                 }
-                mark_generation_job_failed_or_retry(&state.pool, &job, &err.to_string(), &config)
-                    .await?;
+                let terminal = job.attempts >= job.max_attempts;
+                let error = err.to_string();
+                mark_generation_job_failed_or_retry(&state.pool, &job, &error, &config).await?;
+                if terminal {
+                    emit_visual_asset_event(
+                        &state,
+                        "asset.failed",
+                        &job.asset,
+                        Some(job.id),
+                        "failed",
+                        format!("Image generation failed for {}.", job.asset.subject),
+                    );
+                } else {
+                    emit_visual_asset_event(
+                        &state,
+                        "asset.queued",
+                        &job.asset,
+                        Some(job.id),
+                        "queued",
+                        format!("Image generation will retry for {}.", job.asset.subject),
+                    );
+                }
             }
         }
     }
 
     Ok(())
+}
+
+fn emit_visual_asset_event(
+    state: &AppState,
+    event_type: &str,
+    asset: &VisualAsset,
+    job_id: Option<i64>,
+    status: &str,
+    message: String,
+) {
+    let _ = state.turn_events.send(TurnStreamEvent::visual_asset(
+        &asset.story_id,
+        event_type,
+        &asset.id,
+        job_id,
+        status,
+        message,
+    ));
 }
 
 async fn next_visual_generation_wakeup(pool: &SqlitePool) -> anyhow::Result<Option<Duration>> {
@@ -851,9 +937,10 @@ async fn enqueue_visual_generation_jobs(
     targets: &[VisualAsset],
     request: &GenerateVisualAssetsRequest,
     config: &ImageGenerationConfig,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<QueuedVisualGenerationJob>> {
+    let mut queued = Vec::new();
     if targets.is_empty() {
-        return Ok(());
+        return Ok(queued);
     }
     let request_payload = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
     for asset in targets {
@@ -871,22 +958,29 @@ async fn enqueue_visual_generation_jobs(
         .await
         .with_context(|| format!("marking visual asset {} queued", asset.id))?;
 
-        sqlx::query(
+        let inserted_job_id: Option<i64> = sqlx::query_scalar(
             r#"INSERT OR IGNORE INTO visual_generation_jobs (
                   asset_id, story_id, status, attempts, max_attempts,
                   locked_until, request_payload_json, error, provider
                )
-               VALUES (?, ?, 'queued', 0, 3, '', ?, '', ?)"#,
+               VALUES (?, ?, 'queued', 0, 3, '', ?, '', ?)
+               RETURNING id"#,
         )
         .bind(&asset.id)
         .bind(&asset.story_id)
         .bind(&request_payload)
         .bind(provider_label(config))
-        .execute(pool)
+        .fetch_optional(pool)
         .await
         .with_context(|| format!("enqueueing visual generation job {}", asset.id))?;
+        if let Some(job_id) = inserted_job_id {
+            queued.push(QueuedVisualGenerationJob {
+                asset: asset.clone(),
+                job_id,
+            });
+        }
     }
-    Ok(())
+    Ok(queued)
 }
 
 async fn claim_visual_generation_job(
@@ -2498,12 +2592,19 @@ mod tests {
             limit: Some(1),
         };
 
-        enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
-            .await
-            .expect("first enqueue");
-        enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
-            .await
-            .expect("second enqueue");
+        let first_queue =
+            enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
+                .await
+                .expect("first enqueue");
+        let second_queue =
+            enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
+                .await
+                .expect("second enqueue");
+
+        assert_eq!(first_queue.len(), 1);
+        assert_eq!(first_queue[0].asset.id, "asset-location");
+        assert!(first_queue[0].job_id > 0);
+        assert!(second_queue.is_empty());
 
         let status: String = sqlx::query_scalar("SELECT status FROM visual_assets WHERE id = ?")
             .bind("asset-location")

@@ -4,6 +4,7 @@ import {
   parseStorySnapshotEvent,
   shouldSuppressStreamingDelta,
   streamingDeltaText,
+  isVisualAssetTurnEvent,
   turnEventDetail,
   turnEventFromContract,
   turnEventTitle,
@@ -33,7 +34,14 @@ describe("turn event helpers", () => {
   it("describes lifecycle states and contract events for the transcript", () => {
     expect(turnEventDetail(event({ status: "submitted", event_type: null }))).toContain("Rust gateway");
     expect(turnEventDetail(event({ event_type: "narrative.final" }))).toContain("Narrative generated");
+    expect(turnEventDetail(event({ event_type: "asset.ready", message: "Image ready for Station." }))).toContain("Station");
     expect(turnEventTitle(event({ event_type: "turn.committed" }))).toBe("turn.committed");
+  });
+
+  it("recognizes visual asset events that should refresh the browser gallery", () => {
+    expect(isVisualAssetTurnEvent(event({ event_type: "asset.queued" }))).toBe(true);
+    expect(isVisualAssetTurnEvent(event({ event_type: "asset.ready" }))).toBe(true);
+    expect(isVisualAssetTurnEvent(event({ event_type: "choices.updated" }))).toBe(false);
   });
 
   it("extracts narrative delta text for provisional streaming display", () => {
