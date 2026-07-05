@@ -590,7 +590,7 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 	}
 
 	// Load recent messages from DB to build context.
-	recentMsgs, err := n.db.GetRecentMessages(n.session.SessionID(), n.contextCfg.RecentMessageCount)
+	recentMsgs, err := n.recentMessagesForTurn(n.contextCfg.RecentMessageCount)
 	if err != nil {
 		return nil, fmt.Errorf("loading messages: %w", err)
 	}
@@ -655,6 +655,31 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 			ResponseFormat: ai.NarrativeResponseFormat(),
 		},
 	}, nil
+}
+
+func (n *Narrator) recentMessagesForTurn(limit int) ([]storage.ChatMessage, error) {
+	if n == nil || n.db == nil {
+		return nil, fmt.Errorf("narrator database is not configured")
+	}
+	if limit <= 0 {
+		limit = DefaultContextConfig().RecentMessageCount
+	}
+	if n.session != nil {
+		sessionID := strings.TrimSpace(n.session.SessionID())
+		if sessionID != "" {
+			recentMsgs, err := n.db.GetRecentMessages(sessionID, limit)
+			if err != nil {
+				return nil, err
+			}
+			if len(recentMsgs) > 0 || n.story == nil || strings.TrimSpace(n.story.ID) == "" {
+				return recentMsgs, nil
+			}
+		}
+	}
+	if n.story == nil || strings.TrimSpace(n.story.ID) == "" {
+		return nil, nil
+	}
+	return n.db.GetRecentMessagesByStory(n.story.ID, limit)
 }
 
 func (n *Narrator) completeTurnResponse(ctx context.Context, prep *preparedTurn) (ai.Response, error) {
