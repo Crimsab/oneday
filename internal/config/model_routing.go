@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -776,9 +775,9 @@ func writeConfigAtomic(path string, oldRaw, nextRaw []byte) error {
 	uid, gid := -1, -1
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode().Perm()
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			uid = int(stat.Uid)
-			gid = int(stat.Gid)
+		if ownerUID, ownerGID, ok := fileOwnerIDs(info); ok {
+			uid = ownerUID
+			gid = ownerGID
 		}
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat config %s: %w", path, err)
@@ -841,15 +840,6 @@ func writeBackup(path string, data []byte, mode os.FileMode, uid, gid int) error
 	return os.Rename(tmp, path)
 }
 
-func fsyncDir(path string) error {
-	dir, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
-}
-
 func withConfigLock(path string, fn func() error) error {
 	lockPath := path + ".lock"
 	deadline := time.Now().Add(5 * time.Second)
@@ -892,10 +882,7 @@ func recoverStaleConfigLock(lockPath string) error {
 	if err != nil || pid <= 0 {
 		return os.Remove(lockPath)
 	}
-	if err := syscall.Kill(pid, 0); err == nil {
-		return nil
-	}
-	if err == syscall.EPERM {
+	if processExists(pid) {
 		return nil
 	}
 	return os.Remove(lockPath)
