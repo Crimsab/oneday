@@ -1175,7 +1175,10 @@ async fn mark_asset_failed(
 ) -> anyhow::Result<()> {
     sqlx::query(
         r#"UPDATE visual_assets
-           SET status = 'failed', provider = ?, error = ?, updated_at = CURRENT_TIMESTAMP
+           SET status = CASE WHEN url != '' THEN 'ready' ELSE 'failed' END,
+               provider = ?,
+               error = ?,
+               updated_at = CURRENT_TIMESTAMP
            WHERE id = ?"#,
     )
     .bind(provider_label(config))
@@ -2770,6 +2773,41 @@ mod tests {
         assert_eq!(job_status, "cancelled");
         assert_eq!(asset.status, "pending");
         assert_eq!(asset.error, "Generation cancelled.");
+    }
+
+    #[tokio::test]
+    async fn mark_asset_failed_keeps_existing_image_ready() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+
+        mark_asset_failed(&pool, "asset-location", "provider down", &config)
+            .await
+            .expect("mark failed without url");
+        let failed_status: String =
+            sqlx::query_scalar("SELECT status FROM visual_assets WHERE id = ?")
+                .bind("asset-location")
+                .fetch_one(&pool)
+                .await
+                .expect("failed status");
+        assert_eq!(failed_status, "failed");
+
+        sqlx::query("UPDATE visual_assets SET status = 'running', url = '/generated/assets/story/location.png' WHERE id = ?")
+            .bind("asset-location")
+            .execute(&pool)
+            .await
+            .expect("seed existing image");
+        mark_asset_failed(&pool, "asset-location", "provider down again", &config)
+            .await
+            .expect("mark failed with url");
+        let (ready_status, error): (String, String) =
+            sqlx::query_as("SELECT status, error FROM visual_assets WHERE id = ?")
+                .bind("asset-location")
+                .fetch_one(&pool)
+                .await
+                .expect("ready status");
+
+        assert_eq!(ready_status, "ready");
+        assert_eq!(error, "provider down again");
     }
 
     #[tokio::test]
