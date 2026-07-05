@@ -123,8 +123,12 @@ async fn delete_story(
     State(state): State<Arc<AppState>>,
     Path(story_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    let cancelled_visual_jobs = assets::cancel_story_visual_jobs(&state.pool, &story_id).await?;
     db::delete_story(&state.pool, &story_id).await?;
-    Ok(Json(json!({ "story_id": story_id })))
+    Ok(Json(json!({
+        "story_id": story_id,
+        "cancelled_visual_jobs": cancelled_visual_jobs,
+    })))
 }
 
 async fn story_delete_plan(
