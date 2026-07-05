@@ -118,6 +118,19 @@ export interface StoryDeleteResponse {
   story_id: string;
 }
 
+export interface StoryDeleteCount {
+  table: string;
+  rows: number;
+}
+
+export interface StoryDeletePlan {
+  story_id: string;
+  story_name: string;
+  counts: StoryDeleteCount[];
+  total_rows: number;
+  retained_asset_files: string[];
+}
+
 export interface RecordView {
   id: string;
   name: string;

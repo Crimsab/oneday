@@ -15,6 +15,21 @@ pub struct StorySummary {
     pub updated_at: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct StoryDeletePlan {
+    pub story_id: String,
+    pub story_name: String,
+    pub counts: Vec<StoryDeleteCount>,
+    pub total_rows: i64,
+    pub retained_asset_files: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StoryDeleteCount {
+    pub table: String,
+    pub rows: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StoryUpdate {
     pub name: Option<String>,
@@ -220,6 +235,47 @@ pub async fn delete_story(pool: &SqlitePool, story_id: &str) -> anyhow::Result<(
     Ok(())
 }
 
+pub async fn story_delete_plan(
+    pool: &SqlitePool,
+    story_id: &str,
+) -> anyhow::Result<StoryDeletePlan> {
+    let story = load_story(pool, story_id).await?;
+    let mut counts = Vec::new();
+    for table in [
+        "characters",
+        "world_state",
+        "sessions",
+        "chat_messages",
+        "chapters",
+        "achievements",
+        "saves",
+        "npcs",
+        "story_visual_profiles",
+        "visual_assets",
+        "visual_asset_versions",
+        "visual_generation_jobs",
+        "turn_idempotency",
+    ] {
+        counts.push(StoryDeleteCount {
+            table: table.to_string(),
+            rows: count_story_rows(pool, table, story_id).await?,
+        });
+    }
+    counts.push(StoryDeleteCount {
+        table: "stories".to_string(),
+        rows: 1,
+    });
+    let total_rows = counts.iter().map(|count| count.rows).sum();
+    let retained_asset_files = retained_asset_files(pool, story_id).await?;
+    Ok(StoryDeletePlan {
+        story_id: story.id,
+        story_name: story.name,
+        counts,
+        total_rows,
+        retained_asset_files,
+    })
+}
+
 pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StorySnapshot> {
     let story = load_story(pool, story_id).await?;
     let character = load_character(pool, story_id).await?;
@@ -284,6 +340,40 @@ async fn load_story(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StorySu
     .await
     .with_context(|| format!("loading story {story_id}"))?;
     Ok(story_summary_from_row(row))
+}
+
+async fn count_story_rows(pool: &SqlitePool, table: &str, story_id: &str) -> anyhow::Result<i64> {
+    let query = format!("SELECT COUNT(*) FROM {table} WHERE story_id = ?");
+    match sqlx::query_scalar::<_, i64>(&query)
+        .bind(story_id)
+        .fetch_one(pool)
+        .await
+    {
+        Ok(count) => Ok(count),
+        Err(err) if err.to_string().contains("no such table") => Ok(0),
+        Err(err) => Err(err.into()),
+    }
+}
+
+async fn retained_asset_files(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<String>> {
+    let mut files = Vec::new();
+    for query in [
+        "SELECT file_path FROM visual_assets WHERE story_id = ? AND file_path != ''",
+        "SELECT file_path FROM visual_asset_versions WHERE story_id = ? AND file_path != ''",
+    ] {
+        match sqlx::query_scalar::<_, String>(query)
+            .bind(story_id)
+            .fetch_all(pool)
+            .await
+        {
+            Ok(paths) => files.extend(paths),
+            Err(err) if err.to_string().contains("no such table") => {}
+            Err(err) => return Err(err.into()),
+        }
+    }
+    files.sort();
+    files.dedup();
+    Ok(files)
 }
 
 async fn load_character(pool: &SqlitePool, story_id: &str) -> anyhow::Result<RecordView> {
@@ -766,5 +856,23 @@ mod tests {
             .expect_err("missing story should fail");
 
         assert!(err.to_string().contains("story not found: missing-story"));
+    }
+
+    #[tokio::test]
+    async fn story_delete_plan_counts_story_and_tolerates_missing_optional_tables() {
+        let pool = story_pool().await;
+
+        let plan = story_delete_plan(&pool, "story-1")
+            .await
+            .expect("delete plan");
+
+        assert_eq!(plan.story_id, "story-1");
+        assert_eq!(plan.story_name, "Old Name");
+        assert!(plan.total_rows >= 1);
+        assert!(plan
+            .counts
+            .iter()
+            .any(|count| count.table == "stories" && count.rows == 1));
+        assert!(plan.retained_asset_files.is_empty());
     }
 }

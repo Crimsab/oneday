@@ -16,6 +16,7 @@ import type {
   SaveResponse,
   StoryCreateEnvelope,
   StoryCreateResponse,
+  StoryDeletePlan,
   StoryDeleteResponse,
   StoryEnhanceEnvelope,
   StoryEnhanceResponse,
@@ -92,6 +93,10 @@ export function deleteStory(storyId: string): Promise<StoryDeleteResponse> {
   return request<StoryDeleteResponse>(`/api/stories/${encodeURIComponent(storyId)}`, {
     method: "DELETE",
   });
+}
+
+export function getStoryDeletePlan(storyId: string): Promise<StoryDeletePlan> {
+  return request<StoryDeletePlan>(`/api/stories/${encodeURIComponent(storyId)}/delete-plan`);
 }
 
 export function runStoryWizard(envelope: StoryWizardEnvelope): Promise<StoryWizardResponse> {
