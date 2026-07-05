@@ -65,6 +65,68 @@ type openAIChatResponse struct {
 	Usage openAIUsageDTO `json:"usage"`
 }
 
+type responsesRequest struct {
+	Model           string             `json:"model"`
+	Input           []responsesMessage `json:"input"`
+	Instructions    string             `json:"instructions,omitempty"`
+	Temperature     float64            `json:"temperature,omitempty"`
+	MaxOutputTokens int                `json:"max_output_tokens,omitempty"`
+	Text            map[string]any     `json:"text,omitempty"`
+	Stream          bool               `json:"stream,omitempty"`
+}
+
+type responsesMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type responsesAPIResponse struct {
+	Model             string                `json:"model"`
+	OutputText        string                `json:"output_text"`
+	Output            []responsesOutputItem `json:"output"`
+	Usage             responsesUsageDTO     `json:"usage"`
+	Error             *responsesError       `json:"error"`
+	IncompleteDetails struct {
+		Reason string `json:"reason"`
+	} `json:"incomplete_details"`
+}
+
+type responsesOutputItem struct {
+	Text    string                 `json:"text"`
+	Content []responsesContentPart `json:"content"`
+}
+
+type responsesContentPart struct {
+	Text    string `json:"text"`
+	Value   string `json:"value"`
+	Content string `json:"content"`
+}
+
+type responsesError struct {
+	Message string `json:"message"`
+}
+
+type responsesUsageDTO struct {
+	InputTokens        int `json:"input_tokens"`
+	OutputTokens       int `json:"output_tokens"`
+	TotalTokens        int `json:"total_tokens"`
+	InputTokensDetails struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"input_tokens_details"`
+	OutputTokensDetails struct {
+		ReasoningTokens int `json:"reasoning_tokens"`
+	} `json:"output_tokens_details"`
+}
+
+type responsesStreamEvent struct {
+	Type     string               `json:"type"`
+	Delta    string               `json:"delta"`
+	Text     string               `json:"text"`
+	Error    *responsesError      `json:"error"`
+	Response responsesAPIResponse `json:"response"`
+	Item     responsesOutputItem  `json:"item"`
+}
+
 type openAICompatHTTPError struct {
 	StatusCode int
 	Body       string
@@ -125,6 +187,33 @@ func (o *OpenAICompat) Name() string {
 // Complete sends a chat completion request to the OpenAI-compatible endpoint.
 func (o *OpenAICompat) Complete(ctx context.Context, req ai.Request) (ai.Response, error) {
 	start := time.Now()
+	model, err := o.resolveModel(req.Model)
+	if err != nil {
+		return ai.Response{}, err
+	}
+
+	if usesResponsesAPI(model) {
+		body := o.buildResponsesRequest(req, model, true)
+		content, resolvedModel, usage, err := o.completeResponsesViaStream(ctx, body)
+		if err != nil {
+			httpErr, ok := err.(*openAICompatHTTPError)
+			if body.Text != nil && ok && shouldRetryWithoutResponseFormat(httpErr) {
+				content, resolvedModel, usage, err = o.completeResponsesViaStream(ctx, withoutResponsesTextFormat(body))
+			}
+			if err != nil {
+				return ai.Response{}, fmt.Errorf("HTTP responses request to %s: %w", o.name, err)
+			}
+		}
+
+		return ai.Response{
+			Content:   content,
+			Model:     resolvedModel,
+			LatencyMs: time.Since(start).Milliseconds(),
+			Provider:  o.name,
+			Usage:     usage,
+		}, nil
+	}
+
 	body, err := o.buildChatRequest(ctx, req, false)
 	if err != nil {
 		return ai.Response{}, err
@@ -197,6 +286,84 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest)
 	}
 
 	return chatResp.Choices[0].Message.Content, chatResp.Model, usageFromDTO(chatResp.Usage), nil
+}
+
+func (o *OpenAICompat) completeResponsesViaStream(ctx context.Context, body responsesRequest) (string, string, ai.Usage, error) {
+	body.Stream = true
+	resp, err := o.openResponsesStream(ctx, body)
+	if err != nil {
+		return "", "", ai.Usage{}, err
+	}
+	defer resp.Body.Close()
+
+	var content strings.Builder
+	resolvedModel := body.Model
+	var usage ai.Usage
+	seenContent := false
+	seenDone := false
+
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			seenDone = true
+			break
+		}
+		event, err := parseResponsesStreamEvent(data)
+		if err != nil {
+			return "", "", ai.Usage{}, err
+		}
+		if event == nil {
+			continue
+		}
+		switch event.Type {
+		case "response.output_text.delta":
+			if event.Delta != "" {
+				content.WriteString(event.Delta)
+				seenContent = true
+			}
+		case "response.output_text.done":
+			if !seenContent && event.Text != "" {
+				content.WriteString(event.Text)
+				seenContent = true
+			}
+		case "response.output_item.done":
+			if !seenContent {
+				if text := textFromResponsesOutputItem(event.Item); text != "" {
+					content.WriteString(text)
+					seenContent = true
+				}
+			}
+		case "response.completed":
+			if event.Response.Model != "" {
+				resolvedModel = event.Response.Model
+			}
+			if responsesUsageNonZero(event.Response.Usage) {
+				usage = usageFromResponsesDTO(event.Response.Usage)
+			}
+			if !seenContent {
+				if text := textFromResponsesResponse(event.Response); text != "" {
+					content.WriteString(text)
+					seenContent = true
+				}
+			}
+			seenDone = true
+		case "response.failed", "response.incomplete":
+			return "", "", ai.Usage{}, fmt.Errorf("responses stream failed: %s", responsesFailureMessage(event.Response))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", "", ai.Usage{}, fmt.Errorf("%s responses stream scanner: %w", o.name, err)
+	}
+	if !seenDone && !seenContent {
+		return "", "", ai.Usage{}, fmt.Errorf("%s responses stream returned no content", o.name)
+	}
+	return content.String(), resolvedModel, usage, nil
 }
 
 // openAIEmbeddingRequest is the request body for /v1/embeddings.
@@ -278,6 +445,15 @@ func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.E
 // Stream implements ai.StreamProvider using Server-Sent Events (SSE).
 // It calls /v1/chat/completions with stream:true and parses the event stream.
 func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.StreamChunk, error) {
+	model, err := o.resolveModel(req.Model)
+	if err != nil {
+		return nil, err
+	}
+	if usesResponsesAPI(model) {
+		body := o.buildResponsesRequest(req, model, true)
+		return o.streamResponses(ctx, body)
+	}
+
 	body, err := o.buildChatRequest(ctx, req, true)
 	if err != nil {
 		return nil, err
@@ -315,6 +491,7 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data: ") {
@@ -351,6 +528,95 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 	return ch, nil
 }
 
+func (o *OpenAICompat) streamResponses(ctx context.Context, body responsesRequest) (<-chan ai.StreamChunk, error) {
+	body.Stream = true
+	resp, err := o.openResponsesStream(ctx, body)
+	if err != nil {
+		httpErr, ok := err.(*openAICompatHTTPError)
+		if body.Text != nil && ok && shouldRetryWithoutResponseFormat(httpErr) {
+			resp, err = o.openResponsesStream(ctx, withoutResponsesTextFormat(body))
+		}
+		if err != nil {
+			return nil, fmt.Errorf("HTTP responses stream request to %s: %w", o.name, err)
+		}
+	}
+
+	ch := make(chan ai.StreamChunk, 32)
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
+
+		resolvedModel := body.Model
+		var finalUsage ai.Usage
+		seenContent := false
+
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			if data == "[DONE]" {
+				ch <- ai.StreamChunk{Model: resolvedModel, Usage: finalUsage, Done: true}
+				return
+			}
+			event, err := parseResponsesStreamEvent(data)
+			if err != nil {
+				ch <- ai.StreamChunk{Error: err}
+				return
+			}
+			if event == nil {
+				continue
+			}
+			switch event.Type {
+			case "response.output_text.delta":
+				if event.Delta != "" {
+					seenContent = true
+					ch <- ai.StreamChunk{Content: event.Delta, Model: resolvedModel}
+				}
+			case "response.output_text.done":
+				if !seenContent && event.Text != "" {
+					seenContent = true
+					ch <- ai.StreamChunk{Content: event.Text, Model: resolvedModel}
+				}
+			case "response.output_item.done":
+				if !seenContent {
+					if text := textFromResponsesOutputItem(event.Item); text != "" {
+						seenContent = true
+						ch <- ai.StreamChunk{Content: text, Model: resolvedModel}
+					}
+				}
+			case "response.completed":
+				if event.Response.Model != "" {
+					resolvedModel = event.Response.Model
+				}
+				if responsesUsageNonZero(event.Response.Usage) {
+					finalUsage = usageFromResponsesDTO(event.Response.Usage)
+					ch <- ai.StreamChunk{Model: resolvedModel, Usage: finalUsage}
+				}
+				if !seenContent {
+					if text := textFromResponsesResponse(event.Response); text != "" {
+						seenContent = true
+						ch <- ai.StreamChunk{Content: text, Model: resolvedModel}
+					}
+				}
+			case "response.failed", "response.incomplete":
+				ch <- ai.StreamChunk{Error: fmt.Errorf("responses stream failed: %s", responsesFailureMessage(event.Response))}
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			ch <- ai.StreamChunk{Error: fmt.Errorf("%s responses stream scanner: %w", o.name, err)}
+			return
+		}
+		ch <- ai.StreamChunk{Model: resolvedModel, Usage: finalUsage, Done: true}
+	}()
+
+	return ch, nil
+}
+
 func (o *OpenAICompat) buildChatRequest(ctx context.Context, req ai.Request, stream bool) (openAIChatRequest, error) {
 	model, err := o.resolveModel(req.Model)
 	if err != nil {
@@ -374,10 +640,46 @@ func (o *OpenAICompat) buildChatRequest(ctx context.Context, req ai.Request, str
 	return body, nil
 }
 
+func (o *OpenAICompat) buildResponsesRequest(req ai.Request, model string, stream bool) responsesRequest {
+	var instructions []string
+	var input []responsesMessage
+	for _, message := range req.Messages {
+		switch message.Role {
+		case ai.RoleSystem:
+			instructions = append(instructions, message.Content)
+		default:
+			input = append(input, responsesMessage{
+				Role:    message.Role,
+				Content: message.Content,
+			})
+		}
+	}
+
+	body := responsesRequest{
+		Model:        model,
+		Input:        input,
+		Instructions: strings.Join(instructions, "\n\n"),
+		Temperature:  req.Temperature,
+		Stream:       stream,
+	}
+	if req.MaxTokens > 0 {
+		body.MaxOutputTokens = req.MaxTokens
+	}
+	if req.ResponseFormat != nil {
+		body.Text = responsesTextFormat(req.ResponseFormat)
+	}
+	return body
+}
+
 func withoutResponseFormat(body openAIChatRequest) openAIChatRequest {
 	body.ResponseFormat = nil
 	body.Plugins = nil
 	body.Provider = nil
+	return body
+}
+
+func withoutResponsesTextFormat(body responsesRequest) responsesRequest {
+	body.Text = nil
 	return body
 }
 
@@ -394,6 +696,44 @@ func (o *OpenAICompat) openStream(ctx context.Context, body openAIChatRequest) (
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("creating stream request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	if o.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+o.apiKey)
+	}
+
+	resp, err := o.client.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		respBody, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return nil, fmt.Errorf("reading error response from %s: %w", o.name, readErr)
+		}
+		return nil, &openAICompatHTTPError{
+			StatusCode: resp.StatusCode,
+			Body:       o.actionableHTTPError(resp.StatusCode, string(respBody)),
+		}
+	}
+
+	return resp, nil
+}
+
+func (o *OpenAICompat) openResponsesStream(ctx context.Context, body responsesRequest) (*http.Response, error) {
+	if err := o.requireAPIKey(); err != nil {
+		return nil, err
+	}
+	jsonBody, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling responses request: %w", err)
+	}
+
+	url := o.baseURL + "/responses"
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("creating responses request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	if o.apiKey != "" {
@@ -548,6 +888,110 @@ func usageFromDTO(dto openAIUsageDTO) ai.Usage {
 		CachedPromptTokens: dto.PromptTokensDetails.CachedTokens,
 		CostUSD:            dto.Cost,
 	}
+}
+
+func usageFromResponsesDTO(dto responsesUsageDTO) ai.Usage {
+	return ai.Usage{
+		PromptTokens:       dto.InputTokens,
+		CompletionTokens:   dto.OutputTokens,
+		ReasoningTokens:    dto.OutputTokensDetails.ReasoningTokens,
+		TotalTokens:        dto.TotalTokens,
+		CachedPromptTokens: dto.InputTokensDetails.CachedTokens,
+	}
+}
+
+func responsesUsageNonZero(dto responsesUsageDTO) bool {
+	return dto.InputTokens != 0 ||
+		dto.OutputTokens != 0 ||
+		dto.TotalTokens != 0 ||
+		dto.InputTokensDetails.CachedTokens != 0 ||
+		dto.OutputTokensDetails.ReasoningTokens != 0
+}
+
+func usesResponsesAPI(model string) bool {
+	model = strings.TrimSpace(model)
+	return strings.HasPrefix(model, "chatgpt-") || strings.HasPrefix(model, "chatgpt/")
+}
+
+func responsesTextFormat(format *ai.ResponseFormat) map[string]any {
+	if format == nil {
+		return nil
+	}
+	switch format.Type {
+	case "json_schema":
+		if format.JSONSchema == nil {
+			return nil
+		}
+		schema := map[string]any{
+			"type":   "json_schema",
+			"name":   format.JSONSchema.Name,
+			"schema": format.JSONSchema.Schema,
+		}
+		if format.JSONSchema.Strict {
+			schema["strict"] = true
+		}
+		return map[string]any{"format": schema}
+	case "json_object":
+		return map[string]any{"format": map[string]any{"type": "json_object"}}
+	default:
+		return nil
+	}
+}
+
+func parseResponsesStreamEvent(data string) (*responsesStreamEvent, error) {
+	data = strings.TrimSpace(data)
+	if data == "" {
+		return nil, nil
+	}
+	var event responsesStreamEvent
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return nil, fmt.Errorf("parsing responses stream event: %w", err)
+	}
+	if event.Error != nil && strings.TrimSpace(event.Error.Message) != "" {
+		return nil, fmt.Errorf("responses stream failed: %s", strings.TrimSpace(event.Error.Message))
+	}
+	return &event, nil
+}
+
+func textFromResponsesResponse(resp responsesAPIResponse) string {
+	if strings.TrimSpace(resp.OutputText) != "" {
+		return resp.OutputText
+	}
+	var parts []string
+	for _, item := range resp.Output {
+		if text := textFromResponsesOutputItem(item); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func textFromResponsesOutputItem(item responsesOutputItem) string {
+	if strings.TrimSpace(item.Text) != "" {
+		return item.Text
+	}
+	var parts []string
+	for _, part := range item.Content {
+		switch {
+		case strings.TrimSpace(part.Text) != "":
+			parts = append(parts, part.Text)
+		case strings.TrimSpace(part.Value) != "":
+			parts = append(parts, part.Value)
+		case strings.TrimSpace(part.Content) != "":
+			parts = append(parts, part.Content)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func responsesFailureMessage(resp responsesAPIResponse) string {
+	if resp.Error != nil && strings.TrimSpace(resp.Error.Message) != "" {
+		return strings.TrimSpace(resp.Error.Message)
+	}
+	if strings.TrimSpace(resp.IncompleteDetails.Reason) != "" {
+		return strings.TrimSpace(resp.IncompleteDetails.Reason)
+	}
+	return "unknown response stream failure"
 }
 
 func (o *OpenAICompat) selectResponseFormat(ctx context.Context, model string, requested *ai.ResponseFormat) *ai.ResponseFormat {
