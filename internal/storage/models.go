@@ -45,6 +45,7 @@ type NPC struct {
 	PersonalityJSON    string    `json:"personality_json"`
 	RelationshipJSON   string    `json:"relationship_json"`
 	NemesisJSON        string    `json:"nemesis_json"`
+	DiscoveryJSON      string    `json:"discovery_json"`
 	PrivateThoughts    string    `json:"private_thoughts"`
 	NotesOnProtagonist string    `json:"notes_on_protagonist"`
 	Desires            string    `json:"desires"`

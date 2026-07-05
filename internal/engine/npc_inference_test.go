@@ -49,6 +49,16 @@ func TestInferNPCsFromNarrativeResponseTracksNamedSpeakerFromProseAndChoices(t *
 	if !strings.Contains(npc.NotesOnProtagonist, "Named speaker") && !strings.Contains(npc.NotesOnProtagonist, "Referenced by") {
 		t.Fatalf("NotesOnProtagonist = %q, want inference note", npc.NotesOnProtagonist)
 	}
+	discovery := npcDiscoveryFromStorage(npc)
+	if discovery.Stage != NPCStageIdentified {
+		t.Fatalf("discovery stage = %q, want %q", discovery.Stage, NPCStageIdentified)
+	}
+	if discovery.Confidence != "inferred" {
+		t.Fatalf("discovery confidence = %q, want inferred", discovery.Confidence)
+	}
+	if discovery.VisualReadiness != NPCVisualNone {
+		t.Fatalf("visual readiness = %q, want none", discovery.VisualReadiness)
+	}
 }
 
 func TestInferNPCsFromNarrativeResponseIgnoresLocationsAndGenericGroups(t *testing.T) {
