@@ -1,4 +1,4 @@
-import type { JsonObject, JsonValue, PlayerAction, TurnStreamEvent } from "./types";
+import type { JsonObject, JsonValue, PlayerAction, StorySnapshot, TurnStreamEvent } from "./types";
 
 export function appendTurnEvent(events: TurnStreamEvent[], next: TurnStreamEvent, limit = 8): TurnStreamEvent[] {
 	const key = turnEventKey(next);
@@ -38,6 +38,16 @@ export function streamingDeltaText(event: TurnStreamEvent): string {
   const eventObject = isObject(event.event) ? event.event : {};
   const payload = isObject(eventObject.payload) ? eventObject.payload : {};
   return typeof payload.text === "string" ? payload.text : "";
+}
+
+export function parseStorySnapshotEvent(data: string): StorySnapshot | null {
+  try {
+    const snapshot = JSON.parse(data) as StorySnapshot;
+    if (!snapshot || typeof snapshot !== "object") return null;
+    return snapshot;
+  } catch {
+    return null;
+  }
 }
 
 export function shouldSuppressStreamingDelta(previousText: string | undefined, delta: string): boolean {
