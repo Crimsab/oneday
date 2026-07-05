@@ -124,6 +124,7 @@ When you introduce a NEW named NPC the protagonist interacts with meaningfully, 
   }
 
 Background/unnamed characters (generic guards, unnamed shopkeepers) do NOT need NPC profiles.
+If a scene reveals a person's name, gives them direct dialogue, or makes future choices refer to them by name, they are no longer background: include "new_npc" in the same response unless that NPC already exists. Do not leave a newly named recurring person only in prose.
 
 ### NPC Updates (for existing NPCs by name)
 - "npc_disposition": {"name": "NPC Name", "change": N} — adjust disposition by N.
