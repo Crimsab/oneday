@@ -498,6 +498,7 @@ impl From<anyhow::Error> for ApiError {
             || message.contains("belongs to story");
         let is_not_found = message.contains("no rows returned")
             || message.contains("no rows in result set")
+            || message.contains("story not found")
             || message.contains("visual asset not found")
             || message.contains("visual asset version not found");
         let status = if is_bad_request {

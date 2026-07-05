@@ -872,6 +872,136 @@ func TestOpenAICompatStream(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatStreamErrorsOnEOFBeforeDone(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sseEvent("partial"))
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "truncated-stream",
+		BaseURL:      server.URL,
+		APIKey:       "test-key",
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	ch, err := provider.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var gotErr error
+	var gotDone bool
+	for chunk := range ch {
+		if chunk.Error != nil {
+			gotErr = chunk.Error
+		}
+		if chunk.Done {
+			gotDone = true
+		}
+	}
+	if gotErr == nil || !strings.Contains(gotErr.Error(), "closed before [DONE]") {
+		t.Fatalf("stream error = %v, want closed-before-DONE error", gotErr)
+	}
+	if gotDone {
+		t.Fatal("stream emitted Done after truncated chat-completions stream")
+	}
+}
+
+func TestOpenAICompatStreamErrorsOnDoneWithoutContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, `data: {"choices":[{"delta":{"role":"assistant"}}]}`+"\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "empty-stream",
+		BaseURL:      server.URL,
+		APIKey:       "test-key",
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	ch, err := provider.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var gotErr error
+	var gotDone bool
+	for chunk := range ch {
+		if chunk.Error != nil {
+			gotErr = chunk.Error
+		}
+		if chunk.Done {
+			gotDone = true
+		}
+	}
+	if gotErr == nil || !strings.Contains(gotErr.Error(), "returned no content") {
+		t.Fatalf("stream error = %v, want no-content error", gotErr)
+	}
+	if gotDone {
+		t.Fatal("stream emitted Done after empty chat-completions stream")
+	}
+}
+
+func TestOpenAICompatStreamErrorsOnMalformedChunk(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {not-json}\n\n")
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "malformed-stream",
+		BaseURL:      server.URL,
+		APIKey:       "test-key",
+		DefaultModel: "test-model",
+		Timeout:      5 * time.Second,
+	})
+
+	ch, err := provider.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: "user", Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var gotErr error
+	for chunk := range ch {
+		if chunk.Error != nil {
+			gotErr = chunk.Error
+		}
+		if chunk.Done {
+			t.Fatal("stream emitted Done after malformed chunk")
+		}
+	}
+	if gotErr == nil || !strings.Contains(gotErr.Error(), "stream chunk parse") {
+		t.Fatalf("stream error = %v, want parse error", gotErr)
+	}
+}
+
 func TestOpenAICompatStreamRetriesWithoutUnsupportedResponseFormat(t *testing.T) {
 	var calls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
