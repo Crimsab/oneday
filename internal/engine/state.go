@@ -930,6 +930,9 @@ func applyStateChangesWithNPCStore(
 			})
 
 		default:
+			if isNarratorManagedStateChangeKey(key) {
+				continue
+			}
 			applied = append(applied, StateChange{
 				Target:      "system",
 				Field:       "unknown_state_change",
@@ -963,6 +966,28 @@ func applyStateChangesWithNPCStore(
 	world.UpdatedAt = time.Now()
 
 	return applied, nil
+}
+
+func isNarratorManagedStateChangeKey(key string) bool {
+	switch key {
+	case "setting_factions_add",
+		"setting_cultures_add",
+		"setting_dangers_add",
+		"setting_rules_add",
+		"setting_tone_add",
+		"world_location_add",
+		"world_event_add",
+		"world_faction_standing",
+		"front_add",
+		"front_advance",
+		"front_reveal",
+		"front_stall",
+		"front_resolve",
+		"front_pressure":
+		return true
+	default:
+		return false
+	}
 }
 
 // toStringMap attempts to cast val to map[string]interface{}.
