@@ -11,6 +11,7 @@ import {
   getHealth,
   getModelSettings,
   getSnapshot,
+  getStoryDeletePlan,
   getStories,
   getVisualAssets,
   getVisualAssetVersions,
@@ -358,6 +359,26 @@ function App() {
     setStoryMutatingId(targetStoryId);
     setSync("Saving");
     try {
+      const plan = await getStoryDeletePlan(targetStoryId);
+      const topCounts = plan.counts
+        .filter((count) => count.rows > 0)
+        .slice(0, 6)
+        .map((count) => `${count.table}: ${count.rows}`)
+        .join("\n");
+      const retainedFiles = plan.retained_asset_files.length;
+      const message = [
+        `Delete "${plan.story_name || targetStoryId}"?`,
+        "",
+        `Database rows affected: ${plan.total_rows}`,
+        topCounts,
+        retainedFiles ? `Generated image files retained on disk: ${retainedFiles}` : "No generated image files are linked.",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      if (!window.confirm(message)) {
+        setSync(paused ? "Paused" : "Live");
+        return;
+      }
       await deleteStory(targetStoryId);
       const nextStories = await getStories();
       setStories(nextStories);

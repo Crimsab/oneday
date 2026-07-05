@@ -182,8 +182,6 @@ function StoryRow({
     });
   };
   const deleteWithConfirm = async () => {
-    const label = story.name || story.id;
-    if (!window.confirm(`Delete "${label}" and all of its saves, messages, characters, and world state?`)) return;
     await onDelete();
   };
 
