@@ -761,13 +761,13 @@ func (n *Narrator) finalizeTurn(
 	// Apply state_changes from AI response, including NPC creation/updates.
 	var appliedChanges []StateChange
 	var npcRecorder *npcMutationRecorder
+	var npcStore npcStateStore
+	if n.db != nil {
+		npcRecorder = newNPCMutationRecorder(directNPCStore{db: n.db})
+		npcStore = npcRecorder
+	}
 	if len(narrative.StateChanges) > 0 {
 		var applyErr error
-		var npcStore npcStateStore
-		if n.db != nil {
-			npcRecorder = newNPCMutationRecorder(directNPCStore{db: n.db})
-			npcStore = npcRecorder
-		}
 		appliedChanges, applyErr = applyStateChangesWithNPCStore(
 			narrative.StateChanges,
 			n.character,
@@ -791,6 +791,14 @@ func (n *Narrator) finalizeTurn(
 		// Apply narrator-managed world/setting changes in memory first so the
 		// canonical turn commit remains the source of truth for world state.
 		_ = ApplyNarratorStateChanges(ctx, narrative.StateChanges, nil, n.story, n.world, nil)
+	}
+	if inferredNPCChanges := inferNPCsFromNarrativeResponse(narrative, n.story.ID, prep.currentTurn, npcStore); len(inferredNPCChanges) > 0 {
+		appliedChanges = append(appliedChanges, inferredNPCChanges...)
+		narrative.AppliedStateChanges = appliedChanges
+		narrative.EventCallouts = MergeEventCallouts(
+			narrative.EventCallouts,
+			StateChangesToEventCallouts(appliedChanges),
+		)
 	}
 	narrative.TurnDelta = mergeTurnDelta(buildTurnDelta(appliedChanges), narrative.TurnDelta)
 	narrative.OpenHooks = activeStoryHooks(loadStoryHooks(n.world))
