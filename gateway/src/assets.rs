@@ -1531,10 +1531,12 @@ fn image_output_format(config: &ImageGenerationConfig) -> String {
 
 fn openclaw_payload_model(config: &ImageGenerationConfig) -> Option<String> {
     let model = config.model.trim();
-    if !model.is_empty() {
-        Some(model.to_string())
-    } else {
-        None
+    if model.is_empty() {
+        return None;
+    }
+    match model {
+        "gpt-image-2" => Some("openai/gpt-image-2".to_string()),
+        _ => Some(model.to_string()),
     }
 }
 
@@ -2468,7 +2470,7 @@ mod tests {
     }
 
     #[test]
-    fn openclaw_bridge_payload_accepts_simple_model_names() {
+    fn openclaw_bridge_payload_normalizes_gpt_image_short_name() {
         let config = ImageGenerationConfig {
             base_url: String::new(),
             api_key: String::new(),
@@ -2494,7 +2496,38 @@ mod tests {
 
         assert_eq!(
             openclaw_payload_model(&config).as_deref(),
-            Some("gpt-image-2")
+            Some("openai/gpt-image-2")
+        );
+    }
+
+    #[test]
+    fn openclaw_bridge_payload_keeps_namespaced_model_names() {
+        let config = ImageGenerationConfig {
+            base_url: String::new(),
+            api_key: String::new(),
+            model: "openai/gpt-image-2".to_string(),
+            provider: "openclaw-bridge".to_string(),
+            openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
+            default_size: "1024x1024".to_string(),
+            location_size: "1536x1024".to_string(),
+            character_size: "1024x1024".to_string(),
+            default_resolution: String::new(),
+            location_resolution: String::new(),
+            character_resolution: String::new(),
+            default_aspect_ratio: String::new(),
+            location_aspect_ratio: String::new(),
+            character_aspect_ratio: String::new(),
+            quality: String::new(),
+            output_format: "png".to_string(),
+            background: String::new(),
+            timeout_seconds: 10,
+            auto_generate: true,
+            append_negative_prompt: true,
+        };
+
+        assert_eq!(
+            openclaw_payload_model(&config).as_deref(),
+            Some("openai/gpt-image-2")
         );
     }
 
