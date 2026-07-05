@@ -674,6 +674,7 @@ func applyStateChangesWithNPCStore(
 
 		case "investigation_update":
 			for _, updateMap := range toObjectMaps(val) {
+				applied = append(applied, ensureNPCsFromInvestigationSuspects(npcs, storyID, updateMap, currentTurn)...)
 				applied = append(applied, ApplyInvestigationUpdate(world, updateMap, currentTurn)...)
 			}
 
@@ -1018,6 +1019,71 @@ func ensureNPCForStateChange(npcs npcStateStore, storyID, npcName string, curren
 		return nil, err
 	}
 	return npc, nil
+}
+
+func ensureNPCsFromInvestigationSuspects(npcs npcStateStore, storyID string, updateMap map[string]interface{}, currentTurn int) []StateChange {
+	if npcs == nil || len(updateMap) == 0 {
+		return nil
+	}
+	var applied []StateChange
+	for _, suspect := range toObjectMaps(updateMap["suspects"]) {
+		action := normalizedEvidenceAction(suspect["action"], "add")
+		if action == "discredit" || action == "collapse" {
+			continue
+		}
+		name := strings.TrimSpace(stringValue(suspect["name"]))
+		if !looksLikeTrackableNPCName(name) {
+			continue
+		}
+		existing, err := npcs.GetNPCByName(storyID, name)
+		if err != nil || existing != nil {
+			continue
+		}
+		npc, err := ensureNPCForStateChange(npcs, storyID, name, currentTurn)
+		if err != nil || npc == nil {
+			continue
+		}
+		detail := strings.TrimSpace(stringValue(suspect["detail"]))
+		if detail != "" {
+			npc.Desires = "[]"
+			npc.NotesOnProtagonist = marshalStringsOrDefault([]string{detail}, "[]")
+			_ = npcs.UpdateNPC(npc)
+		}
+		applied = append(applied, StateChange{
+			Target:      "world",
+			Field:       "npc",
+			New:         name,
+			Description: fmt.Sprintf("New NPC encountered: %s (%s)", name, npc.Role),
+		})
+	}
+	return applied
+}
+
+func looksLikeTrackableNPCName(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" || len([]rune(name)) > 80 {
+		return false
+	}
+	lower := strings.ToLower(name)
+	blockedFragments := []string{
+		"qualcuno", "sconosciuto", "unknown", "unidentified", "contatto sconosciuto",
+		"rete", "fazione", "confraternita", "gilda", "culto", "guardie", "polizia",
+		"famiglia", "gruppo", "gang", "societa", "società",
+	}
+	for _, fragment := range blockedFragments {
+		if strings.Contains(lower, fragment) {
+			return false
+		}
+	}
+	return true
+}
+
+func marshalStringsOrDefault(items []string, fallback string) string {
+	b, err := json.Marshal(items)
+	if err != nil {
+		return fallback
+	}
+	return string(b)
 }
 
 // toStringMap attempts to cast val to map[string]interface{}.
