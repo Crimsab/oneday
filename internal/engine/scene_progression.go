@@ -97,6 +97,31 @@ func (n *Narrator) evaluateSceneProgression(
 	return guidance, resp.Usage, latency, nil
 }
 
+func fallbackSceneProgressionGuidance(signal *narrativeMomentumSignal) *SceneProgressionGuidance {
+	if signal == nil {
+		return nil
+	}
+	strategy := sceneProgressionStrategyReveal
+	instruction := "Reveal one concrete new fact, clue, arrival, cost, or changed relationship before offering choices."
+	if signal.sameLocation && signal.similarChoicePairs >= 2 {
+		strategy = sceneProgressionStrategyLocationShift
+		instruction = "Move the scene to a new actionable place or force an interruption that changes what the player can do."
+	} else if signal.lowWorldPressure {
+		strategy = sceneProgressionStrategyConsequence
+		instruction = "Introduce immediate pressure, a cost, a deadline, or a visible world reaction tied to the player's last action."
+	}
+	repeated := strings.Join(signal.repeatedTerms, ", ")
+	if repeated == "" {
+		repeated = "recent choices and scene beats"
+	}
+	return &SceneProgressionGuidance{
+		Assessment:  sceneProgressionAssessmentStalled,
+		Strategy:    strategy,
+		Reason:      fmt.Sprintf("Local momentum guard detected repeated beats around %s.", repeated),
+		Instruction: instruction,
+	}
+}
+
 func parseSceneProgressionGuidance(raw string) (*SceneProgressionGuidance, error) {
 	payload, err := ai.ExtractJSONPayload(raw)
 	if err != nil {

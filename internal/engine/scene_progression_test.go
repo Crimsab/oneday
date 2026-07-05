@@ -28,6 +28,29 @@ func TestParseSceneProgressionGuidance(t *testing.T) {
 	}
 }
 
+func TestFallbackSceneProgressionGuidanceChoosesConcreteStrategy(t *testing.T) {
+	guidance := fallbackSceneProgressionGuidance(&narrativeMomentumSignal{
+		recentTurns:        4,
+		sameLocation:       true,
+		lowWorldPressure:   true,
+		similarChoicePairs: 2,
+		repeatedTerms:      []string{"latte", "scintilla"},
+	})
+
+	if guidance == nil {
+		t.Fatal("expected fallback guidance")
+	}
+	if guidance.Assessment != sceneProgressionAssessmentStalled {
+		t.Fatalf("assessment = %q", guidance.Assessment)
+	}
+	if guidance.Strategy != sceneProgressionStrategyLocationShift {
+		t.Fatalf("strategy = %q, want location_shift", guidance.Strategy)
+	}
+	if guidance.Reason == "" || guidance.Instruction == "" {
+		t.Fatalf("guidance missing reason/instruction: %+v", guidance)
+	}
+}
+
 func TestDetectStalledNarrativeDraftRequestsRerollForMissedTimeSkip(t *testing.T) {
 	recent := []storage.ChatMessage{
 		testAssistantTurnWithMeta(t, 3, "Nella casa la scintilla di magia torna a tremare sopra il latte mentre la madre osserva il focolare.", "Casa di famiglia",
