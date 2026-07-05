@@ -321,6 +321,36 @@ func TestInProcessTurnServiceSubmitActionStreamReplayReturnsCanonicalEvents(t *t
 	}
 }
 
+func TestActionTextResolvesChoiceAgainstSnapshot(t *testing.T) {
+	text, err := actionText(contracts.PlayerAction{
+		Kind:     contracts.ActionKindChoice,
+		ChoiceID: 2,
+	}, &contracts.GameSnapshot{
+		Choices: []contracts.ChoiceView{
+			{ID: 1, Text: "Ask the dockworker about the office."},
+			{ID: 2, Text: "Follow the wet footprints."},
+		},
+	})
+	if err != nil {
+		t.Fatalf("actionText: %v", err)
+	}
+	if text != "[Choice 2] Follow the wet footprints." {
+		t.Fatalf("action text = %q", text)
+	}
+}
+
+func TestActionTextRejectsUnavailableChoice(t *testing.T) {
+	_, err := actionText(contracts.PlayerAction{
+		Kind:     contracts.ActionKindChoice,
+		ChoiceID: 3,
+	}, &contracts.GameSnapshot{
+		Choices: []contracts.ChoiceView{{ID: 1, Text: "Ask around."}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "choice_id 3 is not available") {
+		t.Fatalf("actionText err = %v, want unavailable choice error", err)
+	}
+}
+
 func TestInProcessTurnServiceConcurrentSubmissionsSerializeAcrossInstances(t *testing.T) {
 	root := t.TempDir()
 	db := newTurnServiceTestDB(t, root)

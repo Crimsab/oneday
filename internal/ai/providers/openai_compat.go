@@ -583,6 +583,7 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
+		seenContent := false
 		for scanner.Scan() {
 			line := scanner.Text()
 			if !strings.HasPrefix(line, "data:") {
@@ -590,12 +591,17 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 			}
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			if data == "[DONE]" {
+				if !seenContent {
+					ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream returned no content", o.name)}
+					return
+				}
 				ch <- ai.StreamChunk{Done: true}
 				return
 			}
 			var chunk sseChunk
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				continue // skip malformed chunks
+				ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream chunk parse: %w", o.name, err)}
+				return
 			}
 			if chunk.Usage.TotalTokens > 0 || chunk.Usage.Cost > 0 {
 				ch <- ai.StreamChunk{
@@ -604,6 +610,7 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 				}
 			}
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+				seenContent = true
 				ch <- ai.StreamChunk{
 					Content: chunk.Choices[0].Delta.Content,
 					Model:   chunk.Model,
@@ -612,8 +619,9 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 		}
 		if err := scanner.Err(); err != nil {
 			ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream scanner: %w", o.name, err)}
+			return
 		}
-		ch <- ai.StreamChunk{Done: true}
+		ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream closed before [DONE]", o.name)}
 	}()
 
 	return ch, nil

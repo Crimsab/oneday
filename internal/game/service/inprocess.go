@@ -487,7 +487,11 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 		}
 	}
 
-	resp, err := narrator.SendActionWithLeaseAndCommitHook(ctx, actionText(req.Action), storyLock, hook)
+	resolvedActionText, err := actionText(req.Action, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := narrator.SendActionWithLeaseAndCommitHook(ctx, resolvedActionText, storyLock, hook)
 	if err != nil {
 		return nil, err
 	}
@@ -552,7 +556,11 @@ func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.
 		}
 	}
 
-	stream, err := narrator.StreamActionWithLeaseAndCommitHook(ctx, actionText(req.Action), storyLock, hook)
+	resolvedActionText, err := actionText(req.Action, snapshot)
+	if err != nil {
+		return nil, err
+	}
+	stream, err := narrator.StreamActionWithLeaseAndCommitHook(ctx, resolvedActionText, storyLock, hook)
 	if err != nil {
 		return nil, err
 	}
@@ -983,15 +991,24 @@ func cloneEvents(events []contracts.TurnEvent) []contracts.TurnEvent {
 	return cloned
 }
 
-func actionText(action contracts.PlayerAction) string {
+func actionText(action contracts.PlayerAction, snapshot *contracts.GameSnapshot) (string, error) {
 	text := strings.TrimSpace(action.Text)
-	if text != "" {
-		return text
-	}
 	if action.ChoiceID > 0 {
-		return fmt.Sprintf("[Choice %d]", action.ChoiceID)
+		for _, choice := range snapshot.Choices {
+			if choice.ID == action.ChoiceID {
+				choiceText := strings.TrimSpace(choice.Text)
+				if choiceText == "" {
+					return fmt.Sprintf("[Choice %d]", action.ChoiceID), nil
+				}
+				return fmt.Sprintf("[Choice %d] %s", action.ChoiceID, choiceText), nil
+			}
+		}
+		return "", fmt.Errorf("choice_id %d is not available for the current turn", action.ChoiceID)
 	}
-	return ""
+	if text != "" {
+		return text, nil
+	}
+	return "", errors.New("action text or choice_id is required")
 }
 
 func choiceViews(choices []engine.Choice) []contracts.ChoiceView {
