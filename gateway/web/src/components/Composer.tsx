@@ -13,7 +13,7 @@ interface ComposerProps {
   commandContext?: CommandSuggestionContext;
   onDraftChange: (value: string) => void;
   onModeChange: (value: string) => void;
-  onSubmit: () => void;
+  onSubmit: (draftOverride?: string) => void;
   onHistoryStep: (direction: -1 | 1) => string | null;
 }
 
@@ -103,12 +103,16 @@ export function Composer({
     setActiveIndex((index) => (index + direction + visibleSuggestions.length) % visibleSuggestions.length);
   };
 
+  const submitCurrentDraft = () => {
+    onSubmit(textAreaRef.current?.value ?? draft);
+  };
+
   return (
     <form
       className="composer"
       onSubmit={(event) => {
         event.preventDefault();
-        onSubmit();
+        submitCurrentDraft();
       }}
     >
       <div className="composer-title">Action Composer</div>
@@ -132,7 +136,7 @@ export function Composer({
             }
             if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
               event.preventDefault();
-              onSubmit();
+              submitCurrentDraft();
               return;
             }
             if ((event.key === "Enter" || event.key === "Tab") && paletteOpen && visibleSuggestions[activeIndex]) {

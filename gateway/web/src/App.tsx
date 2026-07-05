@@ -459,11 +459,12 @@ function App() {
     }
   };
 
-  const executeDraft = async () => {
-    if (!draft.trim() || !snapshot || !storyId || sending) return;
+  const executeDraft = async (draftOverride?: string) => {
+    const currentDraft = draftOverride ?? draft;
+    if (!currentDraft.trim() || !snapshot || !storyId || sending) return;
     setNotice("");
-    const sourceText = draft.trim();
-    const commandResult = commandToAction(draft, {
+    const sourceText = currentDraft.trim();
+    const commandResult = commandToAction(currentDraft, {
       descriptors: commandDescriptors,
       npcNames: npcNamesFromSnapshot(snapshot),
       saveNames: saveNamesFromSnapshot(snapshot),
@@ -475,13 +476,13 @@ function App() {
     if (commandResult.saveDeleteFilter !== undefined) setSaveFilter(commandResult.saveDeleteFilter);
     if (commandResult.notice) setNotice(commandResult.notice);
     if (commandResult.meta) {
-      await sendMetaCommand(commandResult.meta, draft);
+      await sendMetaCommand(commandResult.meta, currentDraft);
       setDraft("");
       setHistoryIndex(-1);
       return;
     }
     if (commandResult.saveName !== undefined) {
-      await createManualSave(commandResult.saveName, draft);
+      await createManualSave(commandResult.saveName, currentDraft);
       setDraft("");
       setHistoryIndex(-1);
       return;
@@ -493,9 +494,9 @@ function App() {
       return;
     }
 
-    const text = commandResult.text ?? actionModeToText(mode, draft);
+    const text = commandResult.text ?? actionModeToText(mode, currentDraft);
     if (!text.trim()) return;
-    await sendAction({ kind: "free_text", text }, draft);
+    await sendAction({ kind: "free_text", text }, currentDraft);
     setDraft("");
     setHistoryIndex(-1);
   };
