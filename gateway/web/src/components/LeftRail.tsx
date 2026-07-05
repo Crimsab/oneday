@@ -1,7 +1,8 @@
-import { PanelLeftOpen, Plus, RefreshCw, Search, Users } from "lucide-react";
+import { useState } from "react";
+import { Archive, ArchiveRestore, Check, PanelLeftOpen, Pencil, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import { asArray, compactText, displayTimestamp, entryLabel } from "../format";
-import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary } from "../types";
+import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary, StoryUpdatePayload } from "../types";
 
 interface LeftRailProps {
   stories: StorySummary[];
@@ -14,7 +15,11 @@ interface LeftRailProps {
   onSelectStory: (storyId: string) => void;
   onSelectTab: (tab: ModuleTab) => void;
   onRefreshStories: () => void;
+  onUpdateStory: (storyId: string, payload: StoryUpdatePayload) => Promise<void>;
+  onSetStoryArchived: (storyId: string, archived: boolean) => Promise<void>;
+  onDeleteStory: (storyId: string) => Promise<void>;
   onOpen: (overlay: OverlayKind) => void;
+  busyStoryId: string;
 }
 
 export function LeftRail({
@@ -28,10 +33,15 @@ export function LeftRail({
   onSelectStory,
   onSelectTab,
   onRefreshStories,
+  onUpdateStory,
+  onSetStoryArchived,
+  onDeleteStory,
   onOpen,
+  busyStoryId,
 }: LeftRailProps) {
   const notes = storyNotes(snapshot);
   const chapters = snapshot?.panels.chapters.slice(-5).reverse() ?? [];
+  const [editingStoryId, setEditingStoryId] = useState("");
 
   return (
     <aside className="left-rail">
@@ -61,18 +71,23 @@ export function LeftRail({
             <div className="empty-copy">No stories found.</div>
           ) : (
             stories.map((story) => (
-              <button
-                type="button"
+              <StoryRow
                 key={story.id}
-                className={`story-row ${story.id === activeStoryId ? "active" : ""}`}
-                onClick={() => onSelectStory(story.id)}
-              >
-                <strong>{story.name || story.id}</strong>
-                <span>
-                  Turn {storyTurnLabel(snapshot, story.id, activeStoryId)} - {story.genre || "Story"}
-                </span>
-                <small title={story.description || story.tone || story.id}>{compactText(story.description || story.tone || story.id, 54)}</small>
-              </button>
+                story={story}
+                active={story.id === activeStoryId}
+                turnLabel={storyTurnLabel(snapshot, story.id, activeStoryId)}
+                editing={editingStoryId === story.id}
+                busy={busyStoryId === story.id}
+                onSelect={() => onSelectStory(story.id)}
+                onEdit={() => setEditingStoryId(story.id)}
+                onCancelEdit={() => setEditingStoryId("")}
+                onSave={async (payload) => {
+                  await onUpdateStory(story.id, payload);
+                  setEditingStoryId("");
+                }}
+                onSetArchived={(archived) => onSetStoryArchived(story.id, archived)}
+                onDelete={() => onDeleteStory(story.id)}
+              />
             ))
           )}
         </div>
@@ -128,6 +143,133 @@ export function LeftRail({
   );
 }
 
+interface StoryRowProps {
+  story: StorySummary;
+  active: boolean;
+  turnLabel: string;
+  editing: boolean;
+  busy: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+  onCancelEdit: () => void;
+  onSave: (payload: StoryUpdatePayload) => Promise<void>;
+  onSetArchived: (archived: boolean) => Promise<void>;
+  onDelete: () => Promise<void>;
+}
+
+function StoryRow({
+  story,
+  active,
+  turnLabel,
+  editing,
+  busy,
+  onSelect,
+  onEdit,
+  onCancelEdit,
+  onSave,
+  onSetArchived,
+  onDelete,
+}: StoryRowProps) {
+  const [draft, setDraft] = useState(() => storyDraft(story));
+
+  const resetDraft = () => setDraft(storyDraft(story));
+  const save = async () => {
+    await onSave({
+      name: draft.name,
+      description: draft.description,
+      genre: draft.genre,
+      tone: draft.tone,
+    });
+  };
+  const deleteWithConfirm = async () => {
+    const label = story.name || story.id;
+    if (!window.confirm(`Delete "${label}" and all of its saves, messages, characters, and world state?`)) return;
+    await onDelete();
+  };
+
+  if (editing) {
+    return (
+      <form
+        className={`story-row story-row-edit ${active ? "active" : ""}`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        <label>
+          <span>Name</span>
+          <input value={draft.name} onChange={(event) => setDraft((value) => ({ ...value, name: event.target.value }))} />
+        </label>
+        <label>
+          <span>Description</span>
+          <textarea
+            value={draft.description}
+            onChange={(event) => setDraft((value) => ({ ...value, description: event.target.value }))}
+            rows={3}
+          />
+        </label>
+        <div className="story-edit-grid">
+          <label>
+            <span>Genre</span>
+            <input value={draft.genre} onChange={(event) => setDraft((value) => ({ ...value, genre: event.target.value }))} />
+          </label>
+          <label>
+            <span>Tone</span>
+            <input value={draft.tone} onChange={(event) => setDraft((value) => ({ ...value, tone: event.target.value }))} />
+          </label>
+        </div>
+        <div className="story-edit-actions">
+          <button type="button" className="ghost-button" onClick={() => { resetDraft(); onCancelEdit(); }} disabled={busy}>
+            <X size={14} />
+            Cancel
+          </button>
+          <button type="submit" className="accent-button" disabled={busy || !draft.name.trim()}>
+            <Check size={14} />
+            Save
+          </button>
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className={`story-row ${active ? "active" : ""} ${story.is_archived ? "archived" : ""}`}>
+      <button type="button" className="story-select" onClick={onSelect} disabled={busy}>
+        <strong>{story.name || story.id}</strong>
+        <span>
+          Turn {turnLabel} - {story.genre || "Story"}
+          {story.is_archived ? " - Archived" : ""}
+        </span>
+        <small title={story.description || story.tone || story.id}>{compactText(story.description || story.tone || story.id, 54)}</small>
+      </button>
+      <div className="story-row-actions" aria-label={`Manage ${story.name || story.id}`}>
+        <button
+          type="button"
+          onClick={() => {
+            resetDraft();
+            onEdit();
+          }}
+          title="Edit story"
+          disabled={busy}
+        >
+          <Pencil size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={() => void onSetArchived(!story.is_archived)}
+          title={story.is_archived ? "Unarchive story" : "Archive story"}
+          disabled={busy}
+        >
+          {story.is_archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+        </button>
+        <button type="button" onClick={() => void deleteWithConfirm()} title="Delete story" disabled={busy}>
+          <Trash2 size={14} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 interface CollapsedLeftRailProps {
   selectedTab: ModuleTab;
   onSelectTab: (tab: ModuleTab) => void;
@@ -168,6 +310,15 @@ export function CollapsedLeftRail({ selectedTab, onSelectTab, onExpand, onOpen }
 function storyTurnLabel(snapshot: StorySnapshot | null, storyId: string, activeStoryId: string): string {
   if (!snapshot || storyId !== activeStoryId) return "--";
   return String(snapshot.world.current_turn);
+}
+
+function storyDraft(story: StorySummary): Required<Pick<StoryUpdatePayload, "name" | "description" | "genre" | "tone">> {
+  return {
+    name: story.name || story.id,
+    description: story.description || "",
+    genre: story.genre || "",
+    tone: story.tone || "",
+  };
 }
 
 function storyNotes(snapshot: StorySnapshot | null): string[] {

@@ -3,7 +3,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
 use serde_json::json;
 use std::convert::Infallible;
@@ -28,6 +28,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/story-wizard", post(story_wizard))
         .route("/api/story-enhance", post(story_enhance))
         .route("/api/stories", get(stories).post(create_story))
+        .route(
+            "/api/stories/:story_id",
+            patch(update_story).delete(delete_story),
+        )
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
         .route(
@@ -102,6 +106,24 @@ async fn stories(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<db::StorySummary>>, ApiError> {
     Ok(Json(db::list_stories(&state.pool).await?))
+}
+
+async fn update_story(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<db::StoryUpdate>,
+) -> Result<Json<db::StorySummary>, ApiError> {
+    Ok(Json(
+        db::update_story(&state.pool, &story_id, payload).await?,
+    ))
+}
+
+async fn delete_story(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    db::delete_story(&state.pool, &story_id).await?;
+    Ok(Json(json!({ "story_id": story_id })))
 }
 
 async fn create_story(

@@ -16,12 +16,14 @@ import type {
   SaveResponse,
   StoryCreateEnvelope,
   StoryCreateResponse,
+  StoryDeleteResponse,
   StoryEnhanceEnvelope,
   StoryEnhanceResponse,
   StorySnapshot,
   StoryWizardEnvelope,
   StoryWizardResponse,
   StorySummary,
+  StoryUpdatePayload,
   VisualAssetsResponse,
   VisualAssetPromptUpdate,
   VisualAssetVersion,
@@ -75,6 +77,20 @@ export function createStory(envelope: StoryCreateEnvelope): Promise<StoryCreateR
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(envelope),
+  });
+}
+
+export function updateStory(storyId: string, payload: StoryUpdatePayload): Promise<StorySummary> {
+  return request<StorySummary>(`/api/stories/${encodeURIComponent(storyId)}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteStory(storyId: string): Promise<StoryDeleteResponse> {
+  return request<StoryDeleteResponse>(`/api/stories/${encodeURIComponent(storyId)}`, {
+    method: "DELETE",
   });
 }
 
