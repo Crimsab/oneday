@@ -73,8 +73,34 @@ type ModelRoutingSettings struct {
 	ImageModels        []string               `json:"image_models"`
 	ASCIIModels        []string               `json:"ascii_models"`
 	EmbeddingProviders []string               `json:"embedding_providers"`
+	ImageGeneration    ImageGenerationSetting `json:"image_generation"`
 	Active             ModelRoutingActive     `json:"active"`
 	TTSStatus          string                 `json:"tts_status"`
+}
+
+type ImageGenerationSetting struct {
+	Provider             string `json:"provider"`
+	BaseURL              string `json:"base_url"`
+	APIKeyConfigured     bool   `json:"api_key_configured"`
+	Model                string `json:"model"`
+	OpenClawBridgeURL    string `json:"openclaw_bridge_url"`
+	DefaultSize          string `json:"default_size"`
+	LocationSize         string `json:"location_size"`
+	CharacterSize        string `json:"character_size"`
+	DefaultResolution    string `json:"default_resolution"`
+	LocationResolution   string `json:"location_resolution"`
+	CharacterResolution  string `json:"character_resolution"`
+	DefaultAspectRatio   string `json:"default_aspect_ratio"`
+	LocationAspectRatio  string `json:"location_aspect_ratio"`
+	CharacterAspectRatio string `json:"character_aspect_ratio"`
+	Quality              string `json:"quality"`
+	OutputFormat         string `json:"output_format"`
+	Background           string `json:"background"`
+	TimeoutSeconds       int    `json:"timeout_seconds"`
+	AutoGenerate         bool   `json:"auto_generate"`
+	AppendNegativePrompt bool   `json:"append_negative_prompt"`
+	Available            bool   `json:"available"`
+	Status               string `json:"status"`
 }
 
 type ModelProviderUpdate struct {
@@ -85,16 +111,39 @@ type ModelProviderUpdate struct {
 }
 
 type ModelRoutingUpdate struct {
-	BaseRevision         string                `json:"base_revision,omitempty"`
-	ProviderPriority     *[]string             `json:"provider_priority,omitempty"`
-	Providers            []ModelProviderUpdate `json:"providers,omitempty"`
-	UtilityModel         *string               `json:"utility_model,omitempty"`
-	RepairModel          *string               `json:"repair_model,omitempty"`
-	RepairFallbackModels *[]string             `json:"repair_fallback_models,omitempty"`
-	ImageModel           *string               `json:"image_model,omitempty"`
-	ASCIIModel           *string               `json:"ascii_model,omitempty"`
-	EmbeddingProvider    *string               `json:"embedding_provider,omitempty"`
-	EmbeddingModel       *string               `json:"embedding_model,omitempty"`
+	BaseRevision         string                 `json:"base_revision,omitempty"`
+	ProviderPriority     *[]string              `json:"provider_priority,omitempty"`
+	Providers            []ModelProviderUpdate  `json:"providers,omitempty"`
+	UtilityModel         *string                `json:"utility_model,omitempty"`
+	RepairModel          *string                `json:"repair_model,omitempty"`
+	RepairFallbackModels *[]string              `json:"repair_fallback_models,omitempty"`
+	ImageModel           *string                `json:"image_model,omitempty"`
+	ImageGeneration      *ImageGenerationUpdate `json:"image_generation,omitempty"`
+	ASCIIModel           *string                `json:"ascii_model,omitempty"`
+	EmbeddingProvider    *string                `json:"embedding_provider,omitempty"`
+	EmbeddingModel       *string                `json:"embedding_model,omitempty"`
+}
+
+type ImageGenerationUpdate struct {
+	Provider             *string `json:"provider,omitempty"`
+	BaseURL              *string `json:"base_url,omitempty"`
+	Model                *string `json:"model,omitempty"`
+	OpenClawBridgeURL    *string `json:"openclaw_bridge_url,omitempty"`
+	DefaultSize          *string `json:"default_size,omitempty"`
+	LocationSize         *string `json:"location_size,omitempty"`
+	CharacterSize        *string `json:"character_size,omitempty"`
+	DefaultResolution    *string `json:"default_resolution,omitempty"`
+	LocationResolution   *string `json:"location_resolution,omitempty"`
+	CharacterResolution  *string `json:"character_resolution,omitempty"`
+	DefaultAspectRatio   *string `json:"default_aspect_ratio,omitempty"`
+	LocationAspectRatio  *string `json:"location_aspect_ratio,omitempty"`
+	CharacterAspectRatio *string `json:"character_aspect_ratio,omitempty"`
+	Quality              *string `json:"quality,omitempty"`
+	OutputFormat         *string `json:"output_format,omitempty"`
+	Background           *string `json:"background,omitempty"`
+	TimeoutSeconds       *int    `json:"timeout_seconds,omitempty"`
+	AutoGenerate         *bool   `json:"auto_generate,omitempty"`
+	AppendNegativePrompt *bool   `json:"append_negative_prompt,omitempty"`
 }
 
 func ReadModelRoutingSettings(path string) (ModelRoutingSettings, error) {
@@ -232,6 +281,7 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 		ImageModels:        uniqueNonEmpty(cfg.AI.ImageGeneration.Model),
 		ASCIIModels:        uniqueNonEmpty(cfg.AI.ASCIIArt.Model, activeNarrative),
 		EmbeddingProviders: []string{"auto", "litellm", "openrouter", "local"},
+		ImageGeneration:    buildImageGenerationSetting(cfg.AI.ImageGeneration),
 		Active: ModelRoutingActive{
 			Provider:             activeProvider,
 			NarrativeModel:       activeNarrative,
@@ -245,6 +295,65 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 			CodexReasoning:       firstNonEmpty(cfg.AI.Codex.Reasoning, "off"),
 		},
 		TTSStatus: "planned",
+	}
+}
+
+func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetting {
+	available, status := imageGenerationAvailability(cfg)
+	return ImageGenerationSetting{
+		Provider:             cfg.Provider,
+		BaseURL:              cfg.BaseURL,
+		APIKeyConfigured:     strings.TrimSpace(cfg.APIKey) != "",
+		Model:                cfg.Model,
+		OpenClawBridgeURL:    cfg.OpenClawBridgeURL,
+		DefaultSize:          cfg.DefaultSize,
+		LocationSize:         cfg.LocationSize,
+		CharacterSize:        cfg.CharacterSize,
+		DefaultResolution:    cfg.DefaultResolution,
+		LocationResolution:   cfg.LocationResolution,
+		CharacterResolution:  cfg.CharacterResolution,
+		DefaultAspectRatio:   cfg.DefaultAspectRatio,
+		LocationAspectRatio:  cfg.LocationAspectRatio,
+		CharacterAspectRatio: cfg.CharacterAspectRatio,
+		Quality:              cfg.Quality,
+		OutputFormat:         cfg.OutputFormat,
+		Background:           cfg.Background,
+		TimeoutSeconds:       cfg.TimeoutSeconds,
+		AutoGenerate:         cfg.AutoGenerate,
+		AppendNegativePrompt: cfg.AppendNegativePrompt,
+		Available:            available,
+		Status:               status,
+	}
+}
+
+func imageGenerationAvailability(cfg ImageGenerationConfig) (bool, string) {
+	if strings.TrimSpace(cfg.Provider) == "" {
+		return false, "missing provider"
+	}
+	if strings.TrimSpace(cfg.Model) == "" {
+		return false, "missing model"
+	}
+	if isOpenClawImageProvider(cfg.Provider) {
+		if strings.TrimSpace(cfg.OpenClawBridgeURL) == "" {
+			return false, "missing OpenClaw bridge URL"
+		}
+		return true, "configured through OpenClaw bridge"
+	}
+	if strings.TrimSpace(cfg.BaseURL) == "" {
+		return false, "missing base URL"
+	}
+	if strings.TrimSpace(cfg.APIKey) == "" {
+		return false, "missing API key"
+	}
+	return true, "configured through OpenAI-compatible image endpoint"
+}
+
+func isOpenClawImageProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "openclaw", "openclaw-bridge", "codex-oauth":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -303,6 +412,9 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 	if update.ImageModel != nil {
 		cfg.AI.ImageGeneration.Model = cleanString(*update.ImageModel)
 	}
+	if update.ImageGeneration != nil {
+		applyImageGenerationUpdate(&cfg.AI.ImageGeneration, *update.ImageGeneration)
+	}
 	if update.ASCIIModel != nil {
 		cfg.AI.ASCIIArt.Model = cleanString(*update.ASCIIModel)
 	}
@@ -319,6 +431,66 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 		return fmt.Errorf("at least one provider must be enabled")
 	}
 	return cfg.Validate()
+}
+
+func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerationUpdate) {
+	if update.Provider != nil {
+		cfg.Provider = cleanString(*update.Provider)
+	}
+	if update.BaseURL != nil {
+		cfg.BaseURL = cleanString(*update.BaseURL)
+	}
+	if update.Model != nil {
+		cfg.Model = cleanString(*update.Model)
+	}
+	if update.OpenClawBridgeURL != nil {
+		cfg.OpenClawBridgeURL = cleanString(*update.OpenClawBridgeURL)
+	}
+	if update.DefaultSize != nil {
+		cfg.DefaultSize = cleanString(*update.DefaultSize)
+	}
+	if update.LocationSize != nil {
+		cfg.LocationSize = cleanString(*update.LocationSize)
+	}
+	if update.CharacterSize != nil {
+		cfg.CharacterSize = cleanString(*update.CharacterSize)
+	}
+	if update.DefaultResolution != nil {
+		cfg.DefaultResolution = cleanString(*update.DefaultResolution)
+	}
+	if update.LocationResolution != nil {
+		cfg.LocationResolution = cleanString(*update.LocationResolution)
+	}
+	if update.CharacterResolution != nil {
+		cfg.CharacterResolution = cleanString(*update.CharacterResolution)
+	}
+	if update.DefaultAspectRatio != nil {
+		cfg.DefaultAspectRatio = cleanString(*update.DefaultAspectRatio)
+	}
+	if update.LocationAspectRatio != nil {
+		cfg.LocationAspectRatio = cleanString(*update.LocationAspectRatio)
+	}
+	if update.CharacterAspectRatio != nil {
+		cfg.CharacterAspectRatio = cleanString(*update.CharacterAspectRatio)
+	}
+	if update.Quality != nil {
+		cfg.Quality = cleanString(*update.Quality)
+	}
+	if update.OutputFormat != nil {
+		cfg.OutputFormat = cleanString(*update.OutputFormat)
+	}
+	if update.Background != nil {
+		cfg.Background = cleanString(*update.Background)
+	}
+	if update.TimeoutSeconds != nil {
+		cfg.TimeoutSeconds = *update.TimeoutSeconds
+	}
+	if update.AutoGenerate != nil {
+		cfg.AutoGenerate = *update.AutoGenerate
+	}
+	if update.AppendNegativePrompt != nil {
+		cfg.AppendNegativePrompt = *update.AppendNegativePrompt
+	}
 }
 
 func configFromEditBytes(path string, raw []byte) (Config, error) {
@@ -379,7 +551,61 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 			return setStringSlice(root, cfg.AI.Generation.RepairFallbackModels, "ai", "generation", "repair_fallback_models")
 		},
 		func() error { return setString(root, cfg.AI.ASCIIArt.Model, "ai", "ascii_art", "model") },
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.Provider, "ai", "image_generation", "provider")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.BaseURL, "ai", "image_generation", "base_url")
+		},
 		func() error { return setString(root, cfg.AI.ImageGeneration.Model, "ai", "image_generation", "model") },
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.OpenClawBridgeURL, "ai", "image_generation", "openclaw_bridge_url")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.DefaultSize, "ai", "image_generation", "default_size")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.LocationSize, "ai", "image_generation", "location_size")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.CharacterSize, "ai", "image_generation", "character_size")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.DefaultResolution, "ai", "image_generation", "default_resolution")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.LocationResolution, "ai", "image_generation", "location_resolution")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.CharacterResolution, "ai", "image_generation", "character_resolution")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.DefaultAspectRatio, "ai", "image_generation", "default_aspect_ratio")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.LocationAspectRatio, "ai", "image_generation", "location_aspect_ratio")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.CharacterAspectRatio, "ai", "image_generation", "character_aspect_ratio")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.Quality, "ai", "image_generation", "quality")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.OutputFormat, "ai", "image_generation", "output_format")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.Background, "ai", "image_generation", "background")
+		},
+		func() error {
+			return setInt(root, cfg.AI.ImageGeneration.TimeoutSeconds, "ai", "image_generation", "timeout_seconds")
+		},
+		func() error {
+			return setBool(root, cfg.AI.ImageGeneration.AutoGenerate, "ai", "image_generation", "auto_generate")
+		},
+		func() error {
+			return setBool(root, cfg.AI.ImageGeneration.AppendNegativePrompt, "ai", "image_generation", "append_negative_prompt")
+		},
 		func() error { return setString(root, cfg.AI.Embedding.Provider, "ai", "embedding", "provider") },
 		func() error { return setString(root, cfg.AI.Embedding.Model, "ai", "embedding", "model") },
 	} {
@@ -436,6 +662,17 @@ func setBool(root *yaml.Node, value bool, path ...string) error {
 	} else {
 		node.Value = "false"
 	}
+	return nil
+}
+
+func setInt(root *yaml.Node, value int, path ...string) error {
+	node, err := ensurePath(root, path)
+	if err != nil {
+		return err
+	}
+	node.Kind = yaml.ScalarNode
+	node.Tag = "!!int"
+	node.Value = strconv.Itoa(value)
 	return nil
 }
 

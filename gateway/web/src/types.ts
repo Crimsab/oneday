@@ -62,8 +62,34 @@ export interface ModelSettings {
   image_models: string[];
   ascii_models: string[];
   embedding_providers: string[];
+  image_generation: ImageGenerationSetting;
   active: ModelRoutingActive;
   tts_status: string;
+}
+
+export interface ImageGenerationSetting {
+  provider: string;
+  base_url: string;
+  api_key_configured: boolean;
+  model: string;
+  openclaw_bridge_url: string;
+  default_size: string;
+  location_size: string;
+  character_size: string;
+  default_resolution: string;
+  location_resolution: string;
+  character_resolution: string;
+  default_aspect_ratio: string;
+  location_aspect_ratio: string;
+  character_aspect_ratio: string;
+  quality: string;
+  output_format: string;
+  background: string;
+  timeout_seconds: number;
+  auto_generate: boolean;
+  append_negative_prompt: boolean;
+  available: boolean;
+  status: string;
 }
 
 export interface ModelProviderUpdate {
@@ -81,9 +107,32 @@ export interface ModelSettingsUpdate {
   repair_model?: string;
   repair_fallback_models?: string[];
   image_model?: string;
+  image_generation?: ImageGenerationUpdate;
   ascii_model?: string;
   embedding_model?: string;
   embedding_provider?: string;
+}
+
+export interface ImageGenerationUpdate {
+  provider?: string;
+  base_url?: string;
+  model?: string;
+  openclaw_bridge_url?: string;
+  default_size?: string;
+  location_size?: string;
+  character_size?: string;
+  default_resolution?: string;
+  location_resolution?: string;
+  character_resolution?: string;
+  default_aspect_ratio?: string;
+  location_aspect_ratio?: string;
+  character_aspect_ratio?: string;
+  quality?: string;
+  output_format?: string;
+  background?: string;
+  timeout_seconds?: number;
+  auto_generate?: boolean;
+  append_negative_prompt?: boolean;
 }
 
 export interface Health {

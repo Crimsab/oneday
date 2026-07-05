@@ -1,4 +1,6 @@
 import type {
+  ImageGenerationSetting,
+  ImageGenerationUpdate,
   ModelProviderSetting,
   ModelSettings,
   ModelSettingsUpdate,
@@ -16,10 +18,32 @@ export interface ModelRoutingDraft {
   utilityModel: string;
   repairModel: string;
   repairFallbackModels: string;
-  imageModel: string;
+  imageGeneration: ImageGenerationDraft;
   asciiModel: string;
   embeddingProvider: string;
   embeddingModel: string;
+}
+
+export interface ImageGenerationDraft {
+  provider: string;
+  baseUrl: string;
+  model: string;
+  openClawBridgeUrl: string;
+  defaultSize: string;
+  locationSize: string;
+  characterSize: string;
+  defaultResolution: string;
+  locationResolution: string;
+  characterResolution: string;
+  defaultAspectRatio: string;
+  locationAspectRatio: string;
+  characterAspectRatio: string;
+  quality: string;
+  outputFormat: string;
+  background: string;
+  timeoutSeconds: number;
+  autoGenerate: boolean;
+  appendNegativePrompt: boolean;
 }
 
 export function draftFromModelSettings(
@@ -43,7 +67,7 @@ export function draftFromModelSettings(
     utilityModel: settings.active.utility_model,
     repairModel: settings.active.repair_model,
     repairFallbackModels: settings.active.repair_fallback_models.join(", "),
-    imageModel: settings.active.image_model,
+    imageGeneration: imageGenerationDraft(settings.image_generation),
     asciiModel: settings.active.ascii_model,
     embeddingProvider: settings.active.embedding_provider,
     embeddingModel: settings.active.embedding_model,
@@ -66,7 +90,8 @@ export function updateFromDraft(
     utility_model: draft.utilityModel.trim(),
     repair_model: draft.repairModel.trim(),
     repair_fallback_models: splitModelList(draft.repairFallbackModels),
-    image_model: draft.imageModel.trim(),
+    image_model: draft.imageGeneration.model.trim(),
+    image_generation: imageGenerationUpdate(draft.imageGeneration),
     ascii_model: draft.asciiModel.trim(),
     embedding_provider: draft.embeddingProvider.trim(),
     embedding_model: draft.embeddingModel.trim(),
@@ -111,7 +136,96 @@ export function modelRoutingIssues(
   if (!draft.embeddingProvider.trim()) {
     issues.push("Embedding provider is required.");
   }
+  if (draft.imageGeneration.autoGenerate) {
+    if (!draft.imageGeneration.provider.trim()) {
+      issues.push("Image generation provider is required when auto-generate is enabled.");
+    }
+    if (!draft.imageGeneration.model.trim()) {
+      issues.push("Image generation model is required when auto-generate is enabled.");
+    }
+    if (draft.imageGeneration.timeoutSeconds <= 0) {
+      issues.push("Image generation timeout must be positive.");
+    }
+    if (
+      isOpenClawImageProvider(draft.imageGeneration.provider) &&
+      !draft.imageGeneration.openClawBridgeUrl.trim()
+    ) {
+      issues.push("OpenClaw image generation needs a bridge URL.");
+    }
+    if (
+      !isOpenClawImageProvider(draft.imageGeneration.provider) &&
+      !draft.imageGeneration.baseUrl.trim()
+    ) {
+      issues.push("OpenAI-compatible image generation needs a base URL.");
+    }
+    if (
+      !isOpenClawImageProvider(draft.imageGeneration.provider) &&
+      !settings.image_generation.api_key_configured
+    ) {
+      issues.push("OpenAI-compatible image generation needs an API key configured outside the browser.");
+    }
+  }
   return issues;
+}
+
+function imageGenerationDraft(
+  settings: ImageGenerationSetting,
+): ImageGenerationDraft {
+  return {
+    provider: settings.provider,
+    baseUrl: settings.base_url,
+    model: settings.model,
+    openClawBridgeUrl: settings.openclaw_bridge_url,
+    defaultSize: settings.default_size,
+    locationSize: settings.location_size,
+    characterSize: settings.character_size,
+    defaultResolution: settings.default_resolution,
+    locationResolution: settings.location_resolution,
+    characterResolution: settings.character_resolution,
+    defaultAspectRatio: settings.default_aspect_ratio,
+    locationAspectRatio: settings.location_aspect_ratio,
+    characterAspectRatio: settings.character_aspect_ratio,
+    quality: settings.quality,
+    outputFormat: settings.output_format,
+    background: settings.background,
+    timeoutSeconds: settings.timeout_seconds || 180,
+    autoGenerate: settings.auto_generate,
+    appendNegativePrompt: settings.append_negative_prompt,
+  };
+}
+
+function imageGenerationUpdate(
+  draft: ImageGenerationDraft,
+): ImageGenerationUpdate {
+  return {
+    provider: draft.provider.trim(),
+    base_url: draft.baseUrl.trim(),
+    model: draft.model.trim(),
+    openclaw_bridge_url: draft.openClawBridgeUrl.trim(),
+    default_size: draft.defaultSize.trim(),
+    location_size: draft.locationSize.trim(),
+    character_size: draft.characterSize.trim(),
+    default_resolution: draft.defaultResolution.trim(),
+    location_resolution: draft.locationResolution.trim(),
+    character_resolution: draft.characterResolution.trim(),
+    default_aspect_ratio: draft.defaultAspectRatio.trim(),
+    location_aspect_ratio: draft.locationAspectRatio.trim(),
+    character_aspect_ratio: draft.characterAspectRatio.trim(),
+    quality: draft.quality.trim(),
+    output_format: draft.outputFormat.trim(),
+    background: draft.background.trim(),
+    timeout_seconds: Number.isFinite(draft.timeoutSeconds)
+      ? Math.max(1, Math.round(draft.timeoutSeconds))
+      : 180,
+    auto_generate: draft.autoGenerate,
+    append_negative_prompt: draft.appendNegativePrompt,
+  };
+}
+
+function isOpenClawImageProvider(provider: string): boolean {
+  return ["openclaw", "openclaw-bridge", "codex-oauth"].includes(
+    provider.trim().toLowerCase(),
+  );
 }
 
 export function promoteProvider(

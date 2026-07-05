@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -304,6 +305,8 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	cfg.AI.Codex.Model = "test-narrative-model"
 	cfg.AI.Generation.UtilityModel = "test-narrative-model"
 	cfg.AI.Generation.RepairFallbackModels = []string{"test-narrative-model", "test-narrative-model"}
+	cfg.AI.ImageGeneration.Model = "test-image-model"
+	cfg.AI.ImageGeneration.APIKey = "test-secret-image-key"
 
 	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg, "revision-1")
 
@@ -321,6 +324,19 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	}
 	if got := settings.RepairModels; len(got) != 1 || got[0] != "test-narrative-model" {
 		t.Fatalf("RepairModels = %#v", got)
+	}
+	if !settings.ImageGeneration.Available {
+		t.Fatalf("ImageGeneration.Available = false, status %q", settings.ImageGeneration.Status)
+	}
+	if !settings.ImageGeneration.APIKeyConfigured {
+		t.Fatalf("ImageGeneration.APIKeyConfigured = false")
+	}
+	raw, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "test-secret-image-key") {
+		t.Fatalf("model settings leaked image API key: %s", raw)
 	}
 }
 
@@ -421,10 +437,24 @@ ai:
 	}
 
 	nextModel := "test-litellm-model-updated"
+	imageProvider := "openclaw-bridge"
+	imageModel := "test-image-model"
+	openClawURL := "http://openclaw-imagegen:8099/generate"
+	locationSize := "1792x1024"
+	timeoutSeconds := 181
+	autoGenerate := true
 	next, err := UpdateModelRoutingSettings(path, ModelRoutingUpdate{
 		BaseRevision: settings.ConfigRevision,
 		Providers: []ModelProviderUpdate{
 			{ID: "litellm", Model: &nextModel},
+		},
+		ImageGeneration: &ImageGenerationUpdate{
+			Provider:          &imageProvider,
+			Model:             &imageModel,
+			OpenClawBridgeURL: &openClawURL,
+			LocationSize:      &locationSize,
+			TimeoutSeconds:    &timeoutSeconds,
+			AutoGenerate:      &autoGenerate,
 		},
 	})
 	if err != nil {
@@ -438,7 +468,18 @@ ai:
 		t.Fatal(err)
 	}
 	text := string(out)
-	for _, needle := range []string{"# keep this top-level comment", "unknown_top: keep-me", "${LITELLM_BASE_URL}", "default_model: test-litellm-model-updated"} {
+	for _, needle := range []string{
+		"# keep this top-level comment",
+		"unknown_top: keep-me",
+		"${LITELLM_BASE_URL}",
+		"default_model: test-litellm-model-updated",
+		"provider: openclaw-bridge",
+		"model: test-image-model",
+		"openclaw_bridge_url: http://openclaw-imagegen:8099/generate",
+		"location_size: 1792x1024",
+		"timeout_seconds: 181",
+		"auto_generate: true",
+	} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("updated config missing %q:\n%s", needle, text)
 		}
@@ -467,6 +508,10 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 	repair := "test-repair-model"
 	fallbacks := []string{"test-fallback-one", "test-fallback-two"}
 	image := "test-image-model"
+	imageProvider := "openai-compatible"
+	imageBaseURL := "http://lite.homelab.local/v1"
+	imageLocationSize := "1792x1024"
+	imageTimeout := 240
 	ascii := "test-ascii-model"
 
 	err := ApplyModelRoutingUpdate(&cfg, ModelRoutingUpdate{
@@ -479,7 +524,13 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 		RepairModel:          &repair,
 		RepairFallbackModels: &fallbacks,
 		ImageModel:           &image,
-		ASCIIModel:           &ascii,
+		ImageGeneration: &ImageGenerationUpdate{
+			Provider:       &imageProvider,
+			BaseURL:        &imageBaseURL,
+			LocationSize:   &imageLocationSize,
+			TimeoutSeconds: &imageTimeout,
+		},
+		ASCIIModel: &ascii,
 	})
 	if err != nil {
 		t.Fatalf("ApplyModelRoutingUpdate: %v", err)
@@ -495,6 +546,12 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 	}
 	if cfg.AI.ImageGeneration.Model != image {
 		t.Fatalf("ImageGeneration.Model = %q", cfg.AI.ImageGeneration.Model)
+	}
+	if cfg.AI.ImageGeneration.Provider != imageProvider || cfg.AI.ImageGeneration.BaseURL != imageBaseURL {
+		t.Fatalf("ImageGeneration provider/base URL not updated: %#v", cfg.AI.ImageGeneration)
+	}
+	if cfg.AI.ImageGeneration.LocationSize != imageLocationSize || cfg.AI.ImageGeneration.TimeoutSeconds != imageTimeout {
+		t.Fatalf("ImageGeneration detail fields not updated: %#v", cfg.AI.ImageGeneration)
 	}
 	if cfg.AI.ASCIIArt.Model != ascii {
 		t.Fatalf("ASCIIArt.Model = %q", cfg.AI.ASCIIArt.Model)
