@@ -3,6 +3,8 @@ import { actionFingerprint, resolvePendingActionIdentity, type PendingActionIden
 import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
   ApiRequestError,
+  cancelVisualGenerationJob,
+  cleanupVisualAssetFiles,
   createSave,
   deleteStory,
   deleteSave,
@@ -76,6 +78,7 @@ import type {
   VisualProfileUpdate,
 } from "./types";
 import { visualCatalog } from "./visualAssets";
+import { visualPollingDelayMs } from "./visualJobs";
 
 function App() {
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -259,6 +262,23 @@ function App() {
     source.addEventListener("error", () => setSync("Reconnecting"));
     return () => source.close();
   }, [paused, refreshVisualAssets, storyId]);
+
+  useEffect(() => {
+    if (!storyId) return;
+    const delay = visualPollingDelayMs(visualAssets);
+    if (!delay) return;
+    let inFlight = false;
+    const timer = window.setInterval(() => {
+      if (inFlight) return;
+      inFlight = true;
+      refreshVisualAssets(storyId)
+        .catch(() => undefined)
+        .finally(() => {
+          inFlight = false;
+        });
+    }, delay);
+    return () => window.clearInterval(timer);
+  }, [refreshVisualAssets, storyId, visualAssets]);
 
   const filteredStories = useMemo(() => {
     const query = filter.trim().toLowerCase();
@@ -850,6 +870,45 @@ function App() {
     }
   };
 
+  const cancelVisualJob = async (jobId: number) => {
+    if (!storyId) return;
+    setVisualGenerationBusy(true);
+    setNotice("");
+    try {
+      const nextAssets = await cancelVisualGenerationJob(storyId, jobId);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+      setNotice(`Visual generation job ${jobId} cancelled.`);
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualGenerationBusy(false);
+    }
+  };
+
+  const cleanVisualAssetFiles = async (dryRun = false) => {
+    if (!storyId) return;
+    setVisualGenerationBusy(true);
+    setNotice("");
+    try {
+      const result = await cleanupVisualAssetFiles(storyId, { dry_run: dryRun });
+      setNotice(
+        dryRun
+          ? `Visual cleanup preview: ${result.deleted_files.length} stale files can be removed.`
+          : `Visual cleanup removed ${result.deleted_files.length} stale files.`,
+      );
+      void refreshVisualAssets(storyId);
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualGenerationBusy(false);
+    }
+  };
+
   const loadVisualAssetVersions = useCallback(async (assetId: string): Promise<VisualAssetVersion[]> => {
     if (!storyId) return [];
     return getVisualAssetVersions(storyId, assetId);
@@ -1042,6 +1101,8 @@ function App() {
         onVisualProfileSave={(payload) => saveVisualProfile(payload)}
         onVisualAssetsGenerate={(payload) => generateMissingVisualAssets(payload)}
         onVisualAssetsReload={() => refreshVisualAssets()}
+        onVisualJobCancel={(jobId) => cancelVisualJob(jobId)}
+        onVisualAssetsCleanup={(dryRun) => cleanVisualAssetFiles(dryRun)}
         onVisualAssetVersionsLoad={loadVisualAssetVersions}
         onVisualAssetPromptSave={saveVisualAssetPrompt}
         onVisualAssetVersionSelect={chooseVisualAssetVersion}
