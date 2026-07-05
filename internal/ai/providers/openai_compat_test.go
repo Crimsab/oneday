@@ -385,6 +385,157 @@ func sseEvent(content string) string {
 	return "data: " + payload + "\n\n"
 }
 
+func responsesSSEEvent(payload string) string {
+	return "data: " + payload + "\n\n"
+}
+
+func TestOpenAICompatCompleteUsesResponsesAPIForChatGPTAlias(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Fatalf("path = %q, want /responses", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Fatalf("auth = %q, want Bearer test-key", r.Header.Get("Authorization"))
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["model"] != "chatgpt-gpt-5.4-mini" {
+			t.Fatalf("model = %v", body["model"])
+		}
+		if body["stream"] != true {
+			t.Fatalf("stream = %v, want true", body["stream"])
+		}
+		if _, ok := body["messages"]; ok {
+			t.Fatalf("responses request must not include chat messages: %#v", body)
+		}
+		if body["instructions"] != "system rules" {
+			t.Fatalf("instructions = %#v", body["instructions"])
+		}
+		input, ok := body["input"].([]any)
+		if !ok || len(input) != 1 {
+			t.Fatalf("input = %#v, want one user item", body["input"])
+		}
+		text, ok := body["text"].(map[string]any)
+		if !ok {
+			t.Fatalf("text format missing from responses request")
+		}
+		format := text["format"].(map[string]any)
+		if format["type"] != "json_schema" {
+			t.Fatalf("responses text.format.type = %v, want json_schema", format["type"])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		fmt.Fprint(w, responsesSSEEvent(`{"type":"response.output_text.delta","delta":"Hel"}`))
+		flusher.Flush()
+		fmt.Fprint(w, responsesSSEEvent(`{"type":"response.output_text.delta","delta":"lo"}`))
+		flusher.Flush()
+		fmt.Fprint(w, responsesSSEEvent(`{"type":"response.completed","response":{"model":"chatgpt-gpt-5.4-mini","usage":{"input_tokens":3,"output_tokens":2,"total_tokens":5}}}`))
+		flusher.Flush()
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "litellm",
+		BaseURL:      server.URL,
+		APIKey:       "test-key",
+		DefaultModel: "chatgpt-gpt-5.4-mini",
+		Timeout:      5 * time.Second,
+	})
+
+	resp, err := provider.Complete(context.Background(), ai.Request{
+		Messages: []ai.Message{
+			{Role: ai.RoleSystem, Content: "system rules"},
+			{Role: ai.RoleUser, Content: "hello"},
+		},
+		MaxTokens:      100,
+		ResponseFormat: ai.NarrativeResponseFormat(),
+	})
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if resp.Content != "Hello" {
+		t.Fatalf("content = %q, want Hello", resp.Content)
+	}
+	if resp.Model != "chatgpt-gpt-5.4-mini" {
+		t.Fatalf("model = %q", resp.Model)
+	}
+	if resp.Usage.TotalTokens != 5 || resp.Usage.PromptTokens != 3 || resp.Usage.CompletionTokens != 2 {
+		t.Fatalf("usage = %#v", resp.Usage)
+	}
+}
+
+func TestOpenAICompatStreamUsesResponsesAPIForChatGPTAlias(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Fatalf("path = %q, want /responses", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if body["stream"] != true {
+			t.Fatalf("stream = %v, want true", body["stream"])
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		flusher := w.(http.Flusher)
+		fmt.Fprint(w, responsesSSEEvent(`{"type":"response.output_text.delta","delta":"A"}`))
+		flusher.Flush()
+		fmt.Fprint(w, responsesSSEEvent(`{"type":"response.output_text.delta","delta":"B"}`))
+		flusher.Flush()
+		fmt.Fprint(w, responsesSSEEvent(`{"type":"response.completed","response":{"model":"chatgpt-gpt-5.4-mini","usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}}`))
+		flusher.Flush()
+		fmt.Fprint(w, "data: [DONE]\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	provider := NewOpenAICompat(OpenAICompatConfig{
+		Name:         "litellm",
+		BaseURL:      server.URL,
+		APIKey:       "test-key",
+		DefaultModel: "chatgpt-gpt-5.4-mini",
+		Timeout:      5 * time.Second,
+	})
+
+	ch, err := provider.Stream(context.Background(), ai.Request{
+		Messages: []ai.Message{{Role: ai.RoleUser, Content: "hello"}},
+	})
+	if err != nil {
+		t.Fatalf("Stream: %v", err)
+	}
+
+	var got strings.Builder
+	var gotDone bool
+	var gotUsage ai.Usage
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatalf("chunk error: %v", chunk.Error)
+		}
+		got.WriteString(chunk.Content)
+		if chunk.Usage.TotalTokens > 0 {
+			gotUsage = chunk.Usage
+		}
+		if chunk.Done {
+			gotDone = true
+		}
+	}
+	if got.String() != "AB" {
+		t.Fatalf("stream content = %q, want AB", got.String())
+	}
+	if !gotDone {
+		t.Fatal("expected done chunk")
+	}
+	if gotUsage.TotalTokens != 3 {
+		t.Fatalf("usage = %#v", gotUsage)
+	}
+}
+
 func TestOpenAICompatStream(t *testing.T) {
 	chunks := []string{"Hello", ", ", "world", "!"}
 
