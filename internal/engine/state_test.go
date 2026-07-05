@@ -276,6 +276,61 @@ func TestApplyStateChangesCreatesPlaceholderNPCForUnknownUpdates(t *testing.T) {
 	}
 }
 
+func TestApplyStateChangesCreatesNPCFromInvestigationSuspect(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+	story := &storage.Story{
+		ID:              "story-investigation-npc",
+		Name:            "Investigation NPC Story",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+
+	char := newTestChar()
+	char.StoryID = story.ID
+	world := newTestWorld()
+	world.StoryID = story.ID
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"investigation_update": map[string]interface{}{
+			"case_title": "Dock 7",
+			"summary":    "Marek is now a concrete person of interest.",
+			"suspects": []interface{}{
+				map[string]interface{}{
+					"action": "add",
+					"name":   "Marek",
+					"detail": "Intermediario spaventato; sa più di quanto dica.",
+				},
+			},
+		},
+	}, char, world, db, story.ID, 8)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+	if len(applied) == 0 {
+		t.Fatal("expected applied changes")
+	}
+
+	npc, err := db.GetNPCByName(story.ID, "Marek")
+	if err != nil || npc == nil {
+		t.Fatalf("GetNPCByName: %v, npc=%+v", err, npc)
+	}
+	if npc.Role != "person of interest" {
+		t.Fatalf("Role = %q, want person of interest", npc.Role)
+	}
+	if !strings.Contains(npc.NotesOnProtagonist, "Intermediario spaventato") {
+		t.Fatalf("NotesOnProtagonist = %q, want suspect detail", npc.NotesOnProtagonist)
+	}
+	if !strings.Contains(world.InvestigationBoardJSON, "Marek") {
+		t.Fatalf("InvestigationBoardJSON = %q, want Marek suspect", world.InvestigationBoardJSON)
+	}
+}
+
 // TestApplyStateChanges_TitleAdd verifies that a new title is added.
 func TestApplyStateChanges_TitleAdd(t *testing.T) {
 	char := newTestChar()
