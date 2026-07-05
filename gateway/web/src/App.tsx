@@ -798,7 +798,8 @@ function App() {
       setVisualAssetsError("");
       const ready = nextAssets.assets.filter((asset) => asset.status === "ready").length;
       const failed = nextAssets.assets.filter((asset) => asset.status === "failed").length;
-      setNotice(`Visual generation finished. ${ready} ready${failed ? `, ${failed} failed` : ""}.`);
+      const active = nextAssets.assets.filter((asset) => asset.status === "queued" || asset.status === "running").length;
+      setNotice(`Visual generation queued. ${ready} ready${active ? `, ${active} queued/running` : ""}${failed ? `, ${failed} failed` : ""}.`);
     } catch (error) {
       setVisualAssetsError(errorMessage(error));
       setNotice(errorMessage(error));

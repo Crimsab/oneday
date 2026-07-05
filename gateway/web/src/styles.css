@@ -3029,6 +3029,10 @@ input:disabled {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--line-soft));
 }
 
+.visual-asset-row.queued {
+  border-color: color-mix(in srgb, var(--warn) 38%, var(--line-soft));
+}
+
 .visual-asset-row:hover,
 .visual-asset-row:focus-visible,
 .visual-asset-row.selected {
