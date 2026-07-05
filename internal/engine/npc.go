@@ -31,8 +31,10 @@ type NPCDesire struct {
 // NPCData is the AI-generated NPC structure from state_changes.
 type NPCData struct {
 	Name            string         `json:"name"`
+	Aliases         []string       `json:"aliases,omitempty"`
 	Role            string         `json:"role"`
 	Appearance      string         `json:"appearance"`
+	Discovery       NPCDiscovery   `json:"discovery,omitempty"`
 	Personality     NPCPersonality `json:"personality"`
 	PrivateThoughts []string       `json:"private_thoughts"`
 	Desires         []NPCDesire    `json:"desires"`
@@ -52,6 +54,7 @@ func ParseNPCData(raw map[string]interface{}) (*NPCData, error) {
 	if v, ok := raw["name"].(string); ok {
 		data.Name = v
 	}
+	data.Aliases = toStringSlice(raw["aliases"])
 	if v, ok := raw["role"].(string); ok {
 		data.Role = v
 	}
@@ -63,6 +66,11 @@ func ParseNPCData(raw map[string]interface{}) (*NPCData, error) {
 	}
 	if v, ok := raw["can_help"].(bool); ok {
 		data.CanHelp = v
+	}
+	if discoveryRaw, ok := raw["discovery"].(map[string]interface{}); ok {
+		if bytes, err := json.Marshal(discoveryRaw); err == nil {
+			_ = json.Unmarshal(bytes, &data.Discovery)
+		}
 	}
 
 	// Parse personality sub-object
@@ -133,6 +141,8 @@ func NPCToStorage(data *NPCData, storyID string, turn int) (*storage.NPC, error)
 		Appearance:         data.Appearance,
 		PersonalityJSON:    string(personalityBytes),
 		RelationshipJSON:   "{}",
+		NemesisJSON:        "{}",
+		DiscoveryJSON:      "{}",
 		PrivateThoughts:    string(thoughtsBytes),
 		NotesOnProtagonist: "[]",
 		Desires:            string(desiresBytes),
@@ -144,6 +154,7 @@ func NPCToStorage(data *NPCData, storyID string, turn int) (*storage.NPC, error)
 		CreatedAt:          now,
 		UpdatedAt:          now,
 	}
+	setNPCDiscovery(npc, discoveryForNewNPCData(data, turn))
 	return npc, nil
 }
 

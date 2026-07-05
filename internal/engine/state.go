@@ -454,14 +454,20 @@ func applyStateChangesWithNPCStore(
 				continue
 			}
 			if existing != nil {
-				// Update last_seen_turn and persist
+				merge := MergeNPCProfile(existing, npcData, currentTurn)
 				existing.LastSeenTurn = currentTurn
 				_ = npcs.UpdateNPC(existing)
+				description := fmt.Sprintf("NPC seen again: %s", npcData.Name)
+				if merge.Promoted {
+					description = fmt.Sprintf("NPC profile established: %s", existing.Name)
+				} else if merge.Changed {
+					description = fmt.Sprintf("NPC profile updated: %s", existing.Name)
+				}
 				applied = append(applied, StateChange{
 					Target:      "world",
 					Field:       "npc",
-					New:         npcData.Name,
-					Description: fmt.Sprintf("NPC seen again: %s", npcData.Name),
+					New:         existing.Name,
+					Description: description,
 				})
 			} else {
 				// Create new NPC
@@ -477,6 +483,61 @@ func applyStateChangesWithNPCStore(
 					Field:       "npc",
 					New:         npcData.Name,
 					Description: fmt.Sprintf("New NPC encountered: %s (%s)", npcData.Name, npcData.Role),
+				})
+			}
+
+		case "npc_reference":
+			for _, refMap := range toObjectMaps(val) {
+				npcName := strings.TrimSpace(firstNonEmpty(stringValue(refMap["name"]), stringValue(refMap["public_label"])))
+				if npcName == "" || !looksLikeTrackableNPCName(npcName) || npcs == nil {
+					continue
+				}
+				npc, err := ensureNPCForStateChange(npcs, storyID, npcName, currentTurn)
+				if err != nil || npc == nil {
+					continue
+				}
+				changed := applyNPCReference(npc, refMap, currentTurn)
+				if detail := strings.TrimSpace(stringValue(refMap["detail"])); detail != "" {
+					var notes []string
+					_ = json.Unmarshal([]byte(npc.NotesOnProtagonist), &notes)
+					notes = append(notes, detail)
+					if nb, err := json.Marshal(cleanUniqueStrings(notes)); err == nil {
+						npc.NotesOnProtagonist = string(nb)
+						changed = true
+					}
+				}
+				if changed {
+					_ = npcs.UpdateNPC(npc)
+				}
+				discovery := npcDiscoveryFromStorage(npc)
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       fmt.Sprintf("npc.%s.discovery", npc.Name),
+					New:         discovery.Stage,
+					Description: fmt.Sprintf("NPC reference tracked: %s (%s)", npc.Name, discovery.Stage),
+				})
+			}
+
+		case "npc_discovery_update":
+			for _, updateMap := range toObjectMaps(val) {
+				npcName := strings.TrimSpace(firstNonEmpty(stringValue(updateMap["name"]), stringValue(updateMap["canonical_name"])))
+				if npcName == "" || !looksLikeTrackableNPCName(npcName) || npcs == nil {
+					continue
+				}
+				npc, err := ensureNPCForStateChange(npcs, storyID, npcName, currentTurn)
+				if err != nil || npc == nil {
+					continue
+				}
+				changed := applyNPCDiscoveryUpdate(npc, updateMap, currentTurn)
+				if changed {
+					_ = npcs.UpdateNPC(npc)
+				}
+				discovery := npcDiscoveryFromStorage(npc)
+				applied = append(applied, StateChange{
+					Target:      "world",
+					Field:       fmt.Sprintf("npc.%s.discovery", npc.Name),
+					New:         discovery.Stage,
+					Description: fmt.Sprintf("NPC discovery updated: %s (%s)", npc.Name, discovery.Stage),
 				})
 			}
 
@@ -1011,6 +1072,17 @@ func ensureNPCForStateChange(npcs npcStateStore, storyID, npcName string, curren
 		Desires:     []NPCDesire{},
 		Disposition: 0,
 		CanHelp:     true,
+		Discovery: NPCDiscovery{
+			Stage:               NPCStageIdentified,
+			Source:              "inference",
+			Confidence:          "inferred",
+			ProfileCompleteness: 25,
+			VisualCompleteness:  0,
+			VisualReadiness:     NPCVisualNone,
+			FirstMentionedTurn:  currentTurn,
+			IdentifiedTurn:      currentTurn,
+			LastEvidenceTurn:    currentTurn,
+		},
 	}, storyID, currentTurn)
 	if err != nil {
 		return nil, err
