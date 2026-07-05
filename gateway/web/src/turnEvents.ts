@@ -40,6 +40,12 @@ export function streamingDeltaText(event: TurnStreamEvent): string {
   return typeof payload.text === "string" ? payload.text : "";
 }
 
+export function shouldSuppressStreamingDelta(previousText: string | undefined, delta: string): boolean {
+  const combined = `${previousText ?? ""}${delta}`.trimStart();
+  if (!combined) return false;
+  return combined.startsWith("{") || combined.startsWith("[") || combined.startsWith("```json");
+}
+
 export function turnEventTitle(event: TurnStreamEvent): string {
   if (event.event_type) return event.event_type;
   return event.status.replace(/_/g, " ");
