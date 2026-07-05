@@ -1,11 +1,11 @@
-use crate::AppState;
+use crate::{events::TurnStreamEvent, AppState};
 use anyhow::{anyhow, Context};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use uuid::Uuid;
 
@@ -214,6 +214,15 @@ pub struct GatewayTurnResponse {
     pub events: Vec<serde_json::Value>,
     #[serde(default)]
     pub error: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct GatewayTurnStreamLine {
+    pub event: Option<serde_json::Value>,
+    #[serde(default)]
+    pub error: String,
+    #[serde(default)]
+    pub done: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -553,6 +562,18 @@ pub async fn submit_action(
         capabilities: &envelope.capabilities,
     };
 
+    if envelope.stream {
+        return call_gateway_turn_stream(
+            state,
+            &req,
+            story_id,
+            envelope.client_turn,
+            envelope.action.kind.clone(),
+            envelope.action.text.clone(),
+        )
+        .await;
+    }
+
     let (parsed, status_ok, stderr) =
         call_gateway::<_, GatewayTurnResponse>(state, "gateway-turn", &req).await?;
     if !parsed.error.trim().is_empty() {
@@ -562,6 +583,104 @@ pub async fn submit_action(
         return Err(anyhow!("gateway-turn failed: {}", compact_stderr(&stderr)));
     }
     Ok(parsed)
+}
+
+async fn call_gateway_turn_stream(
+    state: Arc<AppState>,
+    req: &GatewayTurnRequest<'_>,
+    story_id: &str,
+    client_turn: i64,
+    action_kind: String,
+    action_text: String,
+) -> anyhow::Result<GatewayTurnResponse> {
+    let input = serde_json::to_vec(req).context("encoding gateway-turn stream request")?;
+    let mut child = Command::new(&state.paths.oneday_bin)
+        .arg("gateway-turn")
+        .env("ONEDAY_CONFIG", &state.paths.config_path)
+        .current_dir(&state.paths.oneday_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("starting {}", state.paths.oneday_bin.display()))?;
+
+    let mut stdin = child.stdin.take().context("opening gateway-turn stdin")?;
+    stdin.write_all(&input).await?;
+    stdin.shutdown().await?;
+
+    let stdout = child.stdout.take().context("opening gateway-turn stdout")?;
+    let stderr = child.stderr.take().context("opening gateway-turn stderr")?;
+    let stderr_task = tokio::spawn(async move {
+        let mut reader = BufReader::new(stderr);
+        let mut text = String::new();
+        let _ = reader.read_to_string(&mut text).await;
+        text
+    });
+
+    let mut events = Vec::new();
+    let mut lines = BufReader::new(stdout).lines();
+    let read_result = tokio::time::timeout(Duration::from_secs(360), async {
+        while let Some(line) = lines.next_line().await? {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let parsed: GatewayTurnStreamLine = serde_json::from_str(line)
+                .with_context(|| format!("decoding gateway-turn stream line: {line}"))?;
+            if !parsed.error.trim().is_empty() {
+                return Err(anyhow!(parsed.error));
+            }
+            if let Some(event) = parsed.event {
+                let event_type = event
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("turn.event")
+                    .to_string();
+                let _ = state.turn_events.send(TurnStreamEvent::contract(
+                    story_id,
+                    client_turn,
+                    &action_kind,
+                    &action_text,
+                    &event,
+                ));
+                let is_error = event_type == "error";
+                let error_message = event
+                    .get("payload")
+                    .and_then(|payload| payload.get("message"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("gateway-turn stream failed")
+                    .to_string();
+                events.push(event);
+                if is_error {
+                    return Err(anyhow!(error_message));
+                }
+            }
+            if parsed.done {
+                break;
+            }
+        }
+        Ok::<(), anyhow::Error>(())
+    })
+    .await
+    .context("gateway-turn stream timed out")?;
+
+    let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
+        .await
+        .context("waiting for gateway-turn stream timed out")?
+        .context("waiting for gateway-turn stream")?;
+    let stderr = stderr_task.await.unwrap_or_default();
+
+    read_result?;
+    if !status.success() {
+        return Err(anyhow!(
+            "gateway-turn stream failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    Ok(GatewayTurnResponse {
+        events,
+        error: String::new(),
+    })
 }
 
 pub async fn create_story(

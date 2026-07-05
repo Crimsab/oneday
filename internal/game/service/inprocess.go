@@ -152,6 +152,87 @@ func (s *InProcessTurnService) SubmitAction(ctx context.Context, req contracts.S
 	return eventsChannel(events), nil
 }
 
+// SubmitActionStream mirrors SubmitAction but emits turn.started and
+// narrative.delta events while the provider is still streaming. The final
+// canonical events are still cached through the same idempotency path.
+func (s *InProcessTurnService) SubmitActionStream(ctx context.Context, req contracts.SubmitActionRequest) (<-chan contracts.TurnEvent, error) {
+	if s.router == nil {
+		return nil, errors.New("AI router is not configured")
+	}
+	if s.db == nil {
+		return nil, errors.New("database is not configured")
+	}
+
+	requestHash, err := requestFingerprint(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if events, ok, err := s.cachedEvents(req, requestHash); err != nil {
+		return nil, err
+	} else if ok {
+		return eventsChannel(events), nil
+	}
+
+	out := make(chan contracts.TurnEvent, 32)
+	go func() {
+		defer close(out)
+		if err := s.submitActionStreamLocked(ctx, req, requestHash, out); err != nil {
+			out <- errorTurnEvent(req, err)
+		}
+	}()
+	return out, nil
+}
+
+func (s *InProcessTurnService) submitActionStreamLocked(ctx context.Context, req contracts.SubmitActionRequest, requestHash string, out chan<- contracts.TurnEvent) error {
+	lock := s.storyLock(req.StoryID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	lease, err := s.acquireStoryMutationLease(ctx, req.StoryID, "turn")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = lease.Release() }()
+
+	if events, ok, err := s.cachedEvents(req, requestHash); err != nil {
+		return err
+	} else if ok {
+		sendTurnEvents(out, events)
+		return nil
+	}
+
+	snapshot, err := s.Snapshot(ctx, req.StoryID)
+	if err != nil {
+		return err
+	}
+	if err := req.Validate(snapshot.Turn, snapshot.Revision); err != nil {
+		return err
+	}
+	if snapshot.SessionID != "" && req.SessionID != snapshot.SessionID {
+		return fmt.Errorf("stale session_id %q, active session is %q", req.SessionID, snapshot.SessionID)
+	}
+
+	claim, events, ok, err := s.claimTurn(req, requestHash)
+	if err != nil {
+		return err
+	}
+	if ok {
+		sendTurnEvents(out, events)
+		return nil
+	}
+
+	events, err = s.runTurnStream(ctx, req, snapshot, lease.Lock(), claim, out)
+	if err != nil {
+		if claim != nil {
+			_ = claim.Fail(err)
+		}
+		return err
+	}
+	s.cacheEvents(req, events)
+	return nil
+}
+
 func (s *InProcessTurnService) SubmitMeta(ctx context.Context, req contracts.BrowserMetaRequest) (*contracts.BrowserMetaResponse, error) {
 	if s.router == nil {
 		return nil, errors.New("AI router is not configured")
@@ -414,6 +495,102 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 		return cloneEvents(committedEvents), nil
 	}
 	return buildTurnEvents(req, snapshot, sessionID, resp, world, narrator.Story().Revision)
+}
+
+func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot, storyLock *storage.StoryTurnLock, claim *storage.TurnIdempotencyClaim, out chan<- contracts.TurnEvent) ([]contracts.TurnEvent, error) {
+	narrator, session, err := s.newNarrator(req.StoryID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = session.CloseMirrors() }()
+	sessionID := session.SessionID()
+
+	world := narrator.World()
+	seq := 1
+	emit := func(eventType contracts.TurnEventType, payload any) (contracts.TurnEvent, error) {
+		event, err := contracts.NewTurnEvent(
+			fmt.Sprintf("%s:%d", req.IdempotencyKey, seq),
+			req.StoryID,
+			sessionID,
+			snapshot.Turn,
+			eventType,
+			payload,
+		)
+		if err != nil {
+			return contracts.TurnEvent{}, err
+		}
+		seq++
+		out <- event
+		return event, nil
+	}
+
+	if _, err := emit(contracts.EventTurnStarted, map[string]any{
+		"client_turn":     req.ClientTurn,
+		"client_revision": req.ClientRevision,
+		"action":          req.Action,
+	}); err != nil {
+		return nil, err
+	}
+
+	var committedEvents []contracts.TurnEvent
+	var hook engine.TurnCommitHook
+	if claim != nil {
+		hook = func(tx *sql.Tx, result engine.TurnCommitResult) error {
+			events, err := buildTurnEvents(req, snapshot, sessionID, result.Narrative, result.World, result.Revision)
+			if err != nil {
+				return err
+			}
+			data, err := json.Marshal(events)
+			if err != nil {
+				return fmt.Errorf("encoding idempotency events: %w", err)
+			}
+			if err := claim.CommitTx(tx, string(data)); err != nil {
+				return err
+			}
+			committedEvents = cloneEvents(events)
+			return nil
+		}
+	}
+
+	stream, err := narrator.StreamActionWithLeaseAndCommitHook(ctx, actionText(req.Action), storyLock, hook)
+	if err != nil {
+		return nil, err
+	}
+	var resp *engine.NarrativeResponse
+	for chunk := range stream {
+		if chunk.Err != nil {
+			return nil, chunk.Err
+		}
+		if chunk.Delta != "" {
+			if _, err := emit(contracts.EventNarrativeDelta, map[string]any{
+				"text": chunk.Delta,
+			}); err != nil {
+				return nil, err
+			}
+		}
+		if chunk.Done {
+			resp = chunk.Response
+		}
+	}
+	if resp == nil {
+		return nil, errors.New("streaming turn finished without a narrative response")
+	}
+
+	finalEvents := committedEvents
+	if len(finalEvents) == 0 {
+		finalEvents, err = buildTurnEvents(req, snapshot, sessionID, resp, world, narrator.Story().Revision)
+		if err != nil {
+			return nil, err
+		}
+	}
+	outputFinalEvents := reindexTurnEvents(finalEvents, req.IdempotencyKey, seq)
+	for _, event := range outputFinalEvents {
+		if event.Type == contracts.EventTurnStarted {
+			continue
+		}
+		out <- event
+	}
+	return cloneEvents(finalEvents), nil
 }
 
 func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot, sessionID string, resp *engine.NarrativeResponse, world *storage.WorldState, revision int64) ([]contracts.TurnEvent, error) {
@@ -758,6 +935,46 @@ func eventsChannel(events []contracts.TurnEvent) <-chan contracts.TurnEvent {
 		out <- event
 	}
 	close(out)
+	return out
+}
+
+func sendTurnEvents(out chan<- contracts.TurnEvent, events []contracts.TurnEvent) {
+	for _, event := range events {
+		out <- event
+	}
+}
+
+func errorTurnEvent(req contracts.SubmitActionRequest, err error) contracts.TurnEvent {
+	key := strings.TrimSpace(req.IdempotencyKey)
+	if key == "" {
+		key = "stream"
+	}
+	event, eventErr := contracts.NewTurnEvent(
+		key+":error",
+		req.StoryID,
+		req.SessionID,
+		req.ClientTurn,
+		contracts.EventError,
+		map[string]any{"message": err.Error()},
+	)
+	if eventErr != nil {
+		return contracts.TurnEvent{
+			ID:        key + ":error",
+			StoryID:   req.StoryID,
+			SessionID: req.SessionID,
+			Turn:      req.ClientTurn,
+			Type:      contracts.EventError,
+			CreatedAt: time.Now().UTC(),
+		}
+	}
+	return event
+}
+
+func reindexTurnEvents(events []contracts.TurnEvent, idempotencyKey string, startSeq int) []contracts.TurnEvent {
+	out := cloneEvents(events)
+	for i := range out {
+		out[i].ID = fmt.Sprintf("%s:%d", idempotencyKey, startSeq+i)
+	}
 	return out
 }
 

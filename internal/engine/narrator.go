@@ -341,6 +341,19 @@ func (n *Narrator) StreamAction(ctx context.Context, action string) (<-chan Narr
 	return n.streamTurn(ctx, action)
 }
 
+// StreamActionWithLeaseAndCommitHook streams a player action using a caller-owned
+// story mutation lease. Browser callers use this to surface token deltas without
+// giving up the same commit/idempotency guarantees as SendActionWithLease.
+func (n *Narrator) StreamActionWithLeaseAndCommitHook(ctx context.Context, action string, lock *storage.StoryTurnLock, hook TurnCommitHook) (<-chan NarrativeStreamChunk, error) {
+	if lock == nil {
+		return nil, fmt.Errorf("story turn lock is required")
+	}
+	if n == nil || n.story == nil || lock.StoryID() != n.story.ID {
+		return nil, fmt.Errorf("story turn lock does not belong to narrator story")
+	}
+	return n.streamTurnWithLock(ctx, action, lock, hook, nil)
+}
+
 func (n *Narrator) loadEarnedAchievements() []storage.Achievement {
 	if n == nil || n.db == nil || n.story == nil {
 		return nil
@@ -424,16 +437,25 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 		return nil, err
 	}
 	heartbeat := lock.StartHeartbeat(ctx, time.Minute, 3*time.Minute)
-
-	if err := n.RefreshFromDB(); err != nil {
+	cleanup := func() {
 		_ = heartbeat.Stop()
 		_ = lock.Release()
+	}
+
+	return n.streamTurnWithLock(ctx, input, lock, nil, cleanup)
+}
+
+func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *storage.StoryTurnLock, hook TurnCommitHook, cleanup func()) (<-chan NarrativeStreamChunk, error) {
+	if cleanup == nil {
+		cleanup = func() {}
+	}
+	if err := n.RefreshFromDB(); err != nil {
+		cleanup()
 		return nil, err
 	}
 	prep, err := n.prepareTurn(ctx, input)
 	if err != nil {
-		_ = heartbeat.Stop()
-		_ = lock.Release()
+		cleanup()
 		return nil, err
 	}
 
@@ -441,8 +463,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 		out := make(chan NarrativeStreamChunk, 4)
 		go func() {
 			defer close(out)
-			defer func() { _ = heartbeat.Stop() }()
-			defer func() { _ = lock.Release() }()
+			defer cleanup()
 
 			resp, err := n.completeTurnResponse(ctx, prep)
 			if err != nil {
@@ -454,7 +475,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 				out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
 				return
 			}
-			narrative, err := n.finalizeTurn(ctx, prep, input, resp, 0, false, nil)
+			narrative, err := n.finalizeTurn(ctx, prep, input, resp, 0, false, hook)
 			if err != nil {
 				out <- NarrativeStreamChunk{Err: err}
 				return
@@ -470,16 +491,14 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 
 	stream, providerName, err := n.router.Stream(ctx, prep.req)
 	if err != nil {
-		_ = heartbeat.Stop()
-		_ = lock.Release()
+		cleanup()
 		return nil, err
 	}
 
 	out := make(chan NarrativeStreamChunk, 32)
 	go func() {
 		defer close(out)
-		defer func() { _ = heartbeat.Stop() }()
-		defer func() { _ = lock.Release() }()
+		defer cleanup()
 
 		start := time.Now()
 		var builder strings.Builder
@@ -517,7 +536,7 @@ func (n *Narrator) streamTurn(ctx context.Context, input string) (<-chan Narrati
 					out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
 					return
 				}
-				narrative, err := n.finalizeTurn(ctx, prep, input, resp, firstTokenMs, true, nil)
+				narrative, err := n.finalizeTurn(ctx, prep, input, resp, firstTokenMs, true, hook)
 				if err != nil {
 					out <- NarrativeStreamChunk{Err: err}
 					return
