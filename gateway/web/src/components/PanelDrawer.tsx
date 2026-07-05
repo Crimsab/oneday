@@ -961,6 +961,14 @@ function ModelRoutingSettings({
       },
     }));
   };
+  const updateImageGeneration = (
+    patch: Partial<ModelRoutingDraft["imageGeneration"]>,
+  ) => {
+    updateDraft((value) => ({
+      ...value,
+      imageGeneration: { ...value.imageGeneration, ...patch },
+    }));
+  };
 
   const save = async () => {
     if (!modelSettings || !draft) return;
@@ -1018,6 +1026,26 @@ function ModelRoutingSettings({
           <span>Config path</span>
           <strong title={modelSettings.config_path}>
             {modelSettings.config_path}
+          </strong>
+        </div>
+      </div>
+      <div className="imagegen-status-strip">
+        <div
+          className={modelSettings.image_generation.available ? "ready" : "blocked"}
+        >
+          <span>Image generation</span>
+          <strong>{modelSettings.image_generation.status}</strong>
+        </div>
+        <div>
+          <span>Provider</span>
+          <strong>{modelSettings.image_generation.provider || "not set"}</strong>
+        </div>
+        <div>
+          <span>API key</span>
+          <strong>
+            {modelSettings.image_generation.api_key_configured
+              ? "configured"
+              : "not configured"}
           </strong>
         </div>
       </div>
@@ -1085,12 +1113,120 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
+          <span>Image provider</span>
+          <input
+            value={draft.imageGeneration.provider}
+            onChange={(event) =>
+              updateImageGeneration({ provider: event.target.value })
+            }
+            placeholder="openclaw-bridge"
+          />
+        </label>
+        <label>
           <span>Image generation model</span>
           <ModelInput
-            value={draft.imageModel}
+            value={draft.imageGeneration.model}
             options={modelSettings.image_models}
-            onChange={(value) =>
-              updateDraft((draft) => ({ ...draft, imageModel: value }))
+            onChange={(value) => updateImageGeneration({ model: value })}
+          />
+        </label>
+        <label>
+          <span>OpenClaw bridge URL</span>
+          <input
+            value={draft.imageGeneration.openClawBridgeUrl}
+            onChange={(event) =>
+              updateImageGeneration({ openClawBridgeUrl: event.target.value })
+            }
+            placeholder="http://openclaw-imagegen:8099/generate"
+          />
+        </label>
+        <label>
+          <span>OpenAI-compatible base URL</span>
+          <input
+            value={draft.imageGeneration.baseUrl}
+            onChange={(event) =>
+              updateImageGeneration({ baseUrl: event.target.value })
+            }
+            placeholder="http://llm.example.com/v1"
+          />
+        </label>
+        <label>
+          <span>Default image size</span>
+          <input
+            value={draft.imageGeneration.defaultSize}
+            onChange={(event) =>
+              updateImageGeneration({ defaultSize: event.target.value })
+            }
+            placeholder="1024x1024"
+          />
+        </label>
+        <label>
+          <span>Location image size</span>
+          <input
+            value={draft.imageGeneration.locationSize}
+            onChange={(event) =>
+              updateImageGeneration({ locationSize: event.target.value })
+            }
+            placeholder="1536x1024"
+          />
+        </label>
+        <label>
+          <span>Character image size</span>
+          <input
+            value={draft.imageGeneration.characterSize}
+            onChange={(event) =>
+              updateImageGeneration({ characterSize: event.target.value })
+            }
+            placeholder="1024x1024"
+          />
+        </label>
+        <label>
+          <span>Image output format</span>
+          <select
+            value={draft.imageGeneration.outputFormat}
+            onChange={(event) =>
+              updateImageGeneration({ outputFormat: event.target.value })
+            }
+          >
+            {["png", "jpeg", "webp"].map((format) => (
+              <option key={format} value={format}>
+                {format}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Image timeout seconds</span>
+          <input
+            type="number"
+            min={1}
+            value={draft.imageGeneration.timeoutSeconds}
+            onChange={(event) =>
+              updateImageGeneration({
+                timeoutSeconds: Number(event.target.value),
+              })
+            }
+          />
+        </label>
+        <label className="toggle-row">
+          <span>Auto-generate visuals</span>
+          <input
+            type="checkbox"
+            checked={draft.imageGeneration.autoGenerate}
+            onChange={(event) =>
+              updateImageGeneration({ autoGenerate: event.target.checked })
+            }
+          />
+        </label>
+        <label className="toggle-row">
+          <span>Append negative prompt</span>
+          <input
+            type="checkbox"
+            checked={draft.imageGeneration.appendNegativePrompt}
+            onChange={(event) =>
+              updateImageGeneration({
+                appendNegativePrompt: event.target.checked,
+              })
             }
           />
         </label>
@@ -1200,6 +1336,10 @@ function ModelRoutingSettings({
       </div>
       <div className="model-facts">
         <span>Provider chain: {draft.providerPriority.join(" -> ")}</span>
+        <span>
+          Images: {draft.imageGeneration.provider || "none"}/
+          {draft.imageGeneration.model || "no model"}
+        </span>
         <span>
           Embedding: {draft.embeddingProvider}/
           {draft.embeddingModel || "default"}

@@ -25,6 +25,11 @@ describe("model routing helpers", () => {
       reasoning: "off",
     });
     expect(draft.repairFallbackModels).toBe("test-repair-fallback");
+    expect(draft.imageGeneration).toMatchObject({
+      provider: "openclaw-bridge",
+      model: "test-image-model",
+      openClawBridgeUrl: "http://openclaw-imagegen:8099/generate",
+    });
   });
 
   it("promotes providers while preserving a complete priority chain", () => {
@@ -55,12 +60,21 @@ describe("model routing helpers", () => {
     draft.providers.litellm.model = "test-litellm-model-updated";
     draft.utilityModel = "test-utility-model";
     draft.repairFallbackModels = "test-fallback-one, test-fallback-two";
+    draft.imageGeneration.autoGenerate = true;
+    draft.imageGeneration.locationSize = "1792x1024";
 
     expect(updateFromDraft(settings, draft)).toMatchObject({
       base_revision: "revision-1",
       provider_priority: ["litellm", "codex", "openrouter", "claude-code"],
       utility_model: "test-utility-model",
       repair_fallback_models: ["test-fallback-one", "test-fallback-two"],
+      image_model: "test-image-model",
+      image_generation: expect.objectContaining({
+        provider: "openclaw-bridge",
+        model: "test-image-model",
+        location_size: "1792x1024",
+        auto_generate: true,
+      }),
       providers: expect.arrayContaining([
         expect.objectContaining({
           id: "litellm",
@@ -129,6 +143,30 @@ const settings: ModelSettings = {
   image_models: ["test-image-model"],
   ascii_models: ["test-ascii-model"],
   embedding_providers: ["auto", "litellm", "openrouter", "local"],
+  image_generation: {
+    provider: "openclaw-bridge",
+    base_url: "",
+    api_key_configured: false,
+    model: "test-image-model",
+    openclaw_bridge_url: "http://openclaw-imagegen:8099/generate",
+    default_size: "1024x1024",
+    location_size: "1536x1024",
+    character_size: "1024x1024",
+    default_resolution: "",
+    location_resolution: "",
+    character_resolution: "",
+    default_aspect_ratio: "",
+    location_aspect_ratio: "",
+    character_aspect_ratio: "",
+    quality: "",
+    output_format: "png",
+    background: "",
+    timeout_seconds: 180,
+    auto_generate: false,
+    append_negative_prompt: true,
+    available: true,
+    status: "configured through OpenClaw bridge",
+  },
   active: {
     provider: "codex",
     narrative_model: "test-codex-model",

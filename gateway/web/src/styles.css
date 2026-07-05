@@ -2759,6 +2759,7 @@ input:disabled {
 
 .settings-grid select,
 .settings-grid input[type="text"],
+.settings-grid input[type="number"],
 .settings-grid input:not([type]) {
   width: 100%;
   min-width: 0;
@@ -2820,7 +2821,14 @@ input:disabled {
   gap: 8px;
 }
 
+.imagegen-status-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 150px;
+  gap: 8px;
+}
+
 .model-active-strip > div,
+.imagegen-status-strip > div,
 .provider-card {
   min-width: 0;
   border: 1px solid var(--line-soft);
@@ -2829,13 +2837,15 @@ input:disabled {
 }
 
 .model-active-strip span,
+.imagegen-status-strip span,
 .provider-card span {
   display: block;
   color: var(--muted);
   font-size: 11px;
 }
 
-.model-active-strip strong {
+.model-active-strip strong,
+.imagegen-status-strip strong {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -2844,6 +2854,22 @@ input:disabled {
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.imagegen-status-strip .ready {
+  border-color: color-mix(in srgb, var(--good) 34%, var(--line));
+}
+
+.imagegen-status-strip .ready strong {
+  color: #afd99a;
+}
+
+.imagegen-status-strip .blocked {
+  border-color: color-mix(in srgb, var(--warn) 40%, var(--line));
+}
+
+.imagegen-status-strip .blocked strong {
+  color: var(--warn);
 }
 
 .provider-editor-grid {
@@ -3510,6 +3536,7 @@ input:disabled {
   .settings-grid,
   .option-grid,
   .model-active-strip,
+  .imagegen-status-strip,
   .provider-editor-grid,
   .save-create {
     grid-template-columns: minmax(0, 1fr);
