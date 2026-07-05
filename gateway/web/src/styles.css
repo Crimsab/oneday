@@ -3059,6 +3059,60 @@ input:disabled {
   white-space: nowrap;
 }
 
+.visual-job-list {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  background: rgba(255, 255, 255, 0.025);
+  padding: 8px;
+}
+
+.visual-job-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) minmax(150px, 0.52fr);
+  gap: 10px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.visual-job-row span {
+  border: 1px solid var(--line-soft);
+  padding: 3px 6px;
+  color: var(--text);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.visual-job-row.running span {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
+  color: var(--accent);
+}
+
+.visual-job-row.queued span {
+  border-color: color-mix(in srgb, var(--warn) 46%, var(--line));
+  color: var(--warn);
+}
+
+.visual-job-row.failed span {
+  border-color: color-mix(in srgb, var(--bad) 48%, var(--line));
+  color: var(--bad);
+}
+
+.visual-job-row strong,
+.visual-job-row small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visual-job-row strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .visual-asset-editor {
   min-width: 0;
   display: grid;

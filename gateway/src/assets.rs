@@ -16,6 +16,7 @@ use tokio::fs;
 pub struct VisualAssetsResponse {
     pub profile: VisualProfile,
     pub assets: Vec<VisualAsset>,
+    pub jobs: Vec<VisualGenerationJobView>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -82,6 +83,23 @@ pub struct VisualAssetVersion {
     pub provider: String,
     pub turn: i64,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VisualGenerationJobView {
+    pub id: i64,
+    pub asset_id: String,
+    pub story_id: String,
+    pub status: String,
+    pub attempts: i64,
+    pub max_attempts: i64,
+    pub locked_until: String,
+    pub error: String,
+    pub provider: String,
+    pub started_at: String,
+    pub finished_at: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -211,7 +229,12 @@ pub async fn visual_assets(
     let specs = visual_specs(&snapshot, &profile);
     ensure_asset_rows(pool, story_id, &specs).await?;
     let assets = list_assets(pool, story_id).await?;
-    Ok(VisualAssetsResponse { profile, assets })
+    let jobs = list_visual_generation_jobs(pool, story_id).await?;
+    Ok(VisualAssetsResponse {
+        profile,
+        assets,
+        jobs,
+    })
 }
 
 pub async fn visual_asset_versions(
@@ -1515,6 +1538,47 @@ async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Vi
     Ok(rows.into_iter().map(visual_asset_from_row).collect())
 }
 
+async fn list_visual_generation_jobs(
+    pool: &SqlitePool,
+    story_id: &str,
+) -> anyhow::Result<Vec<VisualGenerationJobView>> {
+    let rows = sqlx::query(
+        r#"SELECT id, asset_id, story_id, status, attempts, max_attempts,
+                  locked_until, error, provider, started_at, finished_at,
+                  CAST(created_at AS TEXT) AS created_at,
+                  CAST(updated_at AS TEXT) AS updated_at
+           FROM visual_generation_jobs
+           WHERE story_id = ?
+           ORDER BY
+             CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,
+             updated_at DESC,
+             id DESC
+           LIMIT 25"#,
+    )
+    .bind(story_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| VisualGenerationJobView {
+            id: row.try_get("id").unwrap_or_default(),
+            asset_id: row_string(&row, "asset_id"),
+            story_id: row_string(&row, "story_id"),
+            status: row_string(&row, "status"),
+            attempts: row.try_get("attempts").unwrap_or_default(),
+            max_attempts: row.try_get("max_attempts").unwrap_or_default(),
+            locked_until: row_string(&row, "locked_until"),
+            error: row_string(&row, "error"),
+            provider: row_string(&row, "provider"),
+            started_at: row_string(&row, "started_at"),
+            finished_at: row_string(&row, "finished_at"),
+            created_at: row_string(&row, "created_at"),
+            updated_at: row_string(&row, "updated_at"),
+        })
+        .collect())
+}
+
 async fn load_asset(
     pool: &SqlitePool,
     story_id: &str,
@@ -1978,6 +2042,15 @@ mod tests {
 
         assert_eq!(status, "queued");
         assert_eq!(jobs, 1);
+
+        let job_views = list_visual_generation_jobs(&pool, "story")
+            .await
+            .expect("list jobs");
+        assert_eq!(job_views.len(), 1);
+        assert_eq!(job_views[0].asset_id, "asset-location");
+        assert_eq!(job_views[0].status, "queued");
+        assert_eq!(job_views[0].attempts, 0);
+        assert_eq!(job_views[0].max_attempts, 3);
     }
 
     #[tokio::test]
