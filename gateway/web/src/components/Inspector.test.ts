@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cardsFromValue, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, npcRelationSummary, sanitizePlayerVisibleValue } from "./Inspector";
+import { cardsFromValue, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, npcDiscoverySummary, npcRelationSummary, sanitizePlayerVisibleValue } from "./Inspector";
 import type { JsonValue, RecordView, StorySnapshot } from "../types";
 
 describe("moduleTitle", () => {
@@ -107,6 +107,41 @@ describe("npcRelationSummary", () => {
       score: 54,
       tone: "neutral",
       filledSegments: 5,
+    });
+  });
+});
+
+describe("npcDiscoverySummary", () => {
+  it("surfaces progressive discovery and visual readiness", () => {
+    expect(
+      npcDiscoverySummary(
+        npcRecord({
+          discovery: {
+            stage: "rumor",
+            public_label: "Marek",
+            visual_readiness: "none",
+          },
+        }),
+      ),
+    ).toEqual({
+      stage: "rumor",
+      label: "Rumor",
+      publicLabel: "Marek",
+      visualReadiness: "none",
+      visualLabel: "",
+    });
+    expect(
+      npcDiscoverySummary(
+        npcRecord({
+          discovery_stage: "established",
+          public_label: "Serra Vale",
+          visual_readiness: "canonical",
+        }),
+      ),
+    ).toMatchObject({
+      label: "Established",
+      publicLabel: "Serra Vale",
+      visualLabel: "Canonical",
     });
   });
 });

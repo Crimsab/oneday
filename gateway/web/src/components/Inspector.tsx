@@ -380,6 +380,7 @@ function NpcCard({
   onOpenVisualAsset?: (assetId: string) => void;
 }) {
   const relation = npcRelationSummary(npc);
+  const discovery = npcDiscoverySummary(npc);
   const role = npcRole(npc);
   const imageUrl = readyAssetUrl(asset);
   const content = (
@@ -404,10 +405,14 @@ function NpcCard({
       </div>
       <div className="ws-npc-body">
         <div className="ws-npc-title">
-          <strong>{npc.name}</strong>
+          <strong>{discovery.publicLabel || npc.name}</strong>
           <span>{relation.label}</span>
         </div>
         <small>{role}</small>
+        <div className="ws-npc-meta">
+          <span data-stage={discovery.stage}>{discovery.label}</span>
+          {discovery.visualLabel && <span>{discovery.visualLabel}</span>}
+        </div>
         <div className="ws-relation">
           <div className="ws-relation-bar" role="meter" aria-label={`${npc.name} relationship`} aria-valuenow={relation.score} aria-valuemin={0} aria-valuemax={100}>
             {Array.from({ length: 4 }, (_, index) => (
@@ -419,7 +424,7 @@ function NpcCard({
       </div>
     </>
   );
-  const title = `${npc.name}: ${relation.label} ${relation.score}/100`;
+  const title = `${discovery.publicLabel || npc.name}: ${discovery.label}; ${relation.label} ${relation.score}/100`;
   if (!onOpenNpcCodex) {
     return (
       <article className="ws-npc" data-relation-tone={relation.tone} title={title}>
@@ -528,6 +533,39 @@ export interface NpcRelationSummary {
   filledBands: number;
 }
 
+export interface NpcDiscoverySummary {
+  stage: string;
+  label: string;
+  publicLabel: string;
+  visualReadiness: string;
+  visualLabel: string;
+}
+
+export function npcDiscoverySummary(npc: RecordView): NpcDiscoverySummary {
+  const discovery = asObject(npc.fields.discovery);
+  const stage = normalizeDiscoveryToken(
+    findString(npc.fields, ["discovery_stage"]) ||
+      findString(discovery, ["stage"]) ||
+      "established",
+  );
+  const visualReadiness = normalizeDiscoveryToken(
+    findString(npc.fields, ["visual_readiness"]) ||
+      findString(discovery, ["visual_readiness"]) ||
+      "none",
+  );
+  const publicLabel =
+    findString(npc.fields, ["public_label"]) ||
+    findString(discovery, ["public_label"]) ||
+    npc.name;
+  return {
+    stage,
+    label: discoveryStageLabel(stage),
+    publicLabel,
+    visualReadiness,
+    visualLabel: visualReadiness === "none" ? "" : titleCase(visualReadiness),
+  };
+}
+
 export function npcRelationSummary(npc: RecordView): NpcRelationSummary {
   const relationshipValue = npc.fields.relationship;
   const relationship = asObject(relationshipValue);
@@ -557,7 +595,29 @@ function npcRole(npc: RecordView): string {
 
 function npcSearchText(npc: RecordView): string {
   const relation = npcRelationSummary(npc);
-  return `${npc.name} ${npcRole(npc)} ${relation.label}`.toLowerCase();
+  const discovery = npcDiscoverySummary(npc);
+  return `${npc.name} ${discovery.publicLabel} ${discovery.label} ${npcRole(npc)} ${relation.label}`.toLowerCase();
+}
+
+function normalizeDiscoveryToken(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+function discoveryStageLabel(stage: string): string {
+  switch (stage) {
+    case "rumor":
+      return "Rumor";
+    case "observed":
+      return "Observed";
+    case "identified":
+      return "Identified";
+    case "established":
+      return "Established";
+    case "dismissed":
+      return "Dismissed";
+    default:
+      return titleCase(stage || "unknown");
+  }
 }
 
 function relationshipLabelFromValue(value: JsonValue | undefined): string {
