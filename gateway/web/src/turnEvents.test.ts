@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { appendTurnEvent, streamingDeltaText, turnEventDetail, turnEventFromContract, turnEventTitle } from "./turnEvents";
+import {
+  appendTurnEvent,
+  shouldSuppressStreamingDelta,
+  streamingDeltaText,
+  turnEventDetail,
+  turnEventFromContract,
+  turnEventTitle,
+} from "./turnEvents";
 import type { TurnStreamEvent } from "./types";
 
 describe("turn event helpers", () => {
@@ -36,6 +43,12 @@ describe("turn event helpers", () => {
 
     expect(streamingDeltaText(delta)).toBe("La porta si apre.");
     expect(turnEventDetail(delta)).toBe("La porta si apre.");
+  });
+
+  it("suppresses structured JSON deltas from provisional prose display", () => {
+    expect(shouldSuppressStreamingDelta(undefined, '{"narrative":"La porta')).toBe(true);
+    expect(shouldSuppressStreamingDelta("   ", "[{\"text\":\"raw\"}]")).toBe(true);
+    expect(shouldSuppressStreamingDelta(undefined, "La porta si apre.")).toBe(false);
   });
 
   it("wraps contract events returned by the action response", () => {

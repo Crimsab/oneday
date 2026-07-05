@@ -36,7 +36,7 @@ import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
-import { appendTurnEvent, streamingDeltaText, turnEventDetail, turnEventFromContract } from "./turnEvents";
+import { appendTurnEvent, shouldSuppressStreamingDelta, streamingDeltaText, turnEventDetail, turnEventFromContract } from "./turnEvents";
 import type {
   AppPreferences,
   ChoiceView,
@@ -212,6 +212,14 @@ function App() {
         if (!pending) return pending;
         const delta = streamingDeltaText(liveEvent);
         if (!delta) return { ...pending, detail: turnEventDetail(liveEvent) };
+        if (pending.streamingSuppressed || shouldSuppressStreamingDelta(pending.streamingText, delta)) {
+          return {
+            ...pending,
+            detail: "Assistant is drafting the canonical response...",
+            streamingText: undefined,
+            streamingSuppressed: true,
+          };
+        }
         return {
           ...pending,
           detail: "Assistant draft streaming. This text becomes canonical only after commit.",

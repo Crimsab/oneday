@@ -169,6 +169,7 @@ export interface PendingTurnView {
   source: string;
   detail: string;
   streamingText?: string;
+  streamingSuppressed?: boolean;
   kind: "choice" | "free_text" | "command" | "meta";
 }
 
