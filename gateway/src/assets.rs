@@ -1838,6 +1838,10 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
     }
 
     for npc in snapshot.panels.npcs.iter().take(8) {
+        let discovery = npc.fields.get("discovery").unwrap_or(&Value::Null);
+        if !npc_character_visual_ready(npc, discovery) {
+            continue;
+        }
         let appearance = npc
             .fields
             .get("appearance")
@@ -1845,6 +1849,10 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
             .unwrap_or("");
         let role = npc.fields.get("role").and_then(Value::as_str).unwrap_or("");
         let relationship = value_to_text(npc.fields.get("relationship").unwrap_or(&Value::Null));
+        let visual_details = npc_visual_prompt_details(appearance, discovery);
+        if visual_details.is_empty() {
+            continue;
+        }
         specs.push(VisualSpec {
             kind: "character".to_string(),
             subject: npc.name.clone(),
@@ -1854,7 +1862,7 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
                 profile.character_style_prompt,
                 npc.name,
                 clean_or(role, "unknown"),
-                clean_or(appearance, "derive from story context"),
+                visual_details,
                 clean_or(&relationship, "unknown")
             ),
             negative_prompt: profile.negative_prompt.clone(),
@@ -1862,6 +1870,158 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
         });
     }
     specs
+}
+
+fn npc_character_visual_ready(npc: &db::RecordView, discovery: &Value) -> bool {
+    let stage = value_at(discovery, "stage");
+    let readiness = value_at(discovery, "visual_readiness");
+    let manual_locked = bool_at(discovery, "manual_visual_lock");
+    if manual_locked {
+        return false;
+    }
+    let role = npc.fields.get("role").and_then(Value::as_str).unwrap_or("");
+    let appearance = npc
+        .fields
+        .get("appearance")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let visual_score = int_at(discovery, "visual_completeness").unwrap_or_else(|| {
+        if is_concrete_character_appearance(appearance) {
+            65
+        } else {
+            0
+        }
+    });
+    let visual_anchors = visual_anchor_count(discovery);
+    if role.eq_ignore_ascii_case("person of interest")
+        && !is_concrete_character_appearance(appearance)
+        && visual_anchors < 2
+    {
+        return false;
+    }
+    match (stage.as_str(), readiness.as_str()) {
+        ("established", "canonical") => {
+            visual_score >= 65
+                && (is_concrete_character_appearance(appearance) || visual_anchors >= 2)
+        }
+        ("identified", "draft") | ("observed", "draft") => {
+            visual_score >= 45
+                && (is_concrete_character_appearance(appearance) || visual_anchors >= 2)
+        }
+        _ if stage.is_empty() && readiness.is_empty() => {
+            is_concrete_character_appearance(appearance)
+                && !role.eq_ignore_ascii_case("person of interest")
+        }
+        _ => false,
+    }
+}
+
+fn npc_visual_prompt_details(appearance: &str, discovery: &Value) -> String {
+    let mut parts = Vec::new();
+    if is_concrete_character_appearance(appearance) {
+        parts.push(clean_or(appearance, ""));
+    }
+    if let Some(facts) = discovery.get("visual_facts").and_then(Value::as_object) {
+        for key in [
+            "silhouette",
+            "apparent_age",
+            "build",
+            "face",
+            "hair",
+            "clothing",
+        ] {
+            if let Some(value) = facts.get(key).and_then(Value::as_str) {
+                let value = clean_or(value, "");
+                if !value.is_empty() {
+                    parts.push(format!("{key}: {value}"));
+                }
+            }
+        }
+        for key in ["distinguishing", "palette"] {
+            if let Some(values) = facts.get(key).and_then(Value::as_array) {
+                let joined = values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|value| clean_or(value, ""))
+                    .filter(|value| !value.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if !joined.is_empty() {
+                    parts.push(format!("{key}: {joined}"));
+                }
+            }
+        }
+    }
+    parts.join(". ")
+}
+
+fn is_concrete_character_appearance(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() {
+        return false;
+    }
+    let lower = value.to_ascii_lowercase();
+    !(lower.contains("unidentified figure")
+        || lower.contains("derive from story context")
+        || lower.contains("not established")
+        || lower == "unknown"
+        || lower == "-")
+}
+
+fn visual_anchor_count(discovery: &Value) -> usize {
+    let Some(facts) = discovery.get("visual_facts").and_then(Value::as_object) else {
+        return 0;
+    };
+    let scalar_count = [
+        "silhouette",
+        "apparent_age",
+        "build",
+        "face",
+        "hair",
+        "clothing",
+    ]
+    .iter()
+    .filter(|key| {
+        facts
+            .get(**key)
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty())
+    })
+    .count();
+    let list_count: usize = ["distinguishing", "palette"]
+        .iter()
+        .map(|key| {
+            facts
+                .get(*key)
+                .and_then(Value::as_array)
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .filter(|value| !value.trim().is_empty())
+                        .count()
+                })
+                .unwrap_or_default()
+        })
+        .sum();
+    scalar_count + list_count
+}
+
+fn value_at(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase()
+}
+
+fn int_at(value: &Value, key: &str) -> Option<i64> {
+    value.get(key).and_then(Value::as_i64)
+}
+
+fn bool_at(value: &Value, key: &str) -> bool {
+    value.get(key).and_then(Value::as_bool).unwrap_or(false)
 }
 
 async fn ensure_asset_rows(
@@ -2251,6 +2411,7 @@ mod tests {
                 appearance TEXT NOT NULL DEFAULT '',
                 personality_json TEXT NOT NULL DEFAULT '{}',
                 relationship_json TEXT NOT NULL DEFAULT '{}',
+                discovery_json TEXT NOT NULL DEFAULT '{}',
                 disposition INTEGER NOT NULL DEFAULT 0,
                 is_alive INTEGER NOT NULL DEFAULT 1,
                 first_appeared_turn INTEGER NOT NULL DEFAULT 0,
@@ -2696,6 +2857,60 @@ mod tests {
                 .await
                 .expect("updated_at");
         assert_eq!(updated_at, "fixed");
+    }
+
+    #[tokio::test]
+    async fn visual_specs_skips_rumor_placeholder_npcs() {
+        let pool = visual_job_pool().await;
+        sqlx::query(
+            r#"INSERT INTO npcs (
+                id, story_id, name, role, appearance, discovery_json, last_seen_turn
+            ) VALUES (
+                'npc-rumor', 'story', 'Marek', 'person of interest', '',
+                '{"stage":"rumor","confidence":"rumored","visual_readiness":"none","visual_completeness":0}',
+                4
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert rumor npc");
+
+        let response = visual_assets(&pool, "story").await.expect("visual assets");
+        assert!(
+            response
+                .assets
+                .iter()
+                .all(|asset| !(asset.kind == "character" && asset.subject == "Marek")),
+            "rumor NPC should not create a character asset: {:?}",
+            response.assets
+        );
+    }
+
+    #[tokio::test]
+    async fn visual_specs_emits_canonical_established_npc() {
+        let pool = visual_job_pool().await;
+        sqlx::query(
+            r#"INSERT INTO npcs (
+                id, story_id, name, role, appearance, discovery_json, last_seen_turn
+            ) VALUES (
+                'npc-marek', 'story', 'Marek', 'dock intermediary',
+                'Gaunt man with ink-stained gloves and a rain-dark coat.',
+                '{"stage":"established","confidence":"confirmed","visual_readiness":"canonical","visual_completeness":80}',
+                5
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert established npc");
+
+        let response = visual_assets(&pool, "story").await.expect("visual assets");
+        let asset = response
+            .assets
+            .iter()
+            .find(|asset| asset.kind == "character" && asset.subject == "Marek")
+            .expect("canonical character asset");
+        assert!(asset.prompt.contains("ink-stained gloves"));
+        assert!(!asset.prompt.contains("derive from story context"));
     }
 
     #[tokio::test]
