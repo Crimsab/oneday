@@ -660,7 +660,8 @@ fn latest_choices(
     for message in messages.iter().rev() {
         if message.role != "assistant"
             || message.session_id != active_session_id
-            || message.turn != current_turn
+            || message.turn > current_turn
+            || current_turn.saturating_sub(message.turn) > 1
         {
             continue;
         }
@@ -994,7 +995,7 @@ mod tests {
     }
 
     #[test]
-    fn latest_choices_only_uses_current_active_session_turn() {
+    fn latest_choices_uses_current_or_immediately_prior_active_session_turn() {
         let messages = vec![
             assistant_choice("old-session", 3, "Old session choice"),
             assistant_choice("active-session", 2, "Old turn choice"),
@@ -1005,7 +1006,24 @@ mod tests {
 
         assert_eq!(choices.len(), 1);
         assert_eq!(choices[0].text, "Current choice");
-        assert!(latest_choices(&messages, "active-session", 4).is_empty());
+        let next_turn_choices = latest_choices(&messages, "active-session", 4);
+        assert_eq!(next_turn_choices.len(), 1);
+        assert_eq!(next_turn_choices[0].text, "Current choice");
+        assert!(latest_choices(&messages, "active-session", 5).is_empty());
+    }
+
+    #[test]
+    fn latest_choices_preserves_first_turn_choices_after_world_advances() {
+        let messages = vec![assistant_choice(
+            "active-session",
+            0,
+            "Inspect the marked note",
+        )];
+
+        let choices = latest_choices(&messages, "active-session", 1);
+
+        assert_eq!(choices.len(), 1);
+        assert_eq!(choices[0].text, "Inspect the marked note");
     }
 
     fn assistant_choice(session_id: &str, turn: i64, text: &str) -> MessageView {
