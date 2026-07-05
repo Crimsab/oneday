@@ -257,10 +257,21 @@ export interface PanelsView {
 export interface StoryVersion {
   turn: number;
   revision: number;
+  story_updated_at: string;
+  active_session_id: string;
   last_message_id: number;
   world_updated_at: string;
+  character_updated_at: string;
+  npc_count: number;
+  npc_updated_at: string;
+  chapter_count: number;
   achievement_count: number;
+  latest_achievement_at: string;
   save_count: number;
+  latest_save_at: string;
+  visual_asset_updated_at: string;
+  visual_job_updated_at: string;
+  active_visual_job_count: number;
 }
 
 export interface StorySnapshot {
