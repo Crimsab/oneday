@@ -46,6 +46,7 @@ func (db *DB) migrate() error {
 		{23, migrationV23},
 		{24, migrationV24},
 		{25, migrationV25},
+		{26, migrationV26},
 	}
 
 	for _, m := range migrations {
@@ -74,6 +75,8 @@ func (db *DB) applyMigration(version int, migrationSQL string) error {
 		return db.applyMigrationV21()
 	case 22:
 		return db.applyMigrationV22()
+	case 26:
+		return db.applyMigrationV26()
 	default:
 		_, err := db.conn.Exec(migrationSQL)
 		return err
@@ -110,6 +113,28 @@ func (db *DB) applyMigrationV22() error {
 	}
 	_, err := db.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_turn_idempotency_request_hash
 		ON turn_idempotency(story_id, idempotency_key, request_hash)`)
+	return err
+}
+
+func (db *DB) applyMigrationV26() error {
+	if err := db.addColumnIfMissing("npcs", "discovery_json", "discovery_json TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		return err
+	}
+	_, err := db.conn.Exec(`
+		UPDATE npcs
+		SET discovery_json = CASE
+			WHEN LOWER(role) = 'person of interest'
+				OR appearance LIKE '%Unidentified figure%'
+				OR personality_json LIKE '%unknown%'
+			THEN '{"stage":"identified","source":"migration","confidence":"inferred","profile_completeness":25,"visual_completeness":0,"visual_readiness":"none"}'
+			WHEN TRIM(appearance) != ''
+			THEN '{"stage":"established","source":"migration","confidence":"confirmed","profile_completeness":80,"visual_completeness":70,"visual_readiness":"canonical"}'
+			ELSE '{"stage":"identified","source":"migration","confidence":"confirmed","profile_completeness":60,"visual_completeness":20,"visual_readiness":"none"}'
+		END
+		WHERE discovery_json = '' OR discovery_json = '{}';
+		CREATE INDEX IF NOT EXISTS idx_npcs_story_last_seen_alive
+			ON npcs(story_id, is_alive, last_seen_turn DESC);
+	`)
 	return err
 }
 
@@ -559,4 +584,12 @@ CREATE INDEX IF NOT EXISTS idx_visual_generation_jobs_story
 CREATE UNIQUE INDEX IF NOT EXISTS idx_visual_generation_jobs_active_asset
 	ON visual_generation_jobs(asset_id)
 	WHERE status IN ('queued', 'running');
+`
+
+const migrationV26 = `
+-- Progressive NPC discovery metadata. The Go migrator applies this with
+-- idempotent column creation and save-compatible backfill.
+ALTER TABLE npcs ADD COLUMN discovery_json TEXT NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS idx_npcs_story_last_seen_alive
+	ON npcs(story_id, is_alive, last_seen_turn DESC);
 `

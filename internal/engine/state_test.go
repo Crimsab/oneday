@@ -221,6 +221,130 @@ func TestNPCMutationRecorderStagesUntilCommit(t *testing.T) {
 	}
 }
 
+func TestNewNPCPromotesPlaceholderDiscovery(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+	story := &storage.Story{
+		ID:              "story-npc-promote",
+		Name:            "NPC Promote",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+	char := newTestChar()
+	char.StoryID = story.ID
+	world := newTestWorld()
+	world.StoryID = story.ID
+
+	_, err := ApplyStateChanges(map[string]interface{}{
+		"npc_disposition": map[string]interface{}{
+			"name":   "Marek",
+			"change": 5,
+		},
+	}, char, world, db, story.ID, 2)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges placeholder: %v", err)
+	}
+	placeholder, err := db.GetNPCByName(story.ID, "Marek")
+	if err != nil || placeholder == nil {
+		t.Fatalf("placeholder lookup: %v npc=%+v", err, placeholder)
+	}
+	if discovery := npcDiscoveryFromStorage(placeholder); discovery.VisualReadiness != NPCVisualNone {
+		t.Fatalf("placeholder visual readiness = %q, want none", discovery.VisualReadiness)
+	}
+
+	_, err = ApplyStateChanges(map[string]interface{}{
+		"new_npc": map[string]interface{}{
+			"name":       "Marek",
+			"role":       "dock intermediary",
+			"appearance": "Gaunt man with ink-stained gloves and a rain-dark coat.",
+			"personality": map[string]interface{}{
+				"traits":       []interface{}{"nervous", "calculating"},
+				"speech_style": "low, clipped, evasive",
+			},
+			"desires": []interface{}{
+				map[string]interface{}{"desire": "Leave Dock 7 before the purge.", "priority": "high", "known_to_player": false},
+			},
+			"can_help": true,
+		},
+	}, char, world, db, story.ID, 3)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges new_npc: %v", err)
+	}
+	npc, err := db.GetNPCByName(story.ID, "Marek")
+	if err != nil || npc == nil {
+		t.Fatalf("promoted lookup: %v npc=%+v", err, npc)
+	}
+	if npc.Role != "dock intermediary" {
+		t.Fatalf("role = %q, want dock intermediary", npc.Role)
+	}
+	if !strings.Contains(npc.Appearance, "ink-stained gloves") {
+		t.Fatalf("appearance not promoted: %q", npc.Appearance)
+	}
+	discovery := npcDiscoveryFromStorage(npc)
+	if discovery.Stage != NPCStageEstablished {
+		t.Fatalf("stage = %q, want established", discovery.Stage)
+	}
+	if discovery.VisualReadiness != NPCVisualCanonical {
+		t.Fatalf("visual readiness = %q, want canonical", discovery.VisualReadiness)
+	}
+}
+
+func TestNPCReferenceCreatesRumorWithoutVisualReadiness(t *testing.T) {
+	db, _ := newSaveTestDB(t)
+	now := time.Now()
+	story := &storage.Story{
+		ID:              "story-npc-rumor",
+		Name:            "NPC Rumor",
+		SettingJSON:     `{}`,
+		StatsSchemaJSON: `{}`,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if err := db.CreateStory(story); err != nil {
+		t.Fatalf("CreateStory: %v", err)
+	}
+	char := newTestChar()
+	char.StoryID = story.ID
+	world := newTestWorld()
+	world.StoryID = story.ID
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"npc_reference": map[string]interface{}{
+			"name":         "Serra Vale",
+			"stage":        "rumor",
+			"source":       "ledger",
+			"confidence":   "rumored",
+			"detail":       "Named in a wet ledger but not yet seen.",
+			"public_label": "Serra Vale",
+		},
+	}, char, world, db, story.ID, 4)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges npc_reference: %v", err)
+	}
+	if len(applied) == 0 {
+		t.Fatal("expected npc_reference applied change")
+	}
+	npc, err := db.GetNPCByName(story.ID, "Serra Vale")
+	if err != nil || npc == nil {
+		t.Fatalf("rumor lookup: %v npc=%+v", err, npc)
+	}
+	discovery := npcDiscoveryFromStorage(npc)
+	if discovery.Stage != NPCStageRumor {
+		t.Fatalf("stage = %q, want rumor", discovery.Stage)
+	}
+	if discovery.VisualReadiness != NPCVisualNone {
+		t.Fatalf("visual readiness = %q, want none", discovery.VisualReadiness)
+	}
+	if !strings.Contains(npc.NotesOnProtagonist, "wet ledger") {
+		t.Fatalf("notes = %q, want detail recorded", npc.NotesOnProtagonist)
+	}
+}
+
 func TestApplyStateChangesCreatesPlaceholderNPCForUnknownUpdates(t *testing.T) {
 	db, _ := newSaveTestDB(t)
 	now := time.Now()
