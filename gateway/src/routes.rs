@@ -386,8 +386,8 @@ async fn story_events(
         let mut last_version = None;
         let mut turn_rx = state.turn_events.subscribe();
         if let Ok(snapshot) = db::snapshot(&state.pool, &story_id).await {
-            last_version = Some(snapshot.version.clone());
-            if let Ok(data) = serde_json::to_string(&snapshot) {
+            if let Ok((version, data)) = serialize_snapshot(&snapshot) {
+                last_version = Some(version);
                 yield Ok(Event::default().event("snapshot").data(data));
             }
         }
@@ -401,18 +401,17 @@ async fn story_events(
                             if last_version.as_ref() == Some(&version) {
                                 continue;
                             }
-                            last_version = Some(version);
                             match db::snapshot(&state.pool, &story_id).await {
                                 Ok(snapshot) => {
-                                    if let Ok(data) = serde_json::to_string(&TurnStreamEvent::snapshot_changed(
-                                        &story_id,
-                                        snapshot.version.turn,
-                                        snapshot.version.revision,
-                                    )) {
-                                        yield Ok(Event::default().event("turn").data(data));
-                                    }
-                                    if let Ok(data) = serde_json::to_string(&snapshot) {
-                                        yield Ok(Event::default().event("snapshot").data(data));
+                                    match serialize_snapshot_changed(&story_id, &snapshot) {
+                                        Ok((snapshot_version, turn_data, snapshot_data)) => {
+                                            yield Ok(Event::default().event("turn").data(turn_data));
+                                            last_version = Some(snapshot_version);
+                                            yield Ok(Event::default().event("snapshot").data(snapshot_data));
+                                        }
+                                        Err(err) => {
+                                            yield Ok(Event::default().event("error").data(err.to_string()));
+                                        }
                                     }
                                 }
                                 Err(err) => {
@@ -452,6 +451,26 @@ async fn story_events(
             .interval(Duration::from_secs(10))
             .text("keepalive"),
     )
+}
+
+fn serialize_snapshot(
+    snapshot: &db::StorySnapshot,
+) -> Result<(db::StoryVersion, String), serde_json::Error> {
+    let data = serde_json::to_string(snapshot)?;
+    Ok((snapshot.version.clone(), data))
+}
+
+fn serialize_snapshot_changed(
+    story_id: &str,
+    snapshot: &db::StorySnapshot,
+) -> Result<(db::StoryVersion, String, String), serde_json::Error> {
+    let (version, snapshot_data) = serialize_snapshot(snapshot)?;
+    let turn_data = serde_json::to_string(&TurnStreamEvent::snapshot_changed(
+        story_id,
+        snapshot.version.turn,
+        snapshot.version.revision,
+    ))?;
+    Ok((version, turn_data, snapshot_data))
 }
 
 fn emit_turn_stream(state: &AppState, event: TurnStreamEvent) {
@@ -532,6 +551,98 @@ impl From<sqlx::Error> for ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: err.to_string(),
             code: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn serializes_snapshot_with_the_version_that_sse_should_mark_seen() {
+        let snapshot = story_snapshot();
+
+        let (version, data) = serialize_snapshot(&snapshot).expect("snapshot serializes");
+
+        assert_eq!(version, snapshot.version);
+        assert!(data.contains("\"story-1\""));
+    }
+
+    #[test]
+    fn serializes_snapshot_changed_turn_event_before_marking_snapshot_seen() {
+        let snapshot = story_snapshot();
+
+        let (version, turn_data, snapshot_data) =
+            serialize_snapshot_changed("story-1", &snapshot).expect("snapshot change serializes");
+
+        assert_eq!(version, snapshot.version);
+        assert!(turn_data.contains("\"snapshot_changed\""));
+        assert!(turn_data.contains("\"revision\":2"));
+        assert!(snapshot_data.contains("\"revision\":2"));
+    }
+
+    fn story_snapshot() -> db::StorySnapshot {
+        db::StorySnapshot {
+            server_time: "2026-01-01T00:00:00Z".to_string(),
+            version: db::StoryVersion {
+                turn: 5,
+                revision: 2,
+                last_message_id: 10,
+                world_updated_at: "2026-01-01T00:00:00Z".to_string(),
+                achievement_count: 0,
+                save_count: 0,
+            },
+            story: db::StorySummary {
+                id: "story-1".to_string(),
+                name: "Story".to_string(),
+                description: String::new(),
+                genre: String::new(),
+                tone: String::new(),
+                language: "en".to_string(),
+                is_archived: false,
+                updated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            character: db::RecordView {
+                id: "character-1".to_string(),
+                name: "Hero".to_string(),
+                fields: json!({}),
+            },
+            world: db::WorldView {
+                id: "world-1".to_string(),
+                current_location: "Dock".to_string(),
+                current_chapter: 1,
+                current_turn: 5,
+                known_locations: json!([]),
+                global_events: json!([]),
+                faction_standings: json!({}),
+                story_hooks: json!([]),
+                world_reactions: json!([]),
+                investigations: json!([]),
+                projects: json!([]),
+                guidance: json!({}),
+                fronts: json!([]),
+                timeline: json!([]),
+                scene_contract: json!({}),
+                updated_at: "2026-01-01T00:00:00Z".to_string(),
+            },
+            active_session: db::SessionView {
+                id: "session-1".to_string(),
+                story_id: "story-1".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+                ended_at: None,
+                summary: String::new(),
+            },
+            choices: vec![],
+            messages: vec![],
+            panels: db::PanelsView {
+                chapters: vec![],
+                achievements: vec![],
+                npcs: vec![],
+                sessions: vec![],
+                saves: vec![],
+            },
         }
     }
 }
