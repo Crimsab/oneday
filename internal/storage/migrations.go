@@ -45,6 +45,7 @@ func (db *DB) migrate() error {
 		{22, migrationV22},
 		{23, migrationV23},
 		{24, migrationV24},
+		{25, migrationV25},
 	}
 
 	for _, m := range migrations {
@@ -526,4 +527,36 @@ CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_asset
 
 CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_story
 	ON visual_asset_versions(story_id, kind, subject, created_at DESC);
+`
+
+const migrationV25 = `
+-- Durable non-blocking image generation queue. Browser requests enqueue work and
+-- the gateway worker claims jobs, so OpenClaw/LiteLLM image latency never blocks
+-- canonical gameplay or the browser request lifecycle.
+CREATE TABLE IF NOT EXISTS visual_generation_jobs (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled')),
+	attempts INTEGER NOT NULL DEFAULT 0,
+	max_attempts INTEGER NOT NULL DEFAULT 3,
+	locked_until TEXT NOT NULL DEFAULT '',
+	request_payload_json TEXT NOT NULL DEFAULT '{}',
+	error TEXT NOT NULL DEFAULT '',
+	provider TEXT NOT NULL DEFAULT '',
+	started_at TEXT NOT NULL DEFAULT '',
+	finished_at TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_visual_generation_jobs_status_lock
+	ON visual_generation_jobs(status, locked_until, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_visual_generation_jobs_story
+	ON visual_generation_jobs(story_id, status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_visual_generation_jobs_active_asset
+	ON visual_generation_jobs(asset_id)
+	WHERE status IN ('queued', 'running');
 `

@@ -240,7 +240,7 @@ async fn generate_visual_assets(
     Json(payload): Json<assets::GenerateVisualAssetsRequest>,
 ) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
     Ok(Json(
-        assets::generate_visual_assets(state.as_ref(), &story_id, payload).await?,
+        assets::generate_visual_assets(state.clone(), &story_id, payload).await?,
     ))
 }
 
