@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, createStory, deleteStory, generateVisualAssets, getStories, getStoryDeletePlan, updateStory } from "./api";
+import {
+  ApiRequestError,
+  cancelVisualGenerationJob,
+  cleanupVisualAssetFiles,
+  createStory,
+  deleteStory,
+  generateVisualAssets,
+  getStories,
+  getStoryDeletePlan,
+  updateStory,
+} from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -62,6 +72,56 @@ describe("api request handling", () => {
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining("\"asset_ids\":[\"asset-1\"]"),
+      }),
+    );
+  });
+
+  it("cancels visual generation jobs through the story gateway", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          profile: { story_id: "story-1" },
+          assets: [{ id: "asset-1", status: "pending" }],
+          jobs: [{ id: 12, status: "cancelled" }],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(cancelVisualGenerationJob("story-1", 12)).resolves.toMatchObject({
+      jobs: [{ id: 12, status: "cancelled" }],
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story-1/visual-assets/jobs/12/cancel",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("requests visual asset cleanup without exposing file contents", async () => {
+    mockFetch(
+      new Response(
+        JSON.stringify({
+          story_id: "story-1",
+          dry_run: true,
+          deleted_files: ["/tmp/stale.png"],
+          kept_files: ["/tmp/kept.png"],
+        }),
+        { status: 200 },
+      ),
+    );
+
+    await expect(cleanupVisualAssetFiles("story-1", { dry_run: true })).resolves.toMatchObject({
+      story_id: "story-1",
+      dry_run: true,
+      deleted_files: ["/tmp/stale.png"],
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story-1/visual-assets/cleanup",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining("\"dry_run\":true"),
       }),
     );
   });

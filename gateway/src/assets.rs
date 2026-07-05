@@ -7,7 +7,7 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
@@ -100,6 +100,20 @@ pub struct VisualGenerationJobView {
     pub finished_at: String,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct VisualAssetCleanupRequest {
+    #[serde(default)]
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VisualAssetCleanupResponse {
+    pub story_id: String,
+    pub dry_run: bool,
+    pub deleted_files: Vec<String>,
+    pub kept_files: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -369,9 +383,9 @@ async fn ensure_visual_generation_job_schema(pool: &SqlitePool) -> anyhow::Resul
     Ok(())
 }
 
-async fn recover_stale_visual_jobs(pool: &SqlitePool) -> anyhow::Result<()> {
+async fn recover_stale_visual_jobs(pool: &SqlitePool) -> anyhow::Result<u64> {
     let now = chrono::Utc::now().to_rfc3339();
-    sqlx::query(
+    let result = sqlx::query(
         r#"UPDATE visual_generation_jobs
            SET status = 'queued',
                locked_until = '',
@@ -384,7 +398,7 @@ async fn recover_stale_visual_jobs(pool: &SqlitePool) -> anyhow::Result<()> {
     .execute(pool)
     .await
     .context("recovering stale visual generation jobs")?;
-    Ok(())
+    Ok(result.rows_affected())
 }
 
 async fn ensure_text_column(
@@ -588,10 +602,132 @@ pub async fn cancel_story_visual_jobs(pool: &SqlitePool, story_id: &str) -> anyh
     Ok(result.rows_affected())
 }
 
+pub async fn cancel_visual_generation_job(
+    pool: &SqlitePool,
+    story_id: &str,
+    job_id: i64,
+) -> anyhow::Result<VisualAssetsResponse> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let row = sqlx::query(
+        r#"UPDATE visual_generation_jobs
+           SET status = 'cancelled',
+               locked_until = '',
+               error = 'Cancelled by user.',
+               finished_at = ?,
+               updated_at = ?
+           WHERE story_id = ? AND id = ? AND status IN ('queued', 'running')
+           RETURNING asset_id"#,
+    )
+    .bind(&now)
+    .bind(&now)
+    .bind(story_id)
+    .bind(job_id)
+    .fetch_optional(pool)
+    .await
+    .with_context(|| format!("cancelling visual generation job {job_id}"))?;
+
+    let row = row.ok_or_else(|| anyhow!("active visual generation job not found"))?;
+    let asset_id = row_string(&row, "asset_id");
+    sqlx::query(
+        r#"UPDATE visual_assets
+           SET status = CASE WHEN url = '' THEN 'pending' ELSE 'ready' END,
+               error = 'Generation cancelled.',
+               updated_at = CURRENT_TIMESTAMP
+           WHERE story_id = ? AND id = ?"#,
+    )
+    .bind(story_id)
+    .bind(asset_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("marking visual asset after cancelling job {job_id}"))?;
+
+    visual_assets(pool, story_id).await
+}
+
+pub async fn cleanup_visual_asset_files(
+    pool: &SqlitePool,
+    story_id: &str,
+    root: &Path,
+    request: VisualAssetCleanupRequest,
+) -> anyhow::Result<VisualAssetCleanupResponse> {
+    db::snapshot(pool, story_id).await?;
+    let story_dir = root.join(slug(story_id));
+    let mut kept_files = Vec::new();
+    let mut deleted_files = Vec::new();
+    let referenced = referenced_visual_asset_paths(pool, story_id).await?;
+
+    let mut entries = match fs::read_dir(&story_dir).await {
+        Ok(entries) => entries,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(VisualAssetCleanupResponse {
+                story_id: story_id.to_string(),
+                dry_run: request.dry_run,
+                deleted_files,
+                kept_files,
+            });
+        }
+        Err(err) => {
+            return Err(err).with_context(|| {
+                format!("reading visual asset directory {}", story_dir.display())
+            });
+        }
+    };
+
+    while let Some(entry) = entries.next_entry().await? {
+        let file_type = entry.file_type().await?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let path = entry.path();
+        let display_path = path.to_string_lossy().to_string();
+        if referenced.contains(&path) {
+            kept_files.push(display_path);
+            continue;
+        }
+        if !request.dry_run {
+            fs::remove_file(&path).await.with_context(|| {
+                format!("removing unreferenced visual asset {}", path.display())
+            })?;
+        }
+        deleted_files.push(display_path);
+    }
+
+    kept_files.sort();
+    deleted_files.sort();
+    Ok(VisualAssetCleanupResponse {
+        story_id: story_id.to_string(),
+        dry_run: request.dry_run,
+        deleted_files,
+        kept_files,
+    })
+}
+
 pub fn spawn_visual_generation_worker(state: Arc<AppState>) {
     tokio::spawn(async move {
+        let Ok(_guard) = state.visual_worker.clone().try_lock_owned() else {
+            return;
+        };
         if let Err(err) = run_visual_generation_worker(state).await {
             tracing::warn!(error = %err, "visual generation worker stopped");
+        }
+    });
+}
+
+pub fn spawn_visual_generation_maintenance(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            match recover_stale_visual_jobs(&state.pool).await {
+                Ok(count) if count > 0 => {
+                    tracing::info!(count, "recovered stale visual generation jobs");
+                    spawn_visual_generation_worker(state.clone());
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    tracing::warn!(error = %err, "visual generation maintenance failed");
+                }
+            }
         }
     });
 }
@@ -606,13 +742,26 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
         .build()
         .context("building image generation HTTP client")?;
 
-    while let Some(job) = claim_visual_generation_job(&state.pool, &config).await? {
+    recover_stale_visual_jobs(&state.pool).await?;
+    loop {
+        let Some(job) = claim_visual_generation_job(&state.pool, &config).await? else {
+            let Some(delay) = next_visual_generation_wakeup(&state.pool).await? else {
+                break;
+            };
+            tokio::time::sleep(delay).await;
+            recover_stale_visual_jobs(&state.pool).await?;
+            continue;
+        };
         if let Err(err) = mark_asset_running(&state.pool, &job.asset.id, &config).await {
             tracing::warn!(asset_id = %job.asset.id, error = %err, "could not mark visual asset running");
             continue;
         }
         match generate_one_asset(&client, &state, &config, &job.asset).await {
             Ok(generated) => {
+                if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
+                    discard_generated_asset(&generated).await;
+                    continue;
+                }
                 if !visual_asset_exists(&state.pool, &job.asset.story_id, &job.asset.id).await? {
                     discard_generated_asset(&generated).await;
                     mark_generation_job_terminal(
@@ -641,6 +790,9 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 mark_generation_job_succeeded(&state.pool, job.id).await?;
             }
             Err(err) => {
+                if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
+                    continue;
+                }
                 mark_generation_job_failed_or_retry(&state.pool, &job, &err.to_string(), &config)
                     .await?;
             }
@@ -648,6 +800,33 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
     }
 
     Ok(())
+}
+
+async fn next_visual_generation_wakeup(pool: &SqlitePool) -> anyhow::Result<Option<Duration>> {
+    let locked_until: Option<String> = sqlx::query_scalar(
+        r#"SELECT locked_until FROM visual_generation_jobs
+           WHERE status IN ('queued', 'running') AND locked_until != ''
+           ORDER BY locked_until ASC
+           LIMIT 1"#,
+    )
+    .fetch_optional(pool)
+    .await
+    .context("loading next visual generation wakeup")?;
+    let Some(locked_until) = locked_until else {
+        return Ok(None);
+    };
+    let parsed = chrono::DateTime::parse_from_rfc3339(&locked_until)
+        .map(|value| value.with_timezone(&chrono::Utc))
+        .unwrap_or_else(|_| chrono::Utc::now());
+    let now = chrono::Utc::now();
+    if parsed <= now {
+        return Ok(Some(Duration::from_millis(250)));
+    }
+    let wait = (parsed - now)
+        .to_std()
+        .unwrap_or_else(|_| Duration::from_millis(250))
+        .min(Duration::from_secs(60));
+    Ok(Some(wait.max(Duration::from_millis(250))))
 }
 
 async fn generation_targets(
@@ -818,7 +997,7 @@ async fn mark_generation_job_failed_or_retry(
 
     let now = chrono::Utc::now().to_rfc3339();
     let retry_after =
-        (chrono::Utc::now() + chrono::Duration::seconds(30 * job.attempts.max(1))).to_rfc3339();
+        (chrono::Utc::now() + chrono::Duration::seconds(retry_delay_seconds(job))).to_rfc3339();
     sqlx::query(
         r#"UPDATE visual_generation_jobs
            SET status = 'queued',
@@ -847,6 +1026,12 @@ async fn mark_generation_job_failed_or_retry(
     .await
     .with_context(|| format!("marking visual asset {} queued after retry", job.asset.id))?;
     Ok(())
+}
+
+fn retry_delay_seconds(job: &VisualGenerationJob) -> i64 {
+    let exponent = (job.attempts.max(1) - 1).clamp(0, 4) as u32;
+    let base = 30_i64 * 2_i64.pow(exponent);
+    base + job.id.rem_euclid(11)
 }
 
 async fn mark_asset_running(
@@ -1146,6 +1331,45 @@ async fn visual_asset_exists(
             .fetch_optional(pool)
             .await?;
     Ok(exists.is_some())
+}
+
+async fn visual_generation_job_is_cancelled(
+    pool: &SqlitePool,
+    job_id: i64,
+) -> anyhow::Result<bool> {
+    let status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM visual_generation_jobs WHERE id = ?")
+            .bind(job_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(status.as_deref() == Some("cancelled"))
+}
+
+async fn referenced_visual_asset_paths(
+    pool: &SqlitePool,
+    story_id: &str,
+) -> anyhow::Result<HashSet<PathBuf>> {
+    let mut paths = HashSet::new();
+    let rows = sqlx::query(
+        r#"SELECT file_path FROM visual_assets
+           WHERE story_id = ? AND file_path != ''
+           UNION
+           SELECT file_path FROM visual_asset_versions
+           WHERE story_id = ? AND file_path != ''"#,
+    )
+    .bind(story_id)
+    .bind(story_id)
+    .fetch_all(pool)
+    .await
+    .with_context(|| format!("loading referenced visual asset paths for {story_id}"))?;
+
+    for row in rows {
+        let path = row_string(&row, "file_path");
+        if !path.trim().is_empty() {
+            paths.insert(PathBuf::from(path));
+        }
+    }
+    Ok(paths)
 }
 
 async fn discard_generated_asset(generated: &GeneratedAsset) {
@@ -1837,12 +2061,129 @@ mod tests {
         sqlx::query(
             r#"CREATE TABLE stories (
                 id TEXT PRIMARY KEY,
-                name TEXT NOT NULL DEFAULT ''
+                name TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                genre TEXT NOT NULL DEFAULT '',
+                tone TEXT NOT NULL DEFAULT '',
+                language TEXT NOT NULL DEFAULT 'en',
+                is_archived INTEGER NOT NULL DEFAULT 0,
+                revision INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
         )
         .execute(&pool)
         .await
         .expect("create stories");
+        for statement in [
+            r#"CREATE TABLE characters (
+                id TEXT PRIMARY KEY,
+                story_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                background TEXT NOT NULL DEFAULT '',
+                stats_json TEXT NOT NULL DEFAULT '{}',
+                traits_json TEXT NOT NULL DEFAULT '[]',
+                skills_json TEXT NOT NULL DEFAULT '[]',
+                inventory_json TEXT NOT NULL DEFAULT '[]',
+                known_recipes_json TEXT NOT NULL DEFAULT '[]',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+            r#"CREATE TABLE world_state (
+                id TEXT PRIMARY KEY,
+                story_id TEXT NOT NULL,
+                current_location TEXT NOT NULL DEFAULT '',
+                known_locations_json TEXT NOT NULL DEFAULT '[]',
+                global_events_json TEXT NOT NULL DEFAULT '[]',
+                faction_standings_json TEXT NOT NULL DEFAULT '{}',
+                story_hooks_json TEXT NOT NULL DEFAULT '[]',
+                world_reactions_json TEXT NOT NULL DEFAULT '[]',
+                investigation_board_json TEXT NOT NULL DEFAULT '{}',
+                project_clocks_json TEXT NOT NULL DEFAULT '{}',
+                player_guidance_json TEXT NOT NULL DEFAULT '[]',
+                fronts_json TEXT NOT NULL DEFAULT '[]',
+                character_timeline_json TEXT NOT NULL DEFAULT '{}',
+                scene_contract_json TEXT NOT NULL DEFAULT '{}',
+                current_chapter INTEGER NOT NULL DEFAULT 1,
+                current_turn INTEGER NOT NULL DEFAULT 3,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+            r#"CREATE TABLE sessions (
+                id TEXT PRIMARY KEY,
+                story_id TEXT NOT NULL,
+                started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                ended_at DATETIME,
+                summary TEXT NOT NULL DEFAULT ''
+            )"#,
+            r#"CREATE TABLE chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                story_id TEXT NOT NULL,
+                turn INTEGER NOT NULL DEFAULT 0,
+                role TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                message_type TEXT NOT NULL DEFAULT 'narrative',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+            r#"CREATE TABLE chapters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL DEFAULT 1,
+                title TEXT NOT NULL DEFAULT '',
+                summary TEXT NOT NULL DEFAULT '',
+                start_turn INTEGER NOT NULL DEFAULT 0,
+                end_turn INTEGER NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+            r#"CREATE TABLE achievements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                description TEXT NOT NULL DEFAULT '',
+                category TEXT NOT NULL DEFAULT '',
+                rarity TEXT NOT NULL DEFAULT '',
+                context TEXT NOT NULL DEFAULT '',
+                earned_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+            r#"CREATE TABLE npcs (
+                id TEXT PRIMARY KEY,
+                story_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                role TEXT NOT NULL DEFAULT '',
+                appearance TEXT NOT NULL DEFAULT '',
+                personality_json TEXT NOT NULL DEFAULT '{}',
+                relationship_json TEXT NOT NULL DEFAULT '{}',
+                disposition INTEGER NOT NULL DEFAULT 0,
+                is_alive INTEGER NOT NULL DEFAULT 1,
+                first_appeared_turn INTEGER NOT NULL DEFAULT 0,
+                last_seen_turn INTEGER NOT NULL DEFAULT 0,
+                can_help INTEGER NOT NULL DEFAULT 0,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+            r#"CREATE TABLE saves (
+                id TEXT PRIMARY KEY,
+                story_id TEXT NOT NULL,
+                name TEXT NOT NULL DEFAULT '',
+                turn INTEGER NOT NULL DEFAULT 0,
+                chapter INTEGER NOT NULL DEFAULT 0,
+                location TEXT NOT NULL DEFAULT '',
+                session_id TEXT NOT NULL DEFAULT '',
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+            r#"CREATE TABLE story_visual_profiles (
+                story_id TEXT PRIMARY KEY,
+                world_style_prompt TEXT NOT NULL DEFAULT '',
+                character_style_prompt TEXT NOT NULL DEFAULT '',
+                negative_prompt TEXT NOT NULL DEFAULT '',
+                palette TEXT NOT NULL DEFAULT '',
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )"#,
+        ] {
+            sqlx::query(statement)
+                .execute(&pool)
+                .await
+                .expect("create snapshot fixture table");
+        }
         sqlx::query(
             r#"CREATE TABLE visual_assets (
                 id TEXT PRIMARY KEY,
@@ -1867,10 +2208,24 @@ mod tests {
         .execute(&pool)
         .await
         .expect("create visual assets");
-        sqlx::query("INSERT INTO stories (id, name) VALUES ('story', 'Story')")
+        sqlx::query("INSERT INTO stories (id, name, genre, tone) VALUES ('story', 'Story', 'test', 'focused')")
             .execute(&pool)
             .await
             .expect("insert story");
+        sqlx::query(
+            "INSERT INTO characters (id, story_id, name) VALUES ('character', 'story', 'Tester')",
+        )
+        .execute(&pool)
+        .await
+        .expect("insert character");
+        sqlx::query("INSERT INTO world_state (id, story_id, current_location) VALUES ('world', 'story', 'Station')")
+            .execute(&pool)
+            .await
+            .expect("insert world");
+        sqlx::query("INSERT INTO sessions (id, story_id) VALUES ('session', 'story')")
+            .execute(&pool)
+            .await
+            .expect("insert session");
         sqlx::query(
             r#"INSERT INTO visual_assets (
                 id, story_id, kind, subject, entity_id, prompt, negative_prompt,
@@ -1883,9 +2238,9 @@ mod tests {
         .execute(&pool)
         .await
         .expect("insert asset");
-        ensure_visual_generation_job_schema(&pool)
+        ensure_visual_asset_version_schema(&pool)
             .await
-            .expect("job schema");
+            .expect("visual schemas");
         pool
     }
 
@@ -2179,6 +2534,125 @@ mod tests {
                 .await
                 .expect("job status");
         assert_eq!(status, "running");
+    }
+
+    #[test]
+    fn retry_delay_uses_exponential_backoff_with_bounded_jitter() {
+        let asset = VisualAsset {
+            id: "asset-location".to_string(),
+            story_id: "story".to_string(),
+            kind: "location".to_string(),
+            subject: "Station".to_string(),
+            entity_id: "world".to_string(),
+            prompt: String::new(),
+            negative_prompt: String::new(),
+            status: "pending".to_string(),
+            url: String::new(),
+            provider: String::new(),
+            source: String::new(),
+            error: String::new(),
+            turn: 1,
+            updated_at: String::new(),
+        };
+        let first = VisualGenerationJob {
+            id: 5,
+            asset: asset.clone(),
+            attempts: 1,
+            max_attempts: 3,
+        };
+        let second = VisualGenerationJob {
+            id: 5,
+            asset,
+            attempts: 2,
+            max_attempts: 3,
+        };
+
+        assert_eq!(retry_delay_seconds(&first), 35);
+        assert_eq!(retry_delay_seconds(&second), 65);
+    }
+
+    #[tokio::test]
+    async fn cancel_visual_generation_job_marks_job_cancelled_and_asset_pending() {
+        let pool = visual_job_pool().await;
+        let job_id: i64 = sqlx::query_scalar(
+            r#"INSERT INTO visual_generation_jobs (
+                asset_id, story_id, status, attempts, max_attempts, locked_until, provider
+            ) VALUES (?, ?, 'running', 1, 3, '', ?)
+            RETURNING id"#,
+        )
+        .bind("asset-location")
+        .bind("story")
+        .bind("test")
+        .fetch_one(&pool)
+        .await
+        .expect("insert job");
+        sqlx::query("UPDATE visual_assets SET status = 'running' WHERE id = ?")
+            .bind("asset-location")
+            .execute(&pool)
+            .await
+            .expect("mark asset running");
+
+        let response = cancel_visual_generation_job(&pool, "story", job_id)
+            .await
+            .expect("cancel job");
+        let job_status: String =
+            sqlx::query_scalar("SELECT status FROM visual_generation_jobs WHERE id = ?")
+                .bind(job_id)
+                .fetch_one(&pool)
+                .await
+                .expect("job status");
+        let asset = response
+            .assets
+            .iter()
+            .find(|asset| asset.id == "asset-location")
+            .expect("asset");
+
+        assert_eq!(job_status, "cancelled");
+        assert_eq!(asset.status, "pending");
+        assert_eq!(asset.error, "Generation cancelled.");
+    }
+
+    #[tokio::test]
+    async fn cleanup_visual_asset_files_removes_only_unreferenced_story_files() {
+        let pool = visual_job_pool().await;
+        let root = std::env::temp_dir().join(format!("oneday-assets-{}", uuid::Uuid::new_v4()));
+        let story_dir = root.join(slug("story"));
+        std::fs::create_dir_all(&story_dir).expect("create story dir");
+        let kept = story_dir.join("kept.png");
+        let stale = story_dir.join("stale.png");
+        std::fs::write(&kept, b"kept").expect("write kept");
+        std::fs::write(&stale, b"stale").expect("write stale");
+        sqlx::query("UPDATE visual_assets SET file_path = ?, url = ? WHERE id = ?")
+            .bind(kept.to_string_lossy().to_string())
+            .bind("/generated/assets/story/kept.png")
+            .bind("asset-location")
+            .execute(&pool)
+            .await
+            .expect("set referenced file");
+
+        let dry_run = cleanup_visual_asset_files(
+            &pool,
+            "story",
+            &root,
+            VisualAssetCleanupRequest { dry_run: true },
+        )
+        .await
+        .expect("dry cleanup");
+        assert_eq!(dry_run.deleted_files.len(), 1);
+        assert!(stale.exists());
+
+        let cleanup = cleanup_visual_asset_files(
+            &pool,
+            "story",
+            &root,
+            VisualAssetCleanupRequest { dry_run: false },
+        )
+        .await
+        .expect("cleanup");
+        assert_eq!(cleanup.deleted_files.len(), 1);
+        assert!(kept.exists());
+        assert!(!stale.exists());
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[tokio::test]

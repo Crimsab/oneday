@@ -1080,6 +1080,7 @@ mod tests {
                 visual_asset_dir: root.join("visual_assets"),
             },
             turn_events,
+            visual_worker: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 

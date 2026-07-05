@@ -52,6 +52,14 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(generate_visual_assets),
         )
         .route(
+            "/api/stories/:story_id/visual-assets/jobs/:job_id/cancel",
+            post(cancel_visual_generation_job),
+        )
+        .route(
+            "/api/stories/:story_id/visual-assets/cleanup",
+            post(cleanup_visual_asset_files),
+        )
+        .route(
             "/api/stories/:story_id/visual-profile",
             put(update_visual_profile),
         )
@@ -253,6 +261,31 @@ async fn generate_visual_assets(
 ) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
     Ok(Json(
         assets::generate_visual_assets(state.clone(), &story_id, payload).await?,
+    ))
+}
+
+async fn cancel_visual_generation_job(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, job_id)): Path<(String, i64)>,
+) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
+    Ok(Json(
+        assets::cancel_visual_generation_job(&state.pool, &story_id, job_id).await?,
+    ))
+}
+
+async fn cleanup_visual_asset_files(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<assets::VisualAssetCleanupRequest>,
+) -> Result<Json<assets::VisualAssetCleanupResponse>, ApiError> {
+    Ok(Json(
+        assets::cleanup_visual_asset_files(
+            &state.pool,
+            &story_id,
+            &state.paths.visual_asset_dir,
+            payload,
+        )
+        .await?,
     ))
 }
 
