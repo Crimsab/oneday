@@ -138,7 +138,7 @@ export function PanelDrawer({
   return (
     <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className={`overlay-panel ${overlay === "module" ? "module-overlay" : ""} ${overlay === "new-story" ? "new-story-overlay" : ""}`}
+        className={`overlay-panel ${overlay === "module" ? "module-overlay" : ""} ${overlay === "new-story" ? "new-story-overlay" : ""} ${overlay === "options" ? "options-overlay" : ""}`}
         role="dialog"
         aria-modal="true"
         onMouseDown={(event) => event.stopPropagation()}
@@ -1049,6 +1049,11 @@ function ModelRoutingSettings({
           </strong>
         </div>
       </div>
+      <p className="model-note">
+        Image generation keys stay in the gateway environment or shared service
+        config. The browser only shows whether a usable key or bridge is already
+        configured.
+      </p>
       <div className="settings-grid">
         <label>
           <span>Provider priority</span>

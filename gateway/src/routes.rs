@@ -268,9 +268,25 @@ async fn cancel_visual_generation_job(
     State(state): State<Arc<AppState>>,
     Path((story_id, job_id)): Path<(String, i64)>,
 ) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
-    Ok(Json(
-        assets::cancel_visual_generation_job(&state.pool, &story_id, job_id).await?,
-    ))
+    let response = assets::cancel_visual_generation_job(&state.pool, &story_id, job_id).await?;
+    let asset_id = response
+        .jobs
+        .iter()
+        .find(|job| job.id == job_id)
+        .map(|job| job.asset_id.clone())
+        .unwrap_or_default();
+    emit_turn_stream(
+        &state,
+        TurnStreamEvent::visual_asset(
+            &story_id,
+            "asset.cancelled",
+            &asset_id,
+            Some(job_id),
+            "cancelled",
+            "Visual asset generation cancelled.",
+        ),
+    );
+    Ok(Json(response))
 }
 
 async fn cleanup_visual_asset_files(

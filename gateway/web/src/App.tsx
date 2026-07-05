@@ -42,6 +42,7 @@ import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import {
   appendTurnEvent,
+  isVisualAssetTurnEvent,
   parseStorySnapshotEvent,
   shouldSuppressStreamingDelta,
   streamingDeltaText,
@@ -80,6 +81,14 @@ import type {
 import { visualCatalog } from "./visualAssets";
 import { visualPollingDelayMs } from "./visualJobs";
 
+const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
+
+function initialOverlayFromLocation(): OverlayKind {
+  if (typeof window === "undefined") return null;
+  const overlay = new URLSearchParams(window.location.search).get("overlay") as OverlayKind;
+  return deepLinkOverlays.has(overlay) ? overlay : null;
+}
+
 function App() {
   const [stories, setStories] = useState<StorySummary[]>([]);
   const [storyId, setStoryId] = useState("");
@@ -90,7 +99,7 @@ function App() {
   const [selectedTab, setSelectedTab] = useState<ModuleTab>("history");
   const [moduleFocusId, setModuleFocusId] = useState<string | null>(null);
   const [moduleOverlayTab, setModuleOverlayTab] = useState<ModuleTab | null>(null);
-  const [overlay, setOverlay] = useState<OverlayKind>(null);
+  const [overlay, setOverlay] = useState<OverlayKind>(() => initialOverlayFromLocation());
   const [saveFilter, setSaveFilter] = useState("");
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState("action");
@@ -227,6 +236,11 @@ function App() {
         return;
       }
       setLiveTurnEvents((items) => appendTurnEvent(items, liveEvent));
+      if (isVisualAssetTurnEvent(liveEvent)) {
+        void refreshVisualAssets(storyId);
+        setSync(paused ? "Paused" : "Live");
+        return;
+      }
       setPendingTurn((pending) => {
         if (!pending) return pending;
         const delta = streamingDeltaText(liveEvent);

@@ -25,12 +25,24 @@ export function turnEventDetail(event: TurnStreamEvent): string {
     case "choices.updated":
       return "Choices refreshed.";
     case "asset.queued":
-      return "Image generation cue queued.";
+      return event.message || "Image generation queued.";
+    case "asset.running":
+      return event.message || "Image generation started.";
+    case "asset.ready":
+      return event.message || "Generated image is ready.";
+    case "asset.failed":
+      return event.message || "Image generation failed.";
+    case "asset.cancelled":
+      return event.message || "Image generation cancelled.";
     case "turn.committed":
       return "Turn committed to the shared story.";
     default:
       return event.message || event.event_type || "Live engine event received.";
   }
+}
+
+export function isVisualAssetTurnEvent(event: TurnStreamEvent): boolean {
+  return typeof event.event_type === "string" && event.event_type.startsWith("asset.");
 }
 
 export function streamingDeltaText(event: TurnStreamEvent): string {
@@ -102,6 +114,14 @@ function messageForEventType(eventType: string): string {
       return "Canonical state changed.";
     case "asset.queued":
       return "Visual asset request queued.";
+    case "asset.running":
+      return "Visual asset generation started.";
+    case "asset.ready":
+      return "Visual asset is ready.";
+    case "asset.failed":
+      return "Visual asset generation failed.";
+    case "asset.cancelled":
+      return "Visual asset generation cancelled.";
     case "turn.committed":
       return "Turn committed to the shared story.";
     default:
