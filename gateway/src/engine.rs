@@ -400,8 +400,35 @@ pub struct ModelRoutingSettings {
     pub ascii_models: Vec<String>,
     #[serde(default)]
     pub embedding_providers: Vec<String>,
+    pub image_generation: ImageGenerationSetting,
     pub active: ModelRoutingActive,
     pub tts_status: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ImageGenerationSetting {
+    pub provider: String,
+    pub base_url: String,
+    pub api_key_configured: bool,
+    pub model: String,
+    pub openclaw_bridge_url: String,
+    pub default_size: String,
+    pub location_size: String,
+    pub character_size: String,
+    pub default_resolution: String,
+    pub location_resolution: String,
+    pub character_resolution: String,
+    pub default_aspect_ratio: String,
+    pub location_aspect_ratio: String,
+    pub character_aspect_ratio: String,
+    pub quality: String,
+    pub output_format: String,
+    pub background: String,
+    pub timeout_seconds: i64,
+    pub auto_generate: bool,
+    pub append_negative_prompt: bool,
+    pub available: bool,
+    pub status: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -422,9 +449,33 @@ pub struct ModelRoutingUpdate {
     pub repair_model: Option<String>,
     pub repair_fallback_models: Option<Vec<String>>,
     pub image_model: Option<String>,
+    pub image_generation: Option<ImageGenerationUpdate>,
     pub ascii_model: Option<String>,
     pub embedding_provider: Option<String>,
     pub embedding_model: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ImageGenerationUpdate {
+    pub provider: Option<String>,
+    pub base_url: Option<String>,
+    pub model: Option<String>,
+    pub openclaw_bridge_url: Option<String>,
+    pub default_size: Option<String>,
+    pub location_size: Option<String>,
+    pub character_size: Option<String>,
+    pub default_resolution: Option<String>,
+    pub location_resolution: Option<String>,
+    pub character_resolution: Option<String>,
+    pub default_aspect_ratio: Option<String>,
+    pub location_aspect_ratio: Option<String>,
+    pub character_aspect_ratio: Option<String>,
+    pub quality: Option<String>,
+    pub output_format: Option<String>,
+    pub background: Option<String>,
+    pub timeout_seconds: Option<i64>,
+    pub auto_generate: Option<bool>,
+    pub append_negative_prompt: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

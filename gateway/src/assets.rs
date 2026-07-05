@@ -1434,7 +1434,7 @@ fn image_output_format(config: &ImageGenerationConfig) -> String {
 
 fn openclaw_payload_model(config: &ImageGenerationConfig) -> Option<String> {
     let model = config.model.trim();
-    if model.contains('/') {
+    if !model.is_empty() {
         Some(model.to_string())
     } else {
         None
@@ -1480,13 +1480,13 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         model,
         provider: first_env(&["ONEDAY_IMAGEGEN_PROVIDER", "ONEDAY_IMAGE_PROVIDER"])
             .or_else(|| image_config_string(image_generation, |config| &config.provider))
-            .unwrap_or_else(|| "openai-compatible".to_string()),
+            .unwrap_or_else(|| "openclaw-bridge".to_string()),
         openclaw_bridge_url: first_env(&[
             "ONEDAY_IMAGEGEN_OPENCLAW_URL",
             "ONEDAY_OPENCLAW_IMAGEGEN_URL",
         ])
         .or_else(|| image_config_string(image_generation, |config| &config.openclaw_bridge_url))
-        .unwrap_or_default(),
+        .unwrap_or_else(|| "http://openclaw-imagegen:8099/generate".to_string()),
         default_size: first_env(&["ONEDAY_IMAGEGEN_SIZE", "ONEDAY_IMAGE_SIZE"])
             .or_else(|| image_config_string(image_generation, |config| &config.default_size))
             .unwrap_or_else(|| "1024x1024".to_string()),
@@ -1534,11 +1534,11 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         timeout_seconds: first_env(&["ONEDAY_IMAGEGEN_TIMEOUT_SECONDS"])
             .and_then(|value| value.parse::<u64>().ok())
             .or_else(|| image_generation.and_then(|config| config.timeout_seconds))
-            .unwrap_or(360),
+            .unwrap_or(180),
         auto_generate: first_env(&["ONEDAY_IMAGEGEN_AUTOGENERATE"])
             .map(|value| parse_bool(&value))
             .or_else(|| image_generation.and_then(|config| config.auto_generate))
-            .unwrap_or(true),
+            .unwrap_or(false),
         append_negative_prompt: first_env(&["ONEDAY_IMAGEGEN_APPEND_NEGATIVE_PROMPT"])
             .map(|value| parse_bool(&value))
             .or_else(|| image_generation.and_then(|config| config.append_negative_prompt))
@@ -1569,7 +1569,7 @@ fn image_generation_available(config: &ImageGenerationConfig) -> bool {
     if is_openclaw_bridge(config) {
         return !config.openclaw_bridge_url.trim().is_empty();
     }
-    !config.api_key.trim().is_empty()
+    !config.base_url.trim().is_empty() && !config.api_key.trim().is_empty()
 }
 
 fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
@@ -2371,6 +2371,37 @@ mod tests {
     }
 
     #[test]
+    fn openclaw_bridge_payload_accepts_simple_model_names() {
+        let config = ImageGenerationConfig {
+            base_url: String::new(),
+            api_key: String::new(),
+            model: "gpt-image-2".to_string(),
+            provider: "openclaw-bridge".to_string(),
+            openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
+            default_size: "1024x1024".to_string(),
+            location_size: "1536x1024".to_string(),
+            character_size: "1024x1024".to_string(),
+            default_resolution: String::new(),
+            location_resolution: String::new(),
+            character_resolution: String::new(),
+            default_aspect_ratio: String::new(),
+            location_aspect_ratio: String::new(),
+            character_aspect_ratio: String::new(),
+            quality: String::new(),
+            output_format: "png".to_string(),
+            background: String::new(),
+            timeout_seconds: 10,
+            auto_generate: true,
+            append_negative_prompt: true,
+        };
+
+        assert_eq!(
+            openclaw_payload_model(&config).as_deref(),
+            Some("gpt-image-2")
+        );
+    }
+
+    #[test]
     fn openai_compatible_provider_requires_api_key() {
         let config = ImageGenerationConfig {
             base_url: "http://example.test/v1".to_string(),
@@ -2395,6 +2426,34 @@ mod tests {
             append_negative_prompt: true,
         };
         assert!(!is_openclaw_bridge(&config));
+        assert!(!image_generation_available(&config));
+    }
+
+    #[test]
+    fn openai_compatible_provider_requires_base_url() {
+        let config = ImageGenerationConfig {
+            base_url: String::new(),
+            api_key: "key".to_string(),
+            model: "test-image-model".to_string(),
+            provider: "openai-compatible".to_string(),
+            openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
+            default_size: "1024x1024".to_string(),
+            location_size: "1536x1024".to_string(),
+            character_size: "1024x1024".to_string(),
+            default_resolution: String::new(),
+            location_resolution: String::new(),
+            character_resolution: String::new(),
+            default_aspect_ratio: String::new(),
+            location_aspect_ratio: String::new(),
+            character_aspect_ratio: String::new(),
+            quality: String::new(),
+            output_format: "png".to_string(),
+            background: String::new(),
+            timeout_seconds: 10,
+            auto_generate: true,
+            append_negative_prompt: true,
+        };
+
         assert!(!image_generation_available(&config));
     }
 
