@@ -170,6 +170,10 @@ pub async fn update_story(
     story_id: &str,
     update: StoryUpdate,
 ) -> anyhow::Result<StorySummary> {
+    let prompt_affecting = update.name.is_some()
+        || update.description.is_some()
+        || update.genre.is_some()
+        || update.tone.is_some();
     let name = normalize_story_name(update.name)?;
     let description = update.description.map(|value| value.trim().to_string());
     let genre = update.genre.map(|value| value.trim().to_string());
@@ -177,6 +181,7 @@ pub async fn update_story(
     let archived = update
         .is_archived
         .map(|value| if value { 1_i64 } else { 0_i64 });
+    let now = chrono::Utc::now().to_rfc3339();
     let result = sqlx::query(
         r#"UPDATE stories
            SET name = COALESCE(?, name),
@@ -184,6 +189,7 @@ pub async fn update_story(
                genre = COALESCE(?, genre),
                tone = COALESCE(?, tone),
                is_archived = COALESCE(?, is_archived),
+               revision = CASE WHEN ? = 1 THEN revision + 1 ELSE revision END,
                updated_at = ?
            WHERE id = ?"#,
     )
@@ -192,7 +198,8 @@ pub async fn update_story(
     .bind(genre)
     .bind(tone)
     .bind(archived)
-    .bind(chrono::Utc::now().to_rfc3339())
+    .bind(if prompt_affecting { 1_i64 } else { 0_i64 })
+    .bind(now)
     .bind(story_id)
     .execute(pool)
     .await?;
@@ -654,4 +661,110 @@ fn json_field(row: &sqlx::sqlite::SqliteRow, key: &str, fallback: Value) -> Valu
         return fallback;
     }
     serde_json::from_str(&raw).unwrap_or(fallback)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    async fn story_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("memory sqlite pool");
+        sqlx::query(
+            r#"CREATE TABLE stories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                genre TEXT NOT NULL DEFAULT '',
+                tone TEXT NOT NULL DEFAULT '',
+                language TEXT NOT NULL DEFAULT '',
+                is_archived INTEGER NOT NULL DEFAULT 0,
+                revision INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create stories table");
+        sqlx::query(
+            r#"INSERT INTO stories (
+                id, name, description, genre, tone, language, is_archived, revision, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+        )
+        .bind("story-1")
+        .bind("Old Name")
+        .bind("Old description")
+        .bind("mystery")
+        .bind("tense")
+        .bind("en")
+        .bind(0_i64)
+        .bind(7_i64)
+        .bind("2026-01-01T00:00:00Z")
+        .execute(&pool)
+        .await
+        .expect("insert story");
+        pool
+    }
+
+    fn story_update() -> StoryUpdate {
+        StoryUpdate {
+            name: None,
+            description: None,
+            genre: None,
+            tone: None,
+            is_archived: None,
+        }
+    }
+
+    async fn revision(pool: &SqlitePool, story_id: &str) -> i64 {
+        sqlx::query_scalar("SELECT revision FROM stories WHERE id = ?")
+            .bind(story_id)
+            .fetch_one(pool)
+            .await
+            .expect("story revision")
+    }
+
+    #[tokio::test]
+    async fn update_story_bumps_revision_for_prompt_metadata() {
+        let pool = story_pool().await;
+        let mut update = story_update();
+        update.name = Some(" New Name ".to_string());
+        update.description = Some(" sharper premise ".to_string());
+
+        let story = update_story(&pool, "story-1", update)
+            .await
+            .expect("update story");
+
+        assert_eq!(story.name, "New Name");
+        assert_eq!(story.description, "sharper premise");
+        assert_eq!(revision(&pool, "story-1").await, 8);
+    }
+
+    #[tokio::test]
+    async fn update_story_archive_only_does_not_bump_revision() {
+        let pool = story_pool().await;
+        let mut update = story_update();
+        update.is_archived = Some(true);
+
+        let story = update_story(&pool, "story-1", update)
+            .await
+            .expect("archive story");
+
+        assert!(story.is_archived);
+        assert_eq!(revision(&pool, "story-1").await, 7);
+    }
+
+    #[tokio::test]
+    async fn update_story_missing_story_is_not_found_error() {
+        let pool = story_pool().await;
+        let err = update_story(&pool, "missing-story", story_update())
+            .await
+            .expect_err("missing story should fail");
+
+        assert!(err.to_string().contains("story not found: missing-story"));
+    }
 }
