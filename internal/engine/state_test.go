@@ -1,8 +1,10 @@
 package engine
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -472,6 +474,36 @@ func TestApplyStateChangesReportsUnknownKeysInDiagnostics(t *testing.T) {
 	}
 	if applied[0].Field != "unknown_state_change" || applied[0].New != "skil_xp" {
 		t.Fatalf("diagnostic = %+v, want unknown_state_change for skil_xp", applied[0])
+	}
+}
+
+func TestApplyStateChangesDefersNarratorManagedKeysWithoutDiagnostics(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+	story := &storage.Story{ID: "test-story-id", SettingJSON: `{}`}
+	changes := map[string]interface{}{
+		"world_location_add": "Dock 7",
+		"world_event_add":    "The fugitive bell rang under the wharf.",
+	}
+
+	applied, err := ApplyStateChanges(changes, char, world, nil, story.ID, 4)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges error: %v", err)
+	}
+	for _, change := range applied {
+		if change.Field == "unknown_state_change" {
+			t.Fatalf("deferred narrator key produced unknown diagnostic: %+v", change)
+		}
+	}
+
+	if err := ApplyNarratorStateChanges(context.Background(), changes, nil, story, world, nil); err != nil {
+		t.Fatalf("ApplyNarratorStateChanges error: %v", err)
+	}
+	if !strings.Contains(world.KnownLocationsJSON, "Dock 7") {
+		t.Fatalf("KnownLocationsJSON = %q, want Dock 7", world.KnownLocationsJSON)
+	}
+	if !strings.Contains(world.GlobalEventsJSON, "fugitive bell") {
+		t.Fatalf("GlobalEventsJSON = %q, want fugitive bell event", world.GlobalEventsJSON)
 	}
 }
 
