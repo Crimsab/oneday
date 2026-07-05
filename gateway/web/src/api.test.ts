@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiRequestError, createStory, generateVisualAssets, getStories } from "./api";
+import { ApiRequestError, createStory, deleteStory, generateVisualAssets, getStories, updateStory } from "./api";
 
 const originalFetch = globalThis.fetch;
 
@@ -62,6 +62,36 @@ describe("api request handling", () => {
       expect.objectContaining({
         method: "POST",
         body: expect.stringContaining("\"asset_ids\":[\"asset-1\"]"),
+      }),
+    );
+  });
+
+  it("patches story metadata and archive state", async () => {
+    mockFetch(new Response(JSON.stringify({ id: "story-1", name: "Renamed", is_archived: true }), { status: 200 }));
+
+    await expect(updateStory("story-1", { name: "Renamed", is_archived: true })).resolves.toMatchObject({
+      id: "story-1",
+      name: "Renamed",
+      is_archived: true,
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.stringContaining("\"is_archived\":true"),
+      }),
+    );
+  });
+
+  it("deletes stories through the gateway", async () => {
+    mockFetch(new Response(JSON.stringify({ story_id: "story-1" }), { status: 200 }));
+
+    await expect(deleteStory("story-1")).resolves.toEqual({ story_id: "story-1" });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story-1",
+      expect.objectContaining({
+        method: "DELETE",
       }),
     );
   });

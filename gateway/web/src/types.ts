@@ -1,5 +1,5 @@
 export type SyncState =
-  "Idle" | "Loading" | "Live" | "Sending" | "Paused" | "Reconnecting" | "Error";
+  "Idle" | "Loading" | "Live" | "Sending" | "Saving" | "Paused" | "Reconnecting" | "Error";
 
 export type ModuleTab =
   | "history"
@@ -104,6 +104,18 @@ export interface StorySummary {
   language: string;
   is_archived: boolean;
   updated_at: string;
+}
+
+export interface StoryUpdatePayload {
+  name?: string;
+  description?: string;
+  genre?: string;
+  tone?: string;
+  is_archived?: boolean;
+}
+
+export interface StoryDeleteResponse {
+  story_id: string;
 }
 
 export interface RecordView {

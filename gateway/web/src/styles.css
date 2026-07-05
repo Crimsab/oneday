@@ -564,12 +564,23 @@ input:disabled {
   width: 100%;
   min-width: 0;
   display: grid;
-  gap: 6px;
-  padding: 16px 18px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 0;
   border: 0;
   border-bottom: 1px solid var(--line-soft);
   border-left: 3px solid transparent;
   border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.story-select {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  padding: 16px 8px 16px 15px;
+  border: 0;
   background: transparent;
   text-align: left;
 }
@@ -600,19 +611,81 @@ input:disabled {
   background: linear-gradient(90deg, rgba(245, 184, 63, 0.12), rgba(255, 255, 255, 0.015));
 }
 
-.story-row.active::after {
-  content: "";
-  position: absolute;
-  top: 28px;
-  right: 20px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
 .story-row.active strong {
   color: var(--accent);
+}
+
+.story-row.archived {
+  opacity: 0.72;
+}
+
+.story-row-actions {
+  display: flex;
+  align-items: start;
+  gap: 3px;
+  padding: 12px 8px 0 0;
+}
+
+.story-row-actions button {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--faint);
+}
+
+.story-row-actions button:hover {
+  border-color: var(--line);
+  color: var(--accent);
+}
+
+.story-row-edit {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 9px;
+  padding: 12px;
+}
+
+.story-row-edit label {
+  display: grid;
+  gap: 5px;
+}
+
+.story-row-edit label span {
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.story-row-edit input,
+.story-row-edit textarea {
+  width: 100%;
+  min-width: 0;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--panel-strong) 74%, #05090b);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  padding: 8px;
+}
+
+.story-edit-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.story-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .module-nav {
