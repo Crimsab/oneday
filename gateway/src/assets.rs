@@ -805,6 +805,24 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             tracing::warn!(asset_id = %job.asset.id, error = %err, "could not mark visual asset running");
             continue;
         }
+        let mut generation_trace = match crate::telemetry::start_image_generation(
+            &state.pool,
+            &job.asset.story_id,
+            job.id,
+            job.attempts,
+            &job.asset.id,
+            &job.asset.prompt,
+            &config.provider,
+            &config.model,
+        )
+        .await
+        {
+            Ok(trace) => Some(trace),
+            Err(err) => {
+                tracing::warn!(job_id = job.id, error = %err, "could not start image generation telemetry");
+                None
+            }
+        };
         emit_visual_asset_event(
             &state,
             "asset.running",
@@ -816,6 +834,9 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
         match generate_one_asset(&client, &state, &config, &job.asset).await {
             Ok(generated) => {
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
+                    if let Some(trace) = generation_trace.take() {
+                        let _ = trace.cancel(&state.pool).await;
+                    }
                     discard_generated_asset(&generated).await;
                     emit_visual_asset_event(
                         &state,
@@ -826,6 +847,11 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                         format!("Image generation cancelled for {}.", job.asset.subject),
                     );
                     continue;
+                }
+                if let Some(trace) = generation_trace.take() {
+                    if let Err(err) = trace.succeed(&state.pool, &config.model).await {
+                        tracing::warn!(job_id = job.id, error = %err, "could not finish image generation telemetry");
+                    }
                 }
                 if !visual_asset_exists(&state.pool, &job.asset.story_id, &job.asset.id).await? {
                     discard_generated_asset(&generated).await;
@@ -864,6 +890,9 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             }
             Err(err) => {
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
+                    if let Some(trace) = generation_trace.take() {
+                        let _ = trace.cancel(&state.pool).await;
+                    }
                     emit_visual_asset_event(
                         &state,
                         "asset.cancelled",
@@ -876,6 +905,11 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 }
                 let terminal = job.attempts >= job.max_attempts;
                 let error = err.to_string();
+                if let Some(trace) = generation_trace.take() {
+                    let _ = trace
+                        .fail(&state.pool, crate::telemetry::classify_image_error(&error))
+                        .await;
+                }
                 mark_generation_job_failed_or_retry(&state.pool, &job, &error, &config).await?;
                 if terminal {
                     emit_visual_asset_event(

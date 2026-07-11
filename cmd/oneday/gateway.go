@@ -300,7 +300,8 @@ func runGatewayStoryEnhance(ctx context.Context, cfg config.Config, router *ai.R
 	if maxTokens == 0 || maxTokens > 700 {
 		maxTokens = 700
 	}
-	resp, err := router.Complete(ctx, ai.Request{
+	enhanceCtx := ai.WithTelemetry(ctx, ai.TelemetryMetadata{Stage: "story_enhance", PromptProfile: "story_enhance", PromptTemplate: "v1", SafeMetadata: map[string]string{"wizard_stage": strings.TrimSpace(req.Stage)}})
+	resp, err := router.Complete(enhanceCtx, ai.Request{
 		Messages: []ai.Message{
 			{
 				Role:    ai.RoleSystem,

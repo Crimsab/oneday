@@ -12,6 +12,7 @@ import (
 	"github.com/crimsab/oneday/internal/ai/prompts"
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
+	"github.com/google/uuid"
 )
 
 // ChapterManager handles the chapter lifecycle: creation, transitions, and summaries.
@@ -216,6 +217,19 @@ func (cm *ChapterManager) generateChapterSummary(ctx context.Context, startTurn,
 	if cm.router == nil {
 		return "", nil
 	}
+	metadata := ai.TelemetryFromContext(ctx)
+	if metadata.TraceID == "" {
+		metadata.TraceID = uuid.NewString()
+	}
+	metadata.Stage = "chapter_summary"
+	metadata.PromptProfile = "chapter_summary"
+	metadata.PromptTemplate = "v1"
+	metadata.StoryID = cm.storyID
+	if head, err := cm.db.GetActiveTimeline(cm.storyID); err == nil {
+		metadata.BranchID = head.Branch.ID
+		metadata.SourceCommitID = head.Commit.ID
+	}
+	ctx = ai.WithTelemetry(ctx, metadata)
 
 	// Fetch messages for this chapter's turn range.
 	msgs, err := cm.db.GetStoryMessagesByTurnRange(cm.storyID, startTurn, endTurn)

@@ -18,6 +18,7 @@ import (
 	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
+	"github.com/google/uuid"
 )
 
 // AutosaveCompleteMsg is sent via Bubbletea when an autosave finishes.
@@ -490,7 +491,8 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 		return out, nil
 	}
 
-	stream, providerName, err := n.router.Stream(ctx, prep.req)
+	streamCtx := ai.WithTelemetry(ctx, telemetryStage(prep.telemetry, "narrator", ""))
+	stream, providerName, err := n.router.Stream(streamCtx, prep.req)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -506,6 +508,7 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 		var model string
 		var usage ai.Usage
 		var firstTokenMs int64
+		var telemetry ai.TelemetryRef
 
 		for chunk := range stream {
 			if chunk.Error != nil {
@@ -514,6 +517,9 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 			}
 			if chunk.Model != "" {
 				model = chunk.Model
+			}
+			if !chunk.Telemetry.Empty() {
+				telemetry = chunk.Telemetry
 			}
 			if chunk.Usage.TotalTokens > 0 || chunk.Usage.CostUSD > 0 {
 				usage = chunk.Usage
@@ -532,6 +538,7 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 					Provider:  providerName,
 					LatencyMs: time.Since(start).Milliseconds(),
 					Usage:     usage,
+					Telemetry: telemetry,
 				}
 				if err := lock.Renew(3 * time.Minute); err != nil {
 					out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
@@ -576,6 +583,35 @@ type preparedTurn struct {
 	sceneProgression    *SceneProgressionGuidance
 	challengeInstance   contracts.ChallengeInstance
 	challengeResolution contracts.ChallengeResolution
+	telemetry           ai.TelemetryMetadata
+}
+
+func telemetryStage(base ai.TelemetryMetadata, stage, parentRunID string) ai.TelemetryMetadata {
+	base.Stage = stage
+	base.PromptProfile = stage
+	base.PromptTemplate = "v1"
+	base.ParentRunID = parentRunID
+	return base
+}
+
+func (n *Narrator) telemetryContext(ctx context.Context, stage, parentRunID string) context.Context {
+	base := ai.TelemetryFromContext(ctx)
+	if base.TraceID == "" {
+		base.TraceID = uuid.NewString()
+	}
+	if n != nil && n.story != nil {
+		base.StoryID = n.story.ID
+		if base.BranchID == "" {
+			base.BranchID = n.story.ActiveBranchID
+		}
+	}
+	if n != nil && n.db != nil && base.SourceCommitID == "" && base.StoryID != "" {
+		if head, err := n.db.GetActiveTimeline(base.StoryID); err == nil {
+			base.BranchID = head.Branch.ID
+			base.SourceCommitID = head.Commit.ID
+		}
+	}
+	return ai.WithTelemetry(ctx, telemetryStage(base, stage, parentRunID))
 }
 
 func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn, error) {
@@ -590,6 +626,17 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 	storyRevision := int64(0)
 	if n.story != nil {
 		storyRevision = n.story.Revision
+	}
+	head, err := n.db.GetActiveTimeline(n.story.ID)
+	if err != nil {
+		return nil, fmt.Errorf("loading telemetry lineage: %w", err)
+	}
+	turnTelemetry := ai.TelemetryMetadata{
+		TraceID:        uuid.NewString(),
+		StoryID:        n.story.ID,
+		BranchID:       head.Branch.ID,
+		SourceCommitID: head.Commit.ID,
+		SafeMetadata:   map[string]string{"session_id": n.SessionID()},
 	}
 
 	// Load recent messages from DB to build context.
@@ -620,7 +667,8 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 	var preflightUsage ai.Usage
 	var preflightLatency int64
 	if signal := detectNarrativeMomentumSignal(n.world, recentMsgs); signal != nil {
-		guidance, usage, latency, err := n.evaluateSceneProgression(ctx, recentMsgs, signal)
+		judgeCtx := ai.WithTelemetry(ctx, telemetryStage(turnTelemetry, "scene_judge", ""))
+		guidance, usage, latency, err := n.evaluateSceneProgression(judgeCtx, recentMsgs, signal)
 		preflightUsage = mergeUsage(preflightUsage, usage)
 		preflightLatency += latency
 		if err == nil && guidance != nil {
@@ -669,6 +717,7 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 		sceneProgression:    sceneProgression,
 		challengeInstance:   instance,
 		challengeResolution: *resolution,
+		telemetry:           turnTelemetry,
 		req: ai.Request{
 			Messages:       messages,
 			Temperature:    n.genCfg.Temperature,
@@ -719,7 +768,8 @@ func (n *Narrator) completeTurnResponse(ctx context.Context, prep *preparedTurn)
 		return ai.Response{}, fmt.Errorf("missing prepared turn")
 	}
 
-	resp, err := n.router.Complete(ctx, prep.req)
+	narratorCtx := ai.WithTelemetry(ctx, telemetryStage(prep.telemetry, "narrator", ""))
+	resp, err := n.router.Complete(narratorCtx, prep.req)
 	if err != nil {
 		return ai.Response{}, err
 	}
@@ -728,7 +778,8 @@ func (n *Narrator) completeTurnResponse(ctx context.Context, prep *preparedTurn)
 		return resp, nil
 	}
 
-	return n.rerollStalledNarrativeDraft(ctx, prep, resp)
+	rerollCtx := ai.WithTelemetry(ctx, telemetryStage(prep.telemetry, "narrative_reroll", resp.Telemetry.RunID))
+	return n.rerollStalledNarrativeDraft(rerollCtx, prep, resp)
 }
 
 func (n *Narrator) finalizeTurn(
@@ -758,9 +809,13 @@ func (n *Narrator) finalizeTurn(
 	// Parse the structured response.
 	narrative, err := parseNarrativeFromAI(resp.Content)
 	if err != nil {
-		repaired, repairErr := n.repairNarrativeResponse(ctx, input, resp.Content, err)
+		repairCtx := ai.WithTelemetry(ctx, telemetryStage(prep.telemetry, "narrative_repair", resp.Telemetry.RunID))
+		repaired, repairResp, repairErr := n.repairNarrativeResponse(repairCtx, input, resp.Content, err)
 		if repairErr == nil {
 			narrative = repaired
+			resp.Telemetry = repairResp.Telemetry
+			resp.Model = firstNonEmpty(repairResp.Model, resp.Model)
+			resp.Provider = firstNonEmpty(repairResp.Provider, resp.Provider)
 		} else {
 			// If repair also fails, wrap the raw text as a minimal narrative.
 			narrative = &NarrativeResponse{
@@ -775,12 +830,16 @@ func (n *Narrator) finalizeTurn(
 	}
 	normalizeNarrativeResponse(narrative)
 	if continuityErr := detectNarrativeContinuityIssue(n.story, narrative); continuityErr != nil {
-		repaired, repairErr := n.repairNarrativeResponse(ctx, input, resp.Content, continuityErr)
+		repairCtx := ai.WithTelemetry(ctx, telemetryStage(prep.telemetry, "narrative_repair", resp.Telemetry.RunID))
+		repaired, repairResp, repairErr := n.repairNarrativeResponse(repairCtx, input, resp.Content, continuityErr)
 		if repairErr != nil {
 			restoreState()
 			return nil, fmt.Errorf("continuity guard blocked response: %w", continuityErr)
 		}
 		narrative = repaired
+		resp.Telemetry = repairResp.Telemetry
+		resp.Model = firstNonEmpty(repairResp.Model, resp.Model)
+		resp.Provider = firstNonEmpty(repairResp.Provider, resp.Provider)
 		normalizeNarrativeResponse(narrative)
 		if remaining := detectNarrativeContinuityIssue(n.story, narrative); remaining != nil {
 			restoreState()
@@ -860,7 +919,8 @@ func (n *Narrator) finalizeTurn(
 		if title == "" {
 			title = fmt.Sprintf("Chapter %d", n.world.CurrentChapter)
 		}
-		if transition, err := n.chapters.PrepareChapterEnd(ctx, prep.currentTurn, title); err != nil {
+		chapterCtx := ai.WithTelemetry(ctx, telemetryStage(prep.telemetry, "chapter_summary", resp.Telemetry.RunID))
+		if transition, err := n.chapters.PrepareChapterEnd(chapterCtx, prep.currentTurn, title); err != nil {
 			_ = err // non-fatal: chapter management failure does not break gameplay
 		} else {
 			chapterTransition = transition
@@ -906,11 +966,14 @@ func (n *Narrator) finalizeTurn(
 			ChallengeInstance:   narrative.ChallengeInstance,
 			ChallengeResolution: narrative.ChallengeResolution,
 		},
-		AIModel:    resp.Model,
-		AILatency:  n.lastLatency,
-		AITTFT:     n.lastTTFT,
-		AIUsage:    n.lastUsage,
-		AIStreamed: n.lastStreamed,
+		AIModel:           resp.Model,
+		AIProvider:        resp.Provider,
+		AILatency:         n.lastLatency,
+		AITTFT:            n.lastTTFT,
+		AIUsage:           n.lastUsage,
+		AIStreamed:        n.lastStreamed,
+		GenerationRunID:   resp.Telemetry.RunID,
+		GenerationTraceID: resp.Telemetry.TraceID,
 	}
 	settingChanged := storySnapshot.SettingJSON != n.story.SettingJSON
 	var committedRevision int64
@@ -1378,13 +1441,16 @@ func (n *Narrator) GenerateAmbientASCII(ctx context.Context, turn int, base *Nar
 		ResponseFormat: ai.ASCIIArtResponseFormat(),
 	}
 
-	resp, err := n.router.Complete(ctx, req)
+	asciiCtx := n.telemetryContext(ctx, "ascii_art", "")
+	resp, err := n.router.Complete(asciiCtx, req)
 	if err != nil {
 		configuredModel := strings.TrimSpace(req.Model)
 		if configuredModel != "" {
 			fallbackReq := req
 			fallbackReq.Model = ""
-			resp, err = n.router.Complete(ctx, fallbackReq)
+			fallbackMeta := ai.TelemetryFromContext(asciiCtx)
+			fallbackMeta.RetryReason = "model_fallback"
+			resp, err = n.router.Complete(ai.WithTelemetry(asciiCtx, fallbackMeta), fallbackReq)
 		}
 		if err != nil {
 			if configuredModel != "" {

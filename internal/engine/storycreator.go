@@ -49,27 +49,29 @@ type CreationAction struct {
 // guided story wizard. The browser sends it back on the next step so the
 // gateway can remain stateless between HTTP requests.
 type StoryCreatorState struct {
-	Stage         string           `json:"stage"`
-	InitialBrief  string           `json:"initial_brief,omitempty"`
-	CharacterName string           `json:"character_name,omitempty"`
-	Definition    *StoryDefinition `json:"definition,omitempty"`
-	StoryID       string           `json:"story_id,omitempty"`
-	CharacterID   string           `json:"character_id,omitempty"`
+	Stage            string           `json:"stage"`
+	InitialBrief     string           `json:"initial_brief,omitempty"`
+	CharacterName    string           `json:"character_name,omitempty"`
+	Definition       *StoryDefinition `json:"definition,omitempty"`
+	StoryID          string           `json:"story_id,omitempty"`
+	CharacterID      string           `json:"character_id,omitempty"`
+	TelemetryTraceID string           `json:"telemetry_trace_id,omitempty"`
 }
 
 // StoryCreator manages the guided story creation wizard.
 type StoryCreator struct {
-	router       *ai.Router
-	db           *storage.DB
-	genCfg       config.GenerationConfig
-	stage        storyCreationStage
-	definition   *StoryDefinition
-	story        *storage.Story
-	character    *storage.Character
-	lastModel    string
-	lastLatency  int64
-	initialBrief string
-	charName     string
+	router           *ai.Router
+	db               *storage.DB
+	genCfg           config.GenerationConfig
+	stage            storyCreationStage
+	definition       *StoryDefinition
+	story            *storage.Story
+	character        *storage.Character
+	lastModel        string
+	lastLatency      int64
+	initialBrief     string
+	charName         string
+	telemetryTraceID string
 }
 
 type storyDefinitionParseOptions struct {
@@ -85,10 +87,11 @@ func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.Generation
 		genCfg.MaxTokens = 2048
 	}
 	return &StoryCreator{
-		router: router,
-		db:     db,
-		genCfg: genCfg,
-		stage:  stageBrief,
+		router:           router,
+		db:               db,
+		genCfg:           genCfg,
+		stage:            stageBrief,
+		telemetryTraceID: uuid.NewString(),
 	}
 }
 
@@ -221,10 +224,11 @@ func (sc *StoryCreator) Definition() *StoryDefinition { return sc.definition }
 // ExportState returns the portable wizard state needed for the next gateway step.
 func (sc *StoryCreator) ExportState() StoryCreatorState {
 	state := StoryCreatorState{
-		Stage:         sc.StageKey(),
-		InitialBrief:  sc.initialBrief,
-		CharacterName: sc.charName,
-		Definition:    sc.definition,
+		Stage:            sc.StageKey(),
+		InitialBrief:     sc.initialBrief,
+		CharacterName:    sc.charName,
+		Definition:       sc.definition,
+		TelemetryTraceID: sc.telemetryTraceID,
 	}
 	if sc.story != nil {
 		state.StoryID = sc.story.ID
@@ -245,6 +249,9 @@ func (sc *StoryCreator) RestoreState(state StoryCreatorState) error {
 	sc.initialBrief = strings.TrimSpace(state.InitialBrief)
 	sc.charName = strings.TrimSpace(state.CharacterName)
 	sc.definition = state.Definition
+	if strings.TrimSpace(state.TelemetryTraceID) != "" {
+		sc.telemetryTraceID = strings.TrimSpace(state.TelemetryTraceID)
+	}
 	sc.lastModel = "system"
 	sc.lastLatency = 0
 	if state.StoryID != "" {
@@ -574,7 +581,8 @@ func (sc *StoryCreator) requestStoryDefinitionWithOptions(ctx context.Context, m
 	}
 
 	start := time.Now()
-	resp, err := sc.router.Complete(ctx, req)
+	creationCtx := sc.telemetryContext(ctx, "story_creation", "")
+	resp, err := sc.router.Complete(creationCtx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +613,8 @@ func (sc *StoryCreator) requestStoryDefinitionWithOptions(ctx context.Context, m
 			MaxTokens:      sc.genCfg.MaxTokens,
 			ResponseFormat: repairFormats[attempt],
 		}
-		def, repairResp, repairErr := sc.runRepairModelsWithOptions(ctx, repairReq, opts)
+		repairCtx := sc.telemetryContext(ctx, "story_creation_repair", resp.Telemetry.RunID)
+		def, repairResp, repairErr := sc.runRepairModelsWithOptions(repairCtx, repairReq, opts)
 		if repairErr == nil {
 			sc.lastModel = repairResp.Model
 			sc.lastLatency += repairResp.LatencyMs
@@ -615,6 +624,21 @@ func (sc *StoryCreator) requestStoryDefinitionWithOptions(ctx context.Context, m
 	}
 
 	return nil, fmt.Errorf("invalid story definition returned by AI: %w", lastErr)
+}
+
+func (sc *StoryCreator) telemetryContext(ctx context.Context, stage, parentRunID string) context.Context {
+	metadata := ai.TelemetryFromContext(ctx)
+	if metadata.TraceID == "" {
+		metadata.TraceID = sc.telemetryTraceID
+	}
+	metadata.Stage = stage
+	metadata.PromptProfile = stage
+	metadata.PromptTemplate = "v1"
+	metadata.ParentRunID = parentRunID
+	if sc.story != nil {
+		metadata.StoryID = sc.story.ID
+	}
+	return ai.WithTelemetry(ctx, metadata)
 }
 
 func (sc *StoryCreator) runRepairModels(ctx context.Context, req ai.Request) (*StoryDefinition, ai.Response, error) {

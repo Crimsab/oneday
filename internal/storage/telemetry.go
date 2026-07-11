@@ -260,10 +260,21 @@ func (db *DB) AppendGenerationEvent(runID, attemptID, eventType, payloadJSON str
 }
 
 func (db *DB) BindGenerationRunMessage(runID string, messageID int64) error {
+	return db.bindGenerationRunMessageExec(db.conn, runID, messageID)
+}
+
+func (db *DB) BindGenerationRunMessageTx(tx *sql.Tx, runID string, messageID int64) error {
+	if tx == nil {
+		return errors.New("transaction is required")
+	}
+	return db.bindGenerationRunMessageExec(tx, runID, messageID)
+}
+
+func (db *DB) bindGenerationRunMessageExec(exec sqlExecer, runID string, messageID int64) error {
 	if messageID < 1 {
 		return errors.New("positive message id is required")
 	}
-	result, err := db.conn.Exec(`UPDATE generation_runs SET message_id=? WHERE id=? AND (message_id IS NULL OR message_id=?)`, messageID, runID, messageID)
+	result, err := exec.Exec(`UPDATE generation_runs SET message_id=? WHERE id=? AND (message_id IS NULL OR message_id=?)`, messageID, runID, messageID)
 	if err != nil {
 		return err
 	}

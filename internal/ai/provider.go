@@ -31,11 +31,12 @@ type Request struct {
 
 // Response holds the result of an AI completion.
 type Response struct {
-	Content   string `json:"content"`
-	Model     string `json:"model"`
-	LatencyMs int64  `json:"latency_ms"`
-	Provider  string `json:"provider"`
-	Usage     Usage  `json:"usage"`
+	Content   string       `json:"content"`
+	Model     string       `json:"model"`
+	LatencyMs int64        `json:"latency_ms"`
+	Provider  string       `json:"provider"`
+	Usage     Usage        `json:"usage"`
+	Telemetry TelemetryRef `json:"telemetry,omitempty"`
 }
 
 // ResponseFormat requests provider-side response shaping for compatible APIs.
@@ -75,11 +76,12 @@ type Provider interface {
 
 // StreamChunk is a piece of a streamed AI response.
 type StreamChunk struct {
-	Content string // incremental text delta
-	Model   string // resolved model for the stream
-	Usage   Usage  // final usage snapshot when provided by the upstream
-	Done    bool   // true on the final chunk (no more data)
-	Error   error  // non-nil if the stream encountered an error
+	Content   string       // incremental text delta
+	Model     string       // resolved model for the stream
+	Usage     Usage        // final usage snapshot when provided by the upstream
+	Done      bool         // true on the final chunk (no more data)
+	Error     error        // non-nil if the stream encountered an error
+	Telemetry TelemetryRef // causal run identity for the stream
 }
 
 // Usage captures token and cost metadata from a provider response when

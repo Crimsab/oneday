@@ -126,7 +126,7 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 		ResponseFormat: ai.CraftingResponseFormat(),
 	}
 
-	resp, err := ce.narrator.router.Complete(ctx, req)
+	resp, err := ce.narrator.router.Complete(ce.narrator.telemetryContext(ctx, "crafting", ""), req)
 	if err != nil {
 		return nil, fmt.Errorf("AI crafting response: %w", err)
 	}
