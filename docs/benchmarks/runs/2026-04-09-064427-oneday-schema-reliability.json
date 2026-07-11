@@ -1,0 +1,116 @@
+{
+  "generated_at": "2026-04-09T06:43:26+02:00",
+  "brief": "Mondo steampunk in tono serio e tenebroso, città industriale decadente, culto del vapore, dialoghi tesi, prosa elegante ma non prolissa. Lingua italiana. Voglio una campagna lunga, politica, investigativa e pericolosa.",
+  "models": [
+    "grok-4.1-fast",
+    "gemini-3.1-flash-lite-preview"
+  ],
+  "cases": [
+    {
+      "name": "missing_authoring_fields"
+    },
+    {
+      "name": "missing_world_rules_and_stats"
+    },
+    {
+      "name": "wrong_shapes"
+    },
+    {
+      "name": "not_json"
+    }
+  ],
+  "summaries": [
+    {
+      "model": "gemini-3.1-flash-lite-preview",
+      "success_count": 4,
+      "case_count": 4,
+      "success_rate": 100,
+      "average_latency_ms": 4060.25,
+      "average_latency_seconds": 4.06025,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 5279,
+          "duration_seconds": 5.279732429,
+          "resolved_model": "google/gemini-3.1-flash-lite-preview-20260303",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 4102,
+          "duration_seconds": 4.102505839,
+          "resolved_model": "google/gemini-3.1-flash-lite-preview-20260303",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000160839,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": true,
+          "duration_ms": 6860,
+          "duration_seconds": 6.860983837,
+          "resolved_model": "google/gemini-3.1-flash-lite-preview-20260303",
+          "story_name": "Cronache di Fuliggine e Vapore",
+          "world_name": "Ossidiana"
+        }
+      ]
+    },
+    {
+      "model": "grok-4.1-fast",
+      "success_count": 4,
+      "case_count": 4,
+      "success_rate": 100,
+      "average_latency_ms": 11396.25,
+      "average_latency_seconds": 11.39625,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 8180,
+          "duration_seconds": 8.180218705,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 10963,
+          "duration_seconds": 10.963110916,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000129722,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": true,
+          "duration_ms": 26442,
+          "duration_seconds": 26.442751766,
+          "resolved_model": "google/gemini-3.1-flash-lite-preview-20260303",
+          "story_name": "Cronache di Fuliggine e Vapore",
+          "world_name": "Ossidiana"
+        }
+      ]
+    }
+  ]
+}

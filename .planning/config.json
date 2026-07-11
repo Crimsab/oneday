@@ -1,0 +1,19 @@
+{
+  "model_profile": "balanced",
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": false,
+    "ui_phase": false,
+    "ui_safety_gate": false,
+    "use_worktrees": true,
+    "_auto_chain_active": false
+  },
+  "git": {
+    "branching_strategy": "phase-based"
+  },
+  "hooks": {
+    "workflow_guard": false
+  }
+}

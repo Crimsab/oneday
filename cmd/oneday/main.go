@@ -1,0 +1,1269 @@
+package main
+
+import (
+	"bufio"
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/crimsab/oneday/internal/ai"
+	"github.com/crimsab/oneday/internal/ai/providers"
+	"github.com/crimsab/oneday/internal/aifactory"
+	"github.com/crimsab/oneday/internal/buildinfo"
+	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/rag"
+	"github.com/crimsab/oneday/internal/storage"
+	"github.com/crimsab/oneday/internal/tui"
+)
+
+func main() {
+	if wantsVersion(os.Args[1:]) {
+		fmt.Println(buildinfo.Text("oneday"))
+		return
+	}
+	if wantsSetup(os.Args[1:]) {
+		if err := runSetup(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Setup failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsDoctor(os.Args[1:]) {
+		if err := runDoctor(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Doctor failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsConfigShowSafe(os.Args[1:]) {
+		if err := runConfigShowSafe(); err != nil {
+			fmt.Fprintf(os.Stderr, "Config show failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsRAGBenchmark(os.Args[1:]) {
+		if err := runRAGBenchmark(); err != nil {
+			fmt.Fprintf(os.Stderr, "RAG benchmark failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsRAGReindex(os.Args[1:]) {
+		if err := runRAGReindex(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "RAG reindex failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsStoryPacksList(os.Args[1:]) {
+		if err := runStoryPacksList(); err != nil {
+			fmt.Fprintf(os.Stderr, "Story packs failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsExport(os.Args[1:]) {
+		if err := runExport(os.Args[1:]); err != nil {
+			fmt.Fprintf(os.Stderr, "Export failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayCommandDescriptors(os.Args[1:]) {
+		if err := runGatewayCommandDescriptors(os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway command descriptors failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayModelSettings(os.Args[1:]) {
+		if err := runGatewayModelSettings(resolveConfigPath(), os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway model settings failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayModelSettingsUpdate(os.Args[1:]) {
+		if err := runGatewayModelSettingsUpdate(resolveConfigPath(), os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway model settings update failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load .env: %v\n", err)
+	}
+	// Load config
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Open database
+	dbPath := filepath.Join(cfg.DataDir, "oneday.db")
+	db, err := storage.Open(dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error opening database: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+
+	if wantsGatewaySchemaPreflight(os.Args[1:]) {
+		if err := runGatewaySchemaPreflight(os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway schema preflight failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Create AI router
+	router, err := aifactory.NewRouterFromConfig(cfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating AI router: %v\n", err)
+		os.Exit(1)
+	}
+
+	if wantsGatewayTurn(os.Args[1:]) {
+		if err := runGatewayTurn(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway turn failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayStoryCreate(os.Args[1:]) {
+		if err := runGatewayStoryCreate(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway story create failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayStoryWizard(os.Args[1:]) {
+		if err := runGatewayStoryWizard(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway story wizard failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayStoryEnhance(os.Args[1:]) {
+		if err := runGatewayStoryEnhance(context.Background(), cfg, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway story enhance failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayMeta(os.Args[1:]) {
+		if err := runGatewayMeta(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway meta failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewaySave(os.Args[1:]) {
+		if err := runGatewaySave(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway save failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayLoad(os.Args[1:]) {
+		if err := runGatewayLoad(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway load failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+	if wantsGatewayDeleteSave(os.Args[1:]) {
+		if err := runGatewayDeleteSave(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway delete save failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Start TUI
+	app := tui.New(cfg, db, router)
+	p := tea.NewProgram(app, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	if _, err := p.Run(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func resolveDotEnvPath() string {
+	const envName = ".env"
+
+	if _, err := os.Stat(envName); err == nil {
+		return envName
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return envName
+	}
+
+	exeEnv := filepath.Join(filepath.Dir(exePath), envName)
+	if _, err := os.Stat(exeEnv); err == nil {
+		return exeEnv
+	}
+
+	return envName
+}
+
+func resolveConfigPath() string {
+	const configName = "config.yaml"
+
+	if fromEnv := strings.TrimSpace(os.Getenv("ONEDAY_CONFIG")); fromEnv != "" {
+		return fromEnv
+	}
+
+	if _, err := os.Stat(configName); err == nil {
+		return configName
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return configName
+	}
+
+	exeConfig := filepath.Join(filepath.Dir(exePath), configName)
+	if _, err := os.Stat(exeConfig); err == nil {
+		return exeConfig
+	}
+
+	return configName
+}
+
+func wantsSetup(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "setup", "--setup":
+			return true
+		}
+	}
+	return false
+}
+
+func wantsSetupForce(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--force", "--reconfigure":
+			return true
+		}
+	}
+	return false
+}
+
+func wantsVersion(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "--version", "version":
+			return true
+		}
+	}
+	return false
+}
+
+func wantsDoctor(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "doctor", "--doctor":
+			return true
+		}
+	}
+	return false
+}
+
+func wantsJSON(args []string) bool {
+	for _, arg := range args {
+		if arg == "--json" {
+			return true
+		}
+	}
+	return false
+}
+
+func wantsConfigShowSafe(args []string) bool {
+	return len(args) >= 3 && args[0] == "config" && args[1] == "show" && args[2] == "--safe"
+}
+
+func wantsRAGBenchmark(args []string) bool {
+	return len(args) >= 2 && args[0] == "rag" && args[1] == "benchmark"
+}
+
+func wantsRAGReindex(args []string) bool {
+	return len(args) >= 2 && args[0] == "rag" && args[1] == "reindex"
+}
+
+func wantsStoryPacksList(args []string) bool {
+	return len(args) >= 2 && (args[0] == "story-packs" || args[0] == "storypacks") && args[1] == "list"
+}
+
+func wantsExport(args []string) bool {
+	return len(args) >= 1 && args[0] == "export"
+}
+
+func wantsGatewayCommandDescriptors(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-command-descriptors"
+}
+
+func wantsGatewaySchemaPreflight(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-schema-preflight"
+}
+
+func wantsGatewayModelSettings(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-model-settings"
+}
+
+func wantsGatewayModelSettingsUpdate(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-model-settings-update"
+}
+
+func wantsGatewayTurn(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-turn"
+}
+
+func wantsGatewayStoryCreate(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-story-create"
+}
+
+func wantsGatewayStoryWizard(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-story-wizard"
+}
+
+func wantsGatewayStoryEnhance(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-story-enhance"
+}
+
+func wantsGatewayMeta(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-meta"
+}
+
+func wantsGatewaySave(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-save"
+}
+
+func wantsGatewayLoad(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-load"
+}
+
+func wantsGatewayDeleteSave(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-delete-save"
+}
+
+func runSetup(args []string) error {
+	reader := bufio.NewReader(os.Stdin)
+
+	fmt.Println("OneDay first-time setup")
+	fmt.Printf("OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	reportCommand("go", "version")
+	reportCommand("codex", "--version")
+	reportCommand("codex", "login", "status")
+	reportCommand("claude", "--version")
+
+	force := wantsSetupForce(args)
+	if _, err := os.Stat("config.yaml"); err == nil && !force {
+		fmt.Println("config.yaml already exists; leaving it in place.")
+		fmt.Println("Run `oneday setup --reconfigure` or `oneday setup --force` to open the setup wizard again.")
+		return nil
+	}
+
+	fmt.Println()
+	fmt.Println("Choose AI provider:")
+	fmt.Println("  1) Codex OAuth (experimental, uses local `codex login`)")
+	fmt.Println("  2) LiteLLM / homelab proxy")
+	fmt.Println("  3) OpenRouter")
+	fmt.Println("  4) Codex OAuth + local RAG embeddings")
+	fmt.Print("Selection [1]: ")
+	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+	if choice == "" {
+		choice = "1"
+	}
+
+	cfg := config.Default()
+	cfg, err := setupConfigForChoice(cfg, choice)
+	if err != nil {
+		return err
+	}
+	switch choice {
+	case "1":
+		if err := configureCodex(reader, &cfg); err != nil {
+			return err
+		}
+		fmt.Println("If Codex is not logged in yet, run: codex login")
+		fmt.Println("RAG: disabled, reason: no embedding-capable provider configured")
+	case "2":
+		ensureEnvFile()
+		if err := configureLiteLLM(reader, &cfg); err != nil {
+			return err
+		}
+		if err := configureRAGChoice(reader, &cfg); err != nil {
+			return err
+		}
+	case "3":
+		ensureEnvFile()
+		if err := configureOpenRouter(reader, &cfg); err != nil {
+			return err
+		}
+		if err := configureRAGChoice(reader, &cfg); err != nil {
+			return err
+		}
+	case "4":
+		if err := configureCodex(reader, &cfg); err != nil {
+			return err
+		}
+		if err := configureLocalRAG(reader, &cfg); err != nil {
+			return err
+		}
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	if err := configureStoryPackChoice(reader); err != nil {
+		return err
+	}
+	data, err := config.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile("config.yaml", data, 0600); err != nil {
+		return err
+	}
+	fmt.Println("Wrote config.yaml")
+	return nil
+}
+
+func configureCodex(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "Codex model", cfg.AI.Codex.Model)
+	if err != nil {
+		return err
+	}
+	cfg.AI.Codex.Model = model
+	ensureGenerationModels(&cfg.AI.Generation, model)
+	fmt.Print("Reasoning off/none/minimal/low/medium/high/xhigh [off]: ")
+	reasoning, _ := reader.ReadString('\n')
+	if reasoning = strings.TrimSpace(reasoning); reasoning != "" {
+		cfg.AI.Codex.Reasoning = reasoning
+	}
+	return nil
+}
+
+func configureLiteLLM(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "LiteLLM default model", cfg.AI.LiteLLM.DefaultModel)
+	if err != nil {
+		return err
+	}
+	cfg.AI.LiteLLM.DefaultModel = model
+	ensureGenerationModels(&cfg.AI.Generation, model)
+	return nil
+}
+
+func configureOpenRouter(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "OpenRouter default model", cfg.AI.OpenRouter.DefaultModel)
+	if err != nil {
+		return err
+	}
+	cfg.AI.OpenRouter.DefaultModel = model
+	ensureGenerationModels(&cfg.AI.Generation, model)
+	return nil
+}
+
+func promptRequiredModel(reader *bufio.Reader, label, current string) (string, error) {
+	current = strings.TrimSpace(current)
+	if current == "" {
+		fmt.Printf("%s: ", label)
+	} else {
+		fmt.Printf("%s [%s]: ", label, current)
+	}
+	value, _ := reader.ReadString('\n')
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = current
+	}
+	if value == "" {
+		return "", fmt.Errorf("%s is required; model names are configured by the user, not hardcoded by OneDay", strings.ToLower(label))
+	}
+	return value, nil
+}
+
+func ensureGenerationModels(generation *config.GenerationConfig, model string) {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return
+	}
+	if strings.TrimSpace(generation.UtilityModel) == "" {
+		generation.UtilityModel = model
+	}
+	if strings.TrimSpace(generation.RepairModel) == "" {
+		generation.RepairModel = model
+	}
+	if len(generation.RepairFallbackModels) == 0 {
+		generation.RepairFallbackModels = []string{model}
+	}
+}
+
+func configureRAGChoice(reader *bufio.Reader, cfg *config.Config) error {
+	fmt.Println()
+	fmt.Println("Choose RAG embeddings:")
+	fmt.Println("  1) Remote provider from current AI config")
+	fmt.Println("  2) Local Ollama embeddings")
+	fmt.Println("  3) Custom local embedding endpoint")
+	fmt.Println("  4) Disable RAG")
+	fmt.Print("Selection [1]: ")
+	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+	if choice == "" {
+		choice = "1"
+	}
+	switch choice {
+	case "1":
+		return configureRemoteRAG(reader, cfg)
+	case "2":
+		return configureLocalRAG(reader, cfg)
+	case "3":
+		return configureCustomLocalRAG(reader, cfg)
+	case "4":
+		cfg.RAG.Enabled = false
+		return nil
+	default:
+		return fmt.Errorf("unknown RAG selection %q", choice)
+	}
+}
+
+func configureRemoteRAG(reader *bufio.Reader, cfg *config.Config) error {
+	model, err := promptRequiredModel(reader, "Embedding model", cfg.AI.Embedding.Model)
+	if err != nil {
+		return err
+	}
+	fmt.Print("Embedding dimensions [1536]: ")
+	dimText, _ := reader.ReadString('\n')
+	dimensions := parsePositiveInt(strings.TrimSpace(dimText), 1536)
+
+	cfg.RAG.Enabled = true
+	cfg.RAG.Dimensions = dimensions
+	cfg.AI.Embedding.Provider = "auto"
+	cfg.AI.Embedding.Model = model
+	return nil
+}
+
+func configureLocalRAG(reader *bufio.Reader, cfg *config.Config) error {
+	fmt.Println()
+	model, err := promptRequiredModel(reader, "Ollama embedding model", cfg.AI.Embedding.Local.Model)
+	if err != nil {
+		return err
+	}
+	fmt.Print("Embedding dimensions [1024]: ")
+	dimText, _ := reader.ReadString('\n')
+	dimensions := parsePositiveInt(strings.TrimSpace(dimText), 1024)
+
+	cfg.RAG.Enabled = true
+	cfg.RAG.Dimensions = dimensions
+	cfg.AI.Embedding.Provider = "local"
+	cfg.AI.Embedding.Local.Enabled = true
+	cfg.AI.Embedding.Local.Type = "ollama"
+	cfg.AI.Embedding.Local.BaseURL = "http://127.0.0.1:11434"
+	cfg.AI.Embedding.Local.Model = model
+	cfg.AI.Embedding.Local.Dimensions = dimensions
+
+	fmt.Printf("Use Ollama model %s at %s\n", model, cfg.AI.Embedding.Local.BaseURL)
+	if _, err := exec.LookPath("ollama"); err != nil {
+		fmt.Println("Ollama CLI not found. Install from https://docs.ollama.com/linux or use custom local endpoint.")
+		return nil
+	}
+	fmt.Printf("Pull %s now with `ollama pull %s`? [Y/n]: ", model, model)
+	answer, _ := reader.ReadString('\n')
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	if answer == "" || answer == "y" || answer == "yes" {
+		if err := runInteractiveCommand("ollama", "pull", model); err != nil {
+			fmt.Printf("Ollama pull failed: %v\n", err)
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := smokeLocalEmbedding(ctx, cfg.AI.Embedding.Local, dimensions); err != nil {
+		fmt.Printf("Embedding smoke: WARN: %v\n", err)
+		fmt.Println("Config will still be written; run `oneday doctor` after starting Ollama.")
+	} else {
+		fmt.Printf("Embedding smoke: OK (%s, %d dimensions)\n", model, dimensions)
+	}
+	return nil
+}
+
+func configureCustomLocalRAG(reader *bufio.Reader, cfg *config.Config) error {
+	fmt.Print("Custom embedding endpoint URL [http://127.0.0.1:8000/embed]: ")
+	baseURL, _ := reader.ReadString('\n')
+	baseURL = strings.TrimSpace(baseURL)
+	if baseURL == "" {
+		baseURL = "http://127.0.0.1:8000/embed"
+	}
+	model, err := promptRequiredModel(reader, "Embedding model name", cfg.AI.Embedding.Local.Model)
+	if err != nil {
+		return err
+	}
+	fmt.Print("Embedding dimensions [1024]: ")
+	dimText, _ := reader.ReadString('\n')
+	dimensions := parsePositiveInt(strings.TrimSpace(dimText), 1024)
+
+	cfg.RAG.Enabled = true
+	cfg.RAG.Dimensions = dimensions
+	cfg.AI.Embedding.Provider = "local"
+	cfg.AI.Embedding.Local.Enabled = true
+	cfg.AI.Embedding.Local.Type = "custom"
+	cfg.AI.Embedding.Local.BaseURL = baseURL
+	cfg.AI.Embedding.Local.Model = model
+	cfg.AI.Embedding.Local.Dimensions = dimensions
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	if err := smokeLocalEmbedding(ctx, cfg.AI.Embedding.Local, dimensions); err != nil {
+		fmt.Printf("Embedding smoke: WARN: %v\n", err)
+		fmt.Println("Config will still be written; run `oneday doctor` after starting your local embedding server.")
+	} else {
+		fmt.Printf("Embedding smoke: OK (%s, %d dimensions)\n", model, dimensions)
+	}
+	return nil
+}
+
+func parsePositiveInt(value string, fallback int) int {
+	if value == "" {
+		return fallback
+	}
+	var n int
+	if _, err := fmt.Sscanf(value, "%d", &n); err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
+
+func runInteractiveCommand(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
+}
+
+func smokeLocalEmbedding(ctx context.Context, local config.LocalEmbeddingConfig, dimensions int) error {
+	var emb interface {
+		Embed(context.Context, ai.EmbeddingRequest) (ai.EmbeddingResponse, error)
+	}
+	switch local.Type {
+	case "ollama":
+		emb = providers.NewOllamaEmbedding(providers.OllamaEmbeddingConfig{
+			BaseURL: local.BaseURL,
+			Model:   local.Model,
+			Timeout: 20 * time.Second,
+		})
+	case "custom":
+		emb = providers.NewLocalHTTPEmbedding(local.BaseURL, local.Model, 20*time.Second)
+	default:
+		return fmt.Errorf("unknown local embedding type %q", local.Type)
+	}
+	resp, err := emb.Embed(ctx, ai.EmbeddingRequest{Input: "oneday local rag smoke", Model: local.Model})
+	if err != nil {
+		return err
+	}
+	if len(resp.Embedding) != dimensions {
+		return fmt.Errorf("model %s returned %d dimensions, expected %d", resp.Model, len(resp.Embedding), dimensions)
+	}
+	return nil
+}
+
+func setupConfigForChoice(cfg config.Config, choice string) (config.Config, error) {
+	switch choice {
+	case "1":
+		cfg.AI.ProviderPriority = []string{"codex", "litellm", "openrouter", "claude-code"}
+		cfg.AI.Codex.Enabled = true
+		cfg.AI.LiteLLM.Enabled = false
+		cfg.AI.OpenRouter.Enabled = false
+		cfg.RAG.Enabled = false
+	case "2":
+		cfg.AI.ProviderPriority = []string{"litellm", "openrouter", "codex", "claude-code"}
+		cfg.AI.LiteLLM.Enabled = true
+		cfg.AI.OpenRouter.Enabled = false
+		cfg.AI.Codex.Enabled = false
+		cfg.AI.LiteLLM.APIKey = "${ONEDAY_LITELLM_API_KEY}"
+	case "3":
+		cfg.AI.ProviderPriority = []string{"openrouter", "litellm", "codex", "claude-code"}
+		cfg.AI.OpenRouter.Enabled = true
+		cfg.AI.LiteLLM.Enabled = false
+		cfg.AI.Codex.Enabled = false
+		cfg.AI.OpenRouter.APIKey = "${ONEDAY_OPENROUTER_API_KEY}"
+	case "4":
+		cfg.AI.ProviderPriority = []string{"codex", "litellm", "openrouter", "claude-code"}
+		cfg.AI.Codex.Enabled = true
+		cfg.AI.LiteLLM.Enabled = false
+		cfg.AI.OpenRouter.Enabled = false
+		cfg.RAG.Enabled = true
+		cfg.AI.Embedding.Provider = "local"
+		cfg.AI.Embedding.Local.Enabled = true
+		cfg.AI.Embedding.Local.Type = "ollama"
+		cfg.AI.Embedding.Local.BaseURL = "http://127.0.0.1:11434"
+		cfg.AI.Embedding.Local.Dimensions = 1024
+		cfg.RAG.Dimensions = 1024
+	default:
+		return config.Config{}, fmt.Errorf("unknown selection %q", choice)
+	}
+	return cfg, nil
+}
+
+type doctorReport struct {
+	OS              string   `json:"os"`
+	Arch            string   `json:"arch"`
+	ConfigPath      string   `json:"config_path"`
+	EnabledProvider []string `json:"enabled_providers"`
+	CodexLogin      string   `json:"codex_login"`
+	RAGEnabled      bool     `json:"rag_enabled"`
+	EmbeddingKind   string   `json:"embedding_kind"`
+	EmbeddingModel  string   `json:"embedding_model"`
+	EmbeddingDims   int      `json:"embedding_dimensions"`
+	Warnings        []string `json:"warnings"`
+}
+
+func runDoctor(args []string) error {
+	if wantsJSON(args) {
+		return runDoctorJSON()
+	}
+	fmt.Println("OneDay doctor")
+	fmt.Printf("OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	reportCommand("go", "version")
+	reportCommand("codex", "--version")
+	reportCommand("codex", "login", "status")
+	reportCommand("claude", "--version")
+
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		fmt.Printf("ENV: WARN: could not load .env: %v\n", err)
+	} else {
+		fmt.Println("ENV: OK")
+	}
+
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Config: OK (%s)\n", resolveConfigPath())
+	fmt.Printf("Models: codex=%s utility=%s embedding=%s\n", cfg.AI.Codex.Model, cfg.AI.Generation.UtilityModel, cfg.AI.Embedding.Model)
+	reportConfigConsistency(cfg)
+
+	codexStatus := commandStatus("codex", "login", "status")
+	if codexStatus == "" {
+		fmt.Println("Codex login: SKIP: codex CLI not found")
+	} else if strings.Contains(strings.ToLower(codexStatus), "not") && strings.Contains(strings.ToLower(codexStatus), "login") {
+		fmt.Printf("Codex login: FAIL: %s\n", codexStatus)
+	} else {
+		fmt.Printf("Codex login: OK: %s\n", codexStatus)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+
+	router, err := aifactory.NewRouterFromConfig(cfg)
+	if err != nil {
+		fmt.Printf("Provider smoke: FAIL: %v\n", err)
+	} else {
+		resp, err := router.Complete(ctx, ai.Request{
+			Messages:  []ai.Message{{Role: ai.RoleUser, Content: "reply with OK"}},
+			MaxTokens: 8,
+		})
+		if err != nil {
+			fmt.Printf("Provider smoke: FAIL: %v\n", err)
+		} else {
+			fmt.Printf("Provider smoke: OK: %s (%s)\n", firstLine(resp.Content), resp.Provider)
+		}
+	}
+
+	if !cfg.RAG.Enabled {
+		fmt.Println("RAG: disabled, reason: config rag.enabled=false")
+		fmt.Println("Embedding smoke: SKIP: RAG disabled")
+		return nil
+	}
+
+	spec, reason := aifactory.SelectEmbeddingProvider(cfg)
+	if reason != "" {
+		fmt.Printf("RAG: disabled, reason: %s\n", reason)
+		fmt.Println("Embedding smoke: SKIP: no embedding-capable provider configured")
+		return nil
+	}
+	fmt.Printf("RAG: enabled, embedding provider: %s, model: %s\n", spec.Name, cfg.AI.Embedding.Model)
+	if spec.Kind == "ollama" || spec.Kind == "custom" {
+		fmt.Printf("Local RAG: enabled, type: %s, url: %s, model: %s, dimensions: %d\n", spec.Kind, spec.BaseURL, spec.Model, spec.Dimensions)
+	}
+	emb := embeddingProviderForSpec(spec, 20*time.Second)
+	embResp, err := emb.Embed(ctx, ai.EmbeddingRequest{
+		Input: "oneday doctor embedding smoke",
+		Model: spec.Model,
+	})
+	if err != nil {
+		fmt.Printf("Embedding smoke: FAIL: %v\n", err)
+		return nil
+	}
+	fmt.Printf("Embedding smoke: OK: %d dimensions (%s)\n", len(embResp.Embedding), embResp.Model)
+	return nil
+}
+
+func runDoctorJSON() error {
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		// JSON mode reports config/env issues through warnings where possible.
+	}
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		return err
+	}
+	report := doctorReport{
+		OS:              runtime.GOOS,
+		Arch:            runtime.GOARCH,
+		ConfigPath:      resolveConfigPath(),
+		EnabledProvider: cfg.EnabledProviders(),
+		CodexLogin:      commandStatus("codex", "login", "status"),
+		RAGEnabled:      cfg.RAG.Enabled,
+		EmbeddingModel:  cfg.AI.Embedding.Model,
+		EmbeddingDims:   cfg.RAG.Dimensions,
+		Warnings:        providerConsistencyWarnings(cfg),
+	}
+	if spec, reason := aifactory.SelectEmbeddingProvider(cfg); reason == "" {
+		report.EmbeddingKind = spec.Kind
+		report.EmbeddingModel = spec.Model
+		report.EmbeddingDims = spec.Dimensions
+	} else if cfg.RAG.Enabled {
+		report.Warnings = append(report.Warnings, "rag unavailable: "+reason)
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(report)
+}
+
+func runConfigShowSafe() error {
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		fmt.Printf("ENV: WARN: could not load .env: %v\n", err)
+	}
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		return err
+	}
+	fmt.Println("OneDay config (safe)")
+	fmt.Printf("config_path: %s\n", resolveConfigPath())
+	fmt.Printf("data_dir: %s\n", cfg.DataDir)
+	fmt.Printf("providers: %s\n", strings.Join(cfg.EnabledProviders(), ", "))
+	fmt.Printf("codex: enabled=%v model=%s reasoning=%s\n", cfg.AI.Codex.Enabled, cfg.AI.Codex.Model, cfg.AI.Codex.Reasoning)
+	fmt.Printf("litellm: enabled=%v base_url=%s api_key=%s model=%s\n", cfg.AI.LiteLLM.Enabled, cfg.AI.LiteLLM.BaseURL, redactSecret(cfg.AI.LiteLLM.APIKey), cfg.AI.LiteLLM.DefaultModel)
+	fmt.Printf("openrouter: enabled=%v base_url=%s api_key=%s model=%s\n", cfg.AI.OpenRouter.Enabled, cfg.AI.OpenRouter.BaseURL, redactSecret(cfg.AI.OpenRouter.APIKey), cfg.AI.OpenRouter.DefaultModel)
+	fmt.Printf("generation: utility=%s repair=%s fallbacks=%s\n", cfg.AI.Generation.UtilityModel, cfg.AI.Generation.RepairModel, strings.Join(cfg.AI.Generation.RepairFallbackModels, ","))
+	fmt.Printf("rag: enabled=%v top_k=%d summarize_every=%d dimensions=%d\n", cfg.RAG.Enabled, cfg.RAG.TopK, cfg.RAG.SummarizeEvery, cfg.RAG.Dimensions)
+	fmt.Printf("embedding: provider=%s model=%s\n", cfg.AI.Embedding.Provider, cfg.AI.Embedding.Model)
+	fmt.Printf("embedding.local: enabled=%v type=%s base_url=%s model=%s dimensions=%d\n", cfg.AI.Embedding.Local.Enabled, cfg.AI.Embedding.Local.Type, cfg.AI.Embedding.Local.BaseURL, cfg.AI.Embedding.Local.Model, cfg.AI.Embedding.Local.Dimensions)
+	return nil
+}
+
+func runRAGBenchmark() error {
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		fmt.Printf("ENV: WARN: could not load .env: %v\n", err)
+	}
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		return err
+	}
+	fmt.Println("OneDay RAG benchmark")
+	if !cfg.RAG.Enabled {
+		fmt.Println("RAG: disabled")
+		fmt.Println("Next: run `oneday setup --reconfigure` and choose local or remote RAG embeddings.")
+		return nil
+	}
+	spec, reason := aifactory.SelectEmbeddingProvider(cfg)
+	if reason != "" {
+		fmt.Printf("RAG: unavailable: %s\n", reason)
+		fmt.Println(ragBenchmarkAdvice(cfg, reason))
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	start := time.Now()
+	emb := embeddingProviderForSpec(spec, 30*time.Second)
+	resp, err := emb.Embed(ctx, ai.EmbeddingRequest{Input: "oneday rag benchmark local retrieval smoke", Model: spec.Model})
+	if err != nil {
+		fmt.Printf("benchmark: FAIL: %v\n", err)
+		fmt.Println(ragBenchmarkAdvice(cfg, err.Error()))
+		return nil
+	}
+	latency := time.Since(start)
+	status := "OK"
+	if spec.Dimensions > 0 && len(resp.Embedding) != spec.Dimensions {
+		status = "DIMENSION_MISMATCH"
+	}
+	fmt.Printf("benchmark: %s provider=%s kind=%s model=%s dimensions=%d expected=%d latency=%s\n", status, spec.Name, spec.Kind, resp.Model, len(resp.Embedding), spec.Dimensions, latency.Round(time.Millisecond))
+	if status == "DIMENSION_MISMATCH" {
+		fmt.Println("Next: check model dimensions in config or run `oneday rag reindex --all` after correcting config.")
+	} else {
+		fmt.Println("Next: RAG embeddings are ready for gameplay.")
+	}
+	return nil
+}
+
+func ragBenchmarkAdvice(cfg config.Config, detail string) string {
+	switch {
+	case cfg.AI.Embedding.Provider == "local" && cfg.AI.Embedding.Local.Type == "ollama":
+		return fmt.Sprintf("Next: start Ollama and run `ollama pull %s`, then `oneday rag benchmark` again.", cfg.AI.Embedding.Local.Model)
+	case cfg.AI.Embedding.Provider == "local":
+		return "Next: start your custom local embedding endpoint and verify URL/model/dimensions."
+	case strings.Contains(detail, "api_key"):
+		return "Next: set the provider API key in .env or choose local RAG with `oneday setup --reconfigure`."
+	default:
+		return "Next: run `oneday doctor` for full diagnostics or `oneday setup --reconfigure` to change RAG provider."
+	}
+}
+
+func runRAGReindex(args []string) error {
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		fmt.Printf("ENV: WARN: could not load .env: %v\n", err)
+	}
+	cfg, err := config.Load(resolveConfigPath())
+	if err != nil {
+		return err
+	}
+	storyID := argValue(args, "--story")
+	all := hasArg(args, "--all")
+	if storyID == "" && !all {
+		fmt.Println("Usage: oneday rag reindex --story <story-id> [--all]")
+		fmt.Println("This clears stale RAG chunks so they are regenerated during play.")
+		return nil
+	}
+	db, err := storage.Open(filepath.Join(cfg.DataDir, "oneday.db"))
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	store := rag.NewVectorStore(db.Conn())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if all {
+		removed, err := clearAllRAGChunks(ctx, db.Conn())
+		if err != nil {
+			return err
+		}
+		fmt.Printf("RAG reindex: cleared %d chunks across all stories\n", removed)
+		return nil
+	}
+	removed, err := store.DeleteByStory(ctx, storyID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("RAG reindex: cleared %d chunks for story %s\n", removed, storyID)
+	return nil
+}
+
+func clearAllRAGChunks(ctx context.Context, db *sql.DB) (int64, error) {
+	result, err := db.ExecContext(ctx, `DELETE FROM rag_chunks`)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func hasArg(args []string, needle string) bool {
+	for _, arg := range args {
+		if arg == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func argValue(args []string, key string) string {
+	for i, arg := range args {
+		if arg == key && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+func runStoryPacksList() error {
+	packs, err := discoverStoryPacks([]string{"plugins/story-packs", "plugins/examples"})
+	if err != nil {
+		return err
+	}
+	fmt.Println("OneDay story packs")
+	if len(packs) == 0 {
+		fmt.Println("No story packs found.")
+		return nil
+	}
+	for _, pack := range packs {
+		if err := validateStoryPack(pack); err != nil {
+			fmt.Printf("- %s (invalid: %v)\n", pack, err)
+			continue
+		}
+		fmt.Printf("- %s\n", pack)
+	}
+	return nil
+}
+
+func configureStoryPackChoice(reader *bufio.Reader) error {
+	packs, err := discoverStoryPacks([]string{"plugins/story-packs", "plugins/examples"})
+	if err != nil || len(packs) == 0 {
+		return err
+	}
+	fmt.Println()
+	fmt.Println("Optional story pack:")
+	fmt.Println("  0) None")
+	for i, pack := range packs {
+		status := ""
+		if err := validateStoryPack(pack); err != nil {
+			status = " (invalid)"
+		}
+		fmt.Printf("  %d) %s%s\n", i+1, pack, status)
+	}
+	fmt.Print("Selection [0]: ")
+	choice, _ := reader.ReadString('\n')
+	choice = strings.TrimSpace(choice)
+	if choice == "" || choice == "0" {
+		return nil
+	}
+	idx := parsePositiveInt(choice, 0)
+	if idx <= 0 || idx > len(packs) {
+		return fmt.Errorf("unknown story pack selection %q", choice)
+	}
+	if err := validateStoryPack(packs[idx-1]); err != nil {
+		return err
+	}
+	fmt.Printf("Selected story pack: %s\n", packs[idx-1])
+	return nil
+}
+
+func runExport(args []string) error {
+	outDir := "dist/oneday-export"
+	for i, arg := range args {
+		if arg == "--out" && i+1 < len(args) {
+			outDir = args[i+1]
+		}
+	}
+	if err := os.RemoveAll(outDir); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(outDir, 0755); err != nil {
+		return err
+	}
+	files := []string{"README.md", "config.example.yaml", ".env.example"}
+	for _, file := range files {
+		if err := copyFileIfExists(file, filepath.Join(outDir, file)); err != nil {
+			return err
+		}
+	}
+	if err := copyDirIfExists("plugins/examples", filepath.Join(outDir, "plugins", "examples")); err != nil {
+		return err
+	}
+	manifest := "OneDay safe export\n\nRun:\n  ./oneday setup --reconfigure\n  ./oneday doctor\n\nAlways excluded: config.yaml, .env, oneday_data, databases, generated binaries, local secrets.\n"
+	if err := os.WriteFile(filepath.Join(outDir, "SAFE-SETUP.txt"), []byte(manifest), 0644); err != nil {
+		return err
+	}
+	fmt.Printf("Safe export written to %s\n", outDir)
+	return nil
+}
+
+func copyFileIfExists(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
+func copyDirIfExists(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDirIfExists(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := copyFileIfExists(srcPath, dstPath); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func discoverStoryPacks(roots []string) ([]string, error) {
+	var packs []string
+	for _, root := range roots {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				packs = append(packs, filepath.Join(root, entry.Name()))
+				continue
+			}
+			name := entry.Name()
+			if strings.HasSuffix(name, ".yaml") || strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".json") {
+				packs = append(packs, filepath.Join(root, name))
+			}
+		}
+	}
+	sort.Strings(packs)
+	return packs, nil
+}
+
+func validateStoryPack(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	text := string(data)
+	for _, field := range []string{"id:", "name:", "description:"} {
+		if !strings.Contains(text, field) {
+			return fmt.Errorf("missing %s", strings.TrimSuffix(field, ":"))
+		}
+	}
+	return nil
+}
+
+func reportConfigConsistency(cfg config.Config) {
+	warnings := providerConsistencyWarnings(cfg)
+	for _, warning := range warnings {
+		fmt.Printf("Config warning: %s\n", warning)
+	}
+}
+
+func providerConsistencyWarnings(cfg config.Config) []string {
+	var warnings []string
+	if cfg.AI.LiteLLM.Enabled && strings.TrimSpace(cfg.AI.LiteLLM.APIKey) == "" {
+		warnings = append(warnings, "litellm is enabled but ONEDAY_LITELLM_API_KEY/api_key is empty")
+	}
+	if !cfg.AI.LiteLLM.Enabled && strings.TrimSpace(os.Getenv("ONEDAY_LITELLM_API_KEY")) != "" {
+		warnings = append(warnings, "ONEDAY_LITELLM_API_KEY is set but litellm is disabled")
+	}
+	if cfg.AI.OpenRouter.Enabled && strings.TrimSpace(cfg.AI.OpenRouter.APIKey) == "" {
+		warnings = append(warnings, "openrouter is enabled but ONEDAY_OPENROUTER_API_KEY/api_key is empty")
+	}
+	if !cfg.AI.OpenRouter.Enabled && strings.TrimSpace(os.Getenv("ONEDAY_OPENROUTER_API_KEY")) != "" {
+		warnings = append(warnings, "ONEDAY_OPENROUTER_API_KEY is set but openrouter is disabled")
+	}
+	if cfg.RAG.Enabled && cfg.AI.Embedding.Provider == "local" && !cfg.AI.Embedding.Local.Enabled {
+		warnings = append(warnings, "rag is enabled with local embedding provider but local embeddings are disabled")
+	}
+	if cfg.AI.Embedding.Provider == "local" && cfg.RAG.Dimensions != cfg.AI.Embedding.Local.Dimensions {
+		warnings = append(warnings, fmt.Sprintf("rag.dimensions=%d differs from local embedding dimensions=%d", cfg.RAG.Dimensions, cfg.AI.Embedding.Local.Dimensions))
+	}
+	return warnings
+}
+
+func redactSecret(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "<empty>"
+	}
+	if strings.HasPrefix(value, "${") {
+		return value
+	}
+	return "<redacted>"
+}
+
+func embeddingProviderForSpec(spec aifactory.EmbeddingProviderSpec, timeout time.Duration) interface {
+	Embed(context.Context, ai.EmbeddingRequest) (ai.EmbeddingResponse, error)
+} {
+	switch spec.Kind {
+	case "ollama":
+		return providers.NewOllamaEmbedding(providers.OllamaEmbeddingConfig{
+			BaseURL: spec.BaseURL,
+			Model:   spec.Model,
+			Timeout: timeout,
+		})
+	case "custom":
+		return providers.NewLocalHTTPEmbedding(spec.BaseURL, spec.Model, timeout)
+	default:
+		return providers.NewOpenAICompat(providers.OpenAICompatConfig{
+			Name:         spec.Name,
+			BaseURL:      spec.BaseURL,
+			APIKey:       spec.APIKey,
+			DefaultModel: spec.Model,
+			Timeout:      timeout,
+		})
+	}
+}
+
+func reportCommand(name string, args ...string) {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		fmt.Printf("%s: not found\n", name)
+		return
+	}
+	cmd := exec.Command(path, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("%s: found at %s\n", name, path)
+		return
+	}
+	fmt.Printf("%s: %s\n", name, firstLine(strings.TrimSpace(string(out))))
+}
+
+func commandStatus(name string, args ...string) string {
+	path, err := exec.LookPath(name)
+	if err != nil {
+		return ""
+	}
+	cmd := exec.Command(path, args...)
+	out, err := cmd.CombinedOutput()
+	line := firstLine(strings.TrimSpace(string(out)))
+	if err != nil && line == "" {
+		return fmt.Sprintf("found at %s", path)
+	}
+	if line == "" {
+		return fmt.Sprintf("found at %s", path)
+	}
+	return line
+}
+
+func firstLine(value string) string {
+	line, _, _ := strings.Cut(value, "\n")
+	return line
+}
+
+func ensureEnvFile() {
+	if _, err := os.Stat(".env"); err == nil {
+		return
+	}
+	var lines []string
+	if os.Getenv("ONEDAY_LITELLM_API_KEY") == "" {
+		lines = append(lines, "ONEDAY_LITELLM_API_KEY=")
+	}
+	if os.Getenv("ONEDAY_OPENROUTER_API_KEY") == "" {
+		lines = append(lines, "ONEDAY_OPENROUTER_API_KEY=")
+	}
+	if len(lines) == 0 {
+		return
+	}
+	content := strings.Join(lines, "\n") + "\n"
+	_ = os.WriteFile(".env", []byte(content), 0600)
+}

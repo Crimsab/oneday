@@ -1,0 +1,116 @@
+{
+  "generated_at": "2026-04-09T06:26:24+02:00",
+  "brief": "Mondo steampunk in tono serio e tenebroso, città industriale decadente, culto del vapore, dialoghi tesi, prosa elegante ma non prolissa. Lingua italiana. Voglio una campagna lunga, politica, investigativa e pericolosa.",
+  "models": [
+    "gemini-3.1-flash-lite-preview",
+    "grok-4.1-fast"
+  ],
+  "cases": [
+    {
+      "name": "missing_authoring_fields"
+    },
+    {
+      "name": "missing_world_rules_and_stats"
+    },
+    {
+      "name": "wrong_shapes"
+    },
+    {
+      "name": "not_json"
+    }
+  ],
+  "summaries": [
+    {
+      "model": "grok-4.1-fast",
+      "success_count": 4,
+      "case_count": 4,
+      "success_rate": 100,
+      "average_latency_ms": 10746.5,
+      "average_latency_seconds": 10.7465,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 7350,
+          "duration_seconds": 7.350718352,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 16929,
+          "duration_seconds": 16.92948592,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000117658,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": true,
+          "duration_ms": 18707,
+          "duration_seconds": 18.707754008,
+          "resolved_model": "x-ai/grok-4.1-fast",
+          "story_name": "Ombre di Nebbiaferro",
+          "world_name": "Nebbiaferro"
+        }
+      ]
+    },
+    {
+      "model": "gemini-3.1-flash-lite-preview",
+      "success_count": 4,
+      "case_count": 4,
+      "success_rate": 100,
+      "average_latency_ms": 11457.75,
+      "average_latency_seconds": 11.45775,
+      "results": [
+        {
+          "name": "missing_authoring_fields",
+          "success": true,
+          "duration_ms": 15371,
+          "duration_seconds": 15.371464552,
+          "resolved_model": "google/gemini-3.1-flash-lite-preview-20260303",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "missing_world_rules_and_stats",
+          "success": true,
+          "duration_ms": 14207,
+          "duration_seconds": 14.207186518,
+          "resolved_model": "google/gemini-3.1-flash-lite-preview-20260303",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "wrong_shapes",
+          "success": true,
+          "duration_ms": 0,
+          "duration_seconds": 0.000132426,
+          "resolved_model": "seed-invalid",
+          "story_name": "Le Ciminiere di Nerofumo",
+          "world_name": "Nerofumo"
+        },
+        {
+          "name": "not_json",
+          "success": true,
+          "duration_ms": 16253,
+          "duration_seconds": 16.25340272,
+          "resolved_model": "google/gemini-3.1-flash-lite-preview-20260303",
+          "story_name": "Il Crepuscolo del Vapore",
+          "world_name": "Aethelgard"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+# Local config / secrets
+config.yaml
+config.*.yaml
+!config.example.yaml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Binary
+/oneday
+/oneday.exe
+/oneday-benchmark
+/oneday-ascii-benchmark
+/build/
+dist/
+release/
+*.tar.gz
+*.zip
+
+# Data
+/oneday_data/
+.gsd/
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs / local runs
+*.log
+tmp/
+temp/
+
+# Go
+vendor/
+coverage.out
+coverage.html
+
+# JS / frontend
+node_modules/
+gateway/web/node_modules/
+gateway/web/dist/
+
+# Rust
+target/
+gateway/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

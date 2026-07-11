@@ -1,0 +1,82 @@
+import { describe, expect, it } from "vitest";
+import { hasActiveVisualGeneration, visualPollingDelayMs } from "./visualJobs";
+import type { VisualAssetsResponse } from "./types";
+
+describe("visual job helpers", () => {
+  it("activates polling when jobs are queued or running", () => {
+    const response = visualResponse({
+      jobs: [{ id: 1, status: "queued" }],
+    });
+
+    expect(hasActiveVisualGeneration(response)).toBe(true);
+    expect(visualPollingDelayMs(response)).toBe(2500);
+  });
+
+  it("activates polling when assets are still queued or running", () => {
+    const response = visualResponse({
+      assets: [{ id: "asset-1", status: "running" }],
+    });
+
+    expect(hasActiveVisualGeneration(response)).toBe(true);
+  });
+
+  it("stops polling when visual generation is terminal", () => {
+    const response = visualResponse({
+      assets: [{ id: "asset-1", status: "ready" }],
+      jobs: [{ id: 1, status: "succeeded" }],
+    });
+
+    expect(hasActiveVisualGeneration(response)).toBe(false);
+    expect(visualPollingDelayMs(response)).toBe(0);
+  });
+});
+
+function visualResponse({
+  assets = [],
+  jobs = [],
+}: {
+  assets?: Array<{ id: string; status: string }>;
+  jobs?: Array<{ id: number; status: string }>;
+}): VisualAssetsResponse {
+  return {
+    profile: {
+      story_id: "story",
+      world_style_prompt: "",
+      character_style_prompt: "",
+      negative_prompt: "",
+      palette: "",
+      updated_at: "",
+    },
+    assets: assets.map((asset) => ({
+      id: asset.id,
+      story_id: "story",
+      kind: "location",
+      subject: "Station",
+      entity_id: "",
+      prompt: "",
+      negative_prompt: "",
+      status: asset.status,
+      url: "",
+      provider: "",
+      source: "",
+      error: "",
+      turn: 1,
+      updated_at: "",
+    })),
+    jobs: jobs.map((job) => ({
+      id: job.id,
+      asset_id: "asset-1",
+      story_id: "story",
+      status: job.status,
+      attempts: 0,
+      max_attempts: 3,
+      locked_until: "",
+      error: "",
+      provider: "",
+      started_at: "",
+      finished_at: "",
+      created_at: "",
+      updated_at: "",
+    })),
+  };
+}
