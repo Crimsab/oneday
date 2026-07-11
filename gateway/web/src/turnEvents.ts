@@ -9,19 +9,19 @@ export function appendTurnEvent(events: TurnStreamEvent[], next: TurnStreamEvent
 export function turnEventDetail(event: TurnStreamEvent): string {
   if (event.status === "submitted") return "Action accepted by the Rust gateway; waiting for OneDay...";
   if (event.status === "completed") return "Turn committed. Syncing the canonical snapshot...";
-  if (event.status === "failed") return event.message || "The live engine failed.";
+	if (event.status === "failed") return event.message || "The turn could not be completed.";
   if (event.status === "snapshot_changed") return event.message || "Canonical state changed from another client.";
   if (event.status === "lagged") return event.message || "Live events were skipped; snapshot sync will recover.";
 
   switch (event.event_type) {
     case "turn.started":
-      return "Engine started resolving the turn.";
+	  return "Resolving the turn.";
     case "narrative.delta":
       return streamingDeltaText(event) || "Narrative is streaming.";
     case "narrative.final":
       return "Narrative generated; applying state updates.";
     case "challenge.started":
-	  return "Engine challenge locked before narration.";
+	  return "Challenge terms set.";
     case "challenge.resolved":
 	  return "Authoritative outcome resolved.";
     case "state.delta":
@@ -41,7 +41,7 @@ export function turnEventDetail(event: TurnStreamEvent): string {
     case "turn.committed":
       return "Turn committed to the shared story.";
     default:
-      return event.message || event.event_type || "Live engine event received.";
+	  return event.message || "Turn progress updated.";
   }
 }
 
@@ -109,15 +109,15 @@ function turnEventKey(event: TurnStreamEvent): string {
 function messageForEventType(eventType: string): string {
   switch (eventType) {
     case "turn.started":
-      return "Turn accepted by the live engine.";
+	  return "Turn accepted.";
     case "narrative.final":
       return "Narrative generated; applying state changes.";
     case "challenge.started":
-      return "Engine challenge locked before narration.";
+	  return "Challenge terms set.";
     case "challenge.resolved":
       return "Authoritative outcome resolved before narration.";
     case "choices.updated":
-      return "Choices refreshed from the engine.";
+	  return "Choices refreshed.";
     case "state.delta":
       return "Canonical state changed.";
     case "asset.queued":
@@ -133,7 +133,7 @@ function messageForEventType(eventType: string): string {
     case "turn.committed":
       return "Turn committed to the shared story.";
     default:
-      return `Engine event: ${eventType}.`;
+	  return "Turn progress updated.";
   }
 }
 

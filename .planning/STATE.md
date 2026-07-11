@@ -2,26 +2,34 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
-current_phase: 33
+current_phase: 34
 status: in_progress
-stopped_at: Phase 32 complete on homelab-main; proceeding to Phase 33 branch navigation and surface parity
-last_updated: "2026-07-11T02:45:00+02:00"
-last_activity: 2026-07-11 -- Phase 32 authoritative outcomes and portable challenge protocol deployed
+stopped_at: Phase 33 complete on homelab-main; proceeding to Phase 34 causal telemetry and prompt profiles
+last_updated: "2026-07-11T03:34:18+02:00"
+last_activity: 2026-07-11 -- Phase 33 branch navigation, history, browser/TUI parity, and responsive E2E coverage deployed
 progress:
   total_phases: 39
-  completed_phases: 32
+  completed_phases: 33
   total_plans: 89
-  completed_plans: 97
-  percent: 74
+  completed_plans: 101
+  percent: 77
 ---
 
 # Project State
 
-**Current Phase:** 33
-**Status:** Phase 32 complete; Phase 33 ready
+**Current Phase:** 34
+**Status:** Phase 33 complete; Phase 34 ready
 **Last Updated:** 2026-07-11
 
 ## Phase History
+
+- 2026-07-11: Phase 33 completed on `homelab-main`. Browser and TUI now share
+  branch command semantics; branch-aware history and chapters are searchable,
+  paginated, and exportable; canonical world facts and the `-100..100`
+  relationship scale are consistent; structured dialogue carries speaker IDs;
+  and optimistic submit/failure recovery is protected against duplicate sends.
+  Go, Rust, browser unit/build, Playwright desktop/mobile, live API, SQLite
+  integrity, and rendered Browser Harness checks passed.
 
 - 2026-07-11: Phase 32 completed on `homelab-main`. One versioned challenge
   contract now resolves graded outcomes before narration, persists immutable

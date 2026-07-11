@@ -34,7 +34,7 @@ export function StoryPath({ snapshot, locationAsset, onOpenVisualAsset }: StoryP
   const parts = [snapshot.story.name || "Story", `Chapter ${snapshot.world.current_chapter}`, ...locationParts];
 
   const imageUrl = readyAssetUrl(locationAsset);
-  const clock = displayClock(snapshot.world.current_turn);
+  const clock = displayClock(snapshot);
   const CycleIcon = cycleIcon[clock.cycle as keyof typeof cycleIcon] ?? Sun;
 
   return (

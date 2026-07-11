@@ -271,7 +271,7 @@
 - [x] **BRANCH-05**: Manual saves act as named bookmarks to commits while legacy snapshot files remain compatible during migration.
 - [x] **BRANCH-06**: Messages, chapters, RAG chunks, summaries, visual artifacts, generation traces, and audio artifacts carry branch/source-commit lineage.
 - [x] **BRANCH-07**: Branch operations are idempotent, transactionally safe, and protected against stale expected-head/revision writes.
-- [ ] **BRANCH-08**: Browser and TUI expose fork, rename, checkout, sibling navigation, and current-branch identity with equivalent semantics.
+- [x] **BRANCH-08**: Browser and TUI expose fork, rename, checkout, sibling navigation, and current-branch identity with equivalent semantics.
 
 ### Character Identity, Form, Facts, and Factions
 
@@ -307,15 +307,15 @@
 
 ### Browser/TUI Correctness and Narrative UX
 
-- [ ] **SURFACE-01**: The browser composer clears optimistically on submit, prevents duplicate submission, and restores failed text only when the user has not replaced it.
-- [ ] **SURFACE-02**: Relationship values use one documented `-100..100` contract in engine, API, browser, TUI, tests, and visualizations.
-- [ ] **SURFACE-03**: Browser time, message timestamps, sky, condition, and quick facts never present heuristic values as canonical world facts.
-- [ ] **SURFACE-04**: “Live engine” debug detail is removed from normal play or moved into an explicit Diagnostics surface with player-facing progress wording.
-- [ ] **SURFACE-05**: Structured dialogue renders from speaker IDs/dialogue blocks with accessible speaker distinction and a safe prose fallback.
-- [ ] **SURFACE-06**: History and chapter APIs/UI are paginated, branch-aware, rereadable, searchable, and exportable as Markdown and JSON.
-- [ ] **SURFACE-07**: Desktop and responsive layouts avoid clipped titles, hints, choices, outcomes, independent-scroll traps, and misleading “Factions & NPCs” labels.
-- [ ] **SURFACE-08**: Slash commands obey one registry defining whether they inspect, mutate metadata, or advance a canonical narrative turn across both surfaces.
-- [ ] **SURFACE-09**: Critical Playwright/contract tests cover submit behavior, streaming reconciliation, rollback, branching, history, commands, and browser/TUI challenge parity.
+- [x] **SURFACE-01**: The browser composer clears optimistically on submit, prevents duplicate submission, and restores failed text only when the user has not replaced it.
+- [x] **SURFACE-02**: Relationship values use one documented `-100..100` contract in engine, API, browser, TUI, tests, and visualizations.
+- [x] **SURFACE-03**: Browser time, message timestamps, sky, condition, and quick facts never present heuristic values as canonical world facts.
+- [x] **SURFACE-04**: “Live engine” debug detail is removed from normal play or moved into an explicit Diagnostics surface with player-facing progress wording.
+- [x] **SURFACE-05**: Structured dialogue renders from speaker IDs/dialogue blocks with accessible speaker distinction and a safe prose fallback.
+- [x] **SURFACE-06**: History and chapter APIs/UI are paginated, branch-aware, rereadable, searchable, and exportable as Markdown and JSON.
+- [x] **SURFACE-07**: Desktop and responsive layouts avoid clipped titles, hints, choices, outcomes, independent-scroll traps, and misleading “Factions & NPCs” labels.
+- [x] **SURFACE-08**: Slash commands obey one registry defining whether they inspect, mutate metadata, or advance a canonical narrative turn across both surfaces.
+- [x] **SURFACE-09**: Critical Playwright/contract tests cover submit behavior, streaming reconciliation, rollback, branching, history, commands, and browser/TUI challenge parity.
 
 ### Causal AI Telemetry and Prompt Versioning
 

@@ -6,8 +6,13 @@ import {
   createStory,
   deleteStory,
   generateVisualAssets,
+  getChapters,
+  getHistory,
   getStories,
+  getStoryExport,
   getStoryDeletePlan,
+  getTimeline,
+  updateTimeline,
   updateStory,
 } from "./api";
 
@@ -161,6 +166,33 @@ describe("api request handling", () => {
 
     await expect(getStoryDeletePlan("story-1")).resolves.toMatchObject({ story_id: "story-1", total_rows: 42 });
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/delete-plan", {});
+  });
+
+  it("uses the branch timeline contract for reads and guarded mutations", async () => {
+    mockFetch(new Response(JSON.stringify({ active_branch_id: "branch-main", revision: 7, branches: [] }), { status: 200 }));
+    await expect(getTimeline("story/one")).resolves.toMatchObject({ active_branch_id: "branch-main", revision: 7 });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/timeline", {});
+
+    mockFetch(new Response(JSON.stringify({ timeline: { active_branch_id: "branch-alt" }, snapshot: { story: { id: "story/one" } } }), { status: 200 }));
+    await updateTimeline("story/one", { action: "checkout", client_revision: 7, branch_id: "branch-alt" });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story%2Fone/timeline",
+      expect.objectContaining({ method: "POST", body: expect.stringContaining('"client_revision":7') }),
+    );
+  });
+
+  it("requests branch-scoped paginated history, chapters, and exports", async () => {
+    mockFetch(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
+    await getHistory("story-1", 41, "glass seal");
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/history?limit=40&q=glass+seal&cursor=41", {});
+
+    mockFetch(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
+    await getChapters("story-1", 3, "arrival");
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/chapters?limit=30&q=arrival&cursor=3", {});
+
+    mockFetch(new Response(JSON.stringify({ format: "json", filename: "history.json", content: "{}" }), { status: 200 }));
+    await expect(getStoryExport("story-1", "json")).resolves.toMatchObject({ filename: "history.json" });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/export?format=json", {});
   });
 
   it("rejects successful non-JSON responses before they crash React state", async () => {

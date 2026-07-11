@@ -5,6 +5,8 @@ import type {
   DeleteSaveEnvelope,
   DeleteSaveResponse,
   Health,
+	HistoryPage,
+	ChapterPage,
   GenerateVisualAssetsRequest,
   LoadEnvelope,
   LoadResponse,
@@ -21,6 +23,10 @@ import type {
   StoryEnhanceEnvelope,
   StoryEnhanceResponse,
   StorySnapshot,
+	StoryExport,
+	TimelineEnvelope,
+	TimelineMutationResponse,
+	TimelineResponse,
   StoryWizardEnvelope,
   StoryWizardResponse,
   StorySummary,
@@ -120,6 +126,12 @@ export function enhanceStoryText(envelope: StoryEnhanceEnvelope): Promise<StoryE
 export function getSnapshot(storyId: string): Promise<StorySnapshot> {
   return request<StorySnapshot>(`/api/stories/${encodeURIComponent(storyId)}/snapshot`);
 }
+
+export function getTimeline(storyId:string):Promise<TimelineResponse> { return request<TimelineResponse>(`/api/stories/${encodeURIComponent(storyId)}/timeline`); }
+export function updateTimeline(storyId:string,payload:TimelineEnvelope):Promise<TimelineMutationResponse> { return request<TimelineMutationResponse>(`/api/stories/${encodeURIComponent(storyId)}/timeline`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); }
+export function getHistory(storyId:string,cursor?:number,search=""):Promise<HistoryPage> { const query=new URLSearchParams({limit:"40",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<HistoryPage>(`/api/stories/${encodeURIComponent(storyId)}/history?${query}`); }
+export function getChapters(storyId:string,cursor?:number,search=""):Promise<ChapterPage> { const query=new URLSearchParams({limit:"30",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<ChapterPage>(`/api/stories/${encodeURIComponent(storyId)}/chapters?${query}`); }
+export function getStoryExport(storyId:string,format:"markdown"|"json"):Promise<StoryExport> { return request<StoryExport>(`/api/stories/${encodeURIComponent(storyId)}/export?format=${format}`); }
 
 export function getVisualAssets(storyId: string): Promise<VisualAssetsResponse> {
   return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-assets`);

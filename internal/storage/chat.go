@@ -19,8 +19,8 @@ func (db *DB) AppendChatMessageTx(tx *sql.Tx, m *ChatMessage) error {
 func appendChatMessageExec(exec sqlExecer, m *ChatMessage) error {
 	result, err := exec.Exec(
 		`INSERT INTO chat_messages (session_id, story_id, turn, role, content, message_type, metadata_json, created_at, branch_id, source_commit_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.SessionID, m.StoryID, m.Turn, m.Role, m.Content, m.MessageType, m.MetadataJSON, m.CreatedAt, m.BranchID, m.SourceCommitID,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(NULLIF(?,''),(SELECT active_branch_id FROM stories WHERE id=?)), ?)`,
+		m.SessionID, m.StoryID, m.Turn, m.Role, m.Content, m.MessageType, m.MetadataJSON, m.CreatedAt, m.BranchID, m.StoryID, m.SourceCommitID,
 	)
 	if err != nil {
 		return fmt.Errorf("inserting chat message: %w", err)
@@ -54,10 +54,10 @@ func (db *DB) GetStoryTurnCursor(storyID string) (int, error) {
 	if err := db.conn.QueryRow(
 		`SELECT MAX(turn)
          FROM chat_messages
-         WHERE story_id = ?
+         WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
            AND role = 'assistant'
            AND message_type NOT IN ('narrator', 'combat_summary')`,
-		storyID,
+		storyID, storyID,
 	).Scan(&latestCommittedTurn); err != nil {
 		return 0, fmt.Errorf("loading chat turn cursor for story %s: %w", storyID, err)
 	}
@@ -146,9 +146,9 @@ func (db *DB) GetStoryMessages(storyID string) ([]ChatMessage, error) {
 	rows, err := db.conn.Query(
 		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at, branch_id, source_commit_id
          FROM chat_messages
-         WHERE story_id = ?
+		 WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
          ORDER BY created_at ASC, id ASC`,
-		storyID,
+		storyID, storyID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("getting messages for story %s: %w", storyID, err)

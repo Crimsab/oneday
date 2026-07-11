@@ -91,6 +91,8 @@ pub struct MessageView {
     pub message_type: String,
     pub metadata: Value,
     pub created_at: String,
+    pub branch_id: String,
+    pub source_commit_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -118,6 +120,27 @@ pub struct ChapterView {
     pub start_turn: i64,
     pub end_turn: Option<i64>,
     pub created_at: String,
+    pub branch_id: String,
+    pub source_commit_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HistoryPage {
+    pub items: Vec<MessageView>,
+    pub next_cursor: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ChapterPage {
+    pub items: Vec<ChapterView>,
+    pub next_cursor: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct StoryExport {
+    pub format: String,
+    pub filename: String,
+    pub content: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -321,27 +344,28 @@ pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Story
 }
 
 pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StoryVersion> {
-    let row = sqlx::query(r#"SELECT
+    let row = sqlx::query(r#"WITH active AS (SELECT active_branch_id FROM stories WHERE id = ?) SELECT
            COALESCE((SELECT current_turn FROM world_state WHERE story_id = ?), 0) AS turn,
            COALESCE((SELECT revision FROM stories WHERE id = ?), 0) AS revision,
            COALESCE((SELECT CAST(updated_at AS TEXT) FROM stories WHERE id = ?), '') AS story_updated_at,
-           COALESCE((SELECT id FROM sessions WHERE story_id = ? AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1),
-                    (SELECT id FROM sessions WHERE story_id = ? ORDER BY started_at DESC LIMIT 1),
+           COALESCE((SELECT id FROM sessions WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active) AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1),
+                    (SELECT id FROM sessions WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active) ORDER BY started_at DESC LIMIT 1),
                     '') AS active_session_id,
-           COALESCE((SELECT MAX(id) FROM chat_messages WHERE story_id = ?), 0) AS last_message_id,
+           COALESCE((SELECT MAX(id) FROM chat_messages WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), 0) AS last_message_id,
            COALESCE((SELECT CAST(updated_at AS TEXT) FROM world_state WHERE story_id = ?), '') AS world_updated_at,
            COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM characters WHERE story_id = ?), '') AS character_updated_at,
            COALESCE((SELECT COUNT(*) FROM npcs WHERE story_id = ?), 0) AS npc_count,
            COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM npcs WHERE story_id = ?), '') AS npc_updated_at,
-           COALESCE((SELECT COUNT(*) FROM chapters WHERE story_id = ?), 0) AS chapter_count,
+           COALESCE((SELECT COUNT(*) FROM chapters WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), 0) AS chapter_count,
            COALESCE((SELECT COUNT(*) FROM achievements WHERE story_id = ?), 0) AS achievement_count,
            COALESCE((SELECT CAST(MAX(earned_at) AS TEXT) FROM achievements WHERE story_id = ?), '') AS latest_achievement_at,
-           COALESCE((SELECT COUNT(*) FROM saves WHERE story_id = ?), 0) AS save_count,
-           COALESCE((SELECT CAST(MAX(created_at) AS TEXT) FROM saves WHERE story_id = ?), '') AS latest_save_at,
-           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_assets WHERE story_id = ?), '') AS visual_asset_updated_at,
-           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_generation_jobs WHERE story_id = ?), '') AS visual_job_updated_at,
-           COALESCE((SELECT COUNT(*) FROM visual_generation_jobs WHERE story_id = ? AND status IN ('queued', 'running')), 0) AS active_visual_job_count"#,
+           COALESCE((SELECT COUNT(*) FROM saves WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), 0) AS save_count,
+           COALESCE((SELECT CAST(MAX(created_at) AS TEXT) FROM saves WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), '') AS latest_save_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_assets WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), '') AS visual_asset_updated_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_generation_jobs WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), '') AS visual_job_updated_at,
+           COALESCE((SELECT COUNT(*) FROM visual_generation_jobs WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active) AND status IN ('queued', 'running')), 0) AS active_visual_job_count"#,
     )
+    .bind(story_id)
     .bind(story_id)
     .bind(story_id)
     .bind(story_id)
@@ -501,11 +525,12 @@ async fn load_active_session(pool: &SqlitePool, story_id: &str) -> anyhow::Resul
         r#"SELECT id, story_id, CAST(started_at AS TEXT) AS started_at,
                 CAST(ended_at AS TEXT) AS ended_at, summary
          FROM sessions
-         WHERE story_id = ? AND ended_at IS NULL
+         WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND ended_at IS NULL
          ORDER BY started_at DESC
          LIMIT 1"#,
     )
     .bind(story_id)
+	.bind(story_id)
     .fetch_optional(pool)
     .await?;
     if let Some(row) = row {
@@ -516,10 +541,11 @@ async fn load_active_session(pool: &SqlitePool, story_id: &str) -> anyhow::Resul
         r#"SELECT id, story_id, CAST(started_at AS TEXT) AS started_at,
                 CAST(ended_at AS TEXT) AS ended_at, summary
          FROM sessions
-         WHERE story_id = ?
+         WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
          ORDER BY started_at DESC
          LIMIT 1"#,
     )
+    .bind(story_id)
     .bind(story_id)
     .fetch_one(pool)
     .await?;
@@ -533,17 +559,18 @@ async fn load_messages(
 ) -> anyhow::Result<Vec<MessageView>> {
     let rows = sqlx::query(
         r#"SELECT id, session_id, story_id, turn, role, content, message_type,
-                metadata_json, CAST(created_at AS TEXT) AS created_at
+                metadata_json, CAST(created_at AS TEXT) AS created_at, branch_id, source_commit_id
          FROM (
            SELECT id, session_id, story_id, turn, role, content, message_type,
-                  metadata_json, created_at
+                  metadata_json, created_at, branch_id, source_commit_id
            FROM chat_messages
-           WHERE story_id = ?
+           WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
            ORDER BY turn DESC, id DESC
            LIMIT ?
          )
          ORDER BY turn ASC, id ASC"#,
     )
+    .bind(story_id)
     .bind(story_id)
     .bind(limit)
     .fetch_all(pool)
@@ -554,10 +581,11 @@ async fn load_messages(
 async fn load_chapters(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<ChapterView>> {
     let rows = sqlx::query(
         r#"SELECT id, chapter_number, title, summary, start_turn, end_turn,
-                CAST(created_at AS TEXT) AS created_at
-         FROM chapters WHERE story_id = ? ORDER BY chapter_number ASC"#,
+                CAST(created_at AS TEXT) AS created_at, branch_id, source_commit_id
+         FROM chapters WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) ORDER BY chapter_number ASC"#,
     )
     .bind(story_id)
+	.bind(story_id)
     .fetch_all(pool)
     .await?;
     rows.into_iter()
@@ -570,9 +598,150 @@ async fn load_chapters(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<
                 start_turn: row.try_get("start_turn")?,
                 end_turn: row.try_get("end_turn")?,
                 created_at: row.try_get("created_at")?,
+                branch_id: row.try_get("branch_id")?,
+                source_commit_id: row.try_get("source_commit_id")?,
             })
         })
         .collect()
+}
+
+pub async fn history_page(
+    pool: &SqlitePool,
+    story_id: &str,
+    cursor: Option<i64>,
+    limit: i64,
+    search: &str,
+) -> anyhow::Result<HistoryPage> {
+    let limit = limit.clamp(1, 100);
+    let cursor = cursor.unwrap_or(i64::MAX);
+    let pattern = format!("%{}%", search.trim());
+    let rows = sqlx::query(r#"SELECT id,session_id,story_id,turn,role,content,message_type,metadata_json,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chat_messages WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND id<? AND (?='' OR content LIKE ?) ORDER BY id DESC LIMIT ?"#)
+		.bind(story_id).bind(story_id).bind(cursor).bind(search.trim()).bind(pattern).bind(limit + 1).fetch_all(pool).await?;
+    let has_more = rows.len() as i64 > limit;
+    let mut items: Vec<MessageView> = rows
+        .into_iter()
+        .take(limit as usize)
+        .map(message_from_row)
+        .collect::<anyhow::Result<_>>()?;
+    let next_cursor = if has_more {
+        items.last().map(|item| item.id)
+    } else {
+        None
+    };
+    items.reverse();
+    Ok(HistoryPage { items, next_cursor })
+}
+
+pub async fn chapter_page(
+    pool: &SqlitePool,
+    story_id: &str,
+    cursor: Option<i64>,
+    limit: i64,
+    search: &str,
+) -> anyhow::Result<ChapterPage> {
+    let limit = limit.clamp(1, 100);
+    let cursor = cursor.unwrap_or(i64::MAX);
+    let pattern = format!("%{}%", search.trim());
+    let rows = sqlx::query(r#"SELECT id,chapter_number,title,summary,start_turn,end_turn,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chapters WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND chapter_number<? AND (?='' OR title LIKE ? OR summary LIKE ?) ORDER BY chapter_number DESC LIMIT ?"#)
+		.bind(story_id).bind(story_id).bind(cursor).bind(search.trim()).bind(&pattern).bind(&pattern).bind(limit + 1).fetch_all(pool).await?;
+    let has_more = rows.len() as i64 > limit;
+    let mut items = Vec::new();
+    for row in rows.into_iter().take(limit as usize) {
+        items.push(ChapterView {
+            id: row.try_get("id")?,
+            chapter_number: row.try_get("chapter_number")?,
+            title: row.try_get("title")?,
+            summary: row.try_get("summary")?,
+            start_turn: row.try_get("start_turn")?,
+            end_turn: row.try_get("end_turn")?,
+            created_at: row.try_get("created_at")?,
+            branch_id: row.try_get("branch_id")?,
+            source_commit_id: row.try_get("source_commit_id")?,
+        });
+    }
+    let next_cursor = if has_more {
+        items.last().map(|item| item.chapter_number)
+    } else {
+        None
+    };
+    items.reverse();
+    Ok(ChapterPage { items, next_cursor })
+}
+
+pub async fn export_story(
+    pool: &SqlitePool,
+    story_id: &str,
+    format: &str,
+) -> anyhow::Result<StoryExport> {
+    let story = load_story(pool, story_id).await?;
+    let active_branch_id: String =
+        sqlx::query_scalar("SELECT active_branch_id FROM stories WHERE id=?")
+            .bind(story_id)
+            .fetch_one(pool)
+            .await?;
+    let mut messages = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = history_page(pool, story_id, cursor, 100, "").await?;
+        messages.extend(page.items);
+        if page.next_cursor.is_none() {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+    messages.sort_by_key(|message| message.id);
+    let mut chapters = Vec::new();
+    let mut chapter_cursor = None;
+    loop {
+        let page = chapter_page(pool, story_id, chapter_cursor, 100, "").await?;
+        chapters.extend(page.items);
+        if page.next_cursor.is_none() {
+            break;
+        }
+        chapter_cursor = page.next_cursor;
+    }
+    chapters.sort_by_key(|chapter| chapter.chapter_number);
+    let safe_name: String = story
+        .name
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .to_lowercase();
+    if format.eq_ignore_ascii_case("json") {
+        let payload = json!({"story": story, "active_branch_id": active_branch_id, "chapters": chapters, "messages": messages});
+        return Ok(StoryExport {
+            format: "json".into(),
+            filename: format!("{safe_name}-history.json"),
+            content: serde_json::to_string_pretty(&payload)?,
+        });
+    }
+    let mut content = format!("# {}\n\nBranch: `{}`\n\n", story.name, active_branch_id);
+    if !chapters.is_empty() {
+        content.push_str("## Chapters\n\n");
+        for chapter in chapters {
+            content.push_str(&format!(
+                "### {}\n\nTurns {}–{}\n\n{}\n\n",
+                chapter.title,
+                chapter.start_turn,
+                chapter
+                    .end_turn
+                    .map_or_else(|| "current".into(), |turn| turn.to_string()),
+                chapter.summary
+            ));
+        }
+        content.push_str("## Transcript\n\n");
+    }
+    for message in messages {
+        content.push_str(&format!(
+            "## Turn {} — {}\n\n{}\n\n",
+            message.turn, message.role, message.content
+        ));
+    }
+    Ok(StoryExport {
+        format: "markdown".into(),
+        filename: format!("{safe_name}-history.md"),
+        content,
+    })
 }
 
 async fn load_achievements(
@@ -657,9 +826,10 @@ async fn load_sessions(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<
     let rows = sqlx::query(
         r#"SELECT id, story_id, CAST(started_at AS TEXT) AS started_at,
                 CAST(ended_at AS TEXT) AS ended_at, summary
-         FROM sessions WHERE story_id = ? ORDER BY started_at DESC"#,
+         FROM sessions WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) ORDER BY started_at DESC"#,
     )
     .bind(story_id)
+	.bind(story_id)
     .fetch_all(pool)
     .await?;
     Ok(rows.into_iter().map(session_from_row).collect())
@@ -828,6 +998,8 @@ fn message_from_row(row: sqlx::sqlite::SqliteRow) -> anyhow::Result<MessageView>
         message_type: row.try_get("message_type")?,
         metadata: json_field(&row, "metadata_json", json!({})),
         created_at: row.try_get("created_at")?,
+        branch_id: row.try_get("branch_id")?,
+        source_commit_id: row.try_get("source_commit_id")?,
     })
 }
 
@@ -879,6 +1051,7 @@ mod tests {
                 language TEXT NOT NULL DEFAULT '',
                 is_archived INTEGER NOT NULL DEFAULT 0,
                 revision INTEGER NOT NULL DEFAULT 0,
+				active_branch_id TEXT NOT NULL DEFAULT 'branch-main',
                 updated_at TEXT NOT NULL
             )"#,
         )
@@ -909,15 +1082,15 @@ mod tests {
     async fn create_story_version_tables(pool: &SqlitePool) {
         for statement in [
             "CREATE TABLE world_state (story_id TEXT NOT NULL, current_turn INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT '')",
-            "CREATE TABLE sessions (id TEXT NOT NULL, story_id TEXT NOT NULL, started_at TEXT NOT NULL DEFAULT '', ended_at TEXT)",
-            "CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, story_id TEXT NOT NULL, session_id TEXT NOT NULL, turn INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL, content TEXT NOT NULL DEFAULT '', message_type TEXT NOT NULL DEFAULT 'narrative', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE sessions (id TEXT NOT NULL, story_id TEXT NOT NULL, started_at TEXT NOT NULL DEFAULT '', ended_at TEXT, branch_id TEXT NOT NULL DEFAULT 'branch-main')",
+            "CREATE TABLE chat_messages (id INTEGER PRIMARY KEY AUTOINCREMENT, story_id TEXT NOT NULL, session_id TEXT NOT NULL, turn INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL, content TEXT NOT NULL DEFAULT '', message_type TEXT NOT NULL DEFAULT 'narrative', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main', source_commit_id TEXT NOT NULL DEFAULT 'commit-main')",
             "CREATE TABLE characters (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '')",
             "CREATE TABLE npcs (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '')",
-            "CREATE TABLE chapters (story_id TEXT NOT NULL)",
+            "CREATE TABLE chapters (story_id TEXT NOT NULL, branch_id TEXT NOT NULL DEFAULT 'branch-main', source_commit_id TEXT NOT NULL DEFAULT 'commit-main')",
             "CREATE TABLE achievements (story_id TEXT NOT NULL, earned_at TEXT NOT NULL DEFAULT '')",
-            "CREATE TABLE saves (story_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT '')",
-            "CREATE TABLE visual_assets (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', file_path TEXT NOT NULL DEFAULT '')",
-            "CREATE TABLE visual_generation_jobs (story_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', updated_at TEXT NOT NULL DEFAULT '')",
+            "CREATE TABLE saves (story_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main')",
+            "CREATE TABLE visual_assets (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', file_path TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main')",
+            "CREATE TABLE visual_generation_jobs (story_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', updated_at TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main')",
         ] {
             sqlx::query(statement)
                 .execute(pool)
@@ -1044,6 +1217,83 @@ mod tests {
         assert_eq!(version.active_visual_job_count, 1);
     }
 
+    #[tokio::test]
+    async fn history_and_export_are_paginated_searchable_and_branch_scoped() {
+        let pool = story_pool().await;
+        sqlx::query("DROP TABLE chapters")
+            .execute(&pool)
+            .await
+            .expect("drop minimal chapters fixture");
+        sqlx::query(
+            r#"CREATE TABLE chapters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                story_id TEXT NOT NULL,
+                chapter_number INTEGER NOT NULL,
+                title TEXT NOT NULL DEFAULT '',
+                summary TEXT NOT NULL DEFAULT '',
+                start_turn INTEGER NOT NULL DEFAULT 0,
+                end_turn INTEGER,
+                created_at TEXT NOT NULL DEFAULT '',
+                branch_id TEXT NOT NULL,
+                source_commit_id TEXT NOT NULL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create full chapters fixture");
+        for (turn, content, branch) in [
+            (1_i64, "first main message", "branch-main"),
+            (2_i64, "needle in the archive", "branch-main"),
+            (3_i64, "latest main message", "branch-main"),
+            (9_i64, "alternate secret", "branch-alt"),
+        ] {
+            sqlx::query("INSERT INTO chat_messages (story_id,session_id,turn,role,content,created_at,branch_id,source_commit_id) VALUES ('story-1','session-1',?,'assistant',?,'2026-01-01',?,'commit')")
+                .bind(turn)
+                .bind(content)
+                .bind(branch)
+                .execute(&pool)
+                .await
+                .expect("insert history fixture");
+        }
+        for (number, title, branch) in [
+            (1_i64, "Main Chapter", "branch-main"),
+            (2_i64, "Alternate Chapter", "branch-alt"),
+        ] {
+            sqlx::query("INSERT INTO chapters (story_id,chapter_number,title,summary,start_turn,created_at,branch_id,source_commit_id) VALUES ('story-1',?,?,'summary',1,'2026-01-01',?,'commit')")
+                .bind(number)
+                .bind(title)
+                .bind(branch)
+                .execute(&pool)
+                .await
+                .expect("insert chapter fixture");
+        }
+
+        let first_page = history_page(&pool, "story-1", None, 2, "")
+            .await
+            .expect("first history page");
+        assert_eq!(first_page.items.len(), 2);
+        assert!(first_page.next_cursor.is_some());
+        assert!(first_page
+            .items
+            .iter()
+            .all(|item| item.branch_id == "branch-main"));
+
+        let search = history_page(&pool, "story-1", None, 40, "needle")
+            .await
+            .expect("search history");
+        assert_eq!(search.items.len(), 1);
+        assert_eq!(search.items[0].content, "needle in the archive");
+
+        let export = export_story(&pool, "story-1", "json")
+            .await
+            .expect("export active branch");
+        let payload: Value = serde_json::from_str(&export.content).expect("valid export JSON");
+        assert_eq!(payload["active_branch_id"], "branch-main");
+        assert_eq!(payload["messages"].as_array().map(Vec::len), Some(3));
+        assert_eq!(payload["chapters"].as_array().map(Vec::len), Some(1));
+        assert_eq!(payload["chapters"][0]["title"], "Main Chapter");
+    }
+
     #[test]
     fn latest_choices_uses_current_or_immediately_prior_active_session_turn() {
         let messages = vec![
@@ -1091,6 +1341,8 @@ mod tests {
                 }
             }),
             created_at: "2026-01-01T00:00:00Z".to_string(),
+            branch_id: "branch-main".to_string(),
+            source_commit_id: "commit-main".to_string(),
         }
     }
 }

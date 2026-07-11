@@ -778,10 +778,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 33.1: Expose branch/history/chapter/export APIs and shared command semantics
-- [ ] Plan 33.2: Implement branch navigator, optimistic composer, diagnostics separation, and canonical facts in browser
-- [ ] Plan 33.3: Build structured dialogue/history readers and responsive layout/accessibility corrections
-- [ ] Plan 33.4: Add Playwright and browser/TUI parity coverage for critical flows
+- [x] Plan 33.1: Expose branch/history/chapter/export APIs and shared command semantics
+- [x] Plan 33.2: Implement branch navigator, optimistic composer, diagnostics separation, and canonical facts in browser
+- [x] Plan 33.3: Build structured dialogue/history readers and responsive layout/accessibility corrections
+- [x] Plan 33.4: Add Playwright and browser/TUI parity coverage for critical flows
 
 ---
 

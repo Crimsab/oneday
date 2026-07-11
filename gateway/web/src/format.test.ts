@@ -39,10 +39,11 @@ describe("basic JSON helpers", () => {
 });
 
 describe("clock and stat helpers", () => {
-  it("derives display clocks from turns and messages", () => {
-    expect(displayClock(0)).toEqual({ day: 1, time: "Day 1, 08:00", cycle: "Morning" });
-    expect(displayClock(24).day).toBe(2);
-    expect(messageClock(message({ id: 5, turn: 2 }))).toBe("09:19");
+  it("uses canonical world clocks and turn labels", () => {
+	const snapshot = snapshotWithWorld({ world_time: { day: 2, minute_of_day: 540, display_text: "Day 2, 09:00" } });
+    expect(displayClock(snapshot)).toEqual({ day: 2, time: "Day 2, 09:00", cycle: "Morning" });
+	expect(displayClock(null)).toEqual({ day: null, time: "Not tracked", cycle: "Not tracked" });
+    expect(messageClock(message({ id: 5, turn: 2 }))).toBe("T2");
     expect(displayTimestamp("2026-07-03 23:44:18.215210603 +0200 CEST m=+25.421624674")).toBe(
       "2026-07-03 23:44:18.215210603 +0200 CEST",
     );
@@ -58,19 +59,17 @@ describe("clock and stat helpers", () => {
 });
 
 describe("snapshot derivation helpers", () => {
-  it("derives conditions from character stats", () => {
-    expect(deriveCondition(null)).toBe("Idle");
-    expect(deriveCondition(snapshotWithStats({ health: 20 }))).toBe("Injured");
-    expect(deriveCondition(snapshotWithStats({ stamina: 12 }))).toBe("Exhausted");
-    expect(deriveCondition(snapshotWithStats({ focus: 70 }))).toBe("Focused");
-    expect(deriveCondition(snapshotWithStats({ focus: 20 }))).toBe("Stable");
+  it("does not present inferred character conditions as canon", () => {
+    expect(deriveCondition(null)).toBe("Not tracked");
+	expect(deriveCondition(snapshotWithStats({ health: 20 }))).toBe("Not tracked");
+	expect(deriveCondition(snapshotWithWorld({ condition: "Wounded" }))).toBe("Wounded");
   });
 
   it("finds nested strings and weather labels", () => {
     expect(findString({ outer: [{ sky: "Overcast" }] }, ["sky"])).toBe("Overcast");
     expect(findString({ outer: [{ sky: "" }] }, ["sky"])).toBeNull();
-    expect(weatherLabel(snapshotWithWorld({ scene_contract: { weather: "Rain" } }))).toBe("Rain");
-    expect(weatherLabel(snapshotWithWorld({ known_locations: { forecast: "Clear" } }))).toBe("Clear");
+	expect(weatherLabel(snapshotWithWorld({ scene_contract: { weather: "Rain" } }))).toBe("Not tracked");
+	expect(weatherLabel(snapshotWithWorld({ weather: { tracked: true, label: "Clear" } }))).toBe("Clear");
   });
 
   it("builds recent command history from user messages", () => {
@@ -123,6 +122,8 @@ function message(overrides: Partial<MessageView>): MessageView {
     message_type: "narrative",
     metadata: {},
     created_at: "2026-01-01T00:00:00Z",
+	branch_id: "branch-main",
+	source_commit_id: "commit-main",
     ...overrides,
   };
 }
@@ -155,12 +156,17 @@ function snapshotWithWorld(overrides: Record<string, JsonValue>): StorySnapshot 
       active_visual_job_count: 0,
     },
     story: { id: "story", name: "Story", description: "", genre: "", tone: "", language: "en", is_archived: false, updated_at: "now" },
-    character: { id: "character", name: "Hero", fields: { stats: characterStats } },
+    character: { id: "character", name: "Hero", fields: { stats: characterStats, condition: overrides.condition } },
     world: {
       id: "world",
       current_location: "Dock",
       current_chapter: 1,
       current_turn: 1,
+	  current_location_id: "location-dock",
+	  spatial_locations: [],
+	  spatial_edges: [],
+	  world_time: overrides.world_time ?? {},
+	  weather: overrides.weather ?? { tracked: false, label: "Not tracked" },
       known_locations: (overrides.known_locations as StorySnapshot["world"]["known_locations"]) ?? {},
       global_events: {},
       faction_standings: {},

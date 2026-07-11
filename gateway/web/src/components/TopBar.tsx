@@ -14,7 +14,7 @@ interface TopBarProps {
 }
 
 export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLeftRail, onToggleInspector, onOpen }: TopBarProps) {
-  const clock = displayClock(snapshot?.world.current_turn ?? 0);
+  const clock = displayClock(snapshot);
   const condition = deriveCondition(snapshot);
   const weather = weatherLabel(snapshot);
 

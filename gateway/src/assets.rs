@@ -2371,6 +2371,7 @@ mod tests {
                 language TEXT NOT NULL DEFAULT 'en',
                 is_archived INTEGER NOT NULL DEFAULT 0,
                 revision INTEGER NOT NULL DEFAULT 0,
+				active_branch_id TEXT NOT NULL DEFAULT 'branch-main',
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
         )
@@ -2419,7 +2420,9 @@ mod tests {
                 story_id TEXT NOT NULL,
                 started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 ended_at DATETIME,
-                summary TEXT NOT NULL DEFAULT ''
+                summary TEXT NOT NULL DEFAULT '',
+				branch_id TEXT NOT NULL DEFAULT 'branch-main',
+				source_commit_id TEXT NOT NULL DEFAULT 'commit-main'
             )"#,
             r#"CREATE TABLE chat_messages (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2430,6 +2433,8 @@ mod tests {
                 content TEXT NOT NULL DEFAULT '',
                 message_type TEXT NOT NULL DEFAULT 'narrative',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
+				branch_id TEXT NOT NULL DEFAULT 'branch-main',
+                source_commit_id TEXT NOT NULL DEFAULT 'commit-main',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
             r#"CREATE TABLE chapters (
@@ -2440,7 +2445,9 @@ mod tests {
                 summary TEXT NOT NULL DEFAULT '',
                 start_turn INTEGER NOT NULL DEFAULT 0,
                 end_turn INTEGER NOT NULL DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+				created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+				branch_id TEXT NOT NULL DEFAULT 'branch-main',
+				source_commit_id TEXT NOT NULL DEFAULT 'commit-main'
             )"#,
             r#"CREATE TABLE achievements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2488,6 +2495,8 @@ mod tests {
                 location TEXT NOT NULL DEFAULT '',
                 session_id TEXT NOT NULL DEFAULT '',
                 metadata_json TEXT NOT NULL DEFAULT '{}',
+                branch_id TEXT NOT NULL DEFAULT 'branch-main',
+                source_commit_id TEXT NOT NULL DEFAULT 'commit-main',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
             r#"CREATE TABLE story_visual_profiles (

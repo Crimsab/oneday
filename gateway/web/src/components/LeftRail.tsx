@@ -3,6 +3,8 @@ import { Archive, ArchiveRestore, Check, PanelLeftOpen, Pencil, Plus, RefreshCw,
 import { moduleSpecs } from "../commands";
 import { asArray, compactText, displayTimestamp, entryLabel } from "../format";
 import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary, StoryUpdatePayload } from "../types";
+import type { TimelineResponse } from "../types";
+import { BranchNavigator } from "./BranchNavigator";
 
 interface LeftRailProps {
   stories: StorySummary[];
@@ -20,6 +22,10 @@ interface LeftRailProps {
   onDeleteStory: (storyId: string) => Promise<void>;
   onOpen: (overlay: OverlayKind) => void;
   busyStoryId: string;
+	timeline: TimelineResponse | null;
+	onForkBranch: (name:string)=>Promise<void>;
+	onRenameBranch: (branchId:string,name:string)=>Promise<void>;
+	onCheckoutBranch: (branchId:string)=>Promise<void>;
 }
 
 export function LeftRail({
@@ -38,6 +44,10 @@ export function LeftRail({
   onDeleteStory,
   onOpen,
   busyStoryId,
+	timeline,
+	onForkBranch,
+	onRenameBranch,
+	onCheckoutBranch,
 }: LeftRailProps) {
   const notes = storyNotes(snapshot);
   const chapters = snapshot?.panels.chapters.slice(-5).reverse() ?? [];
@@ -92,6 +102,8 @@ export function LeftRail({
           )}
         </div>
       </section>
+
+	  <BranchNavigator timeline={timeline} busy={Boolean(busyStoryId)} onFork={onForkBranch} onRename={onRenameBranch} onCheckout={onCheckoutBranch} />
 
       <nav className="module-nav" aria-label="Story modules">
         {moduleSpecs.map(({ tab, label, hotkey, Icon }) => (

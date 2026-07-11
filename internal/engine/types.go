@@ -102,9 +102,10 @@ type AchievementData struct {
 
 // DialogueBlock is optional renderer-facing metadata for structured dialogue.
 type DialogueBlock struct {
-	Speaker string `json:"speaker"`
-	Role    string `json:"role,omitempty"` // narrator, npc, player, meta, system
-	Text    string `json:"text"`
+	SpeakerID string `json:"speaker_id,omitempty"`
+	Speaker   string `json:"speaker"`
+	Role      string `json:"role,omitempty"` // narrator, npc, player, meta, system
+	Text      string `json:"text"`
 }
 
 // EntityMention is optional renderer metadata for important named entities.
