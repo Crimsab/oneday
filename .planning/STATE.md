@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
 current_phase: 37
 status: in_progress
-stopped_at: Phase 36 complete; proceeding to canonical TTS, voice registry, and audio playback
-last_updated: "2026-07-11T17:05:00+02:00"
-last_activity: 2026-07-11 -- Story-pack authoring and versioned minigame fairness corpus completed
+stopped_at: Phase 37.1 complete; proceeding to canonical segmentation, queue, and provider adapters
+last_updated: "2026-07-11T17:08:00+02:00"
+last_activity: 2026-07-11 -- TTS schema, voice registry, assignments, lexicon, cache, assets, and jobs deployed
 progress:
   total_phases: 39
   completed_phases: 36
   total_plans: 89
-  completed_plans: 109
+  completed_plans: 110
   percent: 92
 ---
 
