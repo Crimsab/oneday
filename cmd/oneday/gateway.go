@@ -962,7 +962,33 @@ func runGatewayTimeline(db *storage.DB, in io.Reader, out io.Writer) error {
 		}
 		views = append(views, contracts.TimelineBranchView{ID: branch.ID, StoryID: branch.StoryID, Name: branch.Name, ForkCommitID: branch.ForkCommitID, HeadCommitID: branch.HeadCommitID, HeadTurn: headTurn, CreatedAt: branch.CreatedAt, UpdatedAt: branch.UpdatedAt})
 	}
-	resp := contracts.BrowserTimelineResponse{ActiveBranchID: story.ActiveBranchID, Revision: story.Revision, Branches: views, Head: &contracts.TimelineCommitView{ID: head.Commit.ID, BranchID: head.Commit.BranchID, ParentCommitID: head.Commit.ParentCommitID, CanonicalTurn: head.Commit.CanonicalTurn, Kind: head.Commit.Kind, Message: head.Commit.Message, CreatedAt: head.Commit.CreatedAt}}
+	rows, err := db.Conn().Query(`
+		WITH RECURSIVE ancestors(id,branch_id,parent_commit_id,canonical_turn,kind,message,created_at) AS (
+			SELECT id,branch_id,COALESCE(parent_commit_id,''),canonical_turn,kind,message,created_at
+			FROM turn_commits WHERE id=? AND story_id=?
+			UNION ALL
+			SELECT parent.id,parent.branch_id,COALESCE(parent.parent_commit_id,''),parent.canonical_turn,parent.kind,parent.message,parent.created_at
+			FROM turn_commits parent JOIN ancestors child ON child.parent_commit_id=parent.id
+			WHERE parent.story_id=?
+		)
+		SELECT id,branch_id,parent_commit_id,canonical_turn,kind,message,created_at
+		FROM ancestors ORDER BY canonical_turn,created_at,id`, head.Commit.ID, req.StoryID, req.StoryID)
+	if err != nil {
+		return fmt.Errorf("loading active timeline ancestry: %w", err)
+	}
+	defer rows.Close()
+	commits := make([]contracts.TimelineCommitView, 0)
+	for rows.Next() {
+		var commit contracts.TimelineCommitView
+		if err := rows.Scan(&commit.ID, &commit.BranchID, &commit.ParentCommitID, &commit.CanonicalTurn, &commit.Kind, &commit.Message, &commit.CreatedAt); err != nil {
+			return fmt.Errorf("scanning active timeline ancestry: %w", err)
+		}
+		commits = append(commits, commit)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterating active timeline ancestry: %w", err)
+	}
+	resp := contracts.BrowserTimelineResponse{ActiveBranchID: story.ActiveBranchID, Revision: story.Revision, Branches: views, Head: &contracts.TimelineCommitView{ID: head.Commit.ID, BranchID: head.Commit.BranchID, ParentCommitID: head.Commit.ParentCommitID, CanonicalTurn: head.Commit.CanonicalTurn, Kind: head.Commit.Kind, Message: head.Commit.Message, CreatedAt: head.Commit.CreatedAt}, Commits: commits}
 	return json.NewEncoder(out).Encode(resp)
 }
 

@@ -45,4 +45,7 @@ func TestGatewayTimelineListsAndForksWithRevisionGuard(t *testing.T) {
 			t.Fatalf("branch %s head turn = %d, want %d", branch.Name, branch.HeadTurn, head.Commit.CanonicalTurn)
 		}
 	}
+	if len(response.Commits) != 1 || response.Commits[0].ID != head.Commit.ID {
+		t.Fatalf("unexpected active ancestry: %+v", response.Commits)
+	}
 }

@@ -18,10 +18,6 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
   const visibleChoices = choices.slice(0, 3);
   return (
     <div className="choice-surface">
-      <header className="choice-heading">
-        <div><span>Your move</span><h2>What do you do?</h2></div>
-        <small>Choose a path or write your own action below.</small>
-      </header>
       <div className="choice-stack">
       {visibleChoices.length > 0 ? (
           <>

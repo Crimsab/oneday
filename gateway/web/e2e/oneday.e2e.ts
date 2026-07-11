@@ -30,6 +30,10 @@ const timeline = {
     { id: "branch-alt", story_id: story.id, name: "quiet route", fork_commit_id: "commit-3", head_commit_id: "commit-alt", head_turn: 3, created_at: now, updated_at: now },
   ],
   head: { id: "commit-4", branch_id: "branch-main", parent_commit_id: "commit-3", canonical_turn: 4, kind: "turn", message: "Seal", created_at: now },
+  commits: [
+    { id: "commit-3", branch_id: "branch-main", parent_commit_id: "commit-2", canonical_turn: 3, kind: "turn", message: "Archive doors", created_at: now },
+    { id: "commit-4", branch_id: "branch-main", parent_commit_id: "commit-3", canonical_turn: 4, kind: "turn", message: "Seal", created_at: now },
+  ],
 };
 
 function visualResponse(canUndo = true, canRedo = false) {
@@ -52,7 +56,7 @@ function automaticPatternMiniGame() {
   return { protocol_version: 1, id: "mini-auto-pattern", story_id: story.id, branch_id: "branch-main", turn: 4, seed: 7, definition: { id: "pattern-generic", kind: "pattern", prompt: "Decode the fractured seal by completing its pattern.", difficulty: 50, options: ["8", "9", "10"], rules: { selection_reason: "difficulty fit 50; 4 narrative tag matches; timing-free" } }, runtime: { phase: "active", revision: 1, state: {}, history: [{ action: "start" }] } };
 }
 
-async function mockGateway(page: Page, options: { failAction?: boolean; activeMiniGame?: boolean } = {}) {
+async function mockGateway(page: Page, options: { failAction?: boolean; activeMiniGame?: boolean; ttsOff?: boolean } = {}) {
   let failAction = Boolean(options.failAction);
   let actionRequests = 0;
   let activeMiniGame: any = options.activeMiniGame ? automaticPatternMiniGame() : null;
@@ -60,7 +64,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let visualCanRedo = false;
   let currentTimeline = structuredClone(timeline);
   let audioGenerated = false;
-  let ttsSettings = { story_id: story.id, mode: "all", autoplay: false, default_language_tag: "en", provider_policy: {} };
+  let ttsSettings = { story_id: story.id, mode: options.ttsOff ? "off" : "all", autoplay: false, default_language_tag: "en", provider_policy: {} };
   let pronunciations: any[] = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -239,14 +243,21 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   if (browserName === "chromium" && page.viewportSize()!.width < 860) expect(overflow.fontSize).toBeGreaterThanOrEqual(16);
 });
 
-test("returns to the previous decision on a new branch and exposes chat-style branch navigation", async ({ page }) => {
+test("restores a message decision and only exposes branch navigation when alternatives exist", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Try another choice" }).click();
-  await expect(page.getByText("Back at the previous decision on Turn 3 alternative 2.")).toBeVisible();
-  await expect(page.getByTitle("Turn 3 alternative 2")).toContainText("3/3");
-  await expect(page.getByRole("button", { name: "Previous story branch" })).toBeEnabled();
-  await expect(page.getByRole("button", { name: "Next story branch" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Previous story branch" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Next story branch" })).toBeEnabled();
+  await page.getByRole("button", { name: "Try another path from here", description: "Create a new branch from before turn 4" }).click();
+  await expect(page.getByText("Back at the previous decision on Turn 4 alternative 2.")).toBeVisible();
+});
+
+test("does not render spoken audio controls while story speech is off", async ({ page }) => {
+  await mockGateway(page, { ttsOff: true });
+  const settingsLoaded = page.waitForResponse((response) => response.url().endsWith("/tts/settings"));
+  await page.goto("/");
+  await settingsLoaded;
+  await expect(page.getByRole("region", { name: "Spoken audio" })).toHaveCount(0);
 });
 
 test("shows canonical visual lineage and branch-local selection controls", async ({ page }) => {

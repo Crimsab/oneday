@@ -39,7 +39,6 @@ import { MiniGameHost } from "./components/MiniGameHost";
 import { LeftRail } from "./components/LeftRail";
 import { PanelDrawer } from "./components/PanelDrawer";
 import { StoryPath } from "./components/StoryPath";
-import { StoryBranchControls } from "./components/StoryBranchControls";
 import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
@@ -265,11 +264,10 @@ function App() {
 	const renameBranch = (branchId:string,name:string) => mutateTimeline({action:"rename",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId,name});
   const checkoutBranch = (branchId:string) => mutateTimeline({action:"checkout",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId});
 
-  const revisitPreviousChoice = async () => {
-    if (!storyId || !snapshot || !timeline?.head?.parent_commit_id || storyMutatingId) return;
-    const fromCommitId = timeline.head.parent_commit_id;
+  const restoreDecision = async (fromCommitId: string, turn: number) => {
+    if (!storyId || !snapshot || !timeline || !fromCommitId || storyMutatingId) return;
     const siblingCount = timeline.branches.filter((branch) => branch.fork_commit_id === fromCommitId).length;
-    const name = `Turn ${Math.max(0, timeline.head.canonical_turn - 1)} alternative ${siblingCount + 1}`;
+    const name = `Turn ${Math.max(0, turn)} alternative ${siblingCount + 1}`;
     setStoryMutatingId(storyId);
     try {
       const forked = await updateTimeline(storyId, {
@@ -1251,20 +1249,16 @@ function App() {
               hiddenBeforeId={hiddenBeforeMessageId}
               pendingTurn={pendingTurn}
               liveEvents={liveTurnEvents}
+              timeline={timeline}
+              timelineBusy={sending || Boolean(storyMutatingId)}
+              onCheckoutBranch={checkoutBranch}
+              onRestoreDecision={restoreDecision}
             />
           </section>
 
-          {snapshot && (
+          {snapshot && snapshot.choices.length > 0 && (
             <section className="inline-choice-panel" aria-label="Suggested actions">
-              {snapshot.choices.length > 0 && (
-                <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} onChoice={sendChoice} onDraft={setDraft} />
-              )}
-              <StoryBranchControls
-                timeline={timeline}
-                busy={sending || Boolean(storyMutatingId)}
-                onCheckout={checkoutBranch}
-                onRevisitChoice={revisitPreviousChoice}
-              />
+              <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} onChoice={sendChoice} onDraft={setDraft} />
             </section>
           )}
 

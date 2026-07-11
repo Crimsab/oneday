@@ -148,6 +148,8 @@ pub struct TimelineResponse {
     pub revision: i64,
     pub branches: Vec<TimelineBranchView>,
     pub head: Option<TimelineCommitView>,
+    #[serde(default)]
+    pub commits: Vec<TimelineCommitView>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

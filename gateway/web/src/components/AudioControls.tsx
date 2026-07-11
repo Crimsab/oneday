@@ -1,15 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Volume2 } from "lucide-react";
 import { cancelAudioJob, createMessageAudio, getMessageAudio, getTTSSettings, retryAudioJob } from "../api";
-import type { AudioAsset, MessageAudioResponse } from "../types";
+import type { AudioAsset, MessageAudioResponse, StoryTTSSettings } from "../types";
 
-const settingsRequests = new Map<string, Promise<boolean>>();
+const settingsRequests = new Map<string, Promise<StoryTTSSettings>>();
 
-function autoplayForStory(storyId: string): Promise<boolean> {
+function settingsForStory(storyId: string): Promise<StoryTTSSettings> {
   const existing = settingsRequests.get(storyId);
   if (existing) return existing;
   const request = getTTSSettings(storyId)
-    .then((response) => response.settings.autoplay)
+    .then((response) => response.settings)
     .catch((error) => { settingsRequests.delete(storyId); throw error; });
   settingsRequests.set(storyId, request);
   return request;
@@ -17,7 +17,7 @@ function autoplayForStory(storyId: string): Promise<boolean> {
 
 export function AudioControls({ storyId, messageId }: { storyId: string; messageId: number }) {
   const [response, setResponse] = useState<MessageAudioResponse>({ assets: [], jobs: [] });
-  const [autoplay, setAutoplay] = useState(false);
+  const [settings, setSettings] = useState<StoryTTSSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const played = useRef(new Set<string>());
@@ -26,10 +26,10 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
     try {
       const [audio, settings] = await Promise.all([
         getMessageAudio(storyId, messageId),
-        autoplayForStory(storyId),
+        settingsForStory(storyId),
       ]);
       setResponse(audio);
-      setAutoplay(settings);
+      setSettings(settings);
       setError("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Audio status unavailable");
@@ -40,10 +40,10 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
 
   useEffect(() => {
     const update = (event: Event) => {
-      const detail = (event as CustomEvent<{ storyId: string; autoplay: boolean }>).detail;
+      const detail = (event as CustomEvent<{ storyId: string; settings: StoryTTSSettings }>).detail;
       if (detail?.storyId === storyId) {
-        settingsRequests.set(storyId, Promise.resolve(detail.autoplay));
-        setAutoplay(detail.autoplay);
+        settingsRequests.set(storyId, Promise.resolve(detail.settings));
+        setSettings(detail.settings);
       }
     };
     window.addEventListener("oneday:tts-settings", update);
@@ -51,13 +51,13 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
   }, [storyId]);
 
   useEffect(() => {
-    if (!autoplay) return;
+    if (!settings?.autoplay || settings.mode === "off") return;
     const first = response.assets.find((asset) => asset.status === "ready" && !played.current.has(asset.id));
     if (!first) return;
     const audio = new Audio(assetUrl(first));
     played.current.add(first.id);
     void audio.play().catch(() => setError("Autoplay was blocked. Use the playback control below."));
-  }, [autoplay, response.assets]);
+  }, [settings, response.assets]);
 
   useEffect(() => {
     if (!response.jobs.some((job) => job.status === "queued" || job.status === "running")) return;
@@ -90,6 +90,8 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
   const ready = response.assets.filter((asset) => asset.status === "ready");
   const active = response.assets.some((asset) => asset.status === "queued" || asset.status === "running");
   const failed = response.assets.find((asset) => asset.status === "failed" || asset.status === "cancelled" || asset.status === "canceled");
+
+  if (!settings || settings.mode === "off") return null;
 
   return (
     <section className="message-audio" aria-label="Spoken audio">

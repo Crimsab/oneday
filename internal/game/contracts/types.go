@@ -346,6 +346,7 @@ type BrowserTimelineResponse struct {
 	Revision       int64                `json:"revision"`
 	Branches       []TimelineBranchView `json:"branches"`
 	Head           *TimelineCommitView  `json:"head,omitempty"`
+	Commits        []TimelineCommitView `json:"commits"`
 }
 
 // Wire views keep the public contract independent of storage implementation.

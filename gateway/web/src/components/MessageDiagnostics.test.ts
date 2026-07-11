@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { generationSummary } from "./MessageDiagnostics";
+import { displayModelName, generationSummary } from "./MessageDiagnostics";
 
 describe("generation summary", () => {
+  it("keeps dated provider deployments out of the compact model label", () => {
+    expect(displayModelName("gpt-5.4-mini-2026-03-17")).toBe("gpt-5.4-mini");
+    expect(displayModelName("chatgpt-gpt-5.4-mini")).toBe("gpt-5.4-mini");
+  });
   it("shows only player-safe provider aggregates", () => {
     const metadata = {
       provider: "codex",

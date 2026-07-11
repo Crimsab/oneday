@@ -44,7 +44,7 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
     try {
       const saved = (await updateTTSSettings(storyId, settings, revision)).settings;
       setSettings(saved);
-      window.dispatchEvent(new CustomEvent("oneday:tts-settings", { detail: { storyId, autoplay: saved.autoplay } }));
+      window.dispatchEvent(new CustomEvent("oneday:tts-settings", { detail: { storyId, settings: saved } }));
     }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save speech settings"); }
     finally { setBusy(false); }
