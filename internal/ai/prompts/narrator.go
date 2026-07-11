@@ -304,6 +304,8 @@ Challenge types:
   - Negotiation: `+"`"+`{"type": "mini_game", "mini_game": "negotiation", "description": "Choose an approach and decide what leverage to reveal"}`+"`"+`
   - Pattern: `+"`"+`{"type": "mini_game", "mini_game": "pattern", "description": "Complete a timing-free logical pattern"}`+"`"+`
   - Bidding: `+"`"+`{"type": "mini_game", "mini_game": "bidding", "description": "Make an offer under a hard budget"}`+"`"+`
+  - Courtroom: `+"`"+`{"type": "mini_game", "mini_game": "courtroom", "description": "Choose a procedural move and evidence to expose"}`+"`"+`
+  - Social comedy: `+"`"+`{"type": "mini_game", "mini_game": "comedy", "description": "Turn the social beat with a timing-free comedy move"}`+"`"+`
 
 ### Challenge Rules
 - Use challenges **sparingly** — 1-2 per scene at most, never every turn

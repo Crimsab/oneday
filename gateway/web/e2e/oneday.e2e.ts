@@ -73,7 +73,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     if (path.endsWith("/minigames") && request.method() === "POST") {
       const body = request.postDataJSON() as { definition: { kind: string } };
       const kind = body.definition.kind;
-      activeMiniGame = { protocol_version: 1, id: `mini-${kind}`, story_id: story.id, branch_id: "branch-main", turn: 4, seed: 7, definition: { id: `${kind}-generic`, kind, prompt: kind === "pattern" ? "Complete the pattern: 2, 4, 6, ?" : "Resolve the challenge.", difficulty: 50, options: kind === "pattern" ? ["8", "9", "10"] : [] }, runtime: { phase: "active", revision: 1, state: {}, history: [{ action: "start" }] } };
+      activeMiniGame = { protocol_version: 1, id: `mini-${kind}`, story_id: story.id, branch_id: "branch-main", turn: 4, seed: 7, definition: { id: `${kind}-generic`, kind, prompt: kind === "pattern" ? "Complete the pattern: 2, 4, 6, ?" : "Resolve the challenge.", difficulty: 50, options: kind === "pattern" ? ["8", "9", "10"] : [], rules: { selection_reason: "player selected; timing-free" } }, runtime: { phase: "active", revision: 1, state: {}, history: [{ action: "start" }] } };
       return json(route, { instance: activeMiniGame });
     }
     if (path.includes("/minigames/") && path.endsWith("/input")) {
@@ -192,9 +192,13 @@ test("plays a timing-free minigame through the shared browser host", async ({ pa
   await mockGateway(page);
   await page.goto("/");
   const host = page.getByRole("region", { name: "Challenge host" });
+  await expect(host.getByRole("button", { name: "Auto-fit" })).toBeVisible();
+  await expect(host.getByRole("button", { name: "Courtroom" })).toBeVisible();
+  await expect(host.getByRole("button", { name: "Comedy" })).toBeVisible();
   await expect(host.getByRole("button", { name: "Pattern" })).toBeVisible();
   await host.getByRole("button", { name: "Pattern" }).click();
   await expect(host.getByText("Complete the pattern: 2, 4, 6, ?")).toBeVisible();
+  await expect(host.getByText("Selected because: player selected; timing-free")).toBeVisible();
   await host.getByLabel("Pattern answer").selectOption("8");
   await host.getByRole("button", { name: "Resolve challenge" }).click();
   await expect(host.getByText("full success", { exact: true })).toBeVisible();

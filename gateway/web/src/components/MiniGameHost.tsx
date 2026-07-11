@@ -6,6 +6,8 @@ const playableKinds: Array<{ kind: MiniGameKind; label: string }> = [
   { kind: "negotiation", label: "Negotiation" },
   { kind: "pattern", label: "Pattern" },
   { kind: "bidding", label: "Bidding" },
+  { kind: "courtroom", label: "Courtroom" },
+  { kind: "comedy", label: "Comedy" },
 ];
 
 export function MiniGameHost({
@@ -18,7 +20,7 @@ export function MiniGameHost({
   instance: MiniGameInstance | null;
   busy: boolean;
   error: string;
-  onStart: (kind: MiniGameKind) => Promise<void>;
+  onStart: (kind: MiniGameKind | null) => Promise<void>;
   onInput: (input: MiniGameInput) => Promise<void>;
 }) {
   const [value, setValue] = useState("");
@@ -49,6 +51,7 @@ export function MiniGameHost({
 
       {(!instance || phase === "resolved") && (
         <div className="minigame-launchers" aria-label="Start challenge family">
+          <button type="button" className="primary-action" disabled={busy} onClick={() => void onStart(null)}>Auto-fit</button>
           {playableKinds.map(({ kind, label }) => (
             <button type="button" key={kind} disabled={busy} onClick={() => void onStart(kind)}>{label}</button>
           ))}
@@ -68,9 +71,9 @@ export function MiniGameHost({
               <input type={instance.definition.kind === "bidding" ? "number" : "text"} value={value} disabled={busy || phase === "paused"} onChange={(event) => setValue(event.target.value)} />
             )}
           </label>
-          {(instance.definition.kind === "deduction" || instance.definition.kind === "negotiation") && (
+          {(["deduction", "negotiation", "courtroom", "comedy"] as MiniGameKind[]).includes(instance.definition.kind) && (
             <label>
-              <span>{instance.definition.kind === "deduction" ? "Evidence (comma separated)" : "Leverage (comma separated)"}</span>
+              <span>{instance.definition.kind === "deduction" || instance.definition.kind === "courtroom" ? "Evidence (comma separated)" : "Leverage/callbacks (comma separated)"}</span>
               <input value={support} disabled={busy || phase === "paused"} onChange={(event) => setSupport(event.target.value)} />
             </label>
           )}
@@ -91,6 +94,9 @@ export function MiniGameHost({
           <p>{instance.runtime.result.detail}</p>
         </div>
       )}
+      {instance?.definition.rules?.selection_reason && (
+        <small className="minigame-selection-reason">Selected because: {instance.definition.rules.selection_reason}</small>
+      )}
       {error && <p className="model-error">{error}</p>}
     </section>
   );
@@ -101,6 +107,8 @@ function fieldLabel(kind: MiniGameKind): string {
   if (kind === "negotiation") return "Approach";
   if (kind === "pattern") return "Pattern answer";
   if (kind === "bidding") return "Offer";
+  if (kind === "courtroom") return "Procedural move";
+  if (kind === "comedy") return "Comedy move";
   return "Response";
 }
 

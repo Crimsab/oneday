@@ -135,6 +135,19 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayMiniGameStart(os.Args[1:]) || wantsGatewayMiniGameGet(os.Args[1:]) || wantsGatewayMiniGameInput(os.Args[1:]) {
+		operation := "get"
+		if wantsGatewayMiniGameStart(os.Args[1:]) {
+			operation = "start"
+		} else if wantsGatewayMiniGameInput(os.Args[1:]) {
+			operation = "input"
+		}
+		if err := runGatewayMiniGame(db, operation, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway minigame failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Create AI router
 	router, err := aifactory.NewRouterFromConfig(cfg)
@@ -353,6 +366,18 @@ func wantsGatewayStoryWizard(args []string) bool {
 
 func wantsGatewayStoryEnhance(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-story-enhance"
+}
+
+func wantsGatewayMiniGameStart(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-minigame-start"
+}
+
+func wantsGatewayMiniGameGet(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-minigame-get"
+}
+
+func wantsGatewayMiniGameInput(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-minigame-input"
 }
 
 func wantsGatewayMeta(args []string) bool {

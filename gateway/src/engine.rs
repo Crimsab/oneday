@@ -422,6 +422,8 @@ pub struct GatewayMiniGameResponse {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MiniGameStartEnvelope {
     pub definition: serde_json::Value,
+    #[serde(default)]
+    pub selection: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -748,7 +750,7 @@ pub async fn start_minigame(
     call_minigame_gateway(
         state,
         "gateway-minigame-start",
-        serde_json::json!({"story_id": story_id, "definition": envelope.definition}),
+        serde_json::json!({"story_id": story_id, "definition": envelope.definition, "selection": envelope.selection}),
     )
     .await
 }
@@ -1205,6 +1207,7 @@ mod tests {
             "story-1",
             MiniGameStartEnvelope {
                 definition: serde_json::json!({"id":"deduction","kind":"deduction","difficulty":50}),
+                selection: serde_json::Value::Null,
             },
         )
         .await

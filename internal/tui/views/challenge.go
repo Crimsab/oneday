@@ -147,7 +147,7 @@ func NewChallengeView(
 			cv.riddle = &rid
 			return cv, nil
 
-		case string(engine.MiniGameDeduction), string(engine.MiniGameNegotiation), string(engine.MiniGamePattern), string(engine.MiniGameBidding):
+		case string(engine.MiniGameDeduction), string(engine.MiniGameNegotiation), string(engine.MiniGamePattern), string(engine.MiniGameBidding), string(engine.MiniGameCourtroom), string(engine.MiniGameComedy):
 			definition := engine.DefaultMiniGameDefinition(engine.MiniGameType(spec.MiniGame))
 			definition.Prompt = fallbackChallengePrompt(spec.Description, definition.Prompt)
 			hostGame, err := components.NewHostMiniGameModel(definition, challengeMiniGameSeed(storyID, spec), width, height)

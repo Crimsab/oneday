@@ -347,4 +347,6 @@ const (
 	MiniGameNegotiation MiniGameType = "negotiation"
 	MiniGamePattern     MiniGameType = "pattern"
 	MiniGameBidding     MiniGameType = "bidding"
+	MiniGameCourtroom   MiniGameType = "courtroom"
+	MiniGameComedy      MiniGameType = "comedy"
 )

@@ -17,6 +17,8 @@ func TestGenreNeutralMiniGameFamilies(t *testing.T) {
 		{"negotiation", MiniGameDefinition{ID: "n", Kind: MiniGameNegotiation, Difficulty: 25, Options: []string{"cooperative", "assertive"}}, MiniGameInput{Action: "submit", Value: "cooperative", Values: []string{"shared goal", "deadline"}}, contracts.OutcomeFullSuccess},
 		{"pattern", MiniGameDefinition{ID: "p", Kind: MiniGamePattern, Difficulty: 50, Answers: []string{"8"}}, MiniGameInput{Action: "submit", Value: "8"}, contracts.OutcomeFullSuccess},
 		{"bidding", MiniGameDefinition{ID: "b", Kind: MiniGameBidding, Difficulty: 50, Rules: map[string]string{"reserve": "40", "market_value": "60", "budget": "90"}}, MiniGameInput{Action: "submit", Value: "55"}, contracts.OutcomeFullSuccess},
+		{"courtroom", MiniGameDefinition{ID: "court", Kind: MiniGameCourtroom, Difficulty: 10, Options: []string{"present evidence"}}, MiniGameInput{Action: "submit", Value: "present evidence", Values: []string{"ledger", "witness"}}, contracts.OutcomeFullSuccess},
+		{"comedy", MiniGameDefinition{ID: "comedy", Kind: MiniGameComedy, Difficulty: 10, Options: []string{"callback"}}, MiniGameInput{Action: "submit", Value: "callback", Values: []string{"earlier boast", "broken hat"}}, contracts.OutcomeFullSuccess},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
