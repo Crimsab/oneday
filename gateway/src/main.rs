@@ -5,6 +5,7 @@ mod db;
 mod engine;
 mod events;
 mod routes;
+mod telemetry;
 
 use anyhow::Context;
 use axum::Router;

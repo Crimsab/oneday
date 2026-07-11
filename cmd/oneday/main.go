@@ -142,6 +142,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error creating AI router: %v\n", err)
 		os.Exit(1)
 	}
+	router.SetTelemetryRecorder(storage.NewAITelemetryRecorder(db))
 
 	if wantsGatewayTurn(os.Args[1:]) {
 		if err := runGatewayTurn(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {

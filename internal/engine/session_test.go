@@ -33,7 +33,14 @@ func TestCommitTurnAdvancesImmutableTimelineAtomically(t *testing.T) {
 	world, _ := db.GetWorldState("story-commit-dag")
 	world.CurrentTurn = 1
 	world.CurrentLocation = "Crossroads"
-	err = session.CommitTurn(db, char, world, ChatEntry{Input: &ChatInput{Type: "choice", Text: "Go north"}, Output: &ChatOutput{Narrative: "You reach the crossroads."}, MessageType: "narrative"})
+	run := &storage.GenerationRun{Stage: "narrator", PromptHash: "sha256:test", StoryID: "story-commit-dag"}
+	if err := db.StartGenerationRun(run); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.FinishGenerationRun(run.ID, storage.GenerationCompletion{Status: storage.GenerationStatusSucceeded}); err != nil {
+		t.Fatal(err)
+	}
+	err = session.CommitTurn(db, char, world, ChatEntry{Input: &ChatInput{Type: "choice", Text: "Go north"}, Output: &ChatOutput{Narrative: "You reach the crossroads."}, MessageType: "narrative", GenerationRunID: run.ID, GenerationTraceID: run.TraceID})
 	if err != nil {
 		t.Fatalf("CommitTurn: %v", err)
 	}
@@ -53,6 +60,17 @@ func TestCommitTurnAdvancesImmutableTimelineAtomically(t *testing.T) {
 	}
 	if messages != 2 || events != 1 {
 		t.Fatalf("lineage messages=%d events=%d", messages, events)
+	}
+	var authoredMessageID int64
+	var generationMetadata string
+	if err := db.Conn().QueryRow(`SELECT message_id FROM generation_runs WHERE id=?`, run.ID).Scan(&authoredMessageID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Conn().QueryRow(`SELECT metadata_json FROM chat_messages WHERE id=?`, authoredMessageID).Scan(&generationMetadata); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(generationMetadata, run.ID) || !strings.Contains(generationMetadata, run.TraceID) {
+		t.Fatalf("assistant generation metadata=%s", generationMetadata)
 	}
 
 	failedWorld := *world

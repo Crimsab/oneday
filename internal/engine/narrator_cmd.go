@@ -13,6 +13,7 @@ import (
 	"github.com/crimsab/oneday/internal/ai/prompts"
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
+	"github.com/google/uuid"
 )
 
 // NarratorMetaResponse is the AI's structured response to a /narrator command.
@@ -99,7 +100,7 @@ func (nc *NarratorCommand) Execute(ctx context.Context, input string) (*Narrator
 		ResponseFormat: ai.NarratorMetaResponseFormat(),
 	}
 
-	resp, err := nc.router.Complete(ctx, req)
+	resp, err := nc.router.Complete(nc.telemetryContext(ctx, "narrator_meta"), req)
 	if err != nil {
 		return nil, fmt.Errorf("narrator meta AI call: %w", err)
 	}
@@ -122,7 +123,7 @@ func (nc *NarratorCommand) Execute(ctx context.Context, input string) (*Narrator
 	}
 
 	// Persist the interaction canonically without advancing the story turn.
-	if err := nc.logNarratorInteraction(input, metaResp.Message); err != nil {
+	if err := nc.logNarratorInteraction(input, metaResp.Message, resp.Telemetry); err != nil {
 		metaResp.Message += fmt.Sprintf("\n\n_(Note: this narrator exchange could not be saved cleanly: %v)_", err)
 	}
 
@@ -159,7 +160,7 @@ func (nc *NarratorCommand) ExecuteAside(ctx context.Context, input string) (stri
 		MaxTokens:   512,
 	}
 
-	resp, err := nc.router.Complete(ctx, req)
+	resp, err := nc.router.Complete(nc.telemetryContext(ctx, "narrator_aside"), req)
 	if err != nil {
 		return "", fmt.Errorf("narrator aside AI call: %w", err)
 	}
@@ -201,7 +202,7 @@ func (nc *NarratorCommand) ExecuteGuide(ctx context.Context, input string) (*Gui
 		ResponseFormat: ai.GuideMetaResponseFormat(),
 	}
 
-	resp, err := nc.router.Complete(ctx, req)
+	resp, err := nc.router.Complete(nc.telemetryContext(ctx, "guide_meta"), req)
 	if err != nil {
 		return nil, fmt.Errorf("guide meta AI call: %w", err)
 	}
@@ -220,11 +221,32 @@ func (nc *NarratorCommand) ExecuteGuide(ctx context.Context, input string) (*Gui
 		}
 	}
 
-	if err := nc.logMetaInteractionWithSideEffects("guide", input, guideResp.Message, beforeCommit); err != nil {
+	if err := nc.logMetaInteractionWithSideEffects("guide", input, guideResp.Message, beforeCommit, resp.Telemetry); err != nil {
 		guideResp.Message += fmt.Sprintf("\n\n_(Note: this guide exchange could not be saved cleanly: %v)_", err)
 	}
 
 	return guideResp, nil
+}
+
+func (nc *NarratorCommand) telemetryContext(ctx context.Context, stage string) context.Context {
+	metadata := ai.TelemetryFromContext(ctx)
+	if metadata.TraceID == "" {
+		metadata.TraceID = uuid.NewString()
+	}
+	metadata.Stage = stage
+	metadata.PromptProfile = stage
+	metadata.PromptTemplate = "v1"
+	if nc.story != nil {
+		metadata.StoryID = nc.story.ID
+		metadata.BranchID = nc.story.ActiveBranchID
+	}
+	if nc.db != nil && metadata.StoryID != "" {
+		if head, err := nc.db.GetActiveTimeline(metadata.StoryID); err == nil {
+			metadata.BranchID = head.Branch.ID
+			metadata.SourceCommitID = head.Commit.ID
+		}
+	}
+	return ai.WithTelemetry(ctx, metadata)
 }
 
 // applyNarratorStateChanges applies the extended state changes from a /narrator response.
@@ -289,10 +311,10 @@ func (nc *NarratorCommand) buildNPCContext(_ context.Context) string {
 // logNarratorInteraction saves the /narrator interaction to the main session
 // history without incrementing the story turn.
 func (nc *NarratorCommand) logMetaInteraction(commandName, input, response string) error {
-	return nc.logMetaInteractionWithSideEffects(commandName, input, response, nil)
+	return nc.logMetaInteractionWithSideEffects(commandName, input, response, nil, ai.TelemetryRef{})
 }
 
-func (nc *NarratorCommand) logMetaInteractionWithSideEffects(commandName, input, response string, beforeCommit func(*sql.Tx) error) error {
+func (nc *NarratorCommand) logMetaInteractionWithSideEffects(commandName, input, response string, beforeCommit func(*sql.Tx) error, telemetry ai.TelemetryRef) error {
 	if nc.db == nil || nc.session == nil {
 		return nil
 	}
@@ -316,6 +338,8 @@ func (nc *NarratorCommand) logMetaInteractionWithSideEffects(commandName, input,
 			Mood:      "neutral",
 			Location:  nc.world.CurrentLocation,
 		},
+		GenerationRunID:   telemetry.RunID,
+		GenerationTraceID: telemetry.TraceID,
 	}
 
 	var committedRevision int64
@@ -347,8 +371,8 @@ func (nc *NarratorCommand) logMetaInteractionWithSideEffects(commandName, input,
 	return nil
 }
 
-func (nc *NarratorCommand) logNarratorInteraction(input, response string) error {
-	return nc.logMetaInteraction("narrator", input, response)
+func (nc *NarratorCommand) logNarratorInteraction(input, response string, telemetry ai.TelemetryRef) error {
+	return nc.logMetaInteractionWithSideEffects("narrator", input, response, nil, telemetry)
 }
 
 // parseNarratorMetaResponse extracts JSON from the AI response and unmarshals it.

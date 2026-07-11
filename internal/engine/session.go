@@ -19,18 +19,21 @@ import (
 
 // ChatEntry is the JSONL format for a single turn on disk.
 type ChatEntry struct {
-	Turn        int         `json:"turn"`
-	Timestamp   time.Time   `json:"timestamp"`
-	Chapter     int         `json:"chapter"`
-	Location    string      `json:"location"`
-	Input       *ChatInput  `json:"input,omitempty"`
-	Output      *ChatOutput `json:"output,omitempty"`
-	AIModel     string      `json:"ai_model,omitempty"`
-	AILatency   int64       `json:"ai_latency_ms,omitempty"`
-	AITTFT      int64       `json:"ai_ttft_ms,omitempty"`
-	AIUsage     ai.Usage    `json:"ai_usage,omitempty"`
-	AIStreamed  bool        `json:"ai_streamed,omitempty"`
-	MessageType string      `json:"message_type,omitempty"` // "narrative", "combat", "crafting", "dialogue", "narrator", "combat_summary"
+	Turn              int         `json:"turn"`
+	Timestamp         time.Time   `json:"timestamp"`
+	Chapter           int         `json:"chapter"`
+	Location          string      `json:"location"`
+	Input             *ChatInput  `json:"input,omitempty"`
+	Output            *ChatOutput `json:"output,omitempty"`
+	AIModel           string      `json:"ai_model,omitempty"`
+	AIProvider        string      `json:"ai_provider,omitempty"`
+	AILatency         int64       `json:"ai_latency_ms,omitempty"`
+	AITTFT            int64       `json:"ai_ttft_ms,omitempty"`
+	AIUsage           ai.Usage    `json:"ai_usage,omitempty"`
+	AIStreamed        bool        `json:"ai_streamed,omitempty"`
+	GenerationRunID   string      `json:"generation_run_id,omitempty"`
+	GenerationTraceID string      `json:"generation_trace_id,omitempty"`
+	MessageType       string      `json:"message_type,omitempty"` // "narrative", "combat", "crafting", "dialogue", "narrator", "combat_summary"
 }
 
 // ChatInput represents the player's input for a turn.
@@ -451,6 +454,7 @@ func (gs *GameSession) appendEntryToDB(tx *sql.Tx, db *storage.DB, entry ChatEnt
 
 	meta := map[string]interface{}{
 		"model":                  entry.AIModel,
+		"provider":               entry.AIProvider,
 		"latency_ms":             entry.AILatency,
 		"time_to_first_token_ms": entry.AITTFT,
 		"usage":                  entry.AIUsage,
@@ -459,6 +463,11 @@ func (gs *GameSession) appendEntryToDB(tx *sql.Tx, db *storage.DB, entry ChatEnt
 		"location":               entry.Output.Location,
 		"choices":                entry.Output.Choices,
 		"output":                 entry.Output,
+		"generation": map[string]interface{}{
+			"run_id":   entry.GenerationRunID,
+			"trace_id": entry.GenerationTraceID,
+			"stage":    "narrator",
+		},
 	}
 	metaJSON, err := json.Marshal(meta)
 	if err != nil {
@@ -476,6 +485,11 @@ func (gs *GameSession) appendEntryToDB(tx *sql.Tx, db *storage.DB, entry ChatEnt
 	}
 	if err := db.AppendChatMessageTx(tx, assistantMsg); err != nil {
 		return fmt.Errorf("saving assistant message to db: %w", err)
+	}
+	if entry.GenerationRunID != "" {
+		if err := db.BindGenerationRunMessageTx(tx, entry.GenerationRunID, assistantMsg.ID); err != nil {
+			return fmt.Errorf("binding generation run to assistant message: %w", err)
+		}
 	}
 
 	return nil

@@ -377,7 +377,7 @@ func (ce *CombatEngine) narrateResolvedCombatTurn(ctx context.Context, action st
 		ResponseFormat: ai.NarrativeResponseFormat(),
 	}
 
-	resp, err := ce.narrator.router.Complete(ctx, req)
+	resp, err := ce.narrator.router.Complete(ce.narrator.telemetryContext(ctx, "combat_narration", ""), req)
 	if err != nil {
 		return nil, resp, 0, fmt.Errorf("AI combat response: %w", err)
 	}
@@ -446,7 +446,7 @@ func (ce *CombatEngine) narrateVictory(ctx context.Context) (*NarrativeResponse,
 		MaxTokens:      512,
 		ResponseFormat: ai.NarrativeResponseFormat(),
 	}
-	resp, err := ce.narrator.router.Complete(ctx, req)
+	resp, err := ce.narrator.router.Complete(ce.narrator.telemetryContext(ctx, "combat_victory", ""), req)
 	if err != nil {
 		return nil, err
 	}
@@ -476,7 +476,7 @@ func (ce *CombatEngine) narrateDefeat(ctx context.Context) (string, string, erro
 		MaxTokens:      512,
 		ResponseFormat: ai.CombatDefeatResponseFormat(),
 	}
-	resp, err := ce.narrator.router.Complete(ctx, req)
+	resp, err := ce.narrator.router.Complete(ce.narrator.telemetryContext(ctx, "combat_defeat", ""), req)
 	if err != nil {
 		return "", "unconscious", err
 	}
