@@ -1,8 +1,12 @@
 # Automatic Challenges, Structured Settings, and Illustrated Canon Map
 
 Date: 2026-07-11
-Status: approved direction, implementation pending
+Status: implemented and validated
 Target: `root@192.168.50.40:/opt/lab/docker/oneday`
+
+Automatic challenge selection, the searchable settings workspace, and
+canonical illustrated map layers were completed together. The original manual
+browser minigame chooser has been removed.
 
 ## Objective
 
@@ -33,9 +37,8 @@ The existing visual language, routes, data, and branch semantics remain stable.
   one scroll container.
 - The map is currently an accessible SVG graph with circle nodes, line edges,
   labels, and a deterministic grid layout. It has no illustrated background.
-- `BRANCH-03` remains unchecked in the requirements document although sibling
-  isolation is implemented and tested. The implementation tranche will correct
-  this documentation mismatch after an explicit verification pass.
+- `BRANCH-03` was the final unchecked sibling-isolation requirement. Visual and
+  audio branch isolation are now directly tested and the requirement is closed.
 
 ## Automatic challenge design
 

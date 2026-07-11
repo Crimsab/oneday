@@ -20,6 +20,17 @@ describe("visual canon selection", () => {
     expect(selected?.id).toBe("blocked");
     expect(readyAssetUrl(selected)).toBe("");
   });
+
+  it("catalogs the generated map art by canonical location", () => {
+    const background = asset({ id: "map", kind: "map_background", entity_id: "", canonical_entity_id: "", status: "ready", url: "/map.png" });
+    const icon = asset({ id: "harbor-icon", kind: "map_icon", subject: "Harbor", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-harbor", status: "ready", url: "/harbor.png" });
+    const pendingIcon = asset({ id: "court-icon", kind: "map_icon", subject: "Court", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-court", status: "pending", url: "" });
+    const catalog = visualCatalog(response([background, icon, pendingIcon]), snapshot());
+
+    expect(catalog.mapBackground?.id).toBe("map");
+    expect(catalog.mapIcons.get("loc harbor")?.id).toBe("harbor-icon");
+    expect(catalog.mapIcons.has("loc court")).toBe(false);
+  });
 });
 
 function asset(overrides: Partial<VisualAsset>): VisualAsset {

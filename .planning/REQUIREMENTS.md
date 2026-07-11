@@ -266,7 +266,7 @@
 
 - [x] **BRANCH-01**: Every committed narrative turn has an immutable commit ID, parent commit, branch ID, canonical turn, payload hash, and creation metadata.
 - [x] **BRANCH-02**: A story has named branches and an active branch head while `stories.revision` remains a concurrency token rather than timeline identity.
-- [ ] **BRANCH-03**: Two alternatives can fork from the same parent and be checked out independently without state, message, RAG, chapter, asset, or audio leakage.
+- [x] **BRANCH-03**: Two alternatives can fork from the same parent and be checked out independently without state, message, RAG, chapter, asset, or audio leakage.
 - [x] **BRANCH-04**: Branch checkout materializes the exact canonical snapshot at the selected commit and supports previous/next sibling navigation without destroying descendants.
 - [x] **BRANCH-05**: Manual saves act as named bookmarks to commits while legacy snapshot files remain compatible during migration.
 - [x] **BRANCH-06**: Messages, chapters, RAG chunks, summaries, visual artifacts, generation traces, and audio artifacts carry branch/source-commit lineage.

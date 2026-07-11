@@ -320,6 +320,10 @@ function OptionsContent({
     onPreferencesChange({ ...preferences, [key]: value });
   };
 
+  const mapBackground = visualAssets.find((asset) => asset.kind === "map_background");
+  const mapIcons = visualAssets.filter((asset) => asset.kind === "map_icon");
+  const readyMapIcons = mapIcons.filter((asset) => asset.status === "ready").length;
+
   const sections: SettingsSection[] = [
     {
       id: "general",
@@ -346,7 +350,13 @@ function OptionsContent({
     },
     {
       id: "visuals",
-      content: <div data-setting-id="visual-profile"><VisualDirectionSettings profile={visualProfile} assets={visualAssets} jobs={visualJobs} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} /></div>,
+      content: <div className="visual-settings-stack">
+        <article className="map-art-settings" data-setting-id="map-art">
+          <div><strong>Illustrated known-location map</strong><p>OneDay generates one decorative world layer and one reusable symbol for each canonical location. Routes, labels and discovery state stay in the live SVG, so generated art can never invent map facts.</p></div>
+          <span className="settings-status">{mapBackground?.status === "ready" ? "Art ready" : mapBackground ? "Art queued" : "Awaits 2 locations"} · {readyMapIcons}/{mapIcons.length} icons</span>
+        </article>
+        <div data-setting-id="visual-profile"><VisualDirectionSettings profile={visualProfile} assets={visualAssets} jobs={visualJobs} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} /></div>
+      </div>,
     },
     {
       id: "models",

@@ -310,7 +310,7 @@ function WorldStateModule({
 
       <section className="ws-block">
         <header className="ws-block-head"><MapPin size={14} /><span>Known-location map</span></header>
-        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} />
+        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} visuals={visuals} />
       </section>
 
       {threads.length > 0 && (

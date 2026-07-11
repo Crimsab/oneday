@@ -2034,7 +2034,7 @@ fn final_prompt(asset: &VisualAsset, config: &ImageGenerationConfig) -> String {
 
 fn asset_size(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
     match asset.kind.as_str() {
-        "location" => clean_or(&config.location_size, &config.default_size),
+        "location" | "map_background" => clean_or(&config.location_size, &config.default_size),
         "character" => clean_or(&config.character_size, &config.default_size),
         _ => config.default_size.clone(),
     }
@@ -2047,7 +2047,7 @@ fn asset_generation_value(
     default_value: &str,
 ) -> Option<String> {
     let value = match kind {
-        "location" => clean_or(location_value, default_value),
+        "location" | "map_background" => clean_or(location_value, default_value),
         "character" => clean_or(character_value, default_value),
         _ => default_value.trim().to_string(),
     };
@@ -2498,6 +2498,13 @@ async fn visual_specs(
         });
     }
 
+    specs.extend(known_map_specs(
+        &snapshot.world.spatial_locations,
+        &snapshot.world.spatial_edges,
+        profile,
+        snapshot.world.current_turn,
+    ));
+
     for npc in snapshot.panels.npcs.iter().take(8) {
         let discovery = npc.fields.get("discovery").unwrap_or(&Value::Null);
         let appearance = npc
@@ -2596,6 +2603,132 @@ async fn visual_specs(
         });
     }
     Ok(specs)
+}
+
+fn known_map_specs(
+    locations_value: &Value,
+    edges_value: &Value,
+    profile: &VisualProfile,
+    turn: i64,
+) -> Vec<VisualSpec> {
+    let locations = locations_value.as_array().cloned().unwrap_or_default();
+    let known = locations
+        .iter()
+        .filter_map(|location| {
+            let id = location.get("id")?.as_str()?.trim();
+            let name = location.get("name")?.as_str()?.trim();
+            if id.is_empty() || name.is_empty() {
+                return None;
+            }
+            Some((
+                id.to_string(),
+                name.to_string(),
+                location
+                    .get("description")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim()
+                    .to_string(),
+            ))
+        })
+        .collect::<Vec<_>>();
+    if known.is_empty() {
+        return Vec::new();
+    }
+    let graph_payload = serde_json::json!({
+        "locations": known,
+        "edges": edges_value,
+    });
+    let graph_json = serde_json::to_string(&graph_payload).unwrap_or_default();
+    let graph_fingerprint = visual_fingerprint(&["known-map", &graph_json, &profile.fingerprint]);
+    let place_summary = known
+        .iter()
+        .map(|(_, name, description)| {
+            if description.is_empty() {
+                name.clone()
+            } else {
+                format!("{name}: {description}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let edge_summary = edges_value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|edge| {
+            let from = edge.get("from_location_id")?.as_str()?;
+            let to = edge.get("to_location_id")?.as_str()?;
+            Some(format!("{from} to {to}"))
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    let eligible = known.len() >= 2;
+    let mut specs = vec![VisualSpec {
+        kind: "map_background".to_string(),
+        subject: "Known world map".to_string(),
+        entity_id: String::new(),
+        canonical_entity_id: String::new(),
+        canonical_location_id: String::new(),
+        form_id: String::new(),
+        lineage_key: format!("known-map:{graph_fingerprint}"),
+        appearance_fingerprint: graph_fingerprint,
+        profile_revision_id: profile.id.clone(),
+        canon_status: "canonical".to_string(),
+        gate_state: if eligible { "known_map_ready" } else { "known_map_waiting" }.to_string(),
+        gate_reason: if eligible {
+            "At least two player-known canonical locations are available for map art."
+        } else {
+            "Map art waits until at least two canonical locations are known."
+        }
+        .to_string(),
+        generation_eligible: eligible,
+        prompt: format!(
+            "{} Create an atmospheric illustrated cartographic background for the player-known world. Known places: {}. Known connections: {}. Use terrain, districts, water, roads only as restrained visual context. Do not render labels, text, UI, pins, icons, borders, or invented named landmarks. The interactive canonical overlay will supply all authoritative locations and routes. Palette: {}. Composition: wide landscape map, readable under a dark translucent overlay.",
+            profile.world_style_prompt,
+            place_summary,
+            clean_or(&edge_summary, "no confirmed route yet"),
+            clean_or(&profile.palette, "restrained story palette")
+        ),
+        negative_prompt: format!(
+            "{}, text, labels, lettering, compass text, UI, location pins, invented named places, watermark",
+            profile.negative_prompt
+        ),
+        turn,
+    }];
+    for (id, name, description) in known {
+        let icon_fingerprint =
+            visual_fingerprint(&["map-icon", &id, &name, &description, &profile.fingerprint]);
+        specs.push(VisualSpec {
+            kind: "map_icon".to_string(),
+            subject: name.clone(),
+            entity_id: String::new(),
+            canonical_entity_id: String::new(),
+            canonical_location_id: id.clone(),
+            form_id: String::new(),
+            lineage_key: format!("map-icon:{id}:{icon_fingerprint}"),
+            appearance_fingerprint: icon_fingerprint,
+            profile_revision_id: profile.id.clone(),
+            canon_status: "canonical".to_string(),
+            gate_state: "known_map_symbol".to_string(),
+            gate_reason: "Player-known canonical location is eligible for a map symbol."
+                .to_string(),
+            generation_eligible: true,
+            prompt: format!(
+                "{} Create one isolated cartographic symbol for the known location '{}'. Known details: {}. Centered single landmark emblem, transparent background, no text, no letters, no border, strong silhouette, consistent map icon set, designed at 256 by 256 and readable at 40 pixels. Palette: {}.",
+                profile.world_style_prompt,
+                name,
+                clean_or(&description, "use only the location name as context"),
+                clean_or(&profile.palette, "restrained story palette")
+            ),
+            negative_prompt: format!(
+                "{}, text, label, lettering, multiple icons, scenery background, frame, watermark",
+                profile.negative_prompt
+            ),
+            turn,
+        });
+    }
+    specs
 }
 
 fn silhouette_prompt_details(discovery: &Value) -> String {
@@ -3364,6 +3497,62 @@ mod tests {
             auto_generate: true,
             append_negative_prompt: true,
         }
+    }
+
+    #[test]
+    fn known_map_specs_create_one_art_layer_and_canonical_symbols() {
+        let profile = VisualProfile {
+            id: "profile-1".into(),
+            story_id: "story".into(),
+            revision: 1,
+            fingerprint: "profile-fingerprint".into(),
+            branch_id: "branch-main".into(),
+            source_commit_id: "commit-1".into(),
+            world_style_prompt: "Ink-wash noir cartography".into(),
+            character_style_prompt: "Grounded portraits".into(),
+            negative_prompt: "no watermark".into(),
+            palette: "amber and smoke blue".into(),
+            updated_at: String::new(),
+        };
+        let specs = known_map_specs(
+            &json!([
+                {"id":"loc-archive","name":"Glass Archive","description":"A fractured observatory"},
+                {"id":"loc-court","name":"Outer Court","description":"A rain-dark courtyard"}
+            ]),
+            &json!([{"from_location_id":"loc-archive","to_location_id":"loc-court"}]),
+            &profile,
+            4,
+        );
+        assert_eq!(specs.len(), 3);
+        let background = specs
+            .iter()
+            .find(|spec| spec.kind == "map_background")
+            .unwrap();
+        assert!(background.generation_eligible);
+        assert!(background.prompt.contains("Do not render labels"));
+        let symbols = specs
+            .iter()
+            .filter(|spec| spec.kind == "map_icon")
+            .collect::<Vec<_>>();
+        assert_eq!(symbols.len(), 2);
+        assert!(symbols
+            .iter()
+            .all(|spec| !spec.canonical_location_id.is_empty()
+                && spec.prompt.contains("transparent background")));
+
+        let waiting = known_map_specs(
+            &json!([{"id":"loc-only","name":"Only Place"}]),
+            &json!([]),
+            &profile,
+            1,
+        );
+        assert!(
+            !waiting
+                .iter()
+                .find(|spec| spec.kind == "map_background")
+                .unwrap()
+                .generation_eligible
+        );
     }
 
     async fn visual_job_pool() -> SqlitePool {

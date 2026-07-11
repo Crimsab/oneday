@@ -4260,13 +4260,38 @@ input:disabled {
 }
 
 .canonical-map {
+  position: relative;
+  isolation: isolate;
   min-width: 0;
   overflow-x: auto;
   border: 1px solid var(--line-soft);
   background: #090f11;
 }
 
+.canonical-map-art {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.48;
+  filter: saturate(0.72) contrast(1.08);
+  pointer-events: none;
+}
+
+.canonical-map.illustrated::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(4, 8, 9, 0.2), rgba(4, 8, 9, 0.62));
+  pointer-events: none;
+}
+
 .canonical-map svg {
+  position: relative;
+  z-index: 1;
   display: block;
   width: 100%;
   min-width: 420px;
@@ -4274,8 +4299,9 @@ input:disabled {
 }
 
 .canonical-map line {
-  stroke: #526168;
+  stroke: #8a989e;
   stroke-width: 2;
+  paint-order: stroke;
 }
 
 .canonical-map circle {
@@ -4290,6 +4316,14 @@ input:disabled {
   stroke-width: 3;
 }
 
+.canonical-map g.has-icon circle {
+  fill: rgba(8, 14, 16, 0.82);
+}
+
+.canonical-map g.has-icon image {
+  pointer-events: none;
+}
+
 .canonical-map text {
   fill: var(--muted);
   font-size: 11px;
@@ -4298,6 +4332,39 @@ input:disabled {
 .canonical-map .node-label {
   fill: var(--text);
   font-size: 12px;
+  font-weight: 650;
+  paint-order: stroke;
+  stroke: rgba(4, 8, 9, 0.92);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.visual-settings-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.map-art-settings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%);
+}
+
+.map-art-settings p {
+  max-width: 72ch;
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+@media (max-width: 700px) {
+  .map-art-settings {
+    grid-template-columns: 1fr;
+  }
 }
 
 .ws-location {
