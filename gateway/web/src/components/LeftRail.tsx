@@ -63,8 +63,11 @@ export function LeftRail({
   return (
     <aside className="left-rail" id="story-library" aria-label="Story library">
       <div className="rail-brand">
-        <strong>OneDay</strong>
-        <small>{healthText}</small>
+        <img src="/brand/oneday-mark.png" alt="" />
+        <span>
+          <strong className="sr-only">OneDay</strong>
+          <small>{healthText}</small>
+        </span>
       </div>
       <section className="rail-block stories-block">
         <div className="rail-title">
@@ -280,7 +283,8 @@ export function CollapsedLeftRail({ selectedTab, onSelectTab, onExpand, onOpen }
   return (
     <aside className="left-rail-collapsed" aria-label="Collapsed story rail">
       <button type="button" className="rail-brand-compact" onClick={onExpand} title="Open stories sidebar ([)">
-        OD
+        <img src="/brand/oneday-mark.png" alt="" />
+        <span className="sr-only">Open OneDay stories sidebar</span>
       </button>
       <button type="button" className="rail-icon-button" onClick={onExpand} title="Open stories sidebar ([)">
         <PanelLeftOpen size={18} />

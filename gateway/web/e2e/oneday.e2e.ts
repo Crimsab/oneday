@@ -7,10 +7,11 @@ function snapshot(turn = 4, branchId = "branch-main") {
   const messages = [
     { id: 1, session_id: "session-1", story_id: story.id, turn: 3, role: "assistant", content: "The archive doors wait in silence.", message_type: "narrative", metadata: {}, created_at: now, branch_id: branchId, source_commit_id: "commit-3" },
     { id: 2, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "Mira studies the fractured seal.", message_type: "narrative", metadata: { provider: "codex", model: "gpt-5.5", latency_ms: 1250, streamed: true, usage: { total_tokens: 321 }, generation: { run_id: "run-2", trace_id: "trace-2", stage: "narrator" }, output: { dialogue_blocks: [{ speaker_id: "npc-mira", speaker: "Mira", role: "Archivist", text: "Choose carefully." }] } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
+    { id: 3, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "An older generation record remains readable.", message_type: "narrative", metadata: { model: "gpt-5.4-mini", latency_ms: 13250, streamed: true, usage: { total_tokens: 10311 } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
   ];
   return {
     server_time: new Date().toISOString(),
-    version: { turn, revision: branchId === "branch-main" ? 7 : 8, story_updated_at: now, active_session_id: "session-1", last_message_id: 2, world_updated_at: now, character_updated_at: now, npc_count: 1, npc_updated_at: now, chapter_count: 1, achievement_count: 0, latest_achievement_at: "", save_count: 0, latest_save_at: "", visual_asset_updated_at: "", visual_job_updated_at: "", active_visual_job_count: 0 },
+    version: { turn, revision: branchId === "branch-main" ? 7 : 8, story_updated_at: now, active_session_id: "session-1", last_message_id: 3, world_updated_at: now, character_updated_at: now, npc_count: 1, npc_updated_at: now, chapter_count: 1, achievement_count: 0, latest_achievement_at: "", save_count: 0, latest_save_at: "", visual_asset_updated_at: "", visual_job_updated_at: "", active_visual_job_count: 0 },
     story,
     character: { id: "hero", name: "Iria", fields: { stats: { resolve: 42 }, condition: "Steady", inventory: [] } },
     world: { id: "world", current_location: "Glass Archive", current_location_id: "loc-archive", current_chapter: 1, current_turn: turn, spatial_locations: [{ id: "loc-archive", name: "Glass Archive", description: "The known archive", discovery_state: "visited" }, { id: "loc-court", name: "Outer Court", description: "A known courtyard", discovery_state: "known" }], spatial_edges: [{ id: "edge-court", from_location_id: "loc-archive", to_location_id: "loc-court", direction: "south", travel_minutes: 5 }], world_time: { day: 2, minute_of_day: 780, display_text: "Day 2, 13:00" }, weather: { weather_kind: "clear", description: "Cold clear air" }, known_locations: [], global_events: [], faction_standings: {}, story_hooks: [], world_reactions: [], investigations: [], projects: [], guidance: [], fronts: [], timeline: [], scene_contract: {}, updated_at: now },
@@ -175,9 +176,12 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   await expect(page.getByRole("region", { name: "Challenge host" })).toHaveCount(0);
   await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.getByLabel("Structured dialogue for turn 4")).toContainText("Choose carefully.");
-  await page.getByText("Technical details", { exact: true }).click();
+  await page.getByText("Technical details", { exact: true }).first().click();
   await expect(page.getByText("narrator rev 3")).toBeVisible();
   await expect(page.getByRole("list", { name: "Provider attempts" })).toContainText("TTFT 180 ms");
+  await page.getByText("Technical details", { exact: true }).nth(1).click();
+  await expect(page.getByText("gpt-5.4-mini · 13 s · 10,311 tokens · streamed")).toBeVisible();
+  await expect(page.getByText("Extended provider attempts were not recorded for this message.")).toBeVisible();
 
   const composer = page.getByPlaceholder("What do you want to try?");
   await composer.fill("Trace the silver fracture");

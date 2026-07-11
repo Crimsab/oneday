@@ -31,11 +31,23 @@ export function MessageDiagnostics({ message }: { message: MessageView }) {
     }}>
       <summary>
         <span>Technical details</span>
-        <small>{summary ? "Available" : "Generation run"}</small>
+        <small>{hasRun ? "Full run" : "Summary"}</small>
       </summary>
       {loading && <p className="diagnostics-state">Loading diagnostics…</p>}
       {error && <p className="inline-error" role="alert">Diagnostics unavailable: {error}</p>}
       {diagnostics && <DiagnosticsBody diagnostics={diagnostics} />}
+      {!diagnostics && !loading && summary && (
+        <div className="diagnostics-body">
+          <div className="diagnostics-run diagnostics-summary">
+            <span>{summary}</span>
+          </div>
+          {!hasRun && (
+            <p className="diagnostics-state">
+              Extended provider attempts were not recorded for this message.
+            </p>
+          )}
+        </div>
+      )}
     </details>
   );
 }
