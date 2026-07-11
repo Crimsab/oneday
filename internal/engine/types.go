@@ -215,7 +215,7 @@ type ChallengeSpec struct {
 	SkillLevel  int           `json:"skill_level,omitempty"` // minimum skill level
 	NPCName     string        `json:"npc_name,omitempty"`    // NPC for relationship check
 	Disposition int           `json:"disposition,omitempty"` // min disposition threshold
-	MiniGame    string        `json:"mini_game,omitempty"`   // "rps", "memory", "quicktime", "riddle"
+	MiniGame    string        `json:"mini_game,omitempty"`   // registered MiniGameType
 	Modifiers   []Modifier    `json:"modifiers,omitempty"`   // bonuses/penalties
 	// For riddles: AI provides these
 	Riddle string `json:"riddle,omitempty"`
@@ -339,8 +339,12 @@ type CombatTurnResult struct {
 type MiniGameType string
 
 const (
-	MiniGameRPS       MiniGameType = "rps"
-	MiniGameMemory    MiniGameType = "memory"
-	MiniGameQuickTime MiniGameType = "quicktime"
-	MiniGameRiddle    MiniGameType = "riddle"
+	MiniGameRPS         MiniGameType = "rps"
+	MiniGameMemory      MiniGameType = "memory"
+	MiniGameQuickTime   MiniGameType = "quicktime"
+	MiniGameRiddle      MiniGameType = "riddle"
+	MiniGameDeduction   MiniGameType = "deduction"
+	MiniGameNegotiation MiniGameType = "negotiation"
+	MiniGamePattern     MiniGameType = "pattern"
+	MiniGameBidding     MiniGameType = "bidding"
 )

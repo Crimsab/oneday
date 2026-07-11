@@ -13,16 +13,19 @@ import {
   getCommandDescriptors,
   getHealth,
   getModelSettings,
+  getActiveMiniGame,
   getSnapshot,
 	getTimeline,
   getStoryDeletePlan,
   getStories,
   getVisualAssets,
   getVisualAssetVersions,
+  inputMiniGame,
   loadSave,
   runStoryWizard,
   selectVisualAssetVersion,
   stepVisualAssetSelection,
+  startMiniGame,
   submitAction,
   submitMeta,
   updateStory,
@@ -33,6 +36,7 @@ import {
 } from "./api";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
+import { MiniGameHost } from "./components/MiniGameHost";
 import { CollapsedLeftRail, LeftRail } from "./components/LeftRail";
 import { PanelDrawer } from "./components/PanelDrawer";
 import { StoryPath } from "./components/StoryPath";
@@ -61,6 +65,9 @@ import type {
   MetaResult,
   ModelSettings,
   ModelSettingsUpdate,
+  MiniGameInput,
+  MiniGameInstance,
+  MiniGameKind,
   ModuleTab,
   OverlayKind,
   PendingTurnView,
@@ -127,6 +134,9 @@ function App() {
   const [visualProfileSaving, setVisualProfileSaving] = useState(false);
   const [visualGenerationBusy, setVisualGenerationBusy] = useState(false);
   const [visualAssetFocusId, setVisualAssetFocusId] = useState<string | null>(null);
+  const [activeMiniGame, setActiveMiniGame] = useState<MiniGameInstance | null>(null);
+  const [miniGameBusy, setMiniGameBusy] = useState(false);
+  const [miniGameError, setMiniGameError] = useState("");
   const [storyMutatingId, setStoryMutatingId] = useState("");
 	const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
   const pendingActionIdentity = useRef<PendingActionIdentity | null>(null);
@@ -188,6 +198,20 @@ function App() {
     }
   }, [storyId]);
 
+  const refreshMiniGame = useCallback(async (nextStoryId = storyId) => {
+    if (!nextStoryId) {
+      setActiveMiniGame(null);
+      return;
+    }
+    try {
+      const response = await getActiveMiniGame(nextStoryId);
+      setActiveMiniGame(response.instance ?? null);
+      setMiniGameError("");
+    } catch (error) {
+      setMiniGameError(errorMessage(error));
+    }
+  }, [storyId]);
+
   const loadSnapshot = useCallback(async (nextStoryId = storyId) => {
     if (!nextStoryId) return;
     setSync("Loading");
@@ -196,11 +220,12 @@ function App() {
       setSnapshot(nextSnapshot);
       setSync(paused ? "Paused" : "Live");
       void refreshVisualAssets(nextStoryId);
+      void refreshMiniGame(nextStoryId);
     } catch (error) {
       setSync("Error");
       setNotice(errorMessage(error));
     }
-  }, [paused, refreshVisualAssets, storyId]);
+  }, [paused, refreshMiniGame, refreshVisualAssets, storyId]);
 
   useEffect(() => {
     void refreshHealth();
@@ -227,6 +252,7 @@ function App() {
 			setSnapshot(response.snapshot);
 			setLiveTurnEvents([]);
 			setPendingTurn(null);
+			void refreshMiniGame(storyId);
 			pendingActionIdentity.current = null;
 			setNotice(`Active branch: ${response.timeline.branches.find((branch) => branch.id === response.timeline.active_branch_id)?.name ?? "updated"}.`);
 		} catch (error) {
@@ -237,7 +263,35 @@ function App() {
 
 	const forkBranch = (name:string) => timeline?.head ? mutateTimeline({action:"fork",client_revision:snapshot?.version.revision ?? timeline.revision,from_commit_id:timeline.head.id,name}) : Promise.resolve();
 	const renameBranch = (branchId:string,name:string) => mutateTimeline({action:"rename",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId,name});
-	const checkoutBranch = (branchId:string) => mutateTimeline({action:"checkout",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId});
+  const checkoutBranch = (branchId:string) => mutateTimeline({action:"checkout",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId});
+
+  const launchMiniGame = useCallback(async (kind: MiniGameKind) => {
+    if (!storyId) return;
+    setMiniGameBusy(true);
+    setMiniGameError("");
+    try {
+      const response = await startMiniGame(storyId, kind);
+      setActiveMiniGame(response.instance ?? null);
+    } catch (error) {
+      setMiniGameError(errorMessage(error));
+    } finally {
+      setMiniGameBusy(false);
+    }
+  }, [storyId]);
+
+  const sendMiniGameInput = useCallback(async (input: MiniGameInput) => {
+    if (!storyId || !activeMiniGame) return;
+    setMiniGameBusy(true);
+    setMiniGameError("");
+    try {
+      const response = await inputMiniGame(storyId, activeMiniGame.id, input);
+      setActiveMiniGame(response.instance ?? null);
+    } catch (error) {
+      setMiniGameError(errorMessage(error));
+    } finally {
+      setMiniGameBusy(false);
+    }
+  }, [activeMiniGame, storyId]);
 
   useEffect(() => {
     if (!storyId || paused) {
@@ -1143,10 +1197,14 @@ function App() {
             </section>
           )}
 
+          {snapshot && (
+            <MiniGameHost instance={activeMiniGame} busy={miniGameBusy} error={miniGameError} onStart={launchMiniGame} onInput={sendMiniGameInput} />
+          )}
+
           <Composer
             draft={draft}
             mode={mode}
-            disabled={sending || !snapshot}
+            disabled={sending || !snapshot || Boolean(activeMiniGame && activeMiniGame.runtime.phase !== "resolved")}
             notice={notice}
             commandDescriptors={commandDescriptors}
             commandContext={commandContext}

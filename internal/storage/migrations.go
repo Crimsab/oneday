@@ -54,6 +54,7 @@ func (db *DB) migrate() error {
 		{31, migrationV31},
 		{32, migrationV32},
 		{33, migrationV33},
+		{34, migrationV34},
 	}
 
 	for _, m := range migrations {
@@ -1218,6 +1219,28 @@ CREATE TRIGGER IF NOT EXISTS trg_challenge_runs_immutable
 BEFORE UPDATE ON challenge_runs
 WHEN NOT (OLD.source_commit_id='' AND NEW.source_commit_id!='' AND OLD.branch_id=NEW.branch_id)
 BEGIN SELECT RAISE(ABORT,'challenge runs are immutable'); END;
+`
+
+const migrationV34 = `
+CREATE TABLE IF NOT EXISTS minigame_instances (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	turn INTEGER NOT NULL DEFAULT 0,
+	protocol_version INTEGER NOT NULL,
+	kind TEXT NOT NULL,
+	phase TEXT NOT NULL CHECK(phase IN ('ready','active','paused','resolved')),
+	instance_json TEXT NOT NULL CHECK(json_valid(instance_json)),
+	branch_id TEXT NOT NULL REFERENCES story_branches(id),
+	source_commit_id TEXT NOT NULL REFERENCES turn_commits(id),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_minigame_instances_branch_phase
+	ON minigame_instances(story_id,branch_id,phase,updated_at DESC);
+CREATE TRIGGER IF NOT EXISTS trg_minigame_instance_lineage_immutable
+BEFORE UPDATE ON minigame_instances
+WHEN OLD.story_id!=NEW.story_id OR OLD.branch_id!=NEW.branch_id OR OLD.source_commit_id!=NEW.source_commit_id OR OLD.kind!=NEW.kind OR OLD.protocol_version!=NEW.protocol_version
+BEGIN SELECT RAISE(ABORT,'minigame lineage is immutable'); END;
 `
 
 const migrationV32 = `

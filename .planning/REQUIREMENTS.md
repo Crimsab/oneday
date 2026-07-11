@@ -336,9 +336,9 @@
 
 ### Minigames, Fairness, and Playtest Evals
 
-- [ ] **MINI-01**: Existing RPS treats draws explicitly, memory supports graded progress, quick-time tests use deterministic clocks, and riddles use normalized/semantic answer policies rather than raw substring matching.
-- [ ] **MINI-02**: A challenge host can pause, resume, serialize, resolve, and replay the same minigame instance in browser, TUI, autoplay, and tests.
-- [ ] **MINI-03**: The engine includes genre-neutral deduction, negotiation, pattern, and bidding minigames using the shared challenge protocol.
+- [x] **MINI-01**: Existing RPS treats draws explicitly, memory supports graded progress, quick-time tests use deterministic clocks, and riddles use normalized/semantic answer policies rather than raw substring matching.
+- [x] **MINI-02**: A challenge host can pause, resume, serialize, resolve, and replay the same minigame instance in browser, TUI, autoplay, and tests.
+- [x] **MINI-03**: The engine includes genre-neutral deduction, negotiation, pattern, and bidding minigames using the shared challenge protocol.
 - [ ] **MINI-04**: The engine includes courtroom/social-comedy timing encounters that do not require reflex input and can resolve zero-combat stories.
 - [ ] **MINI-05**: Minigame selection considers narrative fit, recent repetition, player preference/accessibility, difficulty, and cooldown before offering an instance.
 - [ ] **MINI-06**: Story packs can define stats, difficulty profiles, challenge pools, and outcome policies without hardcoding a genre into the engine.

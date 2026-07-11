@@ -683,6 +683,32 @@ export interface ChallengeInstance { protocol_version: 1; id: string; story_id?:
 export interface ChallengeInput { actor_id?: string; intent: string; choice_id?: number; modifiers?: ChallengeModifier[]; payload?: JsonValue; elapsed_ms?: number }
 export interface ChallengeResolution { protocol_version: 1; instance_id: string; input: ChallengeInput; outcome: OutcomeEnvelope }
 
+export type MiniGameKind = "rps" | "memory" | "quicktime" | "riddle" | "deduction" | "negotiation" | "pattern" | "bidding" | "courtroom" | "comedy";
+export type MiniGamePhase = "ready" | "active" | "paused" | "resolved";
+export interface MiniGameDefinition {
+  id: string;
+  kind: MiniGameKind;
+  prompt?: string;
+  difficulty: number;
+  options?: string[];
+  sequence?: string[];
+  time_limit_ms?: number;
+  rules?: Record<string, string>;
+}
+export interface MiniGameInput { action: "pause" | "resume" | "submit"; value?: string; values?: string[]; elapsed_ms?: number }
+export interface MiniGameResult { passed: boolean; total?: number; difficulty?: number; detail: string; outcome?: OutcomeEnvelope }
+export interface MiniGameInstance {
+  protocol_version: number;
+  id: string;
+  story_id: string;
+  branch_id: string;
+  turn: number;
+  seed: number;
+  definition: MiniGameDefinition;
+  runtime: { phase: MiniGamePhase; revision: number; state?: JsonObject; history?: MiniGameInput[]; result?: MiniGameResult };
+}
+export interface MiniGameResponse { instance?: MiniGameInstance | null }
+
 export interface ActionEnvelope {
   session_id: string;
   client_turn: number;

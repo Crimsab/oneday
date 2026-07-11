@@ -300,6 +300,10 @@ Challenge types:
   - Memory: `+"`"+`{"type": "mini_game", "mini_game": "memory", "sequence": ["up","down","left","right","up"], "description": "Repeat the ritual pattern"}`+"`"+`
   - Quick-time: `+"`"+`{"type": "mini_game", "mini_game": "quicktime", "time_limit": 3.0, "description": "Dodge the trap!"}`+"`"+`
   - Riddle: `+"`"+`{"type": "mini_game", "mini_game": "riddle", "riddle": "I speak without a mouth...", "answer": "echo", "description": "Answer the sphinx"}`+"`"+`
+  - Deduction: `+"`"+`{"type": "mini_game", "mini_game": "deduction", "description": "Connect the evidence and commit to a conclusion"}`+"`"+`
+  - Negotiation: `+"`"+`{"type": "mini_game", "mini_game": "negotiation", "description": "Choose an approach and decide what leverage to reveal"}`+"`"+`
+  - Pattern: `+"`"+`{"type": "mini_game", "mini_game": "pattern", "description": "Complete a timing-free logical pattern"}`+"`"+`
+  - Bidding: `+"`"+`{"type": "mini_game", "mini_game": "bidding", "description": "Make an offer under a hard budget"}`+"`"+`
 
 ### Challenge Rules
 - Use challenges **sparingly** — 1-2 per scene at most, never every turn
@@ -308,7 +312,7 @@ Challenge types:
 - Include relevant modifiers for skills/items/traits that would logically help
 - After the player sends `+"`"+`[Challenge Result: type PASSED/FAILED — detail]`+"`"+`, narrate the outcome accordingly
 - Branch your narrative meaningfully based on pass vs fail — don't make fail states dead ends
-- Mini-games are for special dramatic moments: gambling (RPS), rituals (memory), traps/dodging (quicktime), puzzles (riddle)
+- Mini-games are for special dramatic moments. Prefer deduction, negotiation, pattern, or bidding when they fit; they are genre-neutral and timing-free. Quick-time is optional and must never be required when a timing-free alternative fits.
 - Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama
 
 ## Narrative Momentum

@@ -44,6 +44,29 @@ func TestQuickTimeComponentUsesInjectedClock(t *testing.T) {
 	}
 }
 
+func TestSharedHostComponentRunsPatternAndBidding(t *testing.T) {
+	pattern, err := NewHostMiniGameModel(engine.DefaultMiniGameDefinition(engine.MiniGamePattern), 7, 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pattern, _ = pattern.Update(key("enter"))
+	if got := pattern.Instance().Runtime.Result.Outcome.Degree; got != contracts.OutcomeFullSuccess {
+		t.Fatalf("pattern degree = %s", got)
+	}
+
+	bidding, err := NewHostMiniGameModel(engine.DefaultMiniGameDefinition(engine.MiniGameBidding), 7, 80, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, char := range "55" {
+		bidding, _ = bidding.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{char}})
+	}
+	bidding, _ = bidding.Update(key("enter"))
+	if got := bidding.Instance().Runtime.Result.Outcome.Degree; got != contracts.OutcomeFullSuccess {
+		t.Fatalf("bidding degree = %s", got)
+	}
+}
+
 func key(value string) tea.KeyMsg {
 	switch value {
 	case "up":

@@ -3435,6 +3435,46 @@ input:disabled {
   line-height: 1.45;
 }
 
+.minigame-host {
+  display: grid;
+  gap: 9px;
+  border-block: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, #0a1012), #0a1012);
+  padding: 10px 14px;
+}
+
+.minigame-host-head,
+.minigame-host-head > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.minigame-host-head > div { justify-content: flex-start; }
+.minigame-host-head span,
+.minigame-host-head small { color: var(--faint); font-size: 10px; text-transform: uppercase; }
+.minigame-host-head strong { color: var(--accent); font-size: 12px; text-transform: capitalize; }
+.minigame-launchers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.minigame-launchers button,
+.minigame-actions button { min-height: 32px; border: 1px solid var(--line); background: #11181a; color: var(--text); }
+.minigame-play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, .55fr) minmax(180px, .65fr); gap: 8px; align-items: end; }
+.minigame-play p { align-self: center; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.minigame-play label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; }
+.minigame-play input,
+.minigame-play select { min-width: 0; min-height: 34px; border: 1px solid var(--line); background: #070c0f; color: var(--text); padding: 6px 8px; }
+.minigame-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 7px; }
+.minigame-result { border-left: 2px solid var(--accent); padding: 7px 9px; background: rgba(255,255,255,.025); }
+.minigame-result strong { color: var(--accent); text-transform: uppercase; font-size: 10px; }
+.minigame-result p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+
+@media (max-width: 760px) {
+  .minigame-launchers { grid-template-columns: 1fr 1fr; }
+  .minigame-play { grid-template-columns: 1fr; }
+  .minigame-actions { grid-column: 1; }
+}
+
 .meta-content {
   display: grid;
   gap: 12px;
