@@ -1,0 +1,52 @@
+name: oneday
+
+services:
+  oneday-gateway:
+    image: homelab/oneday-gateway:2026-07-10
+    build:
+      context: /srv/oneday/docker/oneday
+      dockerfile: gateway/Dockerfile
+    container_name: oneday-gateway
+    restart: unless-stopped
+    init: true
+    working_dir: /opt/oneday
+    ports:
+      - "8788:8788"
+    env_file:
+      - /srv/oneday/data/secrets/oneday/app.env
+    environment:
+      TZ: Europe/Rome
+    volumes:
+      - type: bind
+        source: /srv/oneday/docker/oneday
+        target: /opt/oneday
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /usr/local/bin/codex
+        target: /usr/local/bin/codex
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /root/.codex/auth.json
+        target: /root/.codex/auth.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /root/.codex/config.toml
+        target: /root/.codex/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+    security_opt:
+      - no-new-privileges:true
+    dns:
+      - 127.0.0.1
+    networks:
+      - oneday_network
+
+networks:
+  oneday_network:
+    external: true

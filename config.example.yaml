@@ -1,0 +1,136 @@
+# OneDay Configuration
+config_version: 2
+
+# Data directory for stories, saves, and database
+data_dir: "./oneday_data"
+
+# AI Provider configuration
+ai:
+  # Provider priority (first available is used, others are fallbacks)
+  # Options: codex, claude-code, litellm, openrouter
+  provider_priority:
+    - litellm
+    - openrouter
+    - codex
+    - claude-code
+
+  # OpenAI Codex CLI (experimental; uses local `codex login` OAuth/API auth)
+  codex:
+    enabled: false
+    # Path to codex CLI binary (leave empty for PATH lookup)
+    binary: ""
+    model: "gpt-5.4-mini"
+    # Options: off, none, minimal, low, medium, high, xhigh
+    reasoning: "off"
+    # Codex is generation-only. RAG embeddings still require LiteLLM/OpenRouter.
+
+  # Claude Code CLI (uses your Claude subscription)
+  claude_code:
+    enabled: false
+    # Path to claude CLI binary (leave empty for PATH lookup)
+    binary: ""
+
+  # LiteLLM / OpenAI-compatible endpoint
+  litellm:
+    enabled: true
+    # Host-native default. If you run OneDay inside Docker on the homelab network,
+    # use http://ai-proxy:4000/v1 instead.
+    base_url: "http://llm.example.com/v1"
+    api_key: "${ONEDAY_LITELLM_API_KEY}"
+    default_model: "gpt-5.4-mini"
+
+  # OpenRouter
+  openrouter:
+    enabled: false
+    base_url: "https://openrouter.ai/api/v1"
+    api_key: "${ONEDAY_OPENROUTER_API_KEY}"
+    default_model: "google/gemini-2.5-flash-lite"
+
+  # Embedding model (for RAG)
+  embedding:
+    model: "text-embedding-3-small"
+    provider: "auto"
+    # Use "auto" to pick the first enabled embedding-capable provider in the
+    # priority chain, or force one of: litellm, openrouter, local
+    # Local embeddings do not require API keys. Ollama is the easiest backend,
+    # but custom local HTTP embedding endpoints are also supported.
+    local:
+      enabled: false
+      # ollama: POST {base_url}/api/embed
+      # custom: POST {base_url} with {"model":"...","input":"..."}
+      type: "ollama"
+      base_url: "http://127.0.0.1:11434"
+      # Recommended multilingual/Italian default. Alternatives:
+      # nomic-embed-text (fast/light), mxbai-embed-large (English), qwen3-embedding (heavier/quality)
+      model: "bge-m3"
+      dimensions: 1024
+
+  # Optional ambient ASCII-art generation for scene headers/signage/maps/etc.
+  ascii_art:
+    enabled: true
+    # Use the local LiteLLM alias when available; direct OpenRouter slugs also work
+    # if the fallback chain reaches the OpenRouter provider.
+    model: "ascii-ambient"
+    temperature: 0.4
+    max_tokens: 400
+    timeout_seconds: 25
+
+  # Non-blocking visual asset generation for locations, characters, and story art.
+  # Environment variables with ONEDAY_IMAGEGEN_* override these values at runtime.
+  image_generation:
+    provider: "openclaw-bridge"
+    base_url: ""
+    api_key: ""
+    model: "openai/gpt-image-2"
+    openclaw_bridge_url: "http://openclaw-imagegen:8099/generate"
+    default_size: "1024x1024"
+    location_size: "1536x1024"
+    character_size: "1024x1024"
+    default_resolution: ""
+    location_resolution: ""
+    character_resolution: ""
+    default_aspect_ratio: ""
+    location_aspect_ratio: ""
+    character_aspect_ratio: ""
+    quality: ""
+    output_format: "png"
+    background: ""
+    timeout_seconds: 360
+    auto_generate: true
+    append_negative_prompt: true
+
+  # Generation settings
+  generation:
+    temperature: 0.8
+    max_tokens: 2048
+    timeout_seconds: 60
+    # Utility/ancillary model for repair, validation, and other small side calls.
+    utility_model: "gpt-5.4-mini"
+    # Optional dedicated repair/validator model for schema-fix passes.
+    # Primary repair model plus ordered fallbacks.
+    repair_model: "gpt-5.4-mini"
+    repair_fallback_models:
+      - "gpt-5.4-mini"
+
+# RAG settings
+rag:
+  enabled: true
+  # Summarize every N turns
+  summarize_every: 10
+  # Number of relevant chunks to retrieve
+  top_k: 5
+  # Embedding dimensions
+  dimensions: 1536
+
+# Game settings
+game:
+  # Autosave every N turns
+  autosave_every: 5
+  # Enable typewriter effect for AI responses
+  typewriter_effect: true
+  # Typewriter speed (characters per second)
+  typewriter_speed: 80
+  # Expose /thoughts to inspect NPC private thoughts (debug/storyteller mode)
+  visible_private_thoughts: false
+  # Reward economy: generous, balanced, or harsh
+  reward_budget: balanced

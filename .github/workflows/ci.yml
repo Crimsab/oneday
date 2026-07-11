@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Lint GitHub Actions
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest .
+          ./actionlint -color
+
+  go-check:
+    name: Go checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run verification gate
+        run: make verify
+
+      - name: Run non-live command smoke checks
+        run: |
+          go run ./cmd/oneday config show --safe
+          go run ./cmd/oneday rag benchmark
+          go run ./cmd/oneday story-packs list
+
+      - name: Cross-compile release binaries
+        run: |
+          mkdir -p dist
+          ldflags="$(bash ./scripts/build-ldflags.sh)"
+
+          GOOS=linux GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-linux-amd64 ./cmd/oneday
+          GOOS=linux GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-benchmark-linux-amd64 ./cmd/oneday-benchmark
+          GOOS=linux GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-ascii-benchmark-linux-amd64 ./cmd/oneday-ascii-benchmark
+
+          GOOS=windows GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-windows-amd64.exe ./cmd/oneday
+          GOOS=windows GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-benchmark-windows-amd64.exe ./cmd/oneday-benchmark
+          GOOS=windows GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-ascii-benchmark-windows-amd64.exe ./cmd/oneday-ascii-benchmark
+
+  gateway-rust-check:
+    name: Gateway Rust checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check gateway formatting
+        run: cargo fmt --manifest-path gateway/Cargo.toml -- --check
+
+      - name: Test gateway
+        run: cargo test --manifest-path gateway/Cargo.toml
+
+      - name: Build gateway
+        run: cargo build --manifest-path gateway/Cargo.toml
+
+  gateway-web-check:
+    name: Gateway web checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Install dependencies
+        working-directory: gateway/web
+        run: bun install --frozen-lockfile
+
+      - name: Run web tests
+        working-directory: gateway/web
+        run: bun test src
+
+      - name: Build web app
+        working-directory: gateway/web
+        run: bun run build
+
+  gateway-docker-build:
+    name: Gateway Docker build
+    runs-on: ubuntu-latest
+    needs:
+      - gateway-rust-check
+      - gateway-web-check
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build gateway image
+        run: docker build -f gateway/Dockerfile .
