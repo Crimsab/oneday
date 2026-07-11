@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, CornerDownLeft } from "lucide-react";
+import { CornerDownLeft } from "lucide-react";
 import { commandSuggestions, type CommandSuggestionContext, type SlashCommandItem } from "../commands";
 import { CommandPalette } from "./CommandPalette";
+import { CustomSelect } from "./CustomSelect";
 import type { CommandDescriptor } from "../types";
 
 interface ComposerProps {
@@ -115,7 +116,6 @@ export function Composer({
         submitCurrentDraft();
       }}
     >
-      <div className="composer-title"><span>Something else?</span><small>Describe any action in your own words.</small></div>
       <div className="composer-row">
         <span className="prompt-marker">&gt;</span>
         <textarea
@@ -178,16 +178,17 @@ export function Composer({
           placeholder="What do you want to try?"
           rows={2}
         />
-        <label className="select-wrap">
-          <span className="sr-only">Action type</span>
-          <select value={mode} onChange={(event) => onModeChange(event.target.value)}>
-            <option value="action">Action</option>
-            <option value="talk">Talk</option>
-            <option value="advance">Advance</option>
-            <option value="timeskip">Time Skip</option>
-          </select>
-          <ChevronDown size={14} />
-        </label>
+        <CustomSelect
+          value={mode}
+          ariaLabel="Action type"
+          onChange={onModeChange}
+          options={[
+            { value: "action", label: "Action" },
+            { value: "talk", label: "Talk" },
+            { value: "advance", label: "Advance" },
+            { value: "timeskip", label: "Time Skip" },
+          ]}
+        />
         <button type="submit" className="execute-button" disabled={disabled || !draft.trim()}>
           <CornerDownLeft size={16} />
           Send action

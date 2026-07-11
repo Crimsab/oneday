@@ -1,4 +1,4 @@
-import { BookOpen, ImageOff, Moon, Sun, Sunrise, Sunset } from "lucide-react";
+import { BookOpen, ImageOff, Moon, Pause, Play, SlidersHorizontal, Sun, Sunrise, Sunset } from "lucide-react";
 import type { StorySnapshot, VisualAsset } from "../types";
 import { displayClock } from "../format";
 import { readyAssetUrl } from "../visualAssets";
@@ -6,6 +6,9 @@ import { readyAssetUrl } from "../visualAssets";
 interface StoryPathProps {
   snapshot: StorySnapshot | null;
   locationAsset?: VisualAsset | null;
+  paused?: boolean;
+  onTogglePaused?: () => void;
+  onClearTranscript?: () => void;
   onOpenVisualAsset?: (assetId: string) => void;
 }
 
@@ -16,7 +19,7 @@ const cycleIcon = {
   Night: Moon,
 };
 
-export function StoryPath({ snapshot, locationAsset, onOpenVisualAsset }: StoryPathProps) {
+export function StoryPath({ snapshot, locationAsset, paused = false, onTogglePaused, onClearTranscript, onOpenVisualAsset }: StoryPathProps) {
   if (!snapshot) {
     return (
       <div className="scene-header empty-scene">
@@ -71,6 +74,15 @@ export function StoryPath({ snapshot, locationAsset, onOpenVisualAsset }: StoryP
           ))}
         </div>}
       </div>
+      {(onTogglePaused || onClearTranscript) && (
+        <details className="scene-reading-controls">
+          <summary title="Reading controls" aria-label="Reading controls"><SlidersHorizontal size={15} /></summary>
+          <div>
+            {onTogglePaused && <button type="button" onClick={onTogglePaused}>{paused ? <Play size={14} /> : <Pause size={14} />}{paused ? "Resume updates" : "Pause updates"}</button>}
+            {onClearTranscript && <button type="button" onClick={onClearTranscript}>Hide current messages</button>}
+          </div>
+        </details>
+      )}
       {locationAsset && locationAsset.status !== "ready" && (
         <div className="scene-asset-state" title={locationAsset.prompt || "Scene art is not ready yet"}>
           <ImageOff size={14} />

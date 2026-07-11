@@ -9,6 +9,7 @@ export const defaultPreferences: AppPreferences = {
   showLeftRail: false,
   showInspector: false,
   wrapTranscript: true,
+  showChoiceDetails: false,
 };
 
 export function loadPreferences(): AppPreferences {
@@ -33,6 +34,7 @@ export function normalizePreferences(value: Partial<AppPreferences> | null | und
     showLeftRail: typeof value?.showLeftRail === "boolean" ? value.showLeftRail : defaultPreferences.showLeftRail,
     showInspector: typeof value?.showInspector === "boolean" ? value.showInspector : defaultPreferences.showInspector,
     wrapTranscript: typeof value?.wrapTranscript === "boolean" ? value.wrapTranscript : defaultPreferences.wrapTranscript,
+    showChoiceDetails: typeof value?.showChoiceDetails === "boolean" ? value.showChoiceDetails : defaultPreferences.showChoiceDetails,
   };
 }
 

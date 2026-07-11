@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { MiniGameInput, MiniGameInstance, MiniGameKind } from "../types";
+import { CustomSelect } from "./CustomSelect";
 
 export function MiniGameHost({
   instance,
@@ -44,9 +45,7 @@ export function MiniGameHost({
           <label>
             <span>{fieldLabel(instance.definition.kind)}</span>
             {instance.definition.options?.length ? (
-              <select value={value} disabled={busy || phase === "paused"} onChange={(event) => setValue(event.target.value)}>
-                {instance.definition.options.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
+              <CustomSelect value={value} disabled={busy || phase === "paused"} ariaLabel={fieldLabel(instance.definition.kind)} onChange={setValue} options={instance.definition.options.map((option) => ({ value: option, label: option }))} />
             ) : (
               <input type={instance.definition.kind === "bidding" ? "number" : "text"} value={value} disabled={busy || phase === "paused"} onChange={(event) => setValue(event.target.value)} />
             )}

@@ -62,8 +62,8 @@ function TranscriptMessage({ storyId, message, showTimelineControls, timeline, t
   return (
     <article className={`transcript-message ${message.role} ${isSystem ? "system-line" : ""}`}>
       <div className="message-stamp">
-        <span>Turn {message.turn}</span>
-        <small>{isUser ? "Your action" : isSystem ? "Story state" : "Narration"}</small>
+        <span>{isUser ? "You" : isSystem ? "System" : "Narrator"}</span>
+        <small>Turn {message.turn}</small>
       </div>
       <div className="message-body">
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
@@ -95,8 +95,8 @@ function PendingTurnMessage({ pendingTurn }: { pendingTurn: PendingTurnView }) {
   return (
     <article className="transcript-message user pending-turn">
       <div className="message-stamp">
-        <span>Turn {pendingTurn.turn}</span>
-        <small>Your action · sending</small>
+        <span>You</span>
+        <small>Turn {pendingTurn.turn} · sending</small>
       </div>
       <div className="message-body">
         <MarkdownText>{pendingTurn.source}</MarkdownText>

@@ -7,17 +7,18 @@ interface SuggestedActionsProps {
   choices: ChoiceView[];
   snapshot: StorySnapshot | null;
   disabled?: boolean;
+  showDetails?: boolean;
   onChoice: (choice: ChoiceView) => void;
   onDraft: (value: string) => void;
 }
 
 const choiceIcons = [MessageSquare, FileSearch, Search, PackageSearch, Users, DoorOpen];
 
-export function SuggestedActions({ choices, snapshot, disabled = false, onChoice, onDraft }: SuggestedActionsProps) {
+export function SuggestedActions({ choices, snapshot, disabled = false, showDetails = false, onChoice, onDraft }: SuggestedActionsProps) {
   const fallback = fallbackActions(snapshot);
   const visibleChoices = choices.slice(0, 3);
   return (
-    <div className="choice-surface">
+    <div className={`choice-surface ${showDetails ? "show-details" : "compact"}`}>
       <div className="choice-stack">
       {visibleChoices.length > 0 ? (
           <>
@@ -42,8 +43,8 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
                   </span>
                   <span className="choice-copy">
                     <strong>{choice.text}</strong>
-                    <ChoiceMetadata choice={choice} presentation={presentation} />
-                    {outcome && (
+                    {showDetails && <ChoiceMetadata choice={choice} presentation={presentation} />}
+                    {showDetails && outcome && (
                       <small className="choice-outcome" title={metadataTitle}>
                         {outcome}
                       </small>
@@ -97,6 +98,7 @@ function ChoiceMetadata({ choice, presentation }: { choice: ChoiceView; presenta
     ["RISK", choice.risk],
     ["SCOPE", choice.scope],
     ["CERT", choice.certainty],
+    ["STAT", choice.related_stats?.join(", ")],
   ].filter((item): item is [string, string] => Boolean(item[1]));
   if (!chips.length && !presentation.meta.length) return null;
   return (

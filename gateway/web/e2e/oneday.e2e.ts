@@ -206,6 +206,18 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   expect(errors).toEqual([]);
 });
 
+test("keeps story actions above the rail and closes them on outside click", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /library/i }).click();
+  await page.getByRole("button", { name: "Manage The Glass Archive" }).click();
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem", { name: "Edit" })).toBeInViewport();
+  await page.getByRole("button", { name: "New Story" }).click({ position: { x: 4, y: 4 } });
+  await expect(menu).toHaveCount(0);
+});
+
 test("restores a failed draft, checks out a branch, and exposes searchable history/export", async ({ page, browserName }) => {
   await mockGateway(page, { failAction: true });
   await page.goto("/");
@@ -303,7 +315,8 @@ test("plays a timing-free minigame through the shared browser host", async ({ pa
   await expect(host.getByRole("button", { name: "Courtroom" })).toHaveCount(0);
   await expect(host.getByText("Decode the fractured seal by completing its pattern.")).toBeVisible();
   await expect(host.getByText(/Selected because:.*narrative tag matches.*timing-free/)).toBeVisible();
-  await host.getByLabel("Pattern answer").selectOption("8");
+  await host.getByLabel("Pattern answer").click();
+  await page.getByRole("option", { name: "8", exact: true }).click();
   const continuation = page.waitForRequest((request) => request.url().endsWith("/actions") && request.postData()?.includes("[Challenge Result:"));
   await host.getByRole("button", { name: "Resolve challenge" }).click();
   await continuation;
@@ -347,7 +360,8 @@ test("generates committed audio and exposes per-story and per-character voice co
   await expect(dialog.getByText("local: disabled")).toBeVisible();
   await expect(dialog.getByText("Narrator", { exact: true })).toBeVisible();
   await expect(dialog.locator(".voice-assignment-row").filter({ hasText: "Mira" }).getByText("Mira", { exact: true })).toBeVisible();
-  await dialog.getByLabel("Speech mode").selectOption("narrator");
+  await dialog.getByLabel("Speech mode").click();
+  await page.getByRole("option", { name: "Narrator only", exact: true }).click();
   await dialog.getByRole("button", { name: "Save audio settings" }).click();
   await expect(dialog.getByRole("button", { name: "Save audio settings" })).toBeEnabled();
   await dialog.getByLabel("Written text").fill("Mira");

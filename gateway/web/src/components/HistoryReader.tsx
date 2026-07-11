@@ -1,4 +1,4 @@
-import { Search } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { getChapters, getHistory, getStoryExport, getTelemetryExport } from "../api";
 import { readableStructuredText } from "../format";
@@ -131,12 +131,7 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
           <p className="empty-copy">No matching messages on this branch.</p>
         ) : (
           <div className="history-entries">
-            {messages.map((message) => (
-              <article key={message.id}>
-                <header><strong>{message.role === "user" ? "You" : "Narrator"}</strong><span>Turn {message.turn}</span></header>
-                <MarkdownText>{readableStructuredText(message.content, "(empty)")}</MarkdownText>
-              </article>
-            ))}
+            {messages.map((message) => <HistoryMessage key={message.id} message={message} />)}
           </div>
         )}
         {messageCursor && <button type="button" disabled={busy} onClick={() => void loadOlder()}>Load older messages</button>}
@@ -155,6 +150,33 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
         {chapterCursor && <button type="button" disabled={busy} onClick={() => void loadOlderChapters()}>Load older chapters</button>}
       </section>
     </div>
+  );
+}
+
+const COLLAPSE_AFTER_WORDS = 90;
+const PREVIEW_WORDS = 56;
+
+function HistoryMessage({ message }: { message: MessageView }) {
+  const [expanded, setExpanded] = useState(false);
+  const content = readableStructuredText(message.content, "(empty)");
+  const words = content.trim().split(/\s+/);
+  const collapsible = words.length > COLLAPSE_AFTER_WORDS;
+  const preview = collapsible && !expanded ? `${words.slice(0, PREVIEW_WORDS).join(" ")}…` : content;
+  const role = message.role === "user" ? "You" : message.role === "system" ? "System" : "Narrator";
+
+  return (
+    <article className={`history-message ${message.role}-entry`}>
+      <header><strong>{role}</strong><span>Turn {message.turn}</span></header>
+      <div className={!expanded && collapsible ? "history-message-preview" : undefined}>
+        <MarkdownText>{preview}</MarkdownText>
+      </div>
+      {collapsible && (
+        <button type="button" className="history-message-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+          {expanded ? "Show less" : `Show full message · ${words.length} words`}
+          <ChevronDown size={14} aria-hidden="true" />
+        </button>
+      )}
+    </article>
   );
 }
 
