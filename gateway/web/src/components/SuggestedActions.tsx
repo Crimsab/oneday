@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { DoorOpen, FileSearch, MessageSquare, PackageSearch, Search, Users } from "lucide-react";
+import { ChevronRight, DoorOpen, FileSearch, MessageSquare, PackageSearch, Search, Users } from "lucide-react";
 import type { ChoiceView, StorySnapshot } from "../types";
 import { compactText } from "../format";
 import { choicePresentation, type ChoicePresentation } from "../choicePresentation";
@@ -17,25 +16,17 @@ const choiceIcons = [MessageSquare, FileSearch, Search, PackageSearch, Users, Do
 export function SuggestedActions({ choices, snapshot, disabled = false, onChoice, onDraft }: SuggestedActionsProps) {
   const fallback = fallbackActions(snapshot);
   const visibleChoices = choices.slice(0, 3);
-  const choiceKey = visibleChoices.map((choice) => choice.id).join("|");
-  const [activeChoiceId, setActiveChoiceId] = useState<number | null>(null);
-
-  useEffect(() => {
-    setActiveChoiceId(null);
-  }, [choiceKey]);
-
   return (
     <div className="choice-surface">
       <header className="choice-heading">
         <div><span>Your move</span><h2>What do you do?</h2></div>
         <small>Choose a path or write your own action below.</small>
       </header>
-      <div className="choice-stack" onMouseLeave={() => setActiveChoiceId(null)}>
+      <div className="choice-stack">
       {visibleChoices.length > 0 ? (
           <>
             {visibleChoices.map((choice) => {
               const presentation = choicePresentation(choice, choice.id - 1);
-              const isActive = choice.id === activeChoiceId;
               const outcome = choiceOutcome(presentation);
               const metadataTitle = [presentation.gain, presentation.tradeoff, presentation.meta.join(" ")]
                 .filter(Boolean)
@@ -44,12 +35,9 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
                 <button
                   type="button"
                   className="choice-row"
-                  data-active={isActive ? "true" : "false"}
                   data-choice-tone={presentation.tone}
                   disabled={disabled}
                   key={choice.id}
-                  onFocus={() => setActiveChoiceId(choice.id)}
-                  onMouseEnter={() => setActiveChoiceId(choice.id)}
                   onClick={() => onChoice(choice)}
                   title={metadataTitle || "Suggested action"}
                 >
@@ -65,6 +53,7 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
                       </small>
                     )}
                   </span>
+                  <ChevronRight className="choice-arrow" size={18} aria-hidden="true" />
                 </button>
               );
             })}
@@ -81,6 +70,7 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
                   <strong>{action.label}</strong>
                   <small>{action.hint}</small>
                 </span>
+                <ChevronRight className="choice-arrow" size={18} aria-hidden="true" />
               </button>
             );
           })
