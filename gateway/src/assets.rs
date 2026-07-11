@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
 pub struct VisualAssetsResponse {
@@ -21,7 +22,12 @@ pub struct VisualAssetsResponse {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct VisualProfile {
+    pub id: String,
     pub story_id: String,
+    pub revision: i64,
+    pub fingerprint: String,
+    pub branch_id: String,
+    pub source_commit_id: String,
     pub world_style_prompt: String,
     pub character_style_prompt: String,
     pub negative_prompt: String,
@@ -51,13 +57,23 @@ pub struct GenerateVisualAssetsRequest {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 pub struct VisualAsset {
     pub id: String,
     pub story_id: String,
     pub kind: String,
     pub subject: String,
     pub entity_id: String,
+    pub canonical_entity_id: String,
+    pub canonical_location_id: String,
+    pub form_id: String,
+    pub lineage_key: String,
+    pub appearance_fingerprint: String,
+    pub profile_revision_id: String,
+    pub canon_status: String,
+    pub gate_state: String,
+    pub gate_reason: String,
+    pub generation_eligible: bool,
     pub prompt: String,
     pub negative_prompt: String,
     pub status: String,
@@ -66,6 +82,8 @@ pub struct VisualAsset {
     pub source: String,
     pub error: String,
     pub turn: i64,
+    pub branch_id: String,
+    pub source_commit_id: String,
     pub updated_at: String,
 }
 
@@ -76,12 +94,20 @@ pub struct VisualAssetVersion {
     pub story_id: String,
     pub kind: String,
     pub subject: String,
+    pub canonical_entity_id: String,
+    pub canonical_location_id: String,
+    pub form_id: String,
+    pub appearance_fingerprint: String,
+    pub profile_revision_id: String,
+    pub canon_status: String,
     pub url: String,
     pub prompt: String,
     pub revised_prompt: String,
     pub negative_prompt: String,
     pub provider: String,
     pub turn: i64,
+    pub branch_id: String,
+    pub source_commit_id: String,
     pub created_at: String,
 }
 
@@ -90,6 +116,11 @@ pub struct VisualGenerationJobView {
     pub id: i64,
     pub asset_id: String,
     pub story_id: String,
+    pub canonical_entity_id: String,
+    pub canonical_location_id: String,
+    pub form_id: String,
+    pub appearance_fingerprint: String,
+    pub profile_revision_id: String,
     pub status: String,
     pub attempts: i64,
     pub max_attempts: i64,
@@ -100,6 +131,8 @@ pub struct VisualGenerationJobView {
     pub finished_at: String,
     pub created_at: String,
     pub updated_at: String,
+    pub branch_id: String,
+    pub source_commit_id: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -216,11 +249,21 @@ struct GeneratedAsset {
     revised_prompt: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct VisualSpec {
     kind: String,
     subject: String,
     entity_id: String,
+    canonical_entity_id: String,
+    canonical_location_id: String,
+    form_id: String,
+    lineage_key: String,
+    appearance_fingerprint: String,
+    profile_revision_id: String,
+    canon_status: String,
+    gate_state: String,
+    gate_reason: String,
+    generation_eligible: bool,
     prompt: String,
     negative_prompt: String,
     turn: i64,
@@ -264,13 +307,26 @@ pub async fn visual_asset_versions(
 ) -> anyhow::Result<Vec<VisualAssetVersion>> {
     ensure_asset_belongs_to_story(pool, story_id, asset_id).await?;
     let rows = sqlx::query(
-        r#"SELECT id, asset_id, story_id, kind, subject, url, prompt,
-                  revised_prompt, negative_prompt, provider, turn,
+        r#"WITH RECURSIVE active AS (
+              SELECT s.active_branch_id AS branch_id,b.head_commit_id,b.fork_commit_id,b.created_at AS branch_created
+              FROM stories s JOIN story_branches b ON b.id=s.active_branch_id WHERE s.id=?
+           ), ancestors(id) AS (
+              SELECT head_commit_id FROM active
+              UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
+           )
+           SELECT id, asset_id, story_id, kind, subject, canonical_entity_id,
+                  canonical_location_id, form_id, appearance_fingerprint,
+                  COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
+                  url, prompt, revised_prompt, negative_prompt, provider, turn,
+                  v.branch_id AS branch_id, source_commit_id,
                   CAST(created_at AS TEXT) AS created_at
-           FROM visual_asset_versions
-           WHERE story_id = ? AND asset_id = ?
+           FROM visual_asset_versions v
+           CROSS JOIN active x
+           WHERE story_id = ? AND asset_id = ? AND source_commit_id IN (SELECT id FROM ancestors)
+             AND (v.branch_id=x.branch_id OR source_commit_id!=COALESCE(x.fork_commit_id,'') OR created_at<=x.branch_created)
            ORDER BY id DESC"#,
     )
+    .bind(story_id)
     .bind(story_id)
     .bind(asset_id)
     .fetch_all(pool)
@@ -284,18 +340,38 @@ pub async fn visual_asset_versions(
             story_id: row_string(&row, "story_id"),
             kind: row_string(&row, "kind"),
             subject: row_string(&row, "subject"),
+            canonical_entity_id: row_string(&row, "canonical_entity_id"),
+            canonical_location_id: row_string(&row, "canonical_location_id"),
+            form_id: row_string(&row, "form_id"),
+            appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
+            profile_revision_id: row_string(&row, "profile_revision_id"),
+            canon_status: row_string(&row, "canon_status"),
             url: row_string(&row, "url"),
             prompt: row_string(&row, "prompt"),
             revised_prompt: row_string(&row, "revised_prompt"),
             negative_prompt: row_string(&row, "negative_prompt"),
             provider: row_string(&row, "provider"),
             turn: row.try_get("turn").unwrap_or_default(),
+            branch_id: row_string(&row, "branch_id"),
+            source_commit_id: row_string(&row, "source_commit_id"),
             created_at: row_string(&row, "created_at"),
         })
         .collect())
 }
 
 pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS visual_profile_revisions (
+            id TEXT PRIMARY KEY,story_id TEXT NOT NULL,revision INTEGER NOT NULL,
+            world_style_prompt TEXT NOT NULL DEFAULT '',character_style_prompt TEXT NOT NULL DEFAULT '',
+            negative_prompt TEXT NOT NULL DEFAULT '',palette TEXT NOT NULL DEFAULT '',fingerprint TEXT NOT NULL,
+            branch_id TEXT NOT NULL,source_commit_id TEXT NOT NULL,created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(story_id,branch_id,revision),UNIQUE(story_id,branch_id,fingerprint)
+        )"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual profile revisions table")?;
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS visual_asset_versions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -341,7 +417,86 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
         ensure_text_column(pool, table, "branch_id", "TEXT NOT NULL DEFAULT ''").await?;
         ensure_text_column(pool, table, "source_commit_id", "TEXT NOT NULL DEFAULT ''").await?;
     }
+    for (column, definition) in [
+        ("canonical_entity_id", "TEXT NOT NULL DEFAULT ''"),
+        ("canonical_location_id", "TEXT NOT NULL DEFAULT ''"),
+        ("form_id", "TEXT NOT NULL DEFAULT ''"),
+        ("lineage_key", "TEXT NOT NULL DEFAULT ''"),
+        ("appearance_fingerprint", "TEXT NOT NULL DEFAULT ''"),
+        ("profile_revision_id", "TEXT"),
+        ("canon_status", "TEXT NOT NULL DEFAULT 'draft'"),
+        ("gate_state", "TEXT NOT NULL DEFAULT 'legacy'"),
+        ("gate_reason", "TEXT NOT NULL DEFAULT ''"),
+        ("generation_eligible", "INTEGER NOT NULL DEFAULT 1"),
+    ] {
+        ensure_text_column(pool, "visual_assets", column, definition).await?;
+    }
+    for statement in [
+        "UPDATE visual_assets SET lineage_key='legacy:'||id WHERE lineage_key=''",
+        "UPDATE visual_assets SET appearance_fingerprint='legacy:'||id WHERE appearance_fingerprint=''",
+        "UPDATE visual_assets SET branch_id=COALESCE((SELECT active_branch_id FROM stories WHERE stories.id=visual_assets.story_id),'') WHERE branch_id=''",
+        "UPDATE visual_assets SET source_commit_id=COALESCE((SELECT head_commit_id FROM story_branches WHERE story_branches.id=visual_assets.branch_id),'') WHERE source_commit_id=''",
+    ] {
+        sqlx::query(statement).execute(pool).await?;
+    }
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_visual_assets_branch_lineage ON visual_assets(story_id,branch_id,lineage_key)",
+    )
+    .execute(pool)
+    .await?;
+    for (table, column, definition) in [
+        (
+            "visual_asset_versions",
+            "canonical_entity_id",
+            "TEXT NOT NULL DEFAULT ''",
+        ),
+        (
+            "visual_asset_versions",
+            "canonical_location_id",
+            "TEXT NOT NULL DEFAULT ''",
+        ),
+        (
+            "visual_asset_versions",
+            "form_id",
+            "TEXT NOT NULL DEFAULT ''",
+        ),
+        (
+            "visual_asset_versions",
+            "appearance_fingerprint",
+            "TEXT NOT NULL DEFAULT ''",
+        ),
+        ("visual_asset_versions", "profile_revision_id", "TEXT"),
+        (
+            "visual_asset_versions",
+            "canon_status",
+            "TEXT NOT NULL DEFAULT 'draft'",
+        ),
+    ] {
+        ensure_text_column(pool, table, column, definition).await?;
+    }
     ensure_visual_generation_job_schema(pool).await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS visual_asset_branch_overrides (
+            asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+            story_id TEXT NOT NULL,branch_id TEXT NOT NULL,source_commit_id TEXT NOT NULL,
+            prompt_override TEXT NOT NULL DEFAULT '',negative_prompt_override TEXT NOT NULL DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY(asset_id,branch_id)
+        )"#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS visual_asset_selection_states (
+            asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+            story_id TEXT NOT NULL,branch_id TEXT NOT NULL,source_commit_id TEXT NOT NULL,
+            selected_version_id INTEGER REFERENCES visual_asset_versions(id),
+            history_json TEXT NOT NULL DEFAULT '[]',cursor INTEGER NOT NULL DEFAULT -1,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(asset_id,branch_id)
+        )"#,
+    )
+    .execute(pool)
+    .await?;
     recover_stale_visual_jobs(pool).await?;
     Ok(())
 }
@@ -397,6 +552,15 @@ async fn ensure_visual_generation_job_schema(pool: &SqlitePool) -> anyhow::Resul
         "TEXT NOT NULL DEFAULT ''",
     )
     .await?;
+    for (column, definition) in [
+        ("canonical_entity_id", "TEXT NOT NULL DEFAULT ''"),
+        ("canonical_location_id", "TEXT NOT NULL DEFAULT ''"),
+        ("form_id", "TEXT NOT NULL DEFAULT ''"),
+        ("appearance_fingerprint", "TEXT NOT NULL DEFAULT ''"),
+        ("profile_revision_id", "TEXT"),
+    ] {
+        ensure_text_column(pool, "visual_generation_jobs", column, definition).await?;
+    }
     ensure_text_column(
         pool,
         "visual_generation_jobs",
@@ -534,6 +698,42 @@ pub async fn update_profile(
     update: VisualProfileUpdate,
 ) -> anyhow::Result<VisualAssetsResponse> {
     db::snapshot(pool, story_id).await?;
+    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await;
+    let world_style_prompt = update.world_style_prompt.trim();
+    let character_style_prompt = update.character_style_prompt.trim();
+    let negative_prompt = update.negative_prompt.trim();
+    let palette = update.palette.trim();
+    let fingerprint = visual_fingerprint(&[
+        world_style_prompt,
+        character_style_prompt,
+        negative_prompt,
+        palette,
+    ]);
+    let revision: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(revision),0)+1 FROM visual_profile_revisions WHERE story_id=? AND branch_id=?",
+    )
+    .bind(story_id)
+    .bind(&branch_id)
+    .fetch_one(pool)
+    .await?;
+    sqlx::query(
+        r#"INSERT OR IGNORE INTO visual_profile_revisions
+           (id,story_id,revision,world_style_prompt,character_style_prompt,negative_prompt,palette,fingerprint,branch_id,source_commit_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?)"#,
+    )
+    .bind(format!("visual-profile-{}", Uuid::new_v4()))
+    .bind(story_id)
+    .bind(revision)
+    .bind(world_style_prompt)
+    .bind(character_style_prompt)
+    .bind(negative_prompt)
+    .bind(palette)
+    .bind(&fingerprint)
+    .bind(&branch_id)
+    .bind(&source_commit_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("creating visual profile revision for {story_id}"))?;
     sqlx::query(
         r#"INSERT INTO story_visual_profiles (
               story_id, world_style_prompt, character_style_prompt, negative_prompt, palette
@@ -547,10 +747,10 @@ pub async fn update_profile(
               updated_at = CURRENT_TIMESTAMP"#,
     )
     .bind(story_id)
-    .bind(update.world_style_prompt.trim())
-    .bind(update.character_style_prompt.trim())
-    .bind(update.negative_prompt.trim())
-    .bind(update.palette.trim())
+    .bind(world_style_prompt)
+    .bind(character_style_prompt)
+    .bind(negative_prompt)
+    .bind(palette)
     .execute(pool)
     .await
     .with_context(|| format!("saving visual profile for {story_id}"))?;
@@ -993,6 +1193,7 @@ async fn generation_targets(
     Ok(assets
         .into_iter()
         .filter(|asset| requested.is_empty() || requested.contains(asset.id.as_str()))
+        .filter(|asset| asset.generation_eligible)
         .filter(|asset| request.force || asset.status != "ready")
         .filter(|asset| asset.status != "running")
         .take(limit)
@@ -1029,9 +1230,10 @@ async fn enqueue_visual_generation_jobs(
         let inserted_job_id: Option<i64> = sqlx::query_scalar(
             r#"INSERT OR IGNORE INTO visual_generation_jobs (
                   asset_id, story_id, status, attempts, max_attempts,
-                  locked_until, request_payload_json, error, provider, branch_id, source_commit_id
+                  locked_until, request_payload_json, error, provider, branch_id, source_commit_id,
+                  canonical_entity_id,canonical_location_id,form_id,appearance_fingerprint,profile_revision_id
                )
-               VALUES (?, ?, 'queued', 0, 3, '', ?, '', ?, ?, ?)
+               VALUES (?, ?, 'queued', 0, 3, '', ?, '', ?, ?, ?,?,?,?,?,?)
                RETURNING id"#,
         )
         .bind(&asset.id)
@@ -1040,6 +1242,11 @@ async fn enqueue_visual_generation_jobs(
         .bind(provider_label(config))
         .bind(&branch_id)
         .bind(&source_commit_id)
+        .bind(&asset.canonical_entity_id)
+        .bind(&asset.canonical_location_id)
+        .bind(&asset.form_id)
+        .bind(&asset.appearance_fingerprint)
+        .bind(&asset.profile_revision_id)
         .fetch_optional(pool)
         .await
         .with_context(|| format!("enqueueing visual generation job {}", asset.id))?;
@@ -1270,9 +1477,10 @@ async fn record_asset_version(
         r#"INSERT INTO visual_asset_versions (
               asset_id, story_id, kind, subject, url, file_path, prompt,
               revised_prompt, negative_prompt, provider, turn
-			  , branch_id, source_commit_id
+			  , branch_id, source_commit_id,canonical_entity_id,canonical_location_id,
+              form_id,appearance_fingerprint,profile_revision_id,canon_status
            )
-		   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+		   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?)"#,
     )
     .bind(&asset.id)
     .bind(&asset.story_id)
@@ -1287,6 +1495,12 @@ async fn record_asset_version(
     .bind(asset.turn)
     .bind(branch_id)
     .bind(source_commit_id)
+    .bind(&asset.canonical_entity_id)
+    .bind(&asset.canonical_location_id)
+    .bind(&asset.form_id)
+    .bind(&asset.appearance_fingerprint)
+    .bind(&asset.profile_revision_id)
+    .bind(&asset.canon_status)
     .execute(pool)
     .await?;
     Ok(())
@@ -1760,6 +1974,17 @@ fn short_hash(bytes: &[u8]) -> String {
     hex_prefix(&digest, 12)
 }
 
+fn visual_fingerprint(parts: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    for part in parts {
+        hasher.update((part.len() as u64).to_be_bytes());
+        hasher.update(part.as_bytes());
+    }
+    let digest = hasher.finalize();
+    let encoded: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    format!("sha256:{encoded}")
+}
+
 fn hex_prefix(bytes: &[u8], len: usize) -> String {
     let mut out = String::new();
     for byte in bytes {
@@ -1822,6 +2047,31 @@ async fn ensure_profile(
     }
 
     let defaults = default_profile(snapshot);
+    let (branch_id, source_commit_id) = active_timeline_lineage(pool, &snapshot.story.id).await;
+    let fingerprint = visual_fingerprint(&[
+        &defaults.world_style_prompt,
+        &defaults.character_style_prompt,
+        &defaults.negative_prompt,
+        &defaults.palette,
+    ]);
+    sqlx::query(
+        r#"INSERT OR IGNORE INTO visual_profile_revisions
+           (id,story_id,revision,world_style_prompt,character_style_prompt,negative_prompt,palette,fingerprint,branch_id,source_commit_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?)"#,
+    )
+    .bind(format!("visual-profile-{}", Uuid::new_v4()))
+    .bind(&snapshot.story.id)
+    .bind(1_i64)
+    .bind(&defaults.world_style_prompt)
+    .bind(&defaults.character_style_prompt)
+    .bind(&defaults.negative_prompt)
+    .bind(&defaults.palette)
+    .bind(&fingerprint)
+    .bind(&branch_id)
+    .bind(&source_commit_id)
+    .execute(pool)
+    .await
+    .with_context(|| format!("creating visual profile revision for {}", snapshot.story.id))?;
     sqlx::query(
         r#"INSERT OR IGNORE INTO story_visual_profiles (
               story_id, world_style_prompt, character_style_prompt, negative_prompt, palette
@@ -1844,17 +2094,32 @@ async fn ensure_profile(
 
 async fn get_profile(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Option<VisualProfile>> {
     let row = sqlx::query(
-        r#"SELECT story_id, world_style_prompt, character_style_prompt,
-                  negative_prompt, palette, CAST(updated_at AS TEXT) AS updated_at
-           FROM story_visual_profiles
-           WHERE story_id = ?"#,
+        r#"WITH RECURSIVE active AS (
+              SELECT s.active_branch_id AS branch_id,b.head_commit_id,b.fork_commit_id,b.created_at AS branch_created
+              FROM stories s JOIN story_branches b ON b.id=s.active_branch_id WHERE s.id=?
+           ), ancestors(id,depth) AS (
+              SELECT head_commit_id,0 FROM active
+              UNION ALL SELECT c.parent_commit_id,a.depth+1 FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
+           )
+           SELECT p.id,p.story_id,p.revision,p.fingerprint,p.branch_id,p.source_commit_id,
+                  p.world_style_prompt,p.character_style_prompt,p.negative_prompt,p.palette,
+                  CAST(p.created_at AS TEXT) AS updated_at
+           FROM visual_profile_revisions p JOIN ancestors a ON a.id=p.source_commit_id CROSS JOIN active x
+           WHERE p.story_id=? AND (p.branch_id=x.branch_id OR p.source_commit_id!=COALESCE(x.fork_commit_id,'') OR p.created_at<=x.branch_created)
+           ORDER BY a.depth,p.created_at DESC,p.revision DESC LIMIT 1"#,
     )
+    .bind(story_id)
     .bind(story_id)
     .fetch_optional(pool)
     .await?;
 
     Ok(row.map(|row| VisualProfile {
+        id: row_string(&row, "id"),
         story_id: row_string(&row, "story_id"),
+        revision: row.try_get("revision").unwrap_or_default(),
+        fingerprint: row_string(&row, "fingerprint"),
+        branch_id: row_string(&row, "branch_id"),
+        source_commit_id: row_string(&row, "source_commit_id"),
         world_style_prompt: row_string(&row, "world_style_prompt"),
         character_style_prompt: row_string(&row, "character_style_prompt"),
         negative_prompt: row_string(&row, "negative_prompt"),
@@ -1873,7 +2138,12 @@ fn default_profile(snapshot: &db::StorySnapshot) -> VisualProfile {
         format!("{genre}, {tone}, {setting}")
     };
     VisualProfile {
+        id: String::new(),
         story_id: snapshot.story.id.clone(),
+        revision: 0,
+        fingerprint: String::new(),
+        branch_id: String::new(),
+        source_commit_id: String::new(),
         world_style_prompt: format!(
             "Polished cinematic concept art for a text RPG world. Base style: {style_basis}. Use real place texture, readable silhouettes, no UI text."
         ),
@@ -1895,17 +2165,37 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
             &["details", "description", "notes", "summary"],
         )
         .unwrap_or_else(|| value_to_text(&snapshot.world.known_locations));
+        let prompt = format!(
+            "{} Current location: {}. Details: {}. Composition: wide browser hero banner, deep perspective, safe area for overlay text at left. Palette: {}.",
+            profile.world_style_prompt,
+            location,
+            clean_or(&details, "derive visual detail from the story context"),
+            clean_or(&profile.palette, "dark warm noir")
+        );
+        let appearance_fingerprint = visual_fingerprint(&[
+            "location",
+            &snapshot.world.current_location_id,
+            &prompt,
+            &profile.fingerprint,
+        ]);
         specs.push(VisualSpec {
             kind: "location".to_string(),
             subject: location.to_string(),
-            entity_id: snapshot.world.id.clone(),
-            prompt: format!(
-                "{} Current location: {}. Details: {}. Composition: wide browser hero banner, deep perspective, safe area for overlay text at left. Palette: {}.",
-                profile.world_style_prompt,
-                location,
-                clean_or(&details, "derive visual detail from the story context"),
-                clean_or(&profile.palette, "dark warm noir")
+            entity_id: String::new(),
+            canonical_entity_id: String::new(),
+            canonical_location_id: snapshot.world.current_location_id.clone(),
+            form_id: String::new(),
+            lineage_key: format!(
+                "location:{}:{appearance_fingerprint}",
+                snapshot.world.current_location_id
             ),
+            appearance_fingerprint,
+            profile_revision_id: profile.id.clone(),
+            canon_status: "canonical".to_string(),
+            gate_state: "eligible".to_string(),
+            gate_reason: "Canonical current location".to_string(),
+            generation_eligible: !snapshot.world.current_location_id.is_empty(),
+            prompt,
             negative_prompt: profile.negative_prompt.clone(),
             turn: snapshot.world.current_turn,
         });
@@ -1927,18 +2217,48 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
         if visual_details.is_empty() {
             continue;
         }
+        let prompt = format!(
+            "{} Character: {}. Role: {}. Appearance: {}. Relationship context: {}. Composition: square bust-up portrait, readable at small card size, coherent lighting with the current scene.",
+            profile.character_style_prompt,
+            npc.name,
+            clean_or(role, "unknown"),
+            visual_details,
+            clean_or(&relationship, "unknown")
+        );
+        let form_id = format!("form-{}", npc.id);
+        let appearance_fingerprint = visual_fingerprint(&[
+            "character",
+            &npc.id,
+            &form_id,
+            &visual_details,
+            &profile.fingerprint,
+        ]);
+        let canonical = value_at(discovery, "visual_readiness") == "canonical";
         specs.push(VisualSpec {
             kind: "character".to_string(),
             subject: npc.name.clone(),
             entity_id: npc.id.clone(),
-            prompt: format!(
-                "{} Character: {}. Role: {}. Appearance: {}. Relationship context: {}. Composition: square bust-up portrait, readable at small card size, coherent lighting with the current scene.",
-                profile.character_style_prompt,
-                npc.name,
-                clean_or(role, "unknown"),
-                visual_details,
-                clean_or(&relationship, "unknown")
-            ),
+            canonical_entity_id: npc.id.clone(),
+            canonical_location_id: String::new(),
+            form_id: form_id.clone(),
+            lineage_key: format!("character:{}:{form_id}:{appearance_fingerprint}", npc.id),
+            appearance_fingerprint,
+            profile_revision_id: profile.id.clone(),
+            canon_status: if canonical { "canonical" } else { "draft" }.to_string(),
+            gate_state: if canonical {
+                "established_canonical"
+            } else {
+                "identified_draft"
+            }
+            .to_string(),
+            gate_reason: if canonical {
+                "Established canonical appearance"
+            } else {
+                "Identified appearance draft"
+            }
+            .to_string(),
+            generation_eligible: true,
+            prompt,
             negative_prompt: profile.negative_prompt.clone(),
             turn: snapshot.world.current_turn,
         });
@@ -2105,38 +2425,60 @@ async fn ensure_asset_rows(
 ) -> anyhow::Result<()> {
     let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await;
     for spec in specs {
-        let id = asset_id(story_id, &spec.kind, &spec.subject);
+        let reachable: Option<String> = sqlx::query_scalar(
+            r#"WITH RECURSIVE active AS (
+                 SELECT s.active_branch_id AS branch_id,b.head_commit_id,b.fork_commit_id,b.created_at AS branch_created
+                 FROM stories s JOIN story_branches b ON b.id=s.active_branch_id WHERE s.id=?
+               ), ancestors(id) AS (
+                 SELECT head_commit_id FROM active
+                 UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
+               ) SELECT v.id FROM visual_assets v CROSS JOIN active x
+                 WHERE v.story_id=? AND v.lineage_key=? AND v.source_commit_id IN (SELECT id FROM ancestors)
+                   AND (v.branch_id=x.branch_id OR v.source_commit_id!=COALESCE(x.fork_commit_id,'') OR v.created_at<=x.branch_created)
+                 LIMIT 1"#,
+        )
+        .bind(story_id)
+        .bind(story_id)
+        .bind(&spec.lineage_key)
+        .fetch_optional(pool)
+        .await?;
+        if reachable.is_some() {
+            continue;
+        }
+        let id = asset_id(story_id, &spec.kind, &spec.lineage_key);
         sqlx::query(
             r#"INSERT INTO visual_assets (
-                  id, story_id, kind, subject, entity_id, prompt, negative_prompt,
-                  status, provider, source, turn
-				  , branch_id, source_commit_id
+                  id,story_id,kind,subject,entity_id,canonical_entity_id,canonical_location_id,
+                  form_id,lineage_key,appearance_fingerprint,profile_revision_id,canon_status,
+                  gate_state,gate_reason,generation_eligible,prompt,negative_prompt,
+                  status,provider,source,turn,branch_id,source_commit_id
                )
-			   VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'codex-imagegen', 'auto-profile', ?, ?, ?)
-               ON CONFLICT(story_id, kind, subject) DO UPDATE SET
-                  updated_at = CASE
-                    WHEN visual_assets.entity_id = ''
-                      OR visual_assets.prompt = ''
-                      OR visual_assets.negative_prompt = ''
-                      OR visual_assets.turn != excluded.turn
-                    THEN CURRENT_TIMESTAMP
-                    ELSE visual_assets.updated_at
-                  END,
-                  entity_id = CASE WHEN visual_assets.entity_id = '' THEN excluded.entity_id ELSE visual_assets.entity_id END,
-                  prompt = CASE WHEN visual_assets.prompt = '' THEN excluded.prompt ELSE visual_assets.prompt END,
-                  negative_prompt = CASE WHEN visual_assets.negative_prompt = '' THEN excluded.negative_prompt ELSE visual_assets.negative_prompt END,
-                  turn = CASE WHEN visual_assets.turn != excluded.turn THEN excluded.turn ELSE visual_assets.turn END"#,
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','codex-imagegen','auto-profile',?,?,?)
+               ON CONFLICT(story_id,branch_id,lineage_key) DO UPDATE SET
+                  gate_state=excluded.gate_state,gate_reason=excluded.gate_reason,
+                  generation_eligible=excluded.generation_eligible,turn=excluded.turn,
+                  updated_at=CURRENT_TIMESTAMP"#,
         )
         .bind(id)
         .bind(story_id)
         .bind(&spec.kind)
         .bind(&spec.subject)
         .bind(&spec.entity_id)
+        .bind(&spec.canonical_entity_id)
+        .bind(&spec.canonical_location_id)
+        .bind(&spec.form_id)
+        .bind(&spec.lineage_key)
+        .bind(&spec.appearance_fingerprint)
+        .bind(&spec.profile_revision_id)
+        .bind(&spec.canon_status)
+        .bind(&spec.gate_state)
+        .bind(&spec.gate_reason)
+        .bind(if spec.generation_eligible { 1_i64 } else { 0_i64 })
         .bind(&spec.prompt)
         .bind(&spec.negative_prompt)
         .bind(spec.turn)
-		.bind(&branch_id)
-		.bind(&source_commit_id)
+        .bind(&branch_id)
+        .bind(&source_commit_id)
         .execute(pool)
         .await
         .with_context(|| format!("ensuring visual asset {} {}", spec.kind, spec.subject))?;
@@ -2146,16 +2488,28 @@ async fn ensure_asset_rows(
 
 async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<VisualAsset>> {
     let rows = sqlx::query(
-        r#"SELECT id, story_id, kind, subject, entity_id, prompt, negative_prompt,
-                  status, url, provider, source, error, turn,
+        r#"WITH RECURSIVE active AS (
+              SELECT s.active_branch_id AS branch_id,b.head_commit_id,b.fork_commit_id,b.created_at AS branch_created
+              FROM stories s JOIN story_branches b ON b.id=s.active_branch_id WHERE s.id=?
+           ), ancestors(id) AS (
+              SELECT head_commit_id FROM active
+              UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
+           )
+           SELECT id, story_id, kind, subject, entity_id, canonical_entity_id,
+                  canonical_location_id, form_id, lineage_key, appearance_fingerprint,
+                  COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
+                  gate_state, gate_reason, generation_eligible, prompt, negative_prompt,
+                  status, url, provider, source, error, turn, v.branch_id AS branch_id, source_commit_id,
                   CAST(updated_at AS TEXT) AS updated_at
-           FROM visual_assets
-           WHERE story_id = ?
+           FROM visual_assets v CROSS JOIN active x
+           WHERE story_id = ? AND source_commit_id IN (SELECT id FROM ancestors)
+             AND (v.branch_id=x.branch_id OR source_commit_id!=COALESCE(x.fork_commit_id,'') OR created_at<=x.branch_created)
            ORDER BY
              CASE kind WHEN 'location' THEN 0 WHEN 'character' THEN 1 ELSE 2 END,
              updated_at DESC,
              subject ASC"#,
     )
+    .bind(story_id)
     .bind(story_id)
     .fetch_all(pool)
     .await?;
@@ -2168,18 +2522,22 @@ async fn list_visual_generation_jobs(
     story_id: &str,
 ) -> anyhow::Result<Vec<VisualGenerationJobView>> {
     let rows = sqlx::query(
-        r#"SELECT id, asset_id, story_id, status, attempts, max_attempts,
+        r#"SELECT id, asset_id, story_id, canonical_entity_id, canonical_location_id,
+                  form_id, appearance_fingerprint, COALESCE(profile_revision_id,'') AS profile_revision_id,
+                  status, attempts, max_attempts,
                   locked_until, error, provider, started_at, finished_at,
+                  branch_id, source_commit_id,
                   CAST(created_at AS TEXT) AS created_at,
                   CAST(updated_at AS TEXT) AS updated_at
            FROM visual_generation_jobs
-           WHERE story_id = ?
+           WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
            ORDER BY
              CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'failed' THEN 2 ELSE 3 END,
              updated_at DESC,
              id DESC
            LIMIT 25"#,
     )
+    .bind(story_id)
     .bind(story_id)
     .fetch_all(pool)
     .await?;
@@ -2190,6 +2548,11 @@ async fn list_visual_generation_jobs(
             id: row.try_get("id").unwrap_or_default(),
             asset_id: row_string(&row, "asset_id"),
             story_id: row_string(&row, "story_id"),
+            canonical_entity_id: row_string(&row, "canonical_entity_id"),
+            canonical_location_id: row_string(&row, "canonical_location_id"),
+            form_id: row_string(&row, "form_id"),
+            appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
+            profile_revision_id: row_string(&row, "profile_revision_id"),
             status: row_string(&row, "status"),
             attempts: row.try_get("attempts").unwrap_or_default(),
             max_attempts: row.try_get("max_attempts").unwrap_or_default(),
@@ -2200,6 +2563,8 @@ async fn list_visual_generation_jobs(
             finished_at: row_string(&row, "finished_at"),
             created_at: row_string(&row, "created_at"),
             updated_at: row_string(&row, "updated_at"),
+            branch_id: row_string(&row, "branch_id"),
+            source_commit_id: row_string(&row, "source_commit_id"),
         })
         .collect())
 }
@@ -2210,8 +2575,11 @@ async fn load_asset(
     asset_id: &str,
 ) -> anyhow::Result<Option<VisualAsset>> {
     let row = sqlx::query(
-        r#"SELECT id, story_id, kind, subject, entity_id, prompt, negative_prompt,
-                  status, url, provider, source, error, turn,
+        r#"SELECT id, story_id, kind, subject, entity_id, canonical_entity_id,
+                  canonical_location_id, form_id, lineage_key, appearance_fingerprint,
+                  COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
+                  gate_state, gate_reason, generation_eligible, prompt, negative_prompt,
+                  status, url, provider, source, error, turn, branch_id, source_commit_id,
                   CAST(updated_at AS TEXT) AS updated_at
            FROM visual_assets
            WHERE story_id = ? AND id = ?"#,
@@ -2230,6 +2598,19 @@ fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
         kind: row_string(&row, "kind"),
         subject: row_string(&row, "subject"),
         entity_id: row_string(&row, "entity_id"),
+        canonical_entity_id: row_string(&row, "canonical_entity_id"),
+        canonical_location_id: row_string(&row, "canonical_location_id"),
+        form_id: row_string(&row, "form_id"),
+        lineage_key: row_string(&row, "lineage_key"),
+        appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
+        profile_revision_id: row_string(&row, "profile_revision_id"),
+        canon_status: row_string(&row, "canon_status"),
+        gate_state: row_string(&row, "gate_state"),
+        gate_reason: row_string(&row, "gate_reason"),
+        generation_eligible: row
+            .try_get::<i64, _>("generation_eligible")
+            .unwrap_or_default()
+            != 0,
         prompt: row_string(&row, "prompt"),
         negative_prompt: row_string(&row, "negative_prompt"),
         status: row_string(&row, "status"),
@@ -2238,6 +2619,8 @@ fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
         source: row_string(&row, "source"),
         error: row_string(&row, "error"),
         turn: row.try_get("turn").unwrap_or_default(),
+        branch_id: row_string(&row, "branch_id"),
+        source_commit_id: row_string(&row, "source_commit_id"),
         updated_at: row_string(&row, "updated_at"),
     }
 }
@@ -2247,12 +2630,22 @@ async fn ensure_asset_belongs_to_story(
     story_id: &str,
     asset_id: &str,
 ) -> anyhow::Result<()> {
-    let exists: Option<i64> =
-        sqlx::query_scalar("SELECT 1 FROM visual_assets WHERE story_id = ? AND id = ?")
-            .bind(story_id)
-            .bind(asset_id)
-            .fetch_optional(pool)
-            .await?;
+    let exists: Option<i64> = sqlx::query_scalar(
+        r#"WITH RECURSIVE active AS (
+             SELECT s.active_branch_id AS branch_id,b.head_commit_id,b.fork_commit_id,b.created_at AS branch_created
+             FROM stories s JOIN story_branches b ON b.id=s.active_branch_id WHERE s.id=?
+           ), ancestors(id) AS (
+             SELECT head_commit_id FROM active
+             UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
+           ) SELECT 1 FROM visual_assets v CROSS JOIN active x WHERE v.story_id=? AND v.id=?
+             AND v.source_commit_id IN (SELECT id FROM ancestors)
+             AND (v.branch_id=x.branch_id OR v.source_commit_id!=COALESCE(x.fork_commit_id,'') OR v.created_at<=x.branch_created)"#,
+    )
+    .bind(story_id)
+    .bind(story_id)
+    .bind(asset_id)
+    .fetch_optional(pool)
+    .await?;
     exists
         .map(|_| ())
         .ok_or_else(|| anyhow!("visual asset not found"))
@@ -2413,6 +2806,8 @@ mod tests {
         .await
         .expect("create stories");
         for statement in [
+            r#"CREATE TABLE story_branches (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,name TEXT NOT NULL DEFAULT '',fork_commit_id TEXT,head_commit_id TEXT,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"#,
+            r#"CREATE TABLE turn_commits (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,branch_id TEXT NOT NULL,parent_commit_id TEXT,canonical_turn INTEGER NOT NULL DEFAULT 0,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"#,
             r#"CREATE TABLE characters (
                 id TEXT PRIMARY KEY,
                 story_id TEXT NOT NULL,
@@ -2554,6 +2949,16 @@ mod tests {
                 kind TEXT NOT NULL,
                 subject TEXT NOT NULL,
                 entity_id TEXT NOT NULL DEFAULT '',
+                canonical_entity_id TEXT NOT NULL DEFAULT '',
+                canonical_location_id TEXT NOT NULL DEFAULT '',
+                form_id TEXT NOT NULL DEFAULT '',
+                lineage_key TEXT NOT NULL,
+                appearance_fingerprint TEXT NOT NULL,
+                profile_revision_id TEXT,
+                canon_status TEXT NOT NULL DEFAULT 'draft',
+                gate_state TEXT NOT NULL DEFAULT 'eligible',
+                gate_reason TEXT NOT NULL DEFAULT '',
+                generation_eligible INTEGER NOT NULL DEFAULT 1,
                 prompt TEXT NOT NULL DEFAULT '',
                 negative_prompt TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'pending',
@@ -2563,9 +2968,11 @@ mod tests {
                 source TEXT NOT NULL DEFAULT '',
                 error TEXT NOT NULL DEFAULT '',
                 turn INTEGER NOT NULL DEFAULT 0,
+                branch_id TEXT NOT NULL DEFAULT 'branch-main',
+                source_commit_id TEXT NOT NULL DEFAULT 'commit-main',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(story_id, kind, subject)
+                UNIQUE(story_id, branch_id, lineage_key)
             )"#,
         )
         .execute(&pool)
@@ -2575,16 +2982,28 @@ mod tests {
             .execute(&pool)
             .await
             .expect("insert story");
+        sqlx::query("INSERT INTO story_branches (id,story_id,name,head_commit_id) VALUES ('branch-main','story','main','commit-main')")
+            .execute(&pool)
+            .await
+            .expect("insert branch");
+        sqlx::query("INSERT INTO turn_commits (id,story_id,branch_id,canonical_turn) VALUES ('commit-main','story','branch-main',3)")
+            .execute(&pool)
+            .await
+            .expect("insert commit");
         sqlx::query(
             "INSERT INTO characters (id, story_id, name) VALUES ('character', 'story', 'Tester')",
         )
         .execute(&pool)
         .await
         .expect("insert character");
-        sqlx::query("INSERT INTO world_state (id, story_id, current_location) VALUES ('world', 'story', 'Station')")
+        sqlx::query("INSERT INTO world_state (id, story_id, current_location, current_location_id) VALUES ('world', 'story', 'Station', 'loc-station')")
             .execute(&pool)
             .await
             .expect("insert world");
+        sqlx::query("INSERT INTO locations (id,story_id,canonical_name,description,discovery_state) VALUES ('loc-station','story','Station','Orbital concourse','discovered')")
+            .execute(&pool)
+            .await
+            .expect("insert location");
         sqlx::query("INSERT INTO world_clocks (story_id) VALUES ('story')")
             .execute(&pool)
             .await
@@ -2595,11 +3014,11 @@ mod tests {
             .expect("insert session");
         sqlx::query(
             r#"INSERT INTO visual_assets (
-                id, story_id, kind, subject, entity_id, prompt, negative_prompt,
-                status, provider, source, turn
+                id, story_id, kind, subject, entity_id,canonical_location_id,lineage_key,
+                appearance_fingerprint,prompt,negative_prompt,status,provider,source,turn
             ) VALUES (
-                'asset-location', 'story', 'location', 'Station', 'world',
-                'wide station', 'no text', 'pending', '', 'auto-profile', 3
+                'asset-location','story','location','Station','','loc-station','location:loc-station:base',
+                'base','wide station','no text','pending','','auto-profile',3
             )"#,
         )
         .execute(&pool)
@@ -2657,6 +3076,7 @@ mod tests {
             error: String::new(),
             turn: 1,
             updated_at: String::new(),
+            ..VisualAsset::default()
         };
         assert_eq!(asset_size(&config, &asset), "1536x1024");
         asset.kind = "character".to_string();
@@ -2682,6 +3102,7 @@ mod tests {
             error: String::new(),
             turn: 1,
             updated_at: String::new(),
+            ..VisualAsset::default()
         };
         let config = ImageGenerationConfig {
             base_url: "http://example.test/v1".to_string(),
@@ -2951,6 +3372,7 @@ mod tests {
             prompt: "wide station".to_string(),
             negative_prompt: "no text".to_string(),
             turn: 3,
+            ..VisualSpec::default()
         };
 
         ensure_asset_rows(&pool, "story", &[spec])
@@ -2964,6 +3386,42 @@ mod tests {
                 .await
                 .expect("updated_at");
         assert_eq!(updated_at, "fixed");
+    }
+
+    #[tokio::test]
+    async fn visual_catalog_hides_future_and_sibling_branch_assets() {
+        let pool = visual_job_pool().await;
+        for statement in [
+            "INSERT INTO story_branches (id,story_id,name,fork_commit_id,head_commit_id) VALUES ('branch-left','story','left','commit-main','commit-left')",
+            "INSERT INTO story_branches (id,story_id,name,fork_commit_id,head_commit_id) VALUES ('branch-right','story','right','commit-main','commit-right')",
+            "INSERT INTO turn_commits (id,story_id,branch_id,parent_commit_id,canonical_turn) VALUES ('commit-left','story','branch-left','commit-main',4)",
+            "INSERT INTO turn_commits (id,story_id,branch_id,parent_commit_id,canonical_turn) VALUES ('commit-right','story','branch-right','commit-main',4)",
+            "INSERT INTO visual_assets (id,story_id,kind,subject,lineage_key,appearance_fingerprint,branch_id,source_commit_id) VALUES ('asset-left','story','character','Left only','left-lineage','left-fingerprint','branch-left','commit-left')",
+            "INSERT INTO visual_assets (id,story_id,kind,subject,lineage_key,appearance_fingerprint,branch_id,source_commit_id) VALUES ('asset-right','story','character','Right only','right-lineage','right-fingerprint','branch-right','commit-right')",
+            "UPDATE stories SET active_branch_id='branch-right' WHERE id='story'",
+        ] {
+            sqlx::query(statement).execute(&pool).await.expect("branch fixture");
+        }
+
+        let assets = list_assets(&pool, "story")
+            .await
+            .expect("reachable catalog");
+        assert!(assets.iter().any(|asset| asset.id == "asset-location"));
+        assert!(assets.iter().any(|asset| asset.id == "asset-right"));
+        assert!(!assets.iter().any(|asset| asset.id == "asset-left"));
+        assert!(ensure_asset_belongs_to_story(&pool, "story", "asset-left")
+            .await
+            .is_err());
+
+        for statement in [
+            "INSERT INTO story_branches (id,story_id,name,fork_commit_id,head_commit_id,created_at) VALUES ('branch-frozen','story','frozen','commit-main','commit-main','2026-01-01T00:00:00Z')",
+            "INSERT INTO visual_assets (id,story_id,kind,subject,lineage_key,appearance_fingerprint,branch_id,source_commit_id,created_at) VALUES ('asset-after-fork','story','character','Too late','late-lineage','late-fingerprint','branch-main','commit-main','2026-01-01T00:00:01Z')",
+            "UPDATE stories SET active_branch_id='branch-frozen' WHERE id='story'",
+        ] {
+            sqlx::query(statement).execute(&pool).await.expect("same-commit fixture");
+        }
+        let frozen = list_assets(&pool, "story").await.expect("frozen catalog");
+        assert!(!frozen.iter().any(|asset| asset.id == "asset-after-fork"));
     }
 
     #[tokio::test]
@@ -3071,6 +3529,7 @@ mod tests {
             error: String::new(),
             turn: 1,
             updated_at: String::new(),
+            ..VisualAsset::default()
         };
         let first = VisualGenerationJob {
             id: 5,

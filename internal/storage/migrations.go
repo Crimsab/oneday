@@ -53,6 +53,7 @@ func (db *DB) migrate() error {
 		{30, migrationV30},
 		{31, migrationV31},
 		{32, migrationV32},
+		{33, migrationV33},
 	}
 
 	for _, m := range migrations {
@@ -89,10 +90,80 @@ func (db *DB) applyMigration(version int, migrationSQL string) error {
 		return db.applyMigrationV29()
 	case 30:
 		return db.applyMigrationV30()
+	case 33:
+		return db.applyMigrationV33()
 	default:
 		_, err := db.conn.Exec(migrationSQL)
 		return err
 	}
+}
+
+func (db *DB) applyMigrationV33() (err error) {
+	for _, item := range []struct {
+		table      string
+		column     string
+		definition string
+	}{
+		{"visual_asset_versions", "canonical_entity_id", "canonical_entity_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_asset_versions", "canonical_location_id", "canonical_location_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_asset_versions", "form_id", "form_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_asset_versions", "appearance_fingerprint", "appearance_fingerprint TEXT NOT NULL DEFAULT ''"},
+		{"visual_asset_versions", "profile_revision_id", "profile_revision_id TEXT"},
+		{"visual_asset_versions", "canon_status", "canon_status TEXT NOT NULL DEFAULT 'draft'"},
+		{"visual_generation_jobs", "canonical_entity_id", "canonical_entity_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_generation_jobs", "canonical_location_id", "canonical_location_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_generation_jobs", "form_id", "form_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_generation_jobs", "appearance_fingerprint", "appearance_fingerprint TEXT NOT NULL DEFAULT ''"},
+		{"visual_generation_jobs", "profile_revision_id", "profile_revision_id TEXT"},
+	} {
+		if err := db.addColumnIfMissing(item.table, item.column, item.definition); err != nil {
+			return err
+		}
+	}
+
+	if _, err = db.conn.Exec(migrationV33Prelude); err != nil {
+		return err
+	}
+	if _, err = db.conn.Exec("PRAGMA foreign_keys=OFF"); err != nil {
+		return err
+	}
+	defer func() {
+		if _, enableErr := db.conn.Exec("PRAGMA foreign_keys=ON"); err == nil && enableErr != nil {
+			err = enableErr
+		}
+	}()
+
+	tx, err := db.conn.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(migrationV33AssetRebuild); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	if _, err = db.conn.Exec(migrationV33Backfill); err != nil {
+		return err
+	}
+
+	rows, err := db.conn.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	if rows.Next() {
+		var table string
+		var rowID sql.NullInt64
+		var parent string
+		var foreignKeyID int
+		if scanErr := rows.Scan(&table, &rowID, &parent, &foreignKeyID); scanErr != nil {
+			return scanErr
+		}
+		return fmt.Errorf("visual canon migration foreign key violation: table=%s row=%v parent=%s fk=%d", table, rowID, parent, foreignKeyID)
+	}
+	return rows.Err()
 }
 
 func (db *DB) applyMigrationV30() error {
@@ -1249,4 +1320,137 @@ CREATE TRIGGER IF NOT EXISTS trg_prompt_revisions_immutable BEFORE UPDATE ON pro
 BEGIN SELECT RAISE(ABORT,'prompt profile revisions are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS trg_generation_events_immutable BEFORE UPDATE ON generation_events
 BEGIN SELECT RAISE(ABORT,'generation events are append-only'); END;
+`
+
+const migrationV33 = `-- Applied by applyMigrationV33 because visual_assets must be rebuilt safely.`
+
+const migrationV33Prelude = `
+CREATE TABLE IF NOT EXISTS visual_profile_revisions (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	revision INTEGER NOT NULL CHECK(revision > 0),
+	world_style_prompt TEXT NOT NULL DEFAULT '',
+	character_style_prompt TEXT NOT NULL DEFAULT '',
+	negative_prompt TEXT NOT NULL DEFAULT '',
+	palette TEXT NOT NULL DEFAULT '',
+	fingerprint TEXT NOT NULL,
+	branch_id TEXT NOT NULL,
+	source_commit_id TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id, branch_id, revision),
+	UNIQUE(story_id, branch_id, fingerprint)
+);
+
+INSERT OR IGNORE INTO visual_profile_revisions
+	(id,story_id,revision,world_style_prompt,character_style_prompt,negative_prompt,palette,fingerprint,branch_id,source_commit_id,created_at)
+SELECT 'visual-profile-legacy-' || lower(hex(randomblob(16))), p.story_id, 1,
+	p.world_style_prompt,p.character_style_prompt,p.negative_prompt,p.palette,
+	'legacy:' || p.story_id,s.active_branch_id,COALESCE(b.head_commit_id,''),p.created_at
+FROM story_visual_profiles p
+JOIN stories s ON s.id=p.story_id
+LEFT JOIN story_branches b ON b.id=s.active_branch_id;
+`
+
+const migrationV33AssetRebuild = `
+CREATE TABLE visual_assets_v33 (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	kind TEXT NOT NULL,
+	subject TEXT NOT NULL,
+	entity_id TEXT NOT NULL DEFAULT '',
+	canonical_entity_id TEXT NOT NULL DEFAULT '',
+	canonical_location_id TEXT NOT NULL DEFAULT '',
+	form_id TEXT NOT NULL DEFAULT '',
+	lineage_key TEXT NOT NULL,
+	appearance_fingerprint TEXT NOT NULL,
+	profile_revision_id TEXT REFERENCES visual_profile_revisions(id),
+	canon_status TEXT NOT NULL DEFAULT 'draft',
+	gate_state TEXT NOT NULL DEFAULT 'eligible',
+	gate_reason TEXT NOT NULL DEFAULT '',
+	generation_eligible INTEGER NOT NULL DEFAULT 1 CHECK(generation_eligible IN (0,1)),
+	prompt TEXT NOT NULL DEFAULT '',
+	negative_prompt TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','queued','running','ready','failed')),
+	url TEXT NOT NULL DEFAULT '',
+	file_path TEXT NOT NULL DEFAULT '',
+	provider TEXT NOT NULL DEFAULT '',
+	source TEXT NOT NULL DEFAULT '',
+	error TEXT NOT NULL DEFAULT '',
+	turn INTEGER NOT NULL DEFAULT 0,
+	branch_id TEXT NOT NULL,
+	source_commit_id TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id, branch_id, lineage_key)
+);
+
+INSERT INTO visual_assets_v33
+	(id,story_id,kind,subject,entity_id,canonical_entity_id,canonical_location_id,form_id,
+	 lineage_key,appearance_fingerprint,profile_revision_id,canon_status,gate_state,gate_reason,
+	 generation_eligible,prompt,negative_prompt,status,url,file_path,provider,source,error,turn,
+	 branch_id,source_commit_id,created_at,updated_at)
+SELECT a.id,a.story_id,a.kind,a.subject,a.entity_id,
+	CASE WHEN a.kind='character' THEN a.entity_id ELSE '' END,
+	CASE WHEN a.kind='location' THEN COALESCE((SELECT l.id FROM locations l WHERE l.story_id=a.story_id AND lower(l.canonical_name)=lower(a.subject) ORDER BY l.discovered_turn DESC LIMIT 1),'') ELSE '' END,
+	CASE WHEN a.kind='character' THEN COALESCE((SELECT f.id FROM entity_forms f WHERE f.story_id=a.story_id AND f.entity_id=a.entity_id AND f.valid_from_turn<=a.turn AND (f.valid_to_turn IS NULL OR f.valid_to_turn>=a.turn) ORDER BY f.valid_from_turn DESC,f.created_at DESC LIMIT 1),'') ELSE '' END,
+	'legacy:' || a.id,'legacy:' || a.id,
+	(SELECT p.id FROM visual_profile_revisions p WHERE p.story_id=a.story_id AND p.branch_id=a.branch_id ORDER BY p.revision DESC LIMIT 1),
+	CASE WHEN a.status='ready' THEN 'legacy' ELSE 'draft' END,'legacy','Migrated visual lineage',1,
+	a.prompt,a.negative_prompt,a.status,a.url,a.file_path,a.provider,a.source,a.error,a.turn,
+	a.branch_id,a.source_commit_id,a.created_at,a.updated_at
+FROM visual_assets a;
+
+DROP TABLE visual_assets;
+ALTER TABLE visual_assets_v33 RENAME TO visual_assets;
+CREATE INDEX idx_visual_assets_story_kind ON visual_assets(story_id,kind,updated_at DESC);
+CREATE INDEX idx_visual_assets_branch_kind ON visual_assets(story_id,branch_id,kind,updated_at DESC);
+CREATE INDEX idx_visual_assets_lineage ON visual_assets(story_id,lineage_key,branch_id,source_commit_id);
+`
+
+const migrationV33Backfill = `
+UPDATE visual_asset_versions
+SET canonical_entity_id=COALESCE((SELECT a.canonical_entity_id FROM visual_assets a WHERE a.id=visual_asset_versions.asset_id),''),
+	canonical_location_id=COALESCE((SELECT a.canonical_location_id FROM visual_assets a WHERE a.id=visual_asset_versions.asset_id),''),
+	form_id=COALESCE((SELECT a.form_id FROM visual_assets a WHERE a.id=visual_asset_versions.asset_id),''),
+	appearance_fingerprint=COALESCE((SELECT a.appearance_fingerprint FROM visual_assets a WHERE a.id=visual_asset_versions.asset_id),'legacy:'||asset_id),
+	profile_revision_id=(SELECT a.profile_revision_id FROM visual_assets a WHERE a.id=visual_asset_versions.asset_id),
+	canon_status=COALESCE((SELECT a.canon_status FROM visual_assets a WHERE a.id=visual_asset_versions.asset_id),'legacy')
+WHERE appearance_fingerprint='';
+
+UPDATE visual_generation_jobs
+SET canonical_entity_id=COALESCE((SELECT a.canonical_entity_id FROM visual_assets a WHERE a.id=visual_generation_jobs.asset_id),''),
+	canonical_location_id=COALESCE((SELECT a.canonical_location_id FROM visual_assets a WHERE a.id=visual_generation_jobs.asset_id),''),
+	form_id=COALESCE((SELECT a.form_id FROM visual_assets a WHERE a.id=visual_generation_jobs.asset_id),''),
+	appearance_fingerprint=COALESCE((SELECT a.appearance_fingerprint FROM visual_assets a WHERE a.id=visual_generation_jobs.asset_id),'legacy:'||asset_id),
+	profile_revision_id=(SELECT a.profile_revision_id FROM visual_assets a WHERE a.id=visual_generation_jobs.asset_id)
+WHERE appearance_fingerprint='';
+
+CREATE TABLE IF NOT EXISTS visual_asset_branch_overrides (
+	asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	branch_id TEXT NOT NULL,
+	source_commit_id TEXT NOT NULL,
+	prompt_override TEXT NOT NULL DEFAULT '',
+	negative_prompt_override TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY(asset_id,branch_id)
+);
+
+CREATE TABLE IF NOT EXISTS visual_asset_selection_states (
+	asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	branch_id TEXT NOT NULL,
+	source_commit_id TEXT NOT NULL,
+	selected_version_id INTEGER REFERENCES visual_asset_versions(id),
+	history_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(history_json)),
+	cursor INTEGER NOT NULL DEFAULT -1,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	PRIMARY KEY(asset_id,branch_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_visual_profile_revisions_reachable ON visual_profile_revisions(story_id,source_commit_id,revision DESC);
+CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_lineage ON visual_asset_versions(story_id,branch_id,source_commit_id,appearance_fingerprint,id DESC);
+CREATE INDEX IF NOT EXISTS idx_visual_jobs_lineage ON visual_generation_jobs(story_id,branch_id,source_commit_id,status,created_at);
+CREATE INDEX IF NOT EXISTS idx_visual_overrides_lineage ON visual_asset_branch_overrides(story_id,asset_id,source_commit_id);
 `

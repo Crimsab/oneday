@@ -25,8 +25,8 @@ func TestMigrationV32CreatesCausalTelemetrySchema(t *testing.T) {
 	if err := db.Conn().QueryRow(`SELECT MAX(version) FROM schema_version`).Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 32 {
-		t.Fatalf("schema version=%d, want 32", version)
+	if version < 32 {
+		t.Fatalf("schema version=%d, want at least 32", version)
 	}
 }
 
