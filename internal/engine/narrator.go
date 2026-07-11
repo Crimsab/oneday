@@ -77,6 +77,11 @@ type Narrator struct {
 	chapterSummaryCache    map[int]string
 	loadedFromSaveID       string
 	loadedFromSaveName     string
+	committedAudioQueue    func(context.Context, string, int64) error
+}
+
+func (n *Narrator) SetCommittedAudioQueue(queue func(context.Context, string, int64) error) {
+	n.committedAudioQueue = queue
 }
 
 // NewNarrator creates a narrator for an existing story.
@@ -1045,6 +1050,16 @@ func (n *Narrator) finalizeTurn(
 	if committedRevision > 0 {
 		n.story.Revision = committedRevision
 	}
+	if n.committedAudioQueue != nil {
+		message, messageErr := n.db.GetLatestAssistantMessageByStory(n.story.ID)
+		if messageErr != nil {
+			log.Printf("oneday: canonical audio lookup failed after turn %d: %v", prep.currentTurn, messageErr)
+		} else if message != nil {
+			if queueErr := n.committedAudioQueue(ctx, n.story.ID, message.ID); queueErr != nil {
+				log.Printf("oneday: canonical audio queue failed after turn %d: %v", prep.currentTurn, queueErr)
+			}
+		}
+	}
 	if chapterTransition != nil && n.chapters != nil {
 		n.chapters.StoreChapterTransitionAsync(chapterTransition)
 	}
@@ -1295,9 +1310,10 @@ func normalizeDialogueBlocks(blocks []DialogueBlock) []DialogueBlock {
 			continue
 		}
 		out = append(out, DialogueBlock{
-			Speaker: speaker,
-			Role:    role,
-			Text:    text,
+			SpeakerID: strings.TrimSpace(block.SpeakerID),
+			Speaker:   speaker,
+			Role:      role,
+			Text:      text,
 		})
 	}
 	return out

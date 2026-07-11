@@ -11,6 +11,7 @@ import (
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/providers"
 	"github.com/crimsab/oneday/internal/aifactory"
+	audioservice "github.com/crimsab/oneday/internal/audio"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/rag"
@@ -502,6 +503,12 @@ func (a *App) mountNarrativeView(
 		a.cfg.Game.AutosaveEvery,
 	)
 	narrator.SetRAG(a.buildRAG(story.ID))
+	audio := audioservice.NewService(a.db, a.cfg.AI.TTS)
+	_, _ = audio.EnsureConfiguredVoiceProfiles()
+	narrator.SetCommittedAudioQueue(func(ctx context.Context, storyID string, messageID int64) error {
+		_, err := audio.QueueCommittedMessage(ctx, storyID, messageID)
+		return err
+	})
 	if save != nil {
 		narrator.SetLoadedSaveContext(save)
 	}
