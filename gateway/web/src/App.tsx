@@ -388,7 +388,12 @@ function App() {
       setModuleOverlayTab(tab);
       setOverlay("module");
     } else {
-      setPreferences((value) => ({ ...defaultPreferences, ...value, showInspector: true }));
+      setPreferences((value) => ({
+        ...defaultPreferences,
+        ...value,
+        showLeftRail: window.matchMedia("(max-width: 1600px)").matches ? false : value.showLeftRail,
+        showInspector: true,
+      }));
     }
   }, []);
 
@@ -1106,11 +1111,27 @@ function App() {
   }, []);
 
   const toggleLeftRail = () => {
-    setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
+    setPreferences((value) => {
+      const opening = !value.showLeftRail;
+      return {
+        ...defaultPreferences,
+        ...value,
+        showLeftRail: opening,
+        showInspector: opening && window.matchMedia("(max-width: 1600px)").matches ? false : value.showInspector,
+      };
+    });
   };
 
   const toggleInspector = () => {
-    setPreferences((value) => ({ ...defaultPreferences, ...value, showInspector: !value.showInspector }));
+    setPreferences((value) => {
+      const opening = !value.showInspector;
+      return {
+        ...defaultPreferences,
+        ...value,
+        showLeftRail: opening && window.matchMedia("(max-width: 1600px)").matches ? false : value.showLeftRail,
+        showInspector: opening,
+      };
+    });
   };
 
   const stepCommandHistory = (direction: -1 | 1): string | null => {

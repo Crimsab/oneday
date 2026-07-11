@@ -57,7 +57,7 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
   const title = moduleTitle(selectedTab);
 
   return (
-    <aside className="right-inspector">
+    <aside className="right-inspector" id="story-details" aria-label={`${title} story details`}>
       <div className="inspector-head">
         <div><span>Story details</span><h2>{title}</h2></div>
         <div className="inspector-head-actions">
