@@ -47,6 +47,8 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
   let failAction = Boolean(options.failAction);
   let actionRequests = 0;
   let activeMiniGame: any = null;
+  let visualCanUndo = true;
+  let visualCanRedo = false;
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -67,8 +69,17 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     });
     if (path.endsWith("/snapshot")) return json(route, snapshot());
     if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }]);
-    if (path.endsWith("/visual-assets/asset-mira-new/selection/undo")) return json(route, visualResponse(false, true));
-    if (path.endsWith("/visual-assets")) return json(route, visualResponse());
+    if (path.endsWith("/visual-assets/asset-mira-new/selection/undo")) {
+      visualCanUndo = false;
+      visualCanRedo = true;
+      return json(route, visualResponse(visualCanUndo, visualCanRedo));
+    }
+    if (path.endsWith("/visual-assets/asset-mira-new/selection/redo")) {
+      visualCanUndo = true;
+      visualCanRedo = false;
+      return json(route, visualResponse(visualCanUndo, visualCanRedo));
+    }
+    if (path.endsWith("/visual-assets")) return json(route, visualResponse(visualCanUndo, visualCanRedo));
     if (path.endsWith("/minigames") && request.method() === "GET") return json(route, { instance: activeMiniGame });
     if (path.endsWith("/minigames") && request.method() === "POST") {
       const body = request.postDataJSON() as { definition: { kind: string } };
@@ -178,9 +189,10 @@ test("shows canonical visual lineage and branch-local selection controls", async
   await expect(dialog.getByText("Mira's restored form has not been rendered on this branch.")).toBeVisible();
   await expect(dialog.getByText(/Profile rev 3.*form form-mira-restored.*current branch/)).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Undo selection" })).toBeEnabled();
-  const undoRequest = page.waitForRequest((request) => request.url().endsWith("/visual-assets/asset-mira-new/selection/undo"));
+  const undoResponse = page.waitForResponse((response) => response.url().endsWith("/visual-assets/asset-mira-new/selection/undo"));
   await dialog.getByRole("button", { name: "Undo selection" }).click();
-  await undoRequest;
+  await undoResponse;
+  await expect(page.getByText("Visual selection undone.")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Redo selection" })).toBeEnabled();
   expect(errors).toEqual([]);
 });

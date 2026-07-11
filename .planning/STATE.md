@@ -2,26 +2,35 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
-current_phase: 36
+current_phase: 37
 status: in_progress
-stopped_at: Phase 36.3 complete; proceeding to story-pack challenge authoring and fairness eval corpus
-last_updated: "2026-07-11T16:36:00+02:00"
-last_activity: 2026-07-11 -- Timing-free courtroom/comedy and accessibility-aware anti-repeat selection deployed
+stopped_at: Phase 36 complete; proceeding to canonical TTS, voice registry, and audio playback
+last_updated: "2026-07-11T17:05:00+02:00"
+last_activity: 2026-07-11 -- Story-pack authoring and versioned minigame fairness corpus completed
 progress:
   total_phases: 39
-  completed_phases: 35
+  completed_phases: 36
   total_plans: 89
-  completed_plans: 108
-  percent: 90
+  completed_plans: 109
+  percent: 92
 ---
 
 # Project State
 
-**Current Phase:** 36
-**Status:** Phase 35 implementation complete; Phase 36 ready
+**Current Phase:** 37
+**Status:** Phase 36 implementation complete; Phase 37 ready
 **Last Updated:** 2026-07-11
 
 ## Phase History
+
+- 2026-07-11: Phase 36 implementation completed on `homelab-main`. One
+  replayable host now covers repaired legacy games plus deduction, negotiation,
+  pattern, bidding, courtroom, and social comedy across browser and TUI.
+  Selection is narrative-aware, accessible, cooldown-aware, and branch-derived.
+  Story packs author stats, difficulty profiles, challenge pools, and outcome
+  policies through semantic YAML validation. A versioned 12-case corpus proves
+  a 0.50 success rate, all required fairness concerns, deterministic replay,
+  player-safe cross-surface contracts, and zero-combat coverage.
 
 - 2026-07-11: Phase 35 implementation completed on `homelab-main`. Visual
   profiles, assets, versions, and jobs now carry canonical branch/entity/form/

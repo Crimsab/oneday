@@ -66,12 +66,12 @@ type TimingPolicy struct {
 }
 
 type OutcomePolicy struct {
-	ID                string `json:"id"`
-	Genre             string `json:"genre,omitempty"`
-	DifficultyProfile string `json:"difficulty_profile,omitempty"`
-	ConsequenceBudget int    `json:"consequence_budget"`
-	CriticalBand      int    `json:"critical_band"`
-	Fairness          string `json:"fairness"`
+	ID                string `json:"id" yaml:"id"`
+	Genre             string `json:"genre,omitempty" yaml:"genre,omitempty"`
+	DifficultyProfile string `json:"difficulty_profile,omitempty" yaml:"difficulty_profile,omitempty"`
+	ConsequenceBudget int    `json:"consequence_budget" yaml:"consequence_budget"`
+	CriticalBand      int    `json:"critical_band" yaml:"critical_band"`
+	Fairness          string `json:"fairness" yaml:"fairness"`
 }
 
 type ChallengeDefinition struct {

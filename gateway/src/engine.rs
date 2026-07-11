@@ -1217,6 +1217,16 @@ mod tests {
         assert_eq!(instance["runtime"]["phase"], "active");
     }
 
+    #[test]
+    fn canonical_minigame_fixture_is_player_safe() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../../contracts/minigame-v1.json")).unwrap();
+        assert_eq!(fixture["instance"]["protocol_version"], 1);
+        assert_eq!(fixture["instance"]["runtime"]["phase"], "active");
+        assert_eq!(fixture["input"]["action"], "submit");
+        assert!(fixture["instance"]["definition"].get("answers").is_none());
+    }
+
     #[tokio::test]
     async fn call_gateway_turn_stream_requires_done_line() {
         let script = fake_oneday_script(&[

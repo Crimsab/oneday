@@ -22,15 +22,15 @@ const (
 // MiniGameDefinition is authorable data. Reducers own mechanics; story packs
 // supply framing, difficulty, options, and explicit answer/sequence material.
 type MiniGameDefinition struct {
-	ID          string            `json:"id"`
-	Kind        MiniGameType      `json:"kind"`
-	Prompt      string            `json:"prompt,omitempty"`
-	Difficulty  int               `json:"difficulty"`
-	Options     []string          `json:"options,omitempty"`
-	Sequence    []string          `json:"sequence,omitempty"`
-	Answers     []string          `json:"answers,omitempty"`
-	TimeLimitMS int64             `json:"time_limit_ms,omitempty"`
-	Rules       map[string]string `json:"rules,omitempty"`
+	ID          string            `json:"id" yaml:"id"`
+	Kind        MiniGameType      `json:"kind" yaml:"kind"`
+	Prompt      string            `json:"prompt,omitempty" yaml:"prompt,omitempty"`
+	Difficulty  int               `json:"difficulty" yaml:"difficulty"`
+	Options     []string          `json:"options,omitempty" yaml:"options,omitempty"`
+	Sequence    []string          `json:"sequence,omitempty" yaml:"sequence,omitempty"`
+	Answers     []string          `json:"answers,omitempty" yaml:"answers,omitempty"`
+	TimeLimitMS int64             `json:"time_limit_ms,omitempty" yaml:"time_limit_ms,omitempty"`
+	Rules       map[string]string `json:"rules,omitempty" yaml:"rules,omitempty"`
 }
 
 type MiniGameInput struct {
@@ -220,6 +220,21 @@ func (host *MiniGameHost) Replay(source MiniGameInstance) (*MiniGameInstance, er
 		}
 	}
 	return &replay, nil
+}
+
+func (host *MiniGameHost) Autoplay(instance *MiniGameInstance, input MiniGameInput) error {
+	if instance.Runtime.Phase == MiniGameReady {
+		if err := host.Start(instance); err != nil {
+			return err
+		}
+	}
+	if instance.Runtime.Phase == MiniGamePaused {
+		if err := host.Apply(instance, MiniGameInput{Action: "resume"}); err != nil {
+			return err
+		}
+	}
+	input.Action = "submit"
+	return host.Apply(instance, input)
 }
 
 // PlayerMiniGameView removes authoritative answers and hidden reducer state

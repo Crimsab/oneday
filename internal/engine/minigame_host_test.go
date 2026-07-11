@@ -90,3 +90,16 @@ func TestMiniGameHostRejectsInputWhilePaused(t *testing.T) {
 		t.Fatal("paused host accepted resolution input")
 	}
 }
+
+func TestMiniGameHostAutoplayStartsAndResumes(t *testing.T) {
+	host := NewMiniGameHost()
+	instance := NewMiniGameInstance("mini-auto", "story", "branch", 1, 7, MiniGameDefinition{
+		ID: "pattern", Kind: MiniGamePattern, Difficulty: 50, Answers: []string{"8"},
+	})
+	if err := host.Autoplay(&instance, MiniGameInput{Value: "8"}); err != nil {
+		t.Fatal(err)
+	}
+	if instance.Runtime.Phase != MiniGameResolved || instance.Runtime.Result == nil {
+		t.Fatalf("autoplay did not resolve: %+v", instance.Runtime)
+	}
+}

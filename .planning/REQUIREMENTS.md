@@ -341,8 +341,8 @@
 - [x] **MINI-03**: The engine includes genre-neutral deduction, negotiation, pattern, and bidding minigames using the shared challenge protocol.
 - [x] **MINI-04**: The engine includes courtroom/social-comedy timing encounters that do not require reflex input and can resolve zero-combat stories.
 - [x] **MINI-05**: Minigame selection considers narrative fit, recent repetition, player preference/accessibility, difficulty, and cooldown before offering an instance.
-- [ ] **MINI-06**: Story packs can define stats, difficulty profiles, challenge pools, and outcome policies without hardcoding a genre into the engine.
-- [ ] **MINI-07**: Golden/playtest evals cover generosity bias, anti-loop progression, false identity, metamorphosis, zero-combat, social comedy, deterministic replay, and cross-surface parity.
+- [x] **MINI-06**: Story packs can define stats, difficulty profiles, challenge pools, and outcome policies without hardcoding a genre into the engine.
+- [x] **MINI-07**: Golden/playtest evals cover generosity bias, anti-loop progression, false identity, metamorphosis, zero-combat, social comedy, deterministic replay, and cross-surface parity.
 
 ### TTS, Voice, and Audio
 
