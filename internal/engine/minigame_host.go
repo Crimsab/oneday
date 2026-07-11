@@ -93,6 +93,10 @@ func NewMiniGameHost() *MiniGameHost {
 	for _, kind := range []MiniGameType{MiniGameRPS, MiniGameMemory, MiniGameQuickTime, MiniGameRiddle} {
 		host.Register(kind, legacy)
 	}
+	families := genreNeutralMiniGameReducer{}
+	for _, kind := range []MiniGameType{MiniGameDeduction, MiniGameNegotiation, MiniGamePattern, MiniGameBidding} {
+		host.Register(kind, families)
+	}
 	return host
 }
 
@@ -216,6 +220,26 @@ func (host *MiniGameHost) Replay(source MiniGameInstance) (*MiniGameInstance, er
 		}
 	}
 	return &replay, nil
+}
+
+// PlayerMiniGameView removes authoritative answers and hidden reducer state
+// while retaining the same public instance/revision contract for renderers.
+func PlayerMiniGameView(source MiniGameInstance) MiniGameInstance {
+	view := source
+	view.Definition.Answers = nil
+	if len(view.Definition.Rules) > 0 {
+		view.Definition.Rules = map[string]string{}
+		for key, value := range source.Definition.Rules {
+			if key != "reserve" && !strings.HasPrefix(key, "secret_") {
+				view.Definition.Rules[key] = value
+			}
+		}
+	}
+	switch source.Definition.Kind {
+	case MiniGameRiddle, MiniGameDeduction, MiniGamePattern, MiniGameBidding:
+		view.Runtime.State = json.RawMessage(`{}`)
+	}
+	return view
 }
 
 type legacyMiniGameState struct {

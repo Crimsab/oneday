@@ -15,6 +15,9 @@ import type {
   MetaResponse,
   ModelSettings,
   ModelSettingsUpdate,
+  MiniGameInput,
+  MiniGameKind,
+  MiniGameResponse,
   SaveEnvelope,
   SaveResponse,
   StoryCreateEnvelope,
@@ -139,6 +142,26 @@ export function getTelemetryExport(storyId:string,limit=1000):Promise<TelemetryE
 
 export function getVisualAssets(storyId: string): Promise<VisualAssetsResponse> {
   return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-assets`);
+}
+
+export function getActiveMiniGame(storyId: string): Promise<MiniGameResponse> {
+  return request<MiniGameResponse>(`/api/stories/${encodeURIComponent(storyId)}/minigames`);
+}
+
+export function startMiniGame(storyId: string, kind: MiniGameKind): Promise<MiniGameResponse> {
+  return request<MiniGameResponse>(`/api/stories/${encodeURIComponent(storyId)}/minigames`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ definition: { kind } }),
+  });
+}
+
+export function inputMiniGame(storyId: string, instanceId: string, input: MiniGameInput): Promise<MiniGameResponse> {
+  return request<MiniGameResponse>(`/api/stories/${encodeURIComponent(storyId)}/minigames/${encodeURIComponent(instanceId)}/input`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ input }),
+  });
 }
 
 export function updateVisualProfile(storyId: string, payload: VisualProfileUpdate): Promise<VisualAssetsResponse> {

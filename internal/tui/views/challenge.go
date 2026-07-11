@@ -1,6 +1,8 @@
 package views
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"strings"
 	"time"
@@ -9,10 +11,23 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
+
+func challengeMiniGameSeed(storyID string, spec *engine.ChallengeSpec) int64 {
+	digest := sha256.Sum256([]byte(storyID + "\x00" + spec.MiniGame + "\x00" + spec.Description))
+	return int64(binary.BigEndian.Uint64(digest[:8]) & uint64(contracts.MaxPortableChallengeSeed))
+}
+
+func fallbackChallengePrompt(value, fallback string) string {
+	if strings.TrimSpace(value) != "" {
+		return strings.TrimSpace(value)
+	}
+	return fallback
+}
 
 // ChallengeResolvedMsg carries the result of a challenge back to the narrative.
 type ChallengeResolvedMsg struct {
@@ -37,6 +52,7 @@ type ChallengeView struct {
 	memory    *components.MemoryModel
 	quicktime *components.QuickTimeModel
 	riddle    *components.RiddleModel
+	hostGame  *components.HostMiniGameModel
 
 	// For passive challenges (stat/item/skill/relationship checks).
 	passive        bool
@@ -130,6 +146,16 @@ func NewChallengeView(
 			rid := components.NewRiddleModel(rc, width, height)
 			cv.riddle = &rid
 			return cv, nil
+
+		case string(engine.MiniGameDeduction), string(engine.MiniGameNegotiation), string(engine.MiniGamePattern), string(engine.MiniGameBidding):
+			definition := engine.DefaultMiniGameDefinition(engine.MiniGameType(spec.MiniGame))
+			definition.Prompt = fallbackChallengePrompt(spec.Description, definition.Prompt)
+			hostGame, err := components.NewHostMiniGameModel(definition, challengeMiniGameSeed(storyID, spec), width, height)
+			if err != nil {
+				break
+			}
+			cv.hostGame = &hostGame
+			return cv, nil
 		}
 	}
 
@@ -209,6 +235,17 @@ func (cv *ChallengeView) Update(msg tea.Msg) (*ChallengeView, tea.Cmd) {
 		return cv, cmd
 	}
 
+	if cv.hostGame != nil {
+		updated, cmd := cv.hostGame.Update(msg)
+		cv.hostGame = &updated
+		if resolved, ok := msg.(components.HostMiniGameResultMsg); ok {
+			return cv, func() tea.Msg {
+				return ChallengeResolvedMsg{Spec: cv.spec, Result: engine.EnsureLegacyChallengeOutcome(resolved.Result)}
+			}
+		}
+		return cv, cmd
+	}
+
 	return cv, nil
 }
 
@@ -231,6 +268,9 @@ func (cv *ChallengeView) View() string {
 	}
 	if cv.riddle != nil {
 		return cv.riddle.View()
+	}
+	if cv.hostGame != nil {
+		return cv.hostGame.View()
 	}
 	return ""
 }

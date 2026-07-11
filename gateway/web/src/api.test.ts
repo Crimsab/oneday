@@ -9,12 +9,15 @@ import {
   getChapters,
   getHistory,
   getMessageDiagnostics,
+  getActiveMiniGame,
   getStories,
   getStoryExport,
   getTelemetryExport,
   getStoryDeletePlan,
   getTimeline,
   stepVisualAssetSelection,
+  startMiniGame,
+  inputMiniGame,
   updateTimeline,
   updateStory,
 } from "./api";
@@ -214,6 +217,26 @@ describe("api request handling", () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/stories/story%2Fone/visual-assets/asset%20one/selection/undo",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("uses the branch-scoped minigame host endpoints", async () => {
+    mockFetch(new Response(JSON.stringify({ instance: null }), { status: 200 }));
+    await getActiveMiniGame("story/one");
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/minigames", {});
+
+    mockFetch(new Response(JSON.stringify({ instance: { id: "mini-1" } }), { status: 200 }));
+    await startMiniGame("story/one", "pattern");
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story%2Fone/minigames",
+      expect.objectContaining({ method: "POST", body: expect.stringContaining('"kind":"pattern"') }),
+    );
+
+    mockFetch(new Response(JSON.stringify({ instance: { id: "mini-1", runtime: { phase: "resolved" } } }), { status: 200 }));
+    await inputMiniGame("story/one", "mini/1", { action: "submit", value: "8" });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story%2Fone/minigames/mini%2F1/input",
+      expect.objectContaining({ method: "POST", body: expect.stringContaining('"value":"8"') }),
     );
   });
 

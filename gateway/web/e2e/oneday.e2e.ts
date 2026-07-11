@@ -46,6 +46,7 @@ async function json(route: Route, body: unknown, status = 200) {
 async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
   let failAction = Boolean(options.failAction);
   let actionRequests = 0;
+  let activeMiniGame: any = null;
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -68,6 +69,19 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }]);
     if (path.endsWith("/visual-assets/asset-mira-new/selection/undo")) return json(route, visualResponse(false, true));
     if (path.endsWith("/visual-assets")) return json(route, visualResponse());
+    if (path.endsWith("/minigames") && request.method() === "GET") return json(route, { instance: activeMiniGame });
+    if (path.endsWith("/minigames") && request.method() === "POST") {
+      const body = request.postDataJSON() as { definition: { kind: string } };
+      const kind = body.definition.kind;
+      activeMiniGame = { protocol_version: 1, id: `mini-${kind}`, story_id: story.id, branch_id: "branch-main", turn: 4, seed: 7, definition: { id: `${kind}-generic`, kind, prompt: kind === "pattern" ? "Complete the pattern: 2, 4, 6, ?" : "Resolve the challenge.", difficulty: 50, options: kind === "pattern" ? ["8", "9", "10"] : [] }, runtime: { phase: "active", revision: 1, state: {}, history: [{ action: "start" }] } };
+      return json(route, { instance: activeMiniGame });
+    }
+    if (path.includes("/minigames/") && path.endsWith("/input")) {
+      const body = request.postDataJSON() as { input: { action: string; value?: string } };
+      if (body.input.action === "submit") activeMiniGame = { ...activeMiniGame, runtime: { ...activeMiniGame.runtime, phase: "resolved", revision: 2, result: { passed: true, detail: `Pattern answer: ${body.input.value} → FULL SUCCESS`, outcome: { version: 1, degree: "full_success", difficulty: 50, seed: 7, roll: 0, total: 0, margin: 0 } } } };
+      else activeMiniGame = { ...activeMiniGame, runtime: { ...activeMiniGame.runtime, phase: body.input.action === "pause" ? "paused" : "active", revision: activeMiniGame.runtime.revision + 1 } };
+      return json(route, { instance: activeMiniGame });
+    }
     if (path.endsWith("/timeline") && request.method() === "GET") return json(route, timeline);
     if (path.endsWith("/timeline") && request.method() === "POST") {
       const nextTimeline = { ...timeline, active_branch_id: "branch-alt", revision: 8, head: { ...timeline.head, id: "commit-alt", branch_id: "branch-alt", canonical_turn: 3 } };
@@ -168,5 +182,22 @@ test("shows canonical visual lineage and branch-local selection controls", async
   await dialog.getByRole("button", { name: "Undo selection" }).click();
   await undoRequest;
   await expect(dialog.getByRole("button", { name: "Redo selection" })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test("plays a timing-free minigame through the shared browser host", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await mockGateway(page);
+  await page.goto("/");
+  const host = page.getByRole("region", { name: "Challenge host" });
+  await expect(host.getByRole("button", { name: "Pattern" })).toBeVisible();
+  await host.getByRole("button", { name: "Pattern" }).click();
+  await expect(host.getByText("Complete the pattern: 2, 4, 6, ?")).toBeVisible();
+  await host.getByLabel("Pattern answer").selectOption("8");
+  await host.getByRole("button", { name: "Resolve challenge" }).click();
+  await expect(host.getByText("full success", { exact: true })).toBeVisible();
+  await expect(host.getByText("Pattern answer: 8 → FULL SUCCESS")).toBeVisible();
   expect(errors).toEqual([]);
 });

@@ -51,6 +51,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
         .route(
+            "/api/stories/:story_id/minigames",
+            get(active_minigame).post(start_minigame),
+        )
+        .route(
+            "/api/stories/:story_id/minigames/:instance_id/input",
+            post(input_minigame),
+        )
+        .route(
             "/api/stories/:story_id/visual-assets/:asset_id",
             put(update_visual_asset_prompt),
         )
@@ -134,6 +142,33 @@ async fn stories(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<db::StorySummary>>, ApiError> {
     Ok(Json(db::list_stories(&state.pool).await?))
+}
+
+async fn start_minigame(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<engine::MiniGameStartEnvelope>,
+) -> Result<Json<engine::GatewayMiniGameResponse>, ApiError> {
+    Ok(Json(
+        engine::start_minigame(state, &story_id, payload).await?,
+    ))
+}
+
+async fn active_minigame(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<engine::GatewayMiniGameResponse>, ApiError> {
+    Ok(Json(engine::active_minigame(state, &story_id).await?))
+}
+
+async fn input_minigame(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, instance_id)): Path<(String, String)>,
+    Json(payload): Json<engine::MiniGameInputEnvelope>,
+) -> Result<Json<engine::GatewayMiniGameResponse>, ApiError> {
+    Ok(Json(
+        engine::input_minigame(state, &story_id, &instance_id, payload).await?,
+    ))
 }
 
 async fn update_story(
