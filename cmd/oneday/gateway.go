@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/crimsab/oneday/internal/ai"
 	audioservice "github.com/crimsab/oneday/internal/audio"
@@ -141,30 +142,52 @@ type gatewayMiniGameResponse struct {
 }
 
 type gatewayAudioRequest struct {
-	Operation      string                    `json:"operation"`
-	StoryID        string                    `json:"story_id,omitempty"`
-	MessageID      int64                     `json:"message_id,omitempty"`
-	AssetID        string                    `json:"asset_id,omitempty"`
-	AssignmentID   string                    `json:"assignment_id,omitempty"`
-	Provider       string                    `json:"provider,omitempty"`
-	Language       string                    `json:"language,omitempty"`
-	ClientRevision int64                     `json:"client_revision,omitempty"`
-	Settings       *storage.StoryTTSSettings `json:"settings,omitempty"`
-	Assignment     *storage.VoiceAssignment  `json:"assignment,omitempty"`
+	Operation       string                      `json:"operation"`
+	StoryID         string                      `json:"story_id,omitempty"`
+	MessageID       int64                       `json:"message_id,omitempty"`
+	AssetID         string                      `json:"asset_id,omitempty"`
+	AssignmentID    string                      `json:"assignment_id,omitempty"`
+	PronunciationID string                      `json:"pronunciation_id,omitempty"`
+	JobID           string                      `json:"job_id,omitempty"`
+	Provider        string                      `json:"provider,omitempty"`
+	Language        string                      `json:"language,omitempty"`
+	ClientRevision  int64                       `json:"client_revision,omitempty"`
+	Settings        *storage.StoryTTSSettings   `json:"settings,omitempty"`
+	Assignment      *storage.VoiceAssignment    `json:"assignment,omitempty"`
+	Pronunciation   *storage.PronunciationEntry `json:"pronunciation,omitempty"`
+	DryRun          bool                        `json:"dry_run,omitempty"`
+}
+
+type gatewayAudioExport struct {
+	Format         string                        `json:"format"`
+	Filename       string                        `json:"filename"`
+	GeneratedAt    string                        `json:"generated_at"`
+	StoryID        string                        `json:"story_id"`
+	Settings       *storage.StoryTTSSettings     `json:"settings"`
+	Providers      []audioservice.ProviderStatus `json:"providers"`
+	Voices         []storage.VoiceProfile        `json:"voices"`
+	Assignments    []storage.VoiceAssignment     `json:"assignments"`
+	Pronunciations []storage.PronunciationEntry  `json:"pronunciations"`
+	Assets         []storage.AudioAsset          `json:"assets"`
+	Jobs           []storage.TTSJob              `json:"jobs"`
 }
 
 type gatewayAudioResponse struct {
-	Statuses    []audioservice.ProviderStatus `json:"providers,omitempty"`
-	Profiles    []storage.VoiceProfile        `json:"voices,omitempty"`
-	Settings    *storage.StoryTTSSettings     `json:"settings,omitempty"`
-	Assignments []storage.VoiceAssignment     `json:"assignments,omitempty"`
-	Assignment  *storage.VoiceAssignment      `json:"assignment,omitempty"`
-	Assets      []storage.AudioAsset          `json:"assets,omitempty"`
-	Jobs        []storage.TTSJob              `json:"jobs,omitempty"`
-	Asset       *storage.AudioAsset           `json:"asset,omitempty"`
-	FilePath    string                        `json:"file_path,omitempty"`
-	Format      string                        `json:"format,omitempty"`
-	Error       string                        `json:"error,omitempty"`
+	Statuses       []audioservice.ProviderStatus `json:"providers,omitempty"`
+	Profiles       []storage.VoiceProfile        `json:"voices,omitempty"`
+	Settings       *storage.StoryTTSSettings     `json:"settings,omitempty"`
+	Assignments    []storage.VoiceAssignment     `json:"assignments,omitempty"`
+	Assignment     *storage.VoiceAssignment      `json:"assignment,omitempty"`
+	Pronunciations []storage.PronunciationEntry  `json:"pronunciations,omitempty"`
+	Pronunciation  *storage.PronunciationEntry   `json:"pronunciation,omitempty"`
+	Assets         []storage.AudioAsset          `json:"assets,omitempty"`
+	Jobs           []storage.TTSJob              `json:"jobs,omitempty"`
+	Asset          *storage.AudioAsset           `json:"asset,omitempty"`
+	FilePath       string                        `json:"file_path,omitempty"`
+	Format         string                        `json:"format,omitempty"`
+	Cleanup        *audioservice.CleanupResult   `json:"cleanup,omitempty"`
+	Export         *gatewayAudioExport           `json:"export,omitempty"`
+	Error          string                        `json:"error,omitempty"`
 }
 
 func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in io.Reader, out io.Writer) error {
@@ -210,6 +233,22 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 			}
 			response.Assignment, err = db.UpsertVoiceAssignment(*req.Assignment)
 		}
+	case "pronunciations-get":
+		response.Pronunciations, err = db.ListPronunciations(req.StoryID, req.Language)
+	case "pronunciation-put":
+		if req.Pronunciation == nil {
+			err = errors.New("pronunciation entry is required")
+		} else if err = requireRevision(); err == nil {
+			req.Pronunciation.StoryID = req.StoryID
+			if req.PronunciationID != "" {
+				req.Pronunciation.ID = req.PronunciationID
+			}
+			response.Pronunciation, err = db.UpsertPronunciation(*req.Pronunciation)
+		}
+	case "pronunciation-delete":
+		if err = requireRevision(); err == nil {
+			err = db.DeletePronunciation(req.StoryID, req.PronunciationID)
+		}
 	case "message-get":
 		response.Assets, err = db.ListMessageAudio(req.StoryID, req.MessageID)
 		if err == nil {
@@ -231,6 +270,85 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 				response.Jobs, err = db.ListMessageTTSJobs(req.StoryID, req.MessageID)
 			}
 		}
+	case "job-cancel":
+		var job *storage.TTSJob
+		job, err = db.GetTTSJob(req.JobID)
+		if err == nil && job.StoryID != req.StoryID {
+			err = errors.New("TTS job belongs to another story")
+		}
+		if err == nil {
+			_, err = db.CancelTTSJob(req.StoryID, req.JobID)
+		}
+		if err == nil {
+			var asset *storage.AudioAsset
+			asset, err = db.GetAudioAsset(req.StoryID, job.AudioAssetID)
+			if err == nil {
+				req.MessageID = asset.SourceMessageID
+			}
+		}
+		if err == nil {
+			response.Assets, err = db.ListMessageAudio(req.StoryID, req.MessageID)
+		}
+		if err == nil {
+			response.Jobs, err = db.ListMessageTTSJobs(req.StoryID, req.MessageID)
+		}
+	case "job-retry":
+		var job *storage.TTSJob
+		job, err = db.GetTTSJob(req.JobID)
+		if err == nil && job.StoryID != req.StoryID {
+			err = errors.New("TTS job belongs to another story")
+		}
+		if err == nil {
+			_, err = db.RetryTTSJob(req.StoryID, req.JobID)
+		}
+		if err == nil {
+			_ = service.ProcessJob(ctx, req.JobID)
+			var asset *storage.AudioAsset
+			asset, err = db.GetAudioAsset(req.StoryID, job.AudioAssetID)
+			if err == nil {
+				req.MessageID = asset.SourceMessageID
+			}
+		}
+		if err == nil {
+			response.Assets, err = db.ListMessageAudio(req.StoryID, req.MessageID)
+		}
+		if err == nil {
+			response.Jobs, err = db.ListMessageTTSJobs(req.StoryID, req.MessageID)
+		}
+	case "cleanup":
+		var cleanup audioservice.CleanupResult
+		if _, err = db.GetStory(req.StoryID); err == nil {
+			cleanup, err = service.CleanupAudioCache(req.DryRun)
+		}
+		response.Cleanup = &cleanup
+	case "export":
+		manifest := gatewayAudioExport{
+			Format: "oneday-audio-manifest-v1", Filename: "oneday-audio-" + safeAudioFilename(req.StoryID) + ".json",
+			GeneratedAt: time.Now().UTC().Format(time.RFC3339), StoryID: req.StoryID,
+		}
+		manifest.Settings, err = db.GetStoryTTSSettings(req.StoryID)
+		if err == nil {
+			manifest.Providers, manifest.Voices, err = service.DiscoverVoiceProfiles(ctx, "", "")
+		}
+		if err == nil {
+			manifest.Assignments, err = db.ListVoiceAssignments(req.StoryID)
+		}
+		if err == nil {
+			manifest.Pronunciations, err = db.ListPronunciations(req.StoryID, "")
+		}
+		if err == nil {
+			manifest.Assets, err = db.ListStoryAudio(req.StoryID)
+		}
+		if err == nil {
+			manifest.Jobs, err = db.ListStoryTTSJobs(req.StoryID)
+		}
+		for index := range manifest.Assets {
+			manifest.Assets[index].FilePath = ""
+			if manifest.Assets[index].Status == "ready" {
+				manifest.Assets[index].URL = "/api/audio/" + manifest.Assets[index].ID
+			}
+		}
+		response.Export = &manifest
 	case "asset-path":
 		response.Asset, response.FilePath, err = service.ResolveAudioFile(req.AssetID)
 		if response.Asset != nil {
@@ -243,6 +361,19 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 		response.Error = err.Error()
 	}
 	return json.NewEncoder(out).Encode(response)
+}
+
+func safeAudioFilename(value string) string {
+	value = strings.Map(func(char rune) rune {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '-' || char == '_' {
+			return char
+		}
+		return '-'
+	}, strings.TrimSpace(value))
+	if value == "" {
+		return "story"
+	}
+	return value
 }
 
 func runGatewayMiniGame(db *storage.DB, operation string, in io.Reader, out io.Writer) error {

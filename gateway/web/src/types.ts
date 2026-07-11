@@ -299,6 +299,40 @@ export interface TTSJob {
   error?: string;
 }
 
+export interface PronunciationEntry {
+  id: string;
+  story_id: string;
+  language_tag: string;
+  source_text: string;
+  pronunciation: string;
+  alphabet: "ipa" | "x-sampa" | "provider";
+  case_sensitive: boolean;
+  revision: number;
+}
+
+export interface AudioCleanupResult {
+  dry_run: boolean;
+  files_scanned: number;
+  orphan_files: number;
+  files_removed: number;
+  invalid_cache_rows: number;
+  errors?: string[];
+}
+
+export interface AudioManifest {
+  format: "oneday-audio-manifest-v1";
+  filename: string;
+  generated_at: string;
+  story_id: string;
+  settings: StoryTTSSettings;
+  providers: TTSProviderStatus[];
+  voices: VoiceProfile[];
+  assignments: VoiceAssignment[];
+  pronunciations: PronunciationEntry[];
+  assets: AudioAsset[];
+  jobs: TTSJob[];
+}
+
 export interface TTSCatalogResponse {
   providers: TTSProviderStatus[];
   voices: VoiceProfile[];
@@ -307,6 +341,9 @@ export interface TTSCatalogResponse {
 export interface TTSSettingsResponse { settings: StoryTTSSettings; }
 export interface VoiceAssignmentsResponse { assignments: VoiceAssignment[]; assignment?: VoiceAssignment; }
 export interface MessageAudioResponse { assets: AudioAsset[]; jobs: TTSJob[]; }
+export interface PronunciationsResponse { pronunciations: PronunciationEntry[]; pronunciation?: PronunciationEntry; }
+export interface AudioCleanupResponse { cleanup: AudioCleanupResult; }
+export interface AudioExportResponse { export: AudioManifest; }
 
 export interface PendingTurnView {
   id: string;

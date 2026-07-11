@@ -3,8 +3,10 @@ package audio
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -147,5 +149,134 @@ func TestCacheIdentityInvalidatesOnVoiceStyleLanguageAndPronunciation(t *testing
 	pronunciation, _, _, _ := CacheIdentity(voice, "it-IT", "Ciao", json.RawMessage(`{"tone":"calm"}`), 1, "mp3", 2)
 	if base == changed || base == pronunciation {
 		t.Fatalf("cache identities did not invalidate: %s %s %s", base, changed, pronunciation)
+	}
+}
+
+func TestManualCancelRetryAndCompletionRaceAreSafe(t *testing.T) {
+	db, service, messageID := audioServiceFixture(t)
+	defer db.Close()
+	provider := &fakeProvider{id: "local", available: true, audio: []byte("RIFF-retry")}
+	service.providers["local"] = provider
+	if _, err := service.QueueCommittedMessage(context.Background(), "story-audio-service", messageID); err != nil {
+		t.Fatal(err)
+	}
+	jobs, err := db.ListMessageTTSJobs("story-audio-service", messageID)
+	if err != nil || len(jobs) == 0 {
+		t.Fatalf("jobs=%+v err=%v", jobs, err)
+	}
+	job := jobs[0]
+	if _, err := db.CancelTTSJob(job.StoryID, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ProcessJob(context.Background(), job.ID); err == nil {
+		t.Fatal("canceled job must not be claimable")
+	}
+	if _, err := db.RetryTTSJob(job.StoryID, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ProcessJob(context.Background(), job.ID); err != nil {
+		t.Fatal(err)
+	}
+	completed, _ := db.GetTTSJob(job.ID)
+	if completed.Status != "succeeded" || completed.Attempts != 1 {
+		t.Fatalf("retried job=%+v", completed)
+	}
+
+	other := jobs[len(jobs)-1]
+	if other.ID == job.ID {
+		return
+	}
+	if _, err := db.ClaimTTSJob(other.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CancelTTSJob(other.StoryID, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	err = db.CompleteTTSJob(other.ID, storage.TTSCacheEntry{CacheKey: "race", Style: json.RawMessage(`{}`)}, "/tmp/race.wav", 1, json.RawMessage(`[]`), "")
+	if err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("canceled completion err=%v", err)
+	}
+	asset, _ := db.GetAudioAsset(other.StoryID, other.AudioAssetID)
+	if asset.Status != "cancelled" {
+		t.Fatalf("canceled asset=%+v", asset)
+	}
+}
+
+func TestCleanupRetainsReferencedAudioAndRemovesOnlyOrphans(t *testing.T) {
+	db, service, messageID := audioServiceFixture(t)
+	defer db.Close()
+	service.providers["local"] = &fakeProvider{id: "local", available: true, audio: []byte("RIFF-canonical")}
+	if _, err := service.QueueCommittedMessage(context.Background(), "story-audio-service", messageID); err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ := db.ListMessageTTSJobs("story-audio-service", messageID)
+	if err := service.ProcessJob(context.Background(), jobs[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	ready, _ := db.GetAudioAsset(jobs[0].StoryID, jobs[0].AudioAssetID)
+	orphan := filepath.Join(service.cfg.OutputDir, "orphan.wav")
+	if err := os.WriteFile(orphan, []byte("RIFF-orphan"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	dry, err := service.CleanupAudioCache(true)
+	if err != nil || dry.OrphanFiles != 1 || dry.FilesRemoved != 0 {
+		t.Fatalf("dry cleanup=%+v err=%v", dry, err)
+	}
+	if _, err := os.Stat(orphan); err != nil {
+		t.Fatalf("dry run removed orphan: %v", err)
+	}
+	cleaned, err := service.CleanupAudioCache(false)
+	if err != nil || cleaned.FilesRemoved != 1 {
+		t.Fatalf("cleanup=%+v err=%v", cleaned, err)
+	}
+	if _, err := os.Stat(orphan); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("orphan still exists: %v", err)
+	}
+	if _, err := os.Stat(ready.FilePath); err != nil {
+		t.Fatalf("referenced cache file removed: %v", err)
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.wav")
+	if err := os.WriteFile(outside, []byte("RIFF-outside"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Conn().Exec(`UPDATE tts_cache_entries SET file_path=? WHERE cache_key=?`, outside, ready.CacheKey); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Conn().Exec(`UPDATE audio_assets SET file_path=? WHERE id=?`, outside, ready.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := service.ResolveAudioFile(ready.ID); err == nil || !strings.Contains(err.Error(), "outside") {
+		t.Fatalf("outside-root asset resolved: %v", err)
+	}
+	result, err := service.CleanupAudioCache(false)
+	if err != nil || result.InvalidCacheRows != 1 {
+		t.Fatalf("outside cleanup=%+v err=%v", result, err)
+	}
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("cleanup deleted outside-root file: %v", err)
+	}
+}
+
+func TestAudioJobMutationRejectsInactiveBranch(t *testing.T) {
+	db, service, messageID := audioServiceFixture(t)
+	defer db.Close()
+	if _, err := service.QueueCommittedMessage(context.Background(), "story-audio-service", messageID); err != nil {
+		t.Fatal(err)
+	}
+	jobs, _ := db.ListMessageTTSJobs("story-audio-service", messageID)
+	head, err := db.GetActiveTimeline("story-audio-service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	story, _ := db.GetStory("story-audio-service")
+	if _, err := db.Conn().Exec(`INSERT INTO story_branches(id,story_id,name,fork_commit_id,head_commit_id) VALUES('branch-audio-sibling',?,?,?,?)`, story.ID, "audio sibling", head.Commit.ID, head.Commit.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Conn().Exec(`UPDATE stories SET active_branch_id='branch-audio-sibling' WHERE id=?`, story.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CancelTTSJob(story.ID, jobs[0].ID); err == nil || !strings.Contains(err.Error(), "active branch") {
+		t.Fatalf("inactive-branch job cancellation err=%v", err)
 	}
 }

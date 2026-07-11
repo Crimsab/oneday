@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createMessageAudio, getMessageAudio, getTTSCatalog, updateTTSSettings } from "./api";
+import { cancelAudioJob, cleanupAudio, createMessageAudio, deletePronunciation, getAudioExport, getMessageAudio, getPronunciations, getTTSCatalog, retryAudioJob, updatePronunciation, updateTTSSettings } from "./api";
 import { assetUrl } from "./components/AudioControls";
-import type { AudioAsset, StoryTTSSettings } from "./types";
+import type { AudioAsset, PronunciationEntry, StoryTTSSettings } from "./types";
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; vi.restoreAllMocks(); });
@@ -23,5 +23,24 @@ describe("canonical audio client", () => {
 
   it("serves an immutable asset by opaque encoded id", () => {
     expect(assetUrl({ id: "audio/id", status: "ready" } as AudioAsset)).toBe("/api/audio/audio%2Fid");
+  });
+
+  it("encodes retry, cancel, lexicon, cleanup, and export operations", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ assets: [], jobs: [], pronunciations: [], cleanup: {}, export: {} }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    await retryAudioJob("story/one", "job/1");
+    await cancelAudioJob("story/one", "job/1");
+    await getPronunciations("story/one", "it-IT");
+    const entry = { id: "pron/1", story_id: "story/one", language_tag: "it-IT", source_text: "Lyanna", pronunciation: "Lianna", alphabet: "provider", case_sensitive: false, revision: 1 } satisfies PronunciationEntry;
+    await updatePronunciation("story/one", entry, 9);
+    await deletePronunciation("story/one", entry.id, 9);
+    await cleanupAudio("story/one", true);
+    await getAudioExport("story/one");
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(1, "/api/stories/story%2Fone/audio/jobs/job%2F1/retry", { method: "POST" });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(2, "/api/stories/story%2Fone/audio/jobs/job%2F1/cancel", { method: "POST" });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(3, "/api/stories/story%2Fone/pronunciations?language=it-IT", {});
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(5, "/api/stories/story%2Fone/pronunciations/pron%2F1?client_revision=9", { method: "DELETE" });
+    expect(globalThis.fetch).toHaveBeenNthCalledWith(7, "/api/stories/story%2Fone/audio/export", {});
+    const cleanup = vi.mocked(globalThis.fetch).mock.calls[5][1] as RequestInit;
+    expect(JSON.parse(String(cleanup.body))).toEqual({ dry_run: true });
   });
 });

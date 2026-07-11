@@ -77,6 +77,17 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/stories/:story_id/messages/:message_id/audio",
             get(message_audio).post(create_message_audio),
         )
+        .route(
+            "/api/stories/:story_id/audio/jobs/:job_id/:action",
+            post(audio_job_action),
+        )
+        .route("/api/stories/:story_id/pronunciations", get(pronunciations))
+        .route(
+            "/api/stories/:story_id/pronunciations/:pronunciation_id",
+            put(update_pronunciation).delete(delete_pronunciation),
+        )
+        .route("/api/stories/:story_id/audio/cleanup", post(cleanup_audio))
+        .route("/api/stories/:story_id/audio/export", get(export_audio))
         .route("/api/audio/:audio_asset_id", get(audio_asset))
         .route(
             "/api/stories/:story_id/visual-assets/:asset_id",
@@ -293,6 +304,84 @@ async fn create_message_audio(
             json!({"operation":"message-create","story_id":story_id,"message_id":message_id}),
         )
         .await?,
+    ))
+}
+
+async fn audio_job_action(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, job_id, action)): Path<(String, String, String)>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    if action != "retry" && action != "cancel" {
+        return Err(anyhow::anyhow!("audio job action must be retry or cancel").into());
+    }
+    Ok(Json(
+        engine::audio(
+            state,
+            json!({
+                "operation": format!("job-{action}"), "story_id": story_id, "job_id": job_id
+            }),
+        )
+        .await?,
+    ))
+}
+
+async fn pronunciations(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Query(query): Query<TTSCatalogQuery>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(
+        engine::audio(
+            state,
+            json!({"operation":"pronunciations-get","story_id":story_id,"language":query.language}),
+        )
+        .await?,
+    ))
+}
+
+async fn update_pronunciation(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, pronunciation_id)): Path<(String, String)>,
+    Json(mut payload): Json<serde_json::Value>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    let revision = payload
+        .get("client_revision")
+        .and_then(|value| value.as_i64())
+        .unwrap_or(-1);
+    if let Some(object) = payload.as_object_mut() {
+        object.remove("client_revision");
+    }
+    Ok(Json(engine::audio(state, json!({"operation":"pronunciation-put","story_id":story_id,"pronunciation_id":pronunciation_id,"client_revision":revision,"pronunciation":payload})).await?))
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct RevisionQuery {
+    #[serde(default)]
+    client_revision: i64,
+}
+
+async fn delete_pronunciation(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, pronunciation_id)): Path<(String, String)>,
+    Query(query): Query<RevisionQuery>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(engine::audio(state, json!({"operation":"pronunciation-delete","story_id":story_id,"pronunciation_id":pronunciation_id,"client_revision":query.client_revision})).await?))
+}
+
+async fn cleanup_audio(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(engine::audio(state, json!({"operation":"cleanup","story_id":story_id,"dry_run":payload.get("dry_run").and_then(|value|value.as_bool()).unwrap_or(true)})).await?))
+}
+
+async fn export_audio(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(
+        engine::audio(state, json!({"operation":"export","story_id":story_id})).await?,
     ))
 }
 

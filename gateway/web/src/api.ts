@@ -48,6 +48,10 @@ import type {
   MessageAudioResponse,
   StoryTTSSettings,
   VoiceAssignment,
+  PronunciationEntry,
+  PronunciationsResponse,
+  AudioCleanupResponse,
+  AudioExportResponse,
 } from "./types";
 
 interface ErrorPayload {
@@ -122,6 +126,40 @@ export function getMessageAudio(storyId: string, messageId: number): Promise<Mes
 
 export function createMessageAudio(storyId: string, messageId: number): Promise<MessageAudioResponse> {
   return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/messages/${messageId}/audio`, { method: "POST" });
+}
+
+export function retryAudioJob(storyId: string, jobId: string): Promise<MessageAudioResponse> {
+  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/audio/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
+}
+
+export function cancelAudioJob(storyId: string, jobId: string): Promise<MessageAudioResponse> {
+  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/audio/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+}
+
+export function getPronunciations(storyId: string, language = ""): Promise<PronunciationsResponse> {
+  const query = new URLSearchParams();
+  if (language) query.set("language", language);
+  return request<PronunciationsResponse>(`/api/stories/${encodeURIComponent(storyId)}/pronunciations${query.size ? `?${query}` : ""}`);
+}
+
+export function updatePronunciation(storyId: string, entry: PronunciationEntry, clientRevision: number): Promise<PronunciationsResponse> {
+  return request<PronunciationsResponse>(`/api/stories/${encodeURIComponent(storyId)}/pronunciations/${encodeURIComponent(entry.id)}`, {
+    method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...entry, client_revision: clientRevision }),
+  });
+}
+
+export function deletePronunciation(storyId: string, id: string, clientRevision: number): Promise<PronunciationsResponse> {
+  return request<PronunciationsResponse>(`/api/stories/${encodeURIComponent(storyId)}/pronunciations/${encodeURIComponent(id)}?client_revision=${clientRevision}`, { method: "DELETE" });
+}
+
+export function cleanupAudio(storyId: string, dryRun = true): Promise<AudioCleanupResponse> {
+  return request<AudioCleanupResponse>(`/api/stories/${encodeURIComponent(storyId)}/audio/cleanup`, {
+    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ dry_run: dryRun }),
+  });
+}
+
+export function getAudioExport(storyId: string): Promise<AudioExportResponse> {
+  return request<AudioExportResponse>(`/api/stories/${encodeURIComponent(storyId)}/audio/export`);
 }
 
 export function getStories(): Promise<StorySummary[]> {

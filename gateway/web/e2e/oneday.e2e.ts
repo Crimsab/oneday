@@ -51,6 +51,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
   let visualCanRedo = false;
   let audioGenerated = false;
   let ttsSettings = { story_id: story.id, mode: "all", autoplay: false, default_language_tag: "en", provider_policy: {} };
+  let pronunciations: any[] = [];
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -73,6 +74,19 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     }
     if (path.endsWith("/voice-assignments") && request.method() === "GET") return json(route, { assignments: [] });
     if (path.includes("/voice-assignments/") && request.method() === "PUT") return json(route, { assignment: request.postDataJSON() });
+    if (path.endsWith("/pronunciations") && request.method() === "GET") return json(route, { pronunciations });
+    if (path.includes("/pronunciations/") && request.method() === "PUT") {
+      const entry = request.postDataJSON();
+      pronunciations = [...pronunciations.filter((item) => item.id !== entry.id), entry];
+      return json(route, { pronunciation: entry });
+    }
+    if (path.includes("/pronunciations/") && request.method() === "DELETE") {
+      const id = decodeURIComponent(path.split("/").at(-1)!);
+      pronunciations = pronunciations.filter((item) => item.id !== id);
+      return json(route, { pronunciations });
+    }
+    if (path.endsWith("/audio/cleanup")) return json(route, { cleanup: { dry_run: request.postDataJSON().dry_run, files_scanned: 1, orphan_files: 0, files_removed: 0, invalid_cache_rows: 0 } });
+    if (path.endsWith("/audio/export")) return json(route, { export: { format: "oneday-audio-manifest-v1", filename: "oneday-audio-story-1.json", generated_at: now, story_id: story.id, settings: ttsSettings, providers: [], voices: [], assignments: [], pronunciations, assets: [], jobs: [] } });
     if (/\/messages\/\d+\/audio$/.test(path) && request.method() === "GET") return json(route, { assets: audioGenerated ? [{ id: "audio-2", story_id: story.id, source_message_id: 2, segment_index: 0, segment_kind: "narrator", status: "ready", duration_ms: 300, language_tag: "en" }] : [], jobs: [] });
     if (/\/messages\/\d+\/audio$/.test(path) && request.method() === "POST") {
       audioGenerated = true;
@@ -259,6 +273,17 @@ test("generates committed audio and exposes per-story and per-character voice co
   await dialog.getByLabel("Speech mode").selectOption("narrator");
   await dialog.getByRole("button", { name: "Save audio settings" }).click();
   await expect(dialog.getByRole("button", { name: "Save audio settings" })).toBeEnabled();
+  await dialog.getByLabel("Written text").fill("Mira");
+  await dialog.getByLabel("Spoken form").fill("Mee-ra");
+  await dialog.getByRole("button", { name: "Add pronunciation" }).click();
+  await expect(dialog.getByLabel("Pronunciation entries")).toContainText("Mira");
+  await dialog.getByRole("button", { name: "Audit cache" }).click();
+  await expect(dialog.getByText("Audit: 1 audio files, 0 orphaned, 0 invalid cache rows.")).toBeVisible();
+  const [audioDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    dialog.getByRole("button", { name: "Export audio manifest" }).click(),
+  ]);
+  expect(audioDownload.suggestedFilename()).toBe("oneday-audio-story-1.json");
   const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
   expect(errors).toEqual([]);

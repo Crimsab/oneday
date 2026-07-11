@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getTTSCatalog, getTTSSettings, getVoiceAssignments, updateTTSSettings, updateVoiceAssignment } from "../api";
 import type { RecordView, StoryTTSSettings, VoiceAssignment, VoiceProfile } from "../types";
+import { AudioLanguageTools } from "./AudioLanguageTools";
 
 interface VoiceAssignmentEditorProps {
   storyId: string;
@@ -85,6 +86,7 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
         </div>
       )}
       <p className="settings-feedback" role="status" aria-live="polite">{busy ? "Saving…" : error}</p>
+      <AudioLanguageTools storyId={storyId} language={settings.default_language_tag || language} revision={revision} />
     </section>
   );
 }
