@@ -109,13 +109,21 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
         <span className="sr-only">Search branch history</span>
         <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this branch" />
       </label>
-      <div className="history-export">
-        <button type="button" disabled={busy} onClick={() => void exportAs("markdown")}>Export Markdown</button>
-        <button type="button" disabled={busy} onClick={() => void exportAs("json")}>Export JSON</button>
-        <button type="button" disabled={busy} onClick={() => void exportAs("epub")}>Export EPUB</button>
-        <button type="button" disabled={busy} onClick={() => void exportAs("replay")}>Export media replay</button>
-        <button type="button" disabled={busy} onClick={() => void exportTelemetry()}>Export telemetry</button>
-      </div>
+      <details className="history-export-menu">
+        <summary>Export this branch</summary>
+        <div className="history-export">
+          <button type="button" disabled={busy} onClick={() => void exportAs("markdown")}>Export Markdown</button>
+          <button type="button" disabled={busy} onClick={() => void exportAs("json")}>Export JSON</button>
+          <button type="button" disabled={busy} onClick={() => void exportAs("epub")}>Export EPUB</button>
+          <details className="history-technical-export">
+            <summary>Technical exports</summary>
+            <div>
+              <button type="button" disabled={busy} onClick={() => void exportAs("replay")}>Export media replay</button>
+              <button type="button" disabled={busy} onClick={() => void exportTelemetry()}>Export telemetry</button>
+            </div>
+          </details>
+        </div>
+      </details>
       {error && <p className="inline-error" role="alert">{error}</p>}
       <section aria-labelledby={`${id}-messages`}>
         <h3 id={`${id}-messages`}>Transcript</h3>

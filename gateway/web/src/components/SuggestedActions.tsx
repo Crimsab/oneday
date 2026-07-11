@@ -16,7 +16,7 @@ const choiceIcons = [MessageSquare, FileSearch, Search, PackageSearch, Users, Do
 
 export function SuggestedActions({ choices, snapshot, disabled = false, onChoice, onDraft }: SuggestedActionsProps) {
   const fallback = fallbackActions(snapshot);
-  const visibleChoices = choices.slice(0, 6);
+  const visibleChoices = choices.slice(0, 3);
   const choiceKey = visibleChoices.map((choice) => choice.id).join("|");
   const [activeChoiceId, setActiveChoiceId] = useState<number | null>(null);
 
@@ -25,7 +25,12 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
   }, [choiceKey]);
 
   return (
-    <div className="choice-stack" onMouseLeave={() => setActiveChoiceId(null)}>
+    <div className="choice-surface">
+      <header className="choice-heading">
+        <div><span>Your move</span><h2>What do you do?</h2></div>
+        <small>Choose a path or write your own action below.</small>
+      </header>
+      <div className="choice-stack" onMouseLeave={() => setActiveChoiceId(null)}>
       {visibleChoices.length > 0 ? (
           <>
             {visibleChoices.map((choice) => {
@@ -80,6 +85,7 @@ export function SuggestedActions({ choices, snapshot, disabled = false, onChoice
             );
           })
         )}
+      </div>
     </div>
   );
 }

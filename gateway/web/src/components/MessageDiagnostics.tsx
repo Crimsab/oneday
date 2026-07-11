@@ -30,8 +30,8 @@ export function MessageDiagnostics({ message }: { message: MessageView }) {
       if (event.currentTarget.open) void load();
     }}>
       <summary>
-        <span>{summary || "Generation details"}</span>
-        {hasRun && <small>Operator diagnostics</small>}
+        <span>Technical details</span>
+        <small>{summary ? "Available" : "Generation run"}</small>
       </summary>
       {loading && <p className="diagnostics-state">Loading diagnostics…</p>}
       {error && <p className="inline-error" role="alert">Diagnostics unavailable: {error}</p>}

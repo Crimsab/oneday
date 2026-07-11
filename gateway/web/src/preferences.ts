@@ -1,13 +1,13 @@
 import type { AppPreferences } from "./types";
 
-const STORAGE_KEY = "oneday-browser-preferences-v1";
+const STORAGE_KEY = "oneday-browser-preferences-v2";
 
 export const defaultPreferences: AppPreferences = {
   density: "balanced",
   fontSize: "base",
   accent: "amber",
-  showLeftRail: true,
-  showInspector: true,
+  showLeftRail: false,
+  showInspector: false,
   wrapTranscript: true,
 };
 

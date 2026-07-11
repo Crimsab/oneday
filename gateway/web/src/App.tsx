@@ -36,7 +36,7 @@ import {
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { MiniGameHost } from "./components/MiniGameHost";
-import { CollapsedLeftRail, LeftRail } from "./components/LeftRail";
+import { LeftRail } from "./components/LeftRail";
 import { PanelDrawer } from "./components/PanelDrawer";
 import { StoryPath } from "./components/StoryPath";
 import { SuggestedActions } from "./components/SuggestedActions";
@@ -144,7 +144,7 @@ function App() {
   const refreshHealth = useCallback(async () => {
     try {
       const health = await getHealth();
-      setHealthText(`${health.stories} stories - Rust gateway`);
+      setHealthText(`${health.stories} ${health.stories === 1 ? "story" : "stories"}`);
     } catch (error) {
       setHealthText(errorMessage(error));
     }
@@ -384,6 +384,12 @@ function App() {
     setModuleFocusId(null);
     setModuleOverlayTab(null);
     setSelectedTab(tab);
+    if (window.matchMedia("(max-width: 1240px)").matches) {
+      setModuleOverlayTab(tab);
+      setOverlay("module");
+    } else {
+      setPreferences((value) => ({ ...defaultPreferences, ...value, showInspector: true }));
+    }
   }, []);
 
   useEffect(() => {
@@ -1163,24 +1169,23 @@ function App() {
 			onRenameBranch={renameBranch}
 			onCheckoutBranch={checkoutBranch}
           />
-        ) : (
-          <CollapsedLeftRail
-            selectedTab={selectedTab}
-            onSelectTab={selectModuleTab}
-            onExpand={toggleLeftRail}
-            onOpen={openOverlay}
-          />
-        )}
+        ) : null}
         <main className="center-stage">
-          <section className="transcript-panel">
-            <div className="panel-head">
-              <h1>Narrative Transcript</h1>
-              <div className="panel-actions">
-                <button type="button" onClick={() => setPaused((value) => !value)}>
-                  {paused ? "Resume" : "Pause"} <span>{paused ? ">" : "II"}</span>
-                </button>
-                <button type="button" onClick={clearTranscript}>Clear</button>
+          <section className="transcript-panel" aria-labelledby="story-surface-title">
+            <div className="panel-head story-toolbar">
+              <div>
+                <span>Now playing</span>
+                <h1 id="story-surface-title">{snapshot?.story.name || "Your story"}</h1>
               </div>
+              <details className="reading-controls">
+                <summary>Reading controls</summary>
+                <div>
+                  <button type="button" onClick={() => setPaused((value) => !value)}>
+                    {paused ? "Resume live updates" : "Pause live updates"}
+                  </button>
+                  <button type="button" onClick={clearTranscript}>Hide messages on this screen</button>
+                </div>
+              </details>
             </div>
             <StoryPath snapshot={snapshot} locationAsset={visuals.location} onOpenVisualAsset={openVisualAssetEditor} />
             <Transcript

@@ -1,10 +1,17 @@
 import { useState } from "react";
-import { Archive, ArchiveRestore, Check, PanelLeftOpen, Pencil, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, MoreHorizontal, PanelLeftOpen, Pencil, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import { asArray, compactText, displayTimestamp, entryLabel } from "../format";
 import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary, StoryUpdatePayload } from "../types";
 import type { TimelineResponse } from "../types";
 import { BranchNavigator } from "./BranchNavigator";
+
+const moduleGroups: Array<{ label: string; tabs: ModuleTab[] }> = [
+  { label: "Story", tabs: ["history", "map", "codex"] },
+  { label: "Character", tabs: ["inventory", "stats", "craft"] },
+  { label: "Active threads", tabs: ["fronts", "investigations", "projects"] },
+  { label: "Library", tabs: ["saves"] },
+];
 
 interface LeftRailProps {
   stories: StorySummary[];
@@ -105,26 +112,24 @@ export function LeftRail({
 
 	  <BranchNavigator timeline={timeline} busy={Boolean(busyStoryId)} onFork={onForkBranch} onRename={onRenameBranch} onCheckout={onCheckoutBranch} />
 
-      <nav className="module-nav" aria-label="Story modules">
-        {moduleSpecs.map(({ tab, label, hotkey, Icon }) => (
-          <button
-            type="button"
-            key={tab}
-            className={selectedTab === tab ? "active" : ""}
-            onClick={() => onSelectTab(tab)}
-          >
-            <Icon size={17} />
-            <span>{label}</span>
-            <kbd>{hotkey}</kbd>
-          </button>
+      <nav className="module-nav" aria-label="Story tools">
+        {moduleGroups.map((group) => (
+          <div className="module-group" key={group.label}>
+            <span className="module-group-label">{group.label}</span>
+            {group.tabs.map((tab) => {
+              const spec = moduleSpecs.find((item) => item.tab === tab)!;
+              const Icon = spec.Icon;
+              return <button type="button" key={tab} className={selectedTab === tab ? "active" : ""} onClick={() => onSelectTab(tab)} title={`${spec.label} (${spec.hotkey})`}><Icon size={17} /><span>{spec.label}</span></button>;
+            })}
+          </div>
         ))}
       </nav>
 
-      <section className="rail-block notes-block">
-        <div className="rail-title split">
+      <details className="rail-block notes-block">
+        <summary className="rail-title split">
           <span>Story Notes</span>
           <Users size={15} />
-        </div>
+        </summary>
         <div className="notes-content">
           {chapters.length > 0 && (
             <div className="chapter-trail">
@@ -150,7 +155,7 @@ export function LeftRail({
             </div>
           )}
         </div>
-      </section>
+      </details>
     </aside>
   );
 }
@@ -252,30 +257,14 @@ function StoryRow({
         </span>
         <small title={story.description || story.tone || story.id}>{compactText(story.description || story.tone || story.id, 54)}</small>
       </button>
-      <div className="story-row-actions" aria-label={`Manage ${story.name || story.id}`}>
-        <button
-          type="button"
-          onClick={() => {
-            resetDraft();
-            onEdit();
-          }}
-          title="Edit story"
-          disabled={busy}
-        >
-          <Pencil size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={() => void onSetArchived(!story.is_archived)}
-          title={story.is_archived ? "Unarchive story" : "Archive story"}
-          disabled={busy}
-        >
-          {story.is_archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-        </button>
-        <button type="button" onClick={() => void deleteWithConfirm()} title="Delete story" disabled={busy}>
-          <Trash2 size={14} />
-        </button>
-      </div>
+      <details className="story-row-actions">
+        <summary aria-label={`Manage ${story.name || story.id}`} title={`Manage ${story.name || story.id}`}><MoreHorizontal size={16} /></summary>
+        <div>
+          <button type="button" onClick={() => { resetDraft(); onEdit(); }} disabled={busy}><Pencil size={14} />Edit</button>
+          <button type="button" onClick={() => void onSetArchived(!story.is_archived)} disabled={busy}>{story.is_archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{story.is_archived ? "Restore" : "Archive"}</button>
+          <button type="button" className="danger-action" onClick={() => void deleteWithConfirm()} disabled={busy}><Trash2 size={14} />Delete</button>
+        </div>
+      </details>
     </div>
   );
 }
