@@ -73,7 +73,7 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
         <div className="empty-copy inspector-empty">Select a story to inspect canonical state.</div>
       ) : (
         <div className="inspector-body">
-          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />
+          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} onExpandMap={onOpenModule} />
         </div>
       )}
     </aside>
@@ -88,6 +88,7 @@ export function ModuleContent({
   focusCardId,
   onOpenNpcCodex,
   onOpenVisualAsset,
+  onExpandMap,
 }: {
   tab: ModuleTab;
   snapshot: StorySnapshot;
@@ -96,10 +97,11 @@ export function ModuleContent({
   focusCardId?: string | null;
   onOpenNpcCodex?: (npcId: string) => void;
   onOpenVisualAsset?: (assetId: string) => void;
+  onExpandMap?: () => void;
 }) {
   return (
     <>
-      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex, onOpenVisualAsset)}
+      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex, onOpenVisualAsset, expanded, onExpandMap)}
       {expanded && <RawStateSection tab={tab} snapshot={snapshot} />}
     </>
   );
@@ -112,6 +114,8 @@ function renderModule(
   focusCardId?: string | null,
   onOpenNpcCodex?: (npcId: string) => void,
   onOpenVisualAsset?: (assetId: string) => void,
+  expanded = false,
+  onExpandMap?: () => void,
 ) {
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
   if (tab === "craft") return <CraftModule snapshot={snapshot} />;
@@ -122,7 +126,7 @@ function renderModule(
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
 	if (tab === "history") return <HistoryReader snapshot={snapshot} />;
-  if (tab === "map") return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
+  if (tab === "map") return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} expanded={expanded} onExpandMap={onExpandMap} />;
   return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
 }
 
@@ -215,11 +219,15 @@ function WorldStateModule({
   visuals,
   onOpenNpcCodex,
   onOpenVisualAsset,
+  expanded = false,
+  onExpandMap,
 }: {
   snapshot: StorySnapshot;
   visuals?: VisualCatalog;
   onOpenNpcCodex?: (npcId: string) => void;
   onOpenVisualAsset?: (assetId: string) => void;
+  expanded?: boolean;
+  onExpandMap?: () => void;
 }) {
   const clock = displayClock(snapshot);
   const condition = deriveCondition(snapshot);
@@ -235,7 +243,7 @@ function WorldStateModule({
   const facts = quickFacts(snapshot);
 
   return (
-    <div className="world-state">
+    <div className={`world-state ${expanded ? "expanded" : ""}`}>
       <div className="ws-metrics">
         <MetricTile icon={<Hash size={14} />} label="Turn" value={String(snapshot.world.current_turn)} />
         <MetricTile icon={<Clock3 size={14} />} label="Time" value={clock.time} />
@@ -307,9 +315,17 @@ function WorldStateModule({
 
       <AgencyFeed storyId={snapshot.story.id} />
 
-      <section className="ws-block">
-        <header className="ws-block-head"><MapPin size={14} /><span>Known-location map</span></header>
-        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} visuals={visuals} />
+      <section className="ws-block ws-map-block">
+        <header className="ws-block-head ws-block-head-split">
+          <MapPin size={14} />
+          <span>Known-location map</span>
+          {!expanded && onExpandMap && (
+            <button type="button" className="map-expand-button" onClick={onExpandMap} title="Open map in a larger workspace" aria-label="Open map in a larger workspace">
+              <Maximize2 size={14} />
+            </button>
+          )}
+        </header>
+        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} visuals={visuals} expanded={expanded} />
       </section>
 
       {threads.length > 0 && (

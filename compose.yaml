@@ -17,6 +17,7 @@ services:
     environment:
       TZ: Europe/Rome
       ONEDAY_IMAGEGEN_OPENCLAW_URL: http://example.com:8099/generate
+      ONEDAY_IMAGEGEN_CONCURRENCY: "3"
     volumes:
       - type: bind
         source: /srv/oneday/docker/oneday

@@ -13,7 +13,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use std::net::SocketAddr;
 use std::process::Command;
 use std::sync::Arc;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, Semaphore};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
@@ -21,7 +21,7 @@ pub struct AppState {
     pub pool: sqlx::SqlitePool,
     pub paths: config::ResolvedPaths,
     pub turn_events: broadcast::Sender<events::TurnStreamEvent>,
-    pub visual_worker: Arc<Mutex<()>>,
+    pub visual_workers: Arc<Semaphore>,
 }
 
 #[tokio::main]
@@ -63,7 +63,7 @@ async fn main() -> anyhow::Result<()> {
         pool,
         paths,
         turn_events,
-        visual_worker: Arc::new(Mutex::new(())),
+        visual_workers: Arc::new(Semaphore::new(4)),
     });
     assets::spawn_visual_generation_maintenance(state.clone());
     assets::spawn_visual_generation_worker(state.clone());

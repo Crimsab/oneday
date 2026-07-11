@@ -58,6 +58,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let activeMiniGame: any = options.activeMiniGame ? automaticPatternMiniGame() : null;
   let visualCanUndo = true;
   let visualCanRedo = false;
+  let currentTimeline = structuredClone(timeline);
   let audioGenerated = false;
   let ttsSettings = { story_id: story.id, mode: "all", autoplay: false, default_language_tag: "en", provider_policy: {} };
   let pronunciations: any[] = [];
@@ -137,10 +138,18 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       else activeMiniGame = { ...activeMiniGame, runtime: { ...activeMiniGame.runtime, phase: body.input.action === "pause" ? "paused" : "active", revision: activeMiniGame.runtime.revision + 1 } };
       return json(route, { instance: activeMiniGame });
     }
-    if (path.endsWith("/timeline") && request.method() === "GET") return json(route, timeline);
+    if (path.endsWith("/timeline") && request.method() === "GET") return json(route, currentTimeline);
     if (path.endsWith("/timeline") && request.method() === "POST") {
-      const nextTimeline = { ...timeline, active_branch_id: "branch-alt", revision: 8, head: { ...timeline.head, id: "commit-alt", branch_id: "branch-alt", canonical_turn: 3 } };
-      return json(route, { timeline: nextTimeline, snapshot: snapshot(3, "branch-alt") });
+      const body = request.postDataJSON() as { action: string; branch_id?: string; from_commit_id?: string; name?: string };
+      if (body.action === "fork") {
+        const branch = { id: `branch-${currentTimeline.branches.length + 1}`, story_id: story.id, name: body.name || "alternate", fork_commit_id: body.from_commit_id || currentTimeline.head.parent_commit_id, head_commit_id: body.from_commit_id || currentTimeline.head.id, head_turn: Math.max(0, currentTimeline.head.canonical_turn - 1), created_at: now, updated_at: now };
+        currentTimeline = { ...currentTimeline, revision: currentTimeline.revision + 1, branches: [...currentTimeline.branches, branch] };
+      } else if (body.action === "checkout") {
+        const branch = currentTimeline.branches.find((item) => item.id === body.branch_id) || currentTimeline.branches[0];
+        currentTimeline = { ...currentTimeline, active_branch_id: branch.id, revision: currentTimeline.revision + 1, head: { ...currentTimeline.head, id: branch.head_commit_id, branch_id: branch.id, canonical_turn: branch.head_turn, parent_commit_id: branch.fork_commit_id || currentTimeline.head.parent_commit_id } };
+      }
+      const active = currentTimeline.branches.find((branch) => branch.id === currentTimeline.active_branch_id)!;
+      return json(route, { timeline: currentTimeline, snapshot: snapshot(active.head_turn, active.id) });
     }
     if (path.endsWith("/history")) return json(route, { items: snapshot().messages, next_cursor: null });
     if (path.endsWith("/chapters")) return json(route, { items: snapshot().panels.chapters, next_cursor: null });
@@ -176,12 +185,10 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   await expect(page.getByRole("region", { name: "Challenge host" })).toHaveCount(0);
   await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.getByLabel("Structured dialogue for turn 4")).toContainText("Choose carefully.");
-  await page.getByText("Technical details", { exact: true }).first().click();
+  await page.locator(".generation-diagnostics summary").click();
   await expect(page.getByText("narrator rev 3")).toBeVisible();
   await expect(page.getByRole("list", { name: "Provider attempts" })).toContainText("TTFT 180 ms");
-  await page.getByText("Technical details", { exact: true }).nth(1).click();
-  await expect(page.getByText("gpt-5.4-mini · 13 s · 10,311 tokens · streamed")).toBeVisible();
-  await expect(page.getByText("Extended provider attempts were not recorded for this message.")).toBeVisible();
+  await expect(page.getByLabel("Generation debug summary")).toHaveText("gpt-5.4-mini · 13 s · 10,311 tokens · streamed");
 
   const composer = page.getByPlaceholder("What do you want to try?");
   await composer.fill("Trace the silver fracture");
@@ -230,6 +237,16 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth, fontSize: Number.parseFloat(getComputedStyle(document.querySelector("textarea")!).fontSize) }));
   expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
   if (browserName === "chromium" && page.viewportSize()!.width < 860) expect(overflow.fontSize).toBeGreaterThanOrEqual(16);
+});
+
+test("returns to the previous decision on a new branch and exposes chat-style branch navigation", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Try another choice" }).click();
+  await expect(page.getByText("Back at the previous decision on Turn 3 alternative 2.")).toBeVisible();
+  await expect(page.getByTitle("Turn 3 alternative 2")).toContainText("3/3");
+  await expect(page.getByRole("button", { name: "Previous story branch" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Next story branch" })).toBeDisabled();
 });
 
 test("shows canonical visual lineage and branch-local selection controls", async ({ page }) => {

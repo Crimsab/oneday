@@ -34,8 +34,8 @@ export function BranchNavigator({ timeline, busy, onFork, onRename, onCheckout }
       <label className="branch-name"><span>Branch name</span><input value={name} onChange={(event) => setName(event.target.value)} maxLength={60} placeholder={active ? `${active.name} alternate` : "Alternate path"} disabled={busy} /></label>
       <div className="branch-actions">
         <button type="button" disabled={busy || !name.trim() || !timeline.head} onClick={() => void onFork(name.trim()).then(() => setName(""))}><GitFork size={14} />Fork</button>
-        <button type="button" disabled={busy || !name.trim() || !target || target.id !== timeline.active_branch_id} onClick={() => target && void onRename(target.id, name.trim()).then(() => setName(""))}><Pencil size={14} />Rename active</button>
-        <button type="button" className="branch-checkout" disabled={busy || !target || target.id === timeline.active_branch_id} onClick={() => target && window.confirm(`Switch to “${target.name}”? Your current branch remains available.`) && void onCheckout(target.id)}>Checkout</button>
+        <button type="button" title="Rename active branch" disabled={busy || !name.trim() || !target || target.id !== timeline.active_branch_id} onClick={() => target && void onRename(target.id, name.trim()).then(() => setName(""))}><Pencil size={14} />Rename</button>
+        <button type="button" className="branch-checkout" title="Switch to selected branch" disabled={busy || !target || target.id === timeline.active_branch_id} onClick={() => target && window.confirm(`Switch to “${target.name}”? Your current branch remains available.`) && void onCheckout(target.id)}>Switch</button>
       </div>
 	  </div>
     </details>
