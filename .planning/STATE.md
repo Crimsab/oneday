@@ -3,25 +3,35 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
 current_phase: 38
-status: in_progress
-stopped_at: Phase 38.3 complete; proceeding to compatibility and universal release gates
-last_updated: "2026-07-11T18:18:00+02:00"
-last_activity: 2026-07-11 -- Bounded NPC agency, canonical map, EPUB/replay export, and strict authoring bibles deployed
+status: complete
+stopped_at: Phase 38 and the complete v2.0 P0/P1/P2 architecture-audit scope are verified and complete
+last_updated: "2026-07-11T18:31:33+02:00"
+last_activity: 2026-07-11 -- Universal compatibility and release gates passed from a clean canonical checkout
 progress:
   total_phases: 39
-  completed_phases: 37
-  total_plans: 89
-  completed_plans: 116
-  percent: 95
+  completed_phases: 39
+  total_plans: 141
+  completed_plans: 141
+  percent: 100
 ---
 
 # Project State
 
 **Current Phase:** 38
-**Status:** Phase 37 implementation complete; Phase 38 ready
+**Status:** Phase 38 complete; v2.0 P0/P1/P2 architecture-audit scope verified
 **Last Updated:** 2026-07-11
 
 ## Phase History
+
+- 2026-07-11: Phase 38 and the complete v2.0 P0/P1/P2 architecture-audit
+  scope completed on `homelab-main`. Bounded branch-safe NPC agency, the
+  canonical known-location map, branch EPUB/media replay exports, strict story
+  authoring bibles, and enforceable compatibility/release gates are live. A
+  clean canonical checkout passed Go, migration/compatibility, story-pack,
+  minigame eval, Rust, clippy, React/Vitest, production build, Playwright,
+  Docker, friend-safe hygiene, cross-platform artifacts, and clean build
+  provenance. Live schema V35, SQLite integrity/FKs, exports, TTS dry-run,
+  service health, and zero restarts were independently rechecked.
 
 - 2026-07-11: Phase 37 implementation completed on `homelab-main`. TTS now
   starts only from committed active-branch text, preserves narrator/dialogue
