@@ -157,18 +157,9 @@ func (cv *ChallengeView) Update(msg tea.Msg) (*ChallengeView, tea.Cmd) {
 		updated, cmd := cv.dice.Update(msg)
 		cv.dice = &updated
 		if dr, ok := msg.(components.DiceResultMsg); ok {
+			_ = dr
 			return cv, func() tea.Msg {
-				return ChallengeResolvedMsg{
-					Spec: cv.spec,
-					Result: &engine.ChallengeResult{
-						Passed:     dr.Passed,
-						Roll:       cv.result.Roll,
-						Total:      cv.result.Total,
-						Difficulty: cv.result.Difficulty,
-						Modifiers:  cv.result.Modifiers,
-						Detail:     cv.result.Detail,
-					},
-				}
+				return ChallengeResolvedMsg{Spec: cv.spec, Result: engine.EnsureLegacyChallengeOutcome(cv.result)}
 			}
 		}
 		return cv, cmd
@@ -178,22 +169,8 @@ func (cv *ChallengeView) Update(msg tea.Msg) (*ChallengeView, tea.Cmd) {
 		updated, cmd := cv.rps.Update(msg)
 		cv.rps = &updated
 		if rm, ok := msg.(components.RPSResultMsg); ok {
-			detail := "RPS: "
-			if rm.Draw {
-				detail += "draw → FAIL"
-			} else if rm.Passed {
-				detail += "win → PASS"
-			} else {
-				detail += "lose → FAIL"
-			}
 			return cv, func() tea.Msg {
-				return ChallengeResolvedMsg{
-					Spec: cv.spec,
-					Result: &engine.ChallengeResult{
-						Passed: rm.Passed,
-						Detail: detail,
-					},
-				}
+				return ChallengeResolvedMsg{Spec: cv.spec, Result: engine.EnsureLegacyChallengeOutcome(rm.Result)}
 			}
 		}
 		return cv, cmd
@@ -203,18 +180,8 @@ func (cv *ChallengeView) Update(msg tea.Msg) (*ChallengeView, tea.Cmd) {
 		updated, cmd := cv.memory.Update(msg)
 		cv.memory = &updated
 		if mm, ok := msg.(components.MemoryResultMsg); ok {
-			detail := "Memory sequence: PASS"
-			if !mm.Passed {
-				detail = "Memory sequence: FAIL"
-			}
 			return cv, func() tea.Msg {
-				return ChallengeResolvedMsg{
-					Spec: cv.spec,
-					Result: &engine.ChallengeResult{
-						Passed: mm.Passed,
-						Detail: detail,
-					},
-				}
+				return ChallengeResolvedMsg{Spec: cv.spec, Result: engine.EnsureLegacyChallengeOutcome(mm.Result)}
 			}
 		}
 		return cv, cmd
@@ -224,18 +191,8 @@ func (cv *ChallengeView) Update(msg tea.Msg) (*ChallengeView, tea.Cmd) {
 		updated, cmd := cv.quicktime.Update(msg)
 		cv.quicktime = &updated
 		if qm, ok := msg.(components.QuickTimeResultMsg); ok {
-			detail := "Quick-time: PASS"
-			if !qm.Passed {
-				detail = "Quick-time: FAIL"
-			}
 			return cv, func() tea.Msg {
-				return ChallengeResolvedMsg{
-					Spec: cv.spec,
-					Result: &engine.ChallengeResult{
-						Passed: qm.Passed,
-						Detail: detail,
-					},
-				}
+				return ChallengeResolvedMsg{Spec: cv.spec, Result: engine.EnsureLegacyChallengeOutcome(qm.Result)}
 			}
 		}
 		return cv, cmd
@@ -245,18 +202,8 @@ func (cv *ChallengeView) Update(msg tea.Msg) (*ChallengeView, tea.Cmd) {
 		updated, cmd := cv.riddle.Update(msg)
 		cv.riddle = &updated
 		if rm, ok := msg.(components.RiddleResultMsg); ok {
-			detail := "Riddle: PASS"
-			if !rm.Passed {
-				detail = "Riddle: FAIL"
-			}
 			return cv, func() tea.Msg {
-				return ChallengeResolvedMsg{
-					Spec: cv.spec,
-					Result: &engine.ChallengeResult{
-						Passed: rm.Passed,
-						Detail: detail,
-					},
-				}
+				return ChallengeResolvedMsg{Spec: cv.spec, Result: engine.EnsureLegacyChallengeOutcome(rm.Result)}
 			}
 		}
 		return cv, cmd

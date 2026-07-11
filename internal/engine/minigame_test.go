@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/crimsab/oneday/internal/game/contracts"
 )
 
 // --- RPS Tests ---
@@ -50,8 +52,8 @@ func TestRPSToChallengeResult(t *testing.T) {
 
 	draw := RPSResult{PlayerChoice: RPSRock, AIChoice: RPSRock, Outcome: "draw"}
 	result = RPSToChallengeResult(draw)
-	if result.Passed {
-		t.Error("draw should produce Passed=false")
+	if !result.Passed || result.Outcome == nil || result.Outcome.Degree != contracts.OutcomeSuccessWithCost {
+		t.Fatalf("draw should be an explicit success-with-cost, got %+v", result)
 	}
 }
 
@@ -71,9 +73,21 @@ func TestMemoryWrongElement(t *testing.T) {
 	seq := []string{"up", "down", "left", "right"}
 	mc := NewMemoryChallenge(seq, 0)
 
-	result := mc.CheckMemory([]string{"up", "down", "right", "right"})
+	result := mc.CheckMemory([]string{"up", "right", "right", "up"})
 	if result.Passed {
 		t.Errorf("wrong element should fail, got: %s", result.Detail)
+	}
+}
+
+func TestMemoryAwardsGradedProgress(t *testing.T) {
+	mc := NewMemoryChallenge([]string{"up", "down", "left", "right"}, 0)
+	near := mc.CheckMemory([]string{"up", "down", "left", "up"})
+	if !near.Passed || near.Outcome == nil || near.Outcome.Degree != contracts.OutcomeSuccessWithCost {
+		t.Fatalf("3/4 memory should succeed with cost, got %+v", near)
+	}
+	partial := mc.CheckMemory([]string{"up", "down", "right", "up"})
+	if partial.Passed || partial.Outcome == nil || partial.Outcome.Degree != contracts.OutcomeFailureWithProgress {
+		t.Fatalf("2/4 memory should fail with progress, got %+v", partial)
 	}
 }
 
@@ -149,6 +163,18 @@ func TestQuickTimeExactlyAtLimit(t *testing.T) {
 	}
 }
 
+func TestQuickTimeElapsedIsDeterministicAndGraded(t *testing.T) {
+	qtc := NewQuickTimeChallenge(2)
+	fast := qtc.CheckQuickTimeElapsed(500 * time.Millisecond)
+	if fast.Outcome == nil || fast.Outcome.Degree != contracts.OutcomeFullSuccess {
+		t.Fatalf("fast response degree = %+v", fast.Outcome)
+	}
+	late := qtc.CheckQuickTimeElapsed(1500 * time.Millisecond)
+	if late.Outcome == nil || late.Outcome.Degree != contracts.OutcomeSuccessWithCost {
+		t.Fatalf("in-window late response degree = %+v", late.Outcome)
+	}
+}
+
 // --- Riddle Tests ---
 
 func TestRiddleExactMatch(t *testing.T) {
@@ -204,5 +230,18 @@ func TestRiddleOneLetterPartialDoesNotPass(t *testing.T) {
 	result := rc.CheckRiddle("a")
 	if result.Passed {
 		t.Errorf("one-letter partial answer should fail, got: %s", result.Detail)
+	}
+}
+
+func TestRiddleRejectsSubstringExploitAndAcceptsNormalizedAlias(t *testing.T) {
+	rc := NewRiddleChallenge("What has roots?", "a mountain", "peak")
+	if rc.CheckRiddle("mount").Passed {
+		t.Fatal("substring exploit should not pass")
+	}
+	if !rc.CheckRiddle("The mountain!").Passed {
+		t.Fatal("articles and punctuation should normalize")
+	}
+	if !rc.CheckRiddle("peak").Passed {
+		t.Fatal("explicit semantic alias should pass")
 	}
 }

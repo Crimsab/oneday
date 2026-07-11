@@ -14,8 +14,7 @@ import (
 
 // RPSResultMsg is emitted when RPS resolves.
 type RPSResultMsg struct {
-	Passed bool
-	Draw   bool
+	Result *engine.ChallengeResult
 }
 
 // rpsRevealTickMsg triggers reveal animation.
@@ -80,10 +79,8 @@ func (r RPSModel) Update(msg tea.Msg) (RPSModel, tea.Cmd) {
 			}
 		case "result":
 			result := *r.result
-			passed := result.Outcome == "win"
-			draw := result.Outcome == "draw"
 			return r, func() tea.Msg {
-				return RPSResultMsg{Passed: passed, Draw: draw}
+				return RPSResultMsg{Result: engine.RPSToChallengeResult(result)}
 			}
 		}
 

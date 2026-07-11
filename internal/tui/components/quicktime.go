@@ -14,7 +14,7 @@ import (
 
 // QuickTimeResultMsg is emitted when quick-time resolves.
 type QuickTimeResultMsg struct {
-	Passed bool
+	Result *engine.ChallengeResult
 }
 
 // quickTimeTickMsg decrements the countdown.
@@ -27,18 +27,27 @@ type QuickTimeModel struct {
 	timeLeft  time.Duration
 	pressed   bool
 	passed    bool
+	result    *engine.ChallengeResult
+	now       func() time.Time
 	width     int
 	height    int
 }
 
 // NewQuickTimeModel creates a quick-time challenge.
 func NewQuickTimeModel(challenge *engine.QuickTimeChallenge, width, height int) QuickTimeModel {
+	return NewQuickTimeModelWithClock(challenge, width, height, time.Now)
+}
+
+// NewQuickTimeModelWithClock makes timing injectable for deterministic tests
+// and alternate hosts while retaining the normal TUI wall-clock adapter.
+func NewQuickTimeModelWithClock(challenge *engine.QuickTimeChallenge, width, height int, now func() time.Time) QuickTimeModel {
 	return QuickTimeModel{
 		challenge: challenge,
 		phase:     "ready",
 		timeLeft:  challenge.TimeLimit,
 		width:     width,
 		height:    height,
+		now:       now,
 	}
 }
 
@@ -56,18 +65,19 @@ func (q QuickTimeModel) Update(msg tea.Msg) (QuickTimeModel, tea.Cmd) {
 		switch q.phase {
 		case "ready":
 			q.phase = "active"
-			q.challenge.StartTime = time.Now()
+			q.challenge.StartTime = q.now()
 			q.timeLeft = q.challenge.TimeLimit
 			return q, tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
 				return quickTimeTickMsg{}
 			})
 		case "active":
-			elapsed := time.Since(q.challenge.StartTime)
+			elapsed := q.now().Sub(q.challenge.StartTime)
 			q.timeLeft = q.challenge.TimeLimit - elapsed
 			if q.timeLeft <= 0 {
 				q.timeLeft = 0
 				q.pressed = false
 				q.passed = false
+				q.result = q.challenge.CheckQuickTimeElapsed(q.challenge.TimeLimit + time.Millisecond)
 				q.phase = "result"
 				return q, nil
 			}
@@ -82,15 +92,16 @@ func (q QuickTimeModel) Update(msg tea.Msg) (QuickTimeModel, tea.Cmd) {
 			switch q.phase {
 			case "active":
 				// Any key press = success.
-				result := q.challenge.CheckQuickTime(time.Now())
+				result := q.challenge.CheckQuickTime(q.now())
 				q.pressed = true
 				q.passed = result.Passed
+				q.result = result
 				q.phase = "result"
 				return q, nil
 			case "result":
-				passed := q.passed
+				result := q.result
 				return q, func() tea.Msg {
-					return QuickTimeResultMsg{Passed: passed}
+					return QuickTimeResultMsg{Result: result}
 				}
 			}
 		}
