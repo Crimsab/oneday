@@ -431,6 +431,8 @@ summary:focus-visible {
   color: var(--text);
 }
 .settings-status { color: color-mix(in srgb, var(--accent) 72%, var(--text)); }
+.settings-policy-toggle { position: absolute; top: 50%; right: 14px; display: inline-flex; align-items: center; gap: 7px; transform: translateY(-50%); color: var(--muted); cursor: pointer; font-size: 10px; }
+.settings-policy-toggle input { accent-color: var(--accent); }
 .map-art-settings p { color: var(--muted); }
 
 /* Every utility surface shares the same carbon material and control vocabulary. */
@@ -554,6 +556,7 @@ summary:focus-visible {
   .history-technical-export { grid-column: auto; }
   .map-art-settings { padding: 15px; }
   .map-art-settings .settings-status { position: static; }
+  .settings-policy-toggle { position: static; justify-self: start; margin-top: 5px; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

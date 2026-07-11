@@ -343,7 +343,11 @@ function OptionsContent({
         <article data-setting-id="automatic-challenges"><strong>Automatic challenges</strong><p>NPC situations can open an interactive challenge. OneDay selects the family automatically, so the player never chooses the easiest mechanic.</p><span className="settings-status">Enabled</span></article>
         <article data-setting-id="timing-free"><strong>Timing-free selection</strong><p>The selector excludes reflex-only challenges when a timing-free mechanic can represent the same scene.</p><span className="settings-status">Required</span></article>
         <article data-setting-id="challenge-cooldown"><strong>Challenge cooldown</strong><p>Recent branch history reduces repetition and blocks a family during its cooldown window.</p><span className="settings-status">Active branch</span></article>
-        <label className="toggle-row choice-detail-setting" data-setting-id="choice-details"><span><strong>Choice details</strong><small>Show intent, risk, scope, certainty, and related attributes beneath each suggested action.</small></span><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /></label>
+        <article className="choice-detail-setting" data-setting-id="choice-details">
+          <strong>Choice details</strong>
+          <p>Show intent, risk, scope, certainty, and related attributes beneath each suggested action.</p>
+          <label className="settings-policy-toggle"><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /><span>Show details</span></label>
+        </article>
       </div>,
     },
     {
