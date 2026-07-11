@@ -1,6 +1,6 @@
 import { Search } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import { getChapters, getHistory, getStoryExport } from "../api";
+import { getChapters, getHistory, getStoryExport, getTelemetryExport } from "../api";
 import { readableStructuredText } from "../format";
 import type { ChapterView, MessageView, StorySnapshot } from "../types";
 import { MarkdownText } from "./MarkdownText";
@@ -86,6 +86,23 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     }
   };
 
+  const exportTelemetry = async () => {
+    setBusy(true);
+    try {
+      const result = await getTelemetryExport(snapshot.story.id);
+      const url = URL.createObjectURL(new Blob([result.content], { type: "application/x-ndjson" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = result.filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setError(errorText(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="history-reader">
       <label className="history-search">
@@ -96,6 +113,7 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
       <div className="history-export">
         <button type="button" disabled={busy} onClick={() => void exportAs("markdown")}>Export Markdown</button>
         <button type="button" disabled={busy} onClick={() => void exportAs("json")}>Export JSON</button>
+        <button type="button" disabled={busy} onClick={() => void exportTelemetry()}>Export telemetry</button>
       </div>
       {error && <p className="inline-error" role="alert">{error}</p>}
       <section aria-labelledby={`${id}-messages`}>

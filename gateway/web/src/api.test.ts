@@ -8,8 +8,10 @@ import {
   generateVisualAssets,
   getChapters,
   getHistory,
+  getMessageDiagnostics,
   getStories,
   getStoryExport,
+  getTelemetryExport,
   getStoryDeletePlan,
   getTimeline,
   updateTimeline,
@@ -193,6 +195,16 @@ describe("api request handling", () => {
     mockFetch(new Response(JSON.stringify({ format: "json", filename: "history.json", content: "{}" }), { status: 200 }));
     await expect(getStoryExport("story-1", "json")).resolves.toMatchObject({ filename: "history.json" });
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/export?format=json", {});
+  });
+
+  it("loads message diagnostics and redacted telemetry exports", async () => {
+    mockFetch(new Response(JSON.stringify({ run_id: "run-1", attempts: [] }), { status: 200 }));
+    await expect(getMessageDiagnostics("story/one", 42)).resolves.toMatchObject({ run_id: "run-1" });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/messages/42/diagnostics", {});
+
+    mockFetch(new Response(JSON.stringify({ format: "jsonl", filename: "telemetry.jsonl", content: "", count: 0, truncated: false }), { status: 200 }));
+    await expect(getTelemetryExport("story/one", 250)).resolves.toMatchObject({ format: "jsonl", count: 0 });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/telemetry/export?limit=250", {});
   });
 
   it("rejects successful non-JSON responses before they crash React state", async () => {

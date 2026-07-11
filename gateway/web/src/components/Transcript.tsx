@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { compactText, messageClock, readableStructuredText } from "../format";
 import { turnEventDetail, turnEventTitle } from "../turnEvents";
 import { MarkdownText } from "./MarkdownText";
+import { MessageDiagnostics } from "./MessageDiagnostics";
 import type { MessageView, PendingTurnView, TurnStreamEvent } from "../types";
 
 interface TranscriptProps {
@@ -55,6 +56,7 @@ function TranscriptMessage({ message }: { message: MessageView }) {
       <div className="message-body">
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={`Structured dialogue for turn ${message.turn}`}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || "Unknown speaker"}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
+        <MessageDiagnostics message={message} />
       </div>
     </article>
   );

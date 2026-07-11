@@ -803,7 +803,7 @@ Plans:
 
 - [x] Plan 34.1: Add generation run/attempt/event and prompt profile/revision schema
 - [x] Plan 34.2: Instrument provider routing, repair, judge, reroll, summary, image, and future TTS stages
-- [ ] Plan 34.3: Add message diagnostics API/UI plus JSONL export, retention, and redaction tests
+- [x] Plan 34.3: Add message diagnostics API/UI plus JSONL export, retention, and redaction tests
 
 ---
 

@@ -7,6 +7,7 @@ import type {
   Health,
 	HistoryPage,
 	ChapterPage,
+  GenerationDiagnostics,
   GenerateVisualAssetsRequest,
   LoadEnvelope,
   LoadResponse,
@@ -24,6 +25,7 @@ import type {
   StoryEnhanceResponse,
   StorySnapshot,
 	StoryExport,
+	TelemetryExport,
 	TimelineEnvelope,
 	TimelineMutationResponse,
 	TimelineResponse,
@@ -132,6 +134,8 @@ export function updateTimeline(storyId:string,payload:TimelineEnvelope):Promise<
 export function getHistory(storyId:string,cursor?:number,search=""):Promise<HistoryPage> { const query=new URLSearchParams({limit:"40",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<HistoryPage>(`/api/stories/${encodeURIComponent(storyId)}/history?${query}`); }
 export function getChapters(storyId:string,cursor?:number,search=""):Promise<ChapterPage> { const query=new URLSearchParams({limit:"30",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<ChapterPage>(`/api/stories/${encodeURIComponent(storyId)}/chapters?${query}`); }
 export function getStoryExport(storyId:string,format:"markdown"|"json"):Promise<StoryExport> { return request<StoryExport>(`/api/stories/${encodeURIComponent(storyId)}/export?format=${format}`); }
+export function getMessageDiagnostics(storyId:string,messageId:number):Promise<GenerationDiagnostics> { return request<GenerationDiagnostics>(`/api/stories/${encodeURIComponent(storyId)}/messages/${encodeURIComponent(String(messageId))}/diagnostics`); }
+export function getTelemetryExport(storyId:string,limit=1000):Promise<TelemetryExport> { return request<TelemetryExport>(`/api/stories/${encodeURIComponent(storyId)}/telemetry/export?limit=${encodeURIComponent(String(limit))}`); }
 
 export function getVisualAssets(storyId: string): Promise<VisualAssetsResponse> {
   return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-assets`);

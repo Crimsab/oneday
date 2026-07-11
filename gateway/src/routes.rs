@@ -1,4 +1,4 @@
-use crate::{assets, db, engine, events::TurnStreamEvent, AppState};
+use crate::{assets, db, engine, events::TurnStreamEvent, telemetry, AppState};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
@@ -41,6 +41,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories/:story_id/history", get(history))
         .route("/api/stories/:story_id/chapters", get(chapters))
         .route("/api/stories/:story_id/export", get(export_story))
+        .route(
+            "/api/stories/:story_id/messages/:message_id/diagnostics",
+            get(message_diagnostics),
+        )
+        .route(
+            "/api/stories/:story_id/telemetry/export",
+            get(export_telemetry),
+        )
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
         .route(
             "/api/stories/:story_id/visual-assets/:asset_id",
@@ -297,6 +305,26 @@ async fn export_story(
 ) -> Result<Json<db::StoryExport>, ApiError> {
     Ok(Json(
         db::export_story(&state.pool, &story_id, &query.format).await?,
+    ))
+}
+
+async fn message_diagnostics(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, message_id)): Path<(String, i64)>,
+) -> Result<Json<telemetry::GenerationDiagnostics>, ApiError> {
+    Ok(Json(
+        telemetry::message_diagnostics(&state.pool, &story_id, message_id).await?,
+    ))
+}
+
+async fn export_telemetry(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Query(query): Query<PageQuery>,
+) -> Result<Json<telemetry::TelemetryExport>, ApiError> {
+    Ok(Json(
+        telemetry::export_story_telemetry(&state.pool, &story_id, query.limit.unwrap_or(1000))
+            .await?,
     ))
 }
 
@@ -671,6 +699,7 @@ impl From<anyhow::Error> for ApiError {
             || message.contains("belongs to story");
         let is_not_found = message.contains("no rows returned")
             || message.contains("no rows in result set")
+            || message.contains("generation diagnostics not found")
             || message.contains("story not found")
             || message.contains("visual asset not found")
             || message.contains("visual asset version not found");

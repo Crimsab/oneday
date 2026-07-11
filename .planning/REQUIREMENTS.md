@@ -319,12 +319,12 @@
 
 ### Causal AI Telemetry and Prompt Versioning
 
-- [ ] **TRACE-01**: Every AI operation persists a generation run with trace, parent run, story, branch, source commit, message, stage, and aggregate usage/cost/timing.
-- [ ] **TRACE-02**: Every provider attempt persists provider/model, reasoning configuration, streaming request/observation, TTFT, duration, tokens, cost, retry/repair/reroll reason, and error classification.
+- [x] **TRACE-01**: Every AI operation persists a generation run with trace, parent run, story, branch, source commit, message, stage, and aggregate usage/cost/timing.
+- [x] **TRACE-02**: Every provider attempt persists provider/model, reasoning configuration, streaming request/observation, TTFT, duration, tokens, cost, retry/repair/reroll reason, and error classification.
 - [ ] **TRACE-03**: Narrator, scene judge, repair, reroll, chapter summary, image, and TTS stages retain causal parent/child lineage instead of only aggregate totals.
-- [ ] **TRACE-04**: Prompt profiles and revisions are versioned and hashed without persisting private chain-of-thought or unredacted secrets.
-- [ ] **TRACE-05**: Each AI-authored message exposes a compact player-safe info summary and an optional diagnostics drawer with attempt details.
-- [ ] **TRACE-06**: Structured JSONL export and retention/redaction policies make telemetry useful for evals without leaking secrets or hidden reasoning.
+- [x] **TRACE-04**: Prompt profiles and revisions are versioned and hashed without persisting private chain-of-thought or unredacted secrets.
+- [x] **TRACE-05**: Each AI-authored message exposes a compact player-safe info summary and an optional diagnostics drawer with attempt details.
+- [x] **TRACE-06**: Structured JSONL export and retention/redaction policies make telemetry useful for evals without leaking secrets or hidden reasoning.
 
 ### Branch-Aware Visual Canon
 

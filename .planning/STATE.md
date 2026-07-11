@@ -2,26 +2,36 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
-current_phase: 34
+current_phase: 35
 status: in_progress
-stopped_at: Phase 33 complete on homelab-main; proceeding to Phase 34 causal telemetry and prompt profiles
-last_updated: "2026-07-11T03:34:18+02:00"
-last_activity: 2026-07-11 -- Phase 33 branch navigation, history, browser/TUI parity, and responsive E2E coverage deployed
+stopped_at: Phase 34 implementation complete on homelab-main; proceeding to Phase 35 branch-aware visual canon
+last_updated: "2026-07-11T15:03:00+02:00"
+last_activity: 2026-07-11 -- Phase 34 causal telemetry, safe message diagnostics, redacted export, and retention deployed
 progress:
   total_phases: 39
-  completed_phases: 33
+  completed_phases: 34
   total_plans: 89
-  completed_plans: 101
-  percent: 77
+  completed_plans: 102
+  percent: 87
 ---
 
 # Project State
 
-**Current Phase:** 34
-**Status:** Phase 33 complete; Phase 34 ready
+**Current Phase:** 35
+**Status:** Phase 34 implementation complete; Phase 35 ready
 **Last Updated:** 2026-07-11
 
 ## Phase History
+
+- 2026-07-11: Phase 34 implementation completed on `homelab-main`. Versioned
+  prompt profiles and causal generation runs now retain provider attempts,
+  streaming/timing/usage/cost aggregates, stage lineage, and transactionally
+  bound authoring messages without storing raw prompts or private reasoning.
+  Browser messages show a compact safe summary with lazy operator diagnostics;
+  branch history can export bounded redacted JSONL; startup retention is
+  policy-driven. Go, Rust, browser unit/build, Playwright desktop/mobile, live
+  schema V32, API, SQLite integrity, and rendered desktop/mobile checks passed.
+  TRACE-03 remains open only for the concrete TTS binding delivered in Phase 37.
 
 - 2026-07-11: Phase 33 completed on `homelab-main`. Browser and TUI now share
   branch command semantics; branch-aware history and chapters are searchable,
