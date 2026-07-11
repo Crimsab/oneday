@@ -295,17 +295,8 @@ Challenge types:
   `+"`"+`{"type": "skill_check", "skill": "Lockpicking", "skill_level": 2, "description": "Expert lock"}`+"`"+`
 - **relationship_check** — require NPC disposition above a threshold (resolves instantly)
   `+"`"+`{"type": "relationship_check", "npc_name": "Lyanna", "disposition": 30, "description": "Lyanna trusts you"}`+"`"+`
-- **mini_game** — interactive mini-game the player must play:
-  - RPS: `+"`"+`{"type": "mini_game", "mini_game": "rps", "description": "Gamble on a hand game"}`+"`"+`
-  - Memory: `+"`"+`{"type": "mini_game", "mini_game": "memory", "sequence": ["up","down","left","right","up"], "description": "Repeat the ritual pattern"}`+"`"+`
-  - Quick-time: `+"`"+`{"type": "mini_game", "mini_game": "quicktime", "time_limit": 3.0, "description": "Dodge the trap!"}`+"`"+`
-  - Riddle: `+"`"+`{"type": "mini_game", "mini_game": "riddle", "riddle": "I speak without a mouth...", "answer": "echo", "description": "Answer the sphinx"}`+"`"+`
-  - Deduction: `+"`"+`{"type": "mini_game", "mini_game": "deduction", "description": "Connect the evidence and commit to a conclusion"}`+"`"+`
-  - Negotiation: `+"`"+`{"type": "mini_game", "mini_game": "negotiation", "description": "Choose an approach and decide what leverage to reveal"}`+"`"+`
-  - Pattern: `+"`"+`{"type": "mini_game", "mini_game": "pattern", "description": "Complete a timing-free logical pattern"}`+"`"+`
-  - Bidding: `+"`"+`{"type": "mini_game", "mini_game": "bidding", "description": "Make an offer under a hard budget"}`+"`"+`
-  - Courtroom: `+"`"+`{"type": "mini_game", "mini_game": "courtroom", "description": "Choose a procedural move and evidence to expose"}`+"`"+`
-  - Social comedy: `+"`"+`{"type": "mini_game", "mini_game": "comedy", "description": "Turn the social beat with a timing-free comedy move"}`+"`"+`
+- **mini_game** — an interactive dramatic beat. Describe the situation and stakes, but do not choose the minigame family. The GAME ENGINE selects it automatically from narrative fit, difficulty, cooldown, story rules, and accessibility:
+  `+"`"+`{"type": "mini_game", "difficulty": 55, "npc_name": "Lyanna", "description": "Convince the guard without revealing the forged invitation"}`+"`"+`
 
 ### Challenge Rules
 - Use challenges **sparingly** — 1-2 per scene at most, never every turn
@@ -314,7 +305,7 @@ Challenge types:
 - Include relevant modifiers for skills/items/traits that would logically help
 - After the player sends `+"`"+`[Challenge Result: type PASSED/FAILED — detail]`+"`"+`, narrate the outcome accordingly
 - Branch your narrative meaningfully based on pass vs fail — don't make fail states dead ends
-- Mini-games are for special dramatic moments. Prefer deduction, negotiation, pattern, or bidding when they fit; they are genre-neutral and timing-free. Quick-time is optional and must never be required when a timing-free alternative fits.
+- Mini-games are for special dramatic moments. Never select or name the family yourself; provide enough concrete context for the engine to select a timing-free mechanic intelligently.
 - Passive checks (stat/item/skill/relationship) resolve silently — use them for gate-keeping, not drama
 
 ## Narrative Momentum

@@ -38,3 +38,29 @@ func TestMiniGameSelectorFailsWhenPolicyExcludesEverything(t *testing.T) {
 		t.Fatal("timing-free policy accepted reflex-only pool")
 	}
 }
+
+func TestAutomaticMiniGameTagsMapNarrativeSituationToSemanticFamilies(t *testing.T) {
+	cases := []struct {
+		text string
+		want MiniGameType
+	}{
+		{"Connect the contradictory clues and expose the false identity", MiniGameDeduction},
+		{"Convince the guard using leverage without starting a fight", MiniGameNegotiation},
+		{"Decode the ritual mechanism and complete its sequence", MiniGamePattern},
+		{"Outbid the rival at the auction without exceeding the budget", MiniGameBidding},
+		{"Cross-examine the witness during the trial", MiniGameCourtroom},
+		{"Recover from the embarrassing banter with a callback", MiniGameComedy},
+	}
+	for _, tc := range cases {
+		selection, err := SelectMiniGame(DefaultMiniGameCandidates(), MiniGameSelectionContext{
+			NarrativeTags: automaticMiniGameTags(tc.text), CurrentTurn: 20,
+			Difficulty: 50, TimingFreeOnly: true,
+		})
+		if err != nil {
+			t.Fatalf("%q: %v", tc.text, err)
+		}
+		if selection.Definition.Kind != tc.want {
+			t.Fatalf("%q selected %s, want %s: %+v", tc.text, selection.Definition.Kind, tc.want, selection)
+		}
+	}
+}

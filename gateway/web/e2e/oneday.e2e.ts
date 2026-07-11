@@ -43,10 +43,14 @@ async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
 
-async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
+function automaticPatternMiniGame() {
+  return { protocol_version: 1, id: "mini-auto-pattern", story_id: story.id, branch_id: "branch-main", turn: 4, seed: 7, definition: { id: "pattern-generic", kind: "pattern", prompt: "Decode the fractured seal by completing its pattern.", difficulty: 50, options: ["8", "9", "10"], rules: { selection_reason: "difficulty fit 50; 4 narrative tag matches; timing-free" } }, runtime: { phase: "active", revision: 1, state: {}, history: [{ action: "start" }] } };
+}
+
+async function mockGateway(page: Page, options: { failAction?: boolean; activeMiniGame?: boolean } = {}) {
   let failAction = Boolean(options.failAction);
   let actionRequests = 0;
-  let activeMiniGame: any = null;
+  let activeMiniGame: any = options.activeMiniGame ? automaticPatternMiniGame() : null;
   let visualCanUndo = true;
   let visualCanRedo = false;
   let audioGenerated = false;
@@ -149,6 +153,8 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
         failAction = false;
         return json(route, { error: "simulated rollback" }, 500);
       }
+      const body = request.postDataJSON() as { action?: { text?: string } };
+      if (body.action?.text?.startsWith("[Challenge Result:")) activeMiniGame = null;
       return json(route, { events: [{ id: "challenge-start", type: "challenge.started", payload: { protocol_version: "challenge.v1" } }, { id: "challenge-end", type: "challenge.resolved", payload: { degree: "success" } }, { id: "commit", type: "turn.committed", payload: {} }], snapshot: snapshot(5) });
     }
     return json(route, {});
@@ -162,6 +168,7 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   const requests = await mockGateway(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Narrative Transcript" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Challenge host" })).toHaveCount(0);
   await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.getByLabel("Structured dialogue for turn 4")).toContainText("Choose carefully.");
   await expect(page.getByText("codex · gpt-5.5 · 1.3 s · 321 tokens · streamed")).toBeVisible();
@@ -245,20 +252,20 @@ test("plays a timing-free minigame through the shared browser host", async ({ pa
   const errors: string[] = [];
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   page.on("pageerror", (error) => errors.push(error.message));
-  await mockGateway(page);
+  const requests = await mockGateway(page, { activeMiniGame: true });
   await page.goto("/");
   const host = page.getByRole("region", { name: "Challenge host" });
-  await expect(host.getByRole("button", { name: "Auto-fit" })).toBeVisible();
-  await expect(host.getByRole("button", { name: "Courtroom" })).toBeVisible();
-  await expect(host.getByRole("button", { name: "Comedy" })).toBeVisible();
-  await expect(host.getByRole("button", { name: "Pattern" })).toBeVisible();
-  await host.getByRole("button", { name: "Pattern" }).click();
-  await expect(host.getByText("Complete the pattern: 2, 4, 6, ?")).toBeVisible();
-  await expect(host.getByText("Selected because: player selected; timing-free")).toBeVisible();
+  await expect(host).toBeVisible();
+  await expect(host.getByRole("button", { name: "Auto-fit" })).toHaveCount(0);
+  await expect(host.getByRole("button", { name: "Courtroom" })).toHaveCount(0);
+  await expect(host.getByText("Decode the fractured seal by completing its pattern.")).toBeVisible();
+  await expect(host.getByText(/Selected because:.*narrative tag matches.*timing-free/)).toBeVisible();
   await host.getByLabel("Pattern answer").selectOption("8");
+  const continuation = page.waitForRequest((request) => request.url().endsWith("/actions") && request.postData()?.includes("[Challenge Result:"));
   await host.getByRole("button", { name: "Resolve challenge" }).click();
-  await expect(host.getByText("full success", { exact: true })).toBeVisible();
-  await expect(host.getByText("Pattern answer: 8 → FULL SUCCESS")).toBeVisible();
+  await continuation;
+  await expect(host).toHaveCount(0);
+  expect(requests.actionRequests()).toBe(1);
   expect(errors).toEqual([]);
 });
 

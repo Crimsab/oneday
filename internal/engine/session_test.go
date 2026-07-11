@@ -86,6 +86,46 @@ func TestCommitTurnAdvancesImmutableTimelineAtomically(t *testing.T) {
 	}
 }
 
+func TestCommitTurnPersistsAutomaticMiniGameOnNewHead(t *testing.T) {
+	root := t.TempDir()
+	db, err := storage.Open(filepath.Join(root, "oneday-minigame.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createSessionTestStory(t, db, "story-auto-mini", 0)
+	session, err := NewGameSession(db, "story-auto-mini", filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close(db)
+	head, err := db.GetActiveTimeline("story-auto-mini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance := NewMiniGameInstance("mini-auto-test", "story-auto-mini", head.Branch.ID, 0, 42, DefaultMiniGameDefinition(MiniGameDeduction))
+	if err := NewMiniGameHost().Start(&instance); err != nil {
+		t.Fatal(err)
+	}
+	char, _ := db.GetCharacterByStory("story-auto-mini")
+	world, _ := db.GetWorldState("story-auto-mini")
+	world.CurrentTurn = 1
+	if err := session.CommitTurn(db, char, world, ChatEntry{Output: &ChatOutput{Narrative: "The witness contradicts herself.", AutomaticMiniGame: &instance}}); err != nil {
+		t.Fatal(err)
+	}
+	after, err := db.GetActiveTimeline("story-auto-mini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := db.GetActiveMiniGameInstance("story-auto-mini")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.ID != instance.ID || record.BranchID != after.Branch.ID || record.SourceCommitID != after.Commit.ID || record.Phase != string(MiniGameActive) {
+		t.Fatalf("automatic minigame lineage=%+v head=%+v", record, after)
+	}
+}
+
 func createSessionTestStory(t *testing.T, db *storage.DB, storyID string, currentTurn int) {
 	t.Helper()
 

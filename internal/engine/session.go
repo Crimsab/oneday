@@ -64,6 +64,7 @@ type ChatOutput struct {
 	ResolvedOutcome     *contracts.OutcomeEnvelope     `json:"resolved_outcome,omitempty"`
 	ChallengeInstance   *contracts.ChallengeInstance   `json:"challenge_instance,omitempty"`
 	ChallengeResolution *contracts.ChallengeResolution `json:"challenge_resolution,omitempty"`
+	AutomaticMiniGame   *MiniGameInstance              `json:"automatic_minigame,omitempty"`
 }
 
 // GameSession manages a play session's lifecycle and JSONL persistence.
@@ -418,7 +419,26 @@ func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world
 			PayloadJSON:    payload,
 			Events:         events,
 		})
-		return err
+		if err != nil {
+			return err
+		}
+		if entry.Output != nil && entry.Output.AutomaticMiniGame != nil {
+			instance := entry.Output.AutomaticMiniGame
+			instance.StoryID = gs.storyID
+			instance.BranchID = head.Branch.ID
+			instancePayload, serializeErr := NewMiniGameHost().Serialize(*instance)
+			if serializeErr != nil {
+				return fmt.Errorf("serializing automatic minigame: %w", serializeErr)
+			}
+			if _, saveErr := db.SaveMiniGameInstanceTx(tx, storage.MiniGameInstanceRecord{
+				ID: instance.ID, StoryID: gs.storyID, Turn: instance.Turn,
+				ProtocolVersion: instance.ProtocolVersion, Kind: string(instance.Definition.Kind),
+				Phase: string(instance.Runtime.Phase), Instance: instancePayload,
+			}, head.Branch.ID, commitID); saveErr != nil {
+				return fmt.Errorf("saving automatic minigame: %w", saveErr)
+			}
+		}
+		return nil
 	}); err != nil {
 		return false, err
 	}

@@ -644,6 +644,11 @@ func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.Game
 			return nil, err
 		}
 	}
+	if resp.AutomaticMiniGame != nil {
+		if err := appendEvent(contracts.EventChallengeStarted, map[string]any{"minigame_instance": resp.AutomaticMiniGame}); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := appendEvent(contracts.EventNarrativeFinal, map[string]any{
 		"narrative": resp.Narrative,
@@ -726,6 +731,7 @@ func (s *InProcessTurnService) newNarrator(storyID string) (*engine.Narrator, *e
 		s.cfg.Game.AutosaveEvery,
 	)
 	narrator.SetRAG(s.buildRAG(storyID))
+	narrator.SetPersistentMiniGames(true)
 	audio := audioservice.NewService(s.db, s.cfg.AI.TTS)
 	_, _ = audio.EnsureConfiguredVoiceProfiles()
 	narrator.SetCommittedAudioQueue(func(ctx context.Context, storyID string, messageID int64) error {
