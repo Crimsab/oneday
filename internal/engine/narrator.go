@@ -69,6 +69,7 @@ type Narrator struct {
 	asciiCfg               config.ASCIIArtConfig
 	dataDir                string
 	autosaveEvery          int
+	persistMiniGames       bool
 	rag                    *rag.RAG         // optional — nil means RAG is disabled
 	chapters               *ChapterManager  // optional — nil means chapter tracking is disabled
 	narratorCmd            *NarratorCommand // optional — nil means /narrator command is disabled
@@ -78,6 +79,10 @@ type Narrator struct {
 	loadedFromSaveID       string
 	loadedFromSaveName     string
 	committedAudioQueue    func(context.Context, string, int64) error
+}
+
+func (n *Narrator) SetPersistentMiniGames(enabled bool) {
+	n.persistMiniGames = enabled
 }
 
 func (n *Narrator) SetCommittedAudioQueue(queue func(context.Context, string, int64) error) {
@@ -834,6 +839,10 @@ func (n *Narrator) finalizeTurn(
 		}
 	}
 	normalizeNarrativeResponse(narrative)
+	if selected, selectErr := n.prepareAutomaticMiniGame(narrative, prep.currentTurn); selectErr == nil && selected != nil {
+		narrative.AutomaticMiniGame = selected
+		narrative.Choices = nil
+	}
 	if continuityErr := detectNarrativeContinuityIssue(n.story, narrative); continuityErr != nil {
 		repairCtx := ai.WithTelemetry(ctx, telemetryStage(prep.telemetry, "narrative_repair", resp.Telemetry.RunID))
 		repaired, repairResp, repairErr := n.repairNarrativeResponse(repairCtx, input, resp.Content, continuityErr)
@@ -970,6 +979,7 @@ func (n *Narrator) finalizeTurn(
 			ResolvedOutcome:     narrative.ResolvedOutcome,
 			ChallengeInstance:   narrative.ChallengeInstance,
 			ChallengeResolution: narrative.ChallengeResolution,
+			AutomaticMiniGame:   narrative.AutomaticMiniGame,
 		},
 		AIModel:           resp.Model,
 		AIProvider:        resp.Provider,

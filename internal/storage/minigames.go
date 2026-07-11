@@ -36,19 +36,44 @@ func (db *DB) SaveMiniGameInstance(record MiniGameInstanceRecord) (*MiniGameInst
 	if err != nil {
 		return nil, err
 	}
-	result, err := db.conn.Exec(`INSERT INTO minigame_instances
+	var saved *MiniGameInstanceRecord
+	err = db.WithTx(func(tx *sql.Tx) error {
+		var saveErr error
+		saved, saveErr = db.SaveMiniGameInstanceTx(tx, record, head.Branch.ID, head.Commit.ID)
+		return saveErr
+	})
+	return saved, err
+}
+
+func (db *DB) SaveMiniGameInstanceTx(tx *sql.Tx, record MiniGameInstanceRecord, branchID, sourceCommitID string) (*MiniGameInstanceRecord, error) {
+	if tx == nil {
+		return nil, errors.New("transaction is required")
+	}
+	if strings.TrimSpace(record.ID) == "" || strings.TrimSpace(record.StoryID) == "" || strings.TrimSpace(record.Kind) == "" {
+		return nil, errors.New("minigame id, story, and kind are required")
+	}
+	if !json.Valid(record.Instance) {
+		return nil, errors.New("minigame instance JSON is invalid")
+	}
+	if record.Phase != "ready" && record.Phase != "active" && record.Phase != "paused" && record.Phase != "resolved" {
+		return nil, fmt.Errorf("invalid minigame phase %q", record.Phase)
+	}
+	if strings.TrimSpace(branchID) == "" || strings.TrimSpace(sourceCommitID) == "" {
+		return nil, errors.New("minigame branch and source commit are required")
+	}
+	result, err := tx.Exec(`INSERT INTO minigame_instances
 		(id,story_id,turn,protocol_version,kind,phase,instance_json,branch_id,source_commit_id)
 		VALUES (?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET turn=excluded.turn,phase=excluded.phase,instance_json=excluded.instance_json,updated_at=CURRENT_TIMESTAMP
 		WHERE minigame_instances.story_id=excluded.story_id AND minigame_instances.branch_id=excluded.branch_id`,
-		record.ID, record.StoryID, record.Turn, record.ProtocolVersion, record.Kind, record.Phase, record.Instance, head.Branch.ID, head.Commit.ID)
+		record.ID, record.StoryID, record.Turn, record.ProtocolVersion, record.Kind, record.Phase, record.Instance, branchID, sourceCommitID)
 	if err != nil {
 		return nil, fmt.Errorf("saving minigame instance: %w", err)
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		return nil, errors.New("minigame instance belongs to another branch")
 	}
-	return db.GetMiniGameInstance(record.StoryID, record.ID)
+	return scanMiniGameInstance(tx.QueryRow(`SELECT id,story_id,turn,protocol_version,kind,phase,instance_json,branch_id,source_commit_id,created_at,updated_at FROM minigame_instances WHERE story_id=? AND id=? AND branch_id=?`, record.StoryID, record.ID, branchID))
 }
 
 func (db *DB) GetMiniGameInstance(storyID, instanceID string) (*MiniGameInstanceRecord, error) {

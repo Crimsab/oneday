@@ -25,7 +25,6 @@ import {
   runStoryWizard,
   selectVisualAssetVersion,
   stepVisualAssetSelection,
-  startMiniGame,
   submitAction,
   submitMeta,
   updateStory,
@@ -264,34 +263,6 @@ function App() {
 	const forkBranch = (name:string) => timeline?.head ? mutateTimeline({action:"fork",client_revision:snapshot?.version.revision ?? timeline.revision,from_commit_id:timeline.head.id,name}) : Promise.resolve();
 	const renameBranch = (branchId:string,name:string) => mutateTimeline({action:"rename",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId,name});
   const checkoutBranch = (branchId:string) => mutateTimeline({action:"checkout",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId});
-
-  const launchMiniGame = useCallback(async (kind: MiniGameKind | null) => {
-    if (!storyId) return;
-    setMiniGameBusy(true);
-    setMiniGameError("");
-    try {
-      const response = await startMiniGame(storyId, kind, [snapshot?.story.genre ?? "", snapshot?.story.tone ?? ""]);
-      setActiveMiniGame(response.instance ?? null);
-    } catch (error) {
-      setMiniGameError(errorMessage(error));
-    } finally {
-      setMiniGameBusy(false);
-    }
-  }, [snapshot?.story.genre, snapshot?.story.tone, storyId]);
-
-  const sendMiniGameInput = useCallback(async (input: MiniGameInput) => {
-    if (!storyId || !activeMiniGame) return;
-    setMiniGameBusy(true);
-    setMiniGameError("");
-    try {
-      const response = await inputMiniGame(storyId, activeMiniGame.id, input);
-      setActiveMiniGame(response.instance ?? null);
-    } catch (error) {
-      setMiniGameError(errorMessage(error));
-    } finally {
-      setMiniGameBusy(false);
-    }
-  }, [activeMiniGame, storyId]);
 
   useEffect(() => {
     if (!storyId || paused) {
@@ -649,6 +620,7 @@ function App() {
         text: meta.text,
       });
       setSnapshot(response.snapshot);
+	  void refreshMiniGame(storyId);
       if (response.meta) {
         setMetaResult(response.meta);
         setOverlay("meta");
@@ -667,6 +639,33 @@ function App() {
       await loadSnapshot().catch(() => undefined);
     } finally {
       setSending(false);
+    }
+  };
+
+  const sendMiniGameInput = async (input: MiniGameInput) => {
+    if (!storyId || !activeMiniGame || miniGameBusy || sending) return;
+    setMiniGameBusy(true);
+    setMiniGameError("");
+    try {
+      const response = await inputMiniGame(storyId, activeMiniGame.id, input);
+      const instance = response.instance ?? null;
+      setActiveMiniGame(instance);
+      const result = instance?.runtime.result;
+      if (instance?.runtime.phase === "resolved" && result) {
+        const degree = result.outcome?.degree ?? (result.passed ? "full_success" : "hard_failure");
+        const continuation = `[Challenge Result: mini_game ${degree.toUpperCase()} - ${result.detail}]`;
+        const continued = await sendAction({ kind: "free_text", text: continuation }, "Challenge resolved");
+        if (continued) {
+          setActiveMiniGame(null);
+          await refreshMiniGame(storyId);
+        } else {
+          setMiniGameError("The challenge was resolved, but narrative continuation needs a retry.");
+        }
+      }
+    } catch (error) {
+      setMiniGameError(errorMessage(error));
+    } finally {
+      setMiniGameBusy(false);
     }
   };
 
@@ -865,6 +864,7 @@ function App() {
         ),
       );
       setSnapshot(response.snapshot);
+      void refreshMiniGame(storyId);
       setLocalCommands((items) => [
         { id: clientId("command"), text: sourceText.trim(), turn: response.snapshot.world.current_turn, source: "browser" as const },
         ...items,
@@ -1198,8 +1198,8 @@ function App() {
             </section>
           )}
 
-          {snapshot && (
-            <MiniGameHost instance={activeMiniGame} busy={miniGameBusy} error={miniGameError} onStart={launchMiniGame} onInput={sendMiniGameInput} />
+          {snapshot && activeMiniGame && (
+            <MiniGameHost instance={activeMiniGame} busy={miniGameBusy || sending} error={miniGameError} onInput={sendMiniGameInput} />
           )}
 
           <Composer

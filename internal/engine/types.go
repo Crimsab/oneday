@@ -183,6 +183,7 @@ type NarrativeResponse struct {
 	ResolvedOutcome      *contracts.OutcomeEnvelope     `json:"resolved_outcome,omitempty"`
 	ChallengeInstance    *contracts.ChallengeInstance   `json:"challenge_instance,omitempty"`
 	ChallengeResolution  *contracts.ChallengeResolution `json:"challenge_resolution,omitempty"`
+	AutomaticMiniGame    *MiniGameInstance              `json:"automatic_minigame,omitempty"`
 }
 
 // Choice represents an AI-suggested action.

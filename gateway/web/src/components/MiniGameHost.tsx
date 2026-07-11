@@ -1,36 +1,25 @@
 import { useEffect, useState } from "react";
 import type { MiniGameInput, MiniGameInstance, MiniGameKind } from "../types";
 
-const playableKinds: Array<{ kind: MiniGameKind; label: string }> = [
-  { kind: "deduction", label: "Deduction" },
-  { kind: "negotiation", label: "Negotiation" },
-  { kind: "pattern", label: "Pattern" },
-  { kind: "bidding", label: "Bidding" },
-  { kind: "courtroom", label: "Courtroom" },
-  { kind: "comedy", label: "Comedy" },
-];
-
 export function MiniGameHost({
   instance,
   busy,
   error,
-  onStart,
   onInput,
 }: {
-  instance: MiniGameInstance | null;
+  instance: MiniGameInstance;
   busy: boolean;
   error: string;
-  onStart: (kind: MiniGameKind | null) => Promise<void>;
   onInput: (input: MiniGameInput) => Promise<void>;
 }) {
   const [value, setValue] = useState("");
   const [support, setSupport] = useState("");
-  const phase = instance?.runtime.phase;
+  const phase = instance.runtime.phase;
 
   useEffect(() => {
-    setValue(instance?.definition.options?.[0] ?? "");
+    setValue(instance.definition.options?.[0] ?? "");
     setSupport("");
-  }, [instance?.id]);
+  }, [instance.id]);
 
   const submit = () =>
     onInput({
@@ -44,21 +33,12 @@ export function MiniGameHost({
       <div className="minigame-host-head">
         <div>
           <span>Challenge Host</span>
-          <strong>{instance ? instance.definition.kind : "Choose a timing-free challenge"}</strong>
+          <strong>{instance.definition.kind}</strong>
         </div>
-        {instance && <small>{phase} · rev {instance.runtime.revision} · turn {instance.turn}</small>}
+        <small>{phase} · rev {instance.runtime.revision} · turn {instance.turn}</small>
       </div>
 
-      {(!instance || phase === "resolved") && (
-        <div className="minigame-launchers" aria-label="Start challenge family">
-          <button type="button" className="primary-action" disabled={busy} onClick={() => void onStart(null)}>Auto-fit</button>
-          {playableKinds.map(({ kind, label }) => (
-            <button type="button" key={kind} disabled={busy} onClick={() => void onStart(kind)}>{label}</button>
-          ))}
-        </div>
-      )}
-
-      {instance && phase !== "resolved" && (
+      {phase !== "resolved" && (
         <div className="minigame-play">
           <p>{instance.definition.prompt || "Resolve the challenge using the available information."}</p>
           <label>
@@ -88,13 +68,13 @@ export function MiniGameHost({
         </div>
       )}
 
-      {instance?.runtime.result && (
+      {instance.runtime.result && (
         <div className={`minigame-result ${instance.runtime.result.outcome?.degree ?? ""}`} aria-live="polite">
           <strong>{degreeLabel(instance.runtime.result.outcome?.degree)}</strong>
           <p>{instance.runtime.result.detail}</p>
         </div>
       )}
-      {instance?.definition.rules?.selection_reason && (
+      {instance.definition.rules?.selection_reason && (
         <small className="minigame-selection-reason">Selected because: {instance.definition.rules.selection_reason}</small>
       )}
       {error && <p className="model-error">{error}</p>}
