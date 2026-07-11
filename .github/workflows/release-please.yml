@@ -71,7 +71,7 @@ jobs:
           cargo build --manifest-path gateway/Cargo.toml
           cd gateway/web
           bun install --frozen-lockfile
-          bun test src
+          bun run test
           bun run build
           bunx playwright install --with-deps chromium
           bun run test:e2e

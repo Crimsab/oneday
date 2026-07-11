@@ -1189,7 +1189,9 @@ pub fn spawn_visual_generation_worker(state: Arc<AppState>) {
 }
 
 fn visual_generation_concurrency() -> usize {
-    parse_visual_generation_concurrency(std::env::var("ONEDAY_IMAGEGEN_CONCURRENCY").ok().as_deref())
+    parse_visual_generation_concurrency(
+        std::env::var("ONEDAY_IMAGEGEN_CONCURRENCY").ok().as_deref(),
+    )
 }
 
 fn parse_visual_generation_concurrency(value: Option<&str>) -> usize {
