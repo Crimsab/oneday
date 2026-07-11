@@ -39,6 +39,7 @@ import type {
 } from "../types";
 import type { VisualCatalog } from "../visualAssets";
 import { readyAssetUrl } from "../visualAssets";
+import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -416,6 +417,15 @@ function OptionsContent({
         onSave={onModelSettingsSave}
         onReload={onModelSettingsReload}
       />
+      {snapshot && (
+        <VoiceAssignmentEditor
+          storyId={snapshot.story.id}
+          language={snapshot.story.language}
+          revision={snapshot.version.revision}
+          protagonist={snapshot.character}
+          npcs={snapshot.panels.npcs}
+        />
+      )}
       <VisualDirectionSettings
         profile={visualProfile}
         assets={visualAssets}

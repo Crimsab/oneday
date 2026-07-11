@@ -1,6 +1,7 @@
 use crate::{assets, db, engine, events::TurnStreamEvent, telemetry, AppState};
+use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{header, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -58,6 +59,25 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/stories/:story_id/minigames/:instance_id/input",
             post(input_minigame),
         )
+        .route("/api/tts/providers", get(tts_catalog))
+        .route("/api/tts/voices", get(tts_catalog))
+        .route(
+            "/api/stories/:story_id/tts/settings",
+            get(tts_settings).put(update_tts_settings),
+        )
+        .route(
+            "/api/stories/:story_id/voice-assignments",
+            get(voice_assignments),
+        )
+        .route(
+            "/api/stories/:story_id/voice-assignments/:assignment_id",
+            put(update_voice_assignment),
+        )
+        .route(
+            "/api/stories/:story_id/messages/:message_id/audio",
+            get(message_audio).post(create_message_audio),
+        )
+        .route("/api/audio/:audio_asset_id", get(audio_asset))
         .route(
             "/api/stories/:story_id/visual-assets/:asset_id",
             put(update_visual_asset_prompt),
@@ -169,6 +189,146 @@ async fn input_minigame(
     Ok(Json(
         engine::input_minigame(state, &story_id, &instance_id, payload).await?,
     ))
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct TTSCatalogQuery {
+    #[serde(default)]
+    provider: String,
+    #[serde(default)]
+    language: String,
+}
+
+async fn tts_catalog(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<TTSCatalogQuery>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(
+        engine::audio(
+            state,
+            json!({
+                "operation": "catalog", "provider": query.provider, "language": query.language
+            }),
+        )
+        .await?,
+    ))
+}
+
+async fn tts_settings(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(
+        engine::audio(
+            state,
+            json!({"operation":"settings-get","story_id":story_id}),
+        )
+        .await?,
+    ))
+}
+
+async fn update_tts_settings(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(mut payload): Json<serde_json::Value>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    let revision = payload
+        .get("client_revision")
+        .and_then(|value| value.as_i64())
+        .unwrap_or(-1);
+    if let Some(object) = payload.as_object_mut() {
+        object.remove("client_revision");
+    }
+    Ok(Json(engine::audio(state, json!({"operation":"settings-put","story_id":story_id,"client_revision":revision,"settings":payload})).await?))
+}
+
+async fn voice_assignments(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(
+        engine::audio(
+            state,
+            json!({"operation":"assignments-get","story_id":story_id}),
+        )
+        .await?,
+    ))
+}
+
+async fn update_voice_assignment(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, assignment_id)): Path<(String, String)>,
+    Json(mut payload): Json<serde_json::Value>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    let revision = payload
+        .get("client_revision")
+        .and_then(|value| value.as_i64())
+        .unwrap_or(-1);
+    if let Some(object) = payload.as_object_mut() {
+        object.remove("client_revision");
+    }
+    Ok(Json(engine::audio(state, json!({"operation":"assignment-put","story_id":story_id,"assignment_id":assignment_id,"client_revision":revision,"assignment":payload})).await?))
+}
+
+async fn message_audio(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, message_id)): Path<(String, i64)>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(
+        engine::audio(
+            state,
+            json!({"operation":"message-get","story_id":story_id,"message_id":message_id}),
+        )
+        .await?,
+    ))
+}
+
+async fn create_message_audio(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, message_id)): Path<(String, i64)>,
+) -> Result<Json<engine::GatewayAudioResponse>, ApiError> {
+    Ok(Json(
+        engine::audio(
+            state,
+            json!({"operation":"message-create","story_id":story_id,"message_id":message_id}),
+        )
+        .await?,
+    ))
+}
+
+async fn audio_asset(
+    State(state): State<Arc<AppState>>,
+    Path(audio_asset_id): Path<String>,
+) -> Result<Response, ApiError> {
+    let response = engine::audio(
+        state,
+        json!({"operation":"asset-path","asset_id":audio_asset_id}),
+    )
+    .await?;
+    let path = response.file_path.clone();
+    let bytes = tokio::task::spawn_blocking(move || std::fs::read(path))
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?
+        .map_err(|err| anyhow::anyhow!(err))?;
+    if bytes.len() > 64 << 20 {
+        return Err(anyhow::anyhow!("audio asset exceeds the 64 MiB serving limit").into());
+    }
+    let content_type = match response.format.as_str() {
+        "wav" => "audio/wav",
+        "opus" => "audio/ogg",
+        "aac" => "audio/aac",
+        _ => "audio/mpeg",
+    };
+    Ok(Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(
+            header::CACHE_CONTROL,
+            "private, max-age=31536000, immutable",
+        )
+        .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
+        .body(Body::from(bytes))
+        .map_err(|err| anyhow::anyhow!(err))?)
 }
 
 async fn update_story(

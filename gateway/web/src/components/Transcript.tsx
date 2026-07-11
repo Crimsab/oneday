@@ -3,16 +3,18 @@ import { compactText, messageClock, readableStructuredText } from "../format";
 import { turnEventDetail, turnEventTitle } from "../turnEvents";
 import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
+import { AudioControls } from "./AudioControls";
 import type { MessageView, PendingTurnView, TurnStreamEvent } from "../types";
 
 interface TranscriptProps {
+  storyId: string;
   messages: MessageView[];
   hiddenBeforeId: number;
   pendingTurn?: PendingTurnView | null;
   liveEvents?: TurnStreamEvent[];
 }
 
-export function Transcript({ messages, hiddenBeforeId, pendingTurn, liveEvents = [] }: TranscriptProps) {
+export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liveEvents = [] }: TranscriptProps) {
   const ref = useRef<HTMLDivElement>(null);
   const visibleMessages = useMemo(
     () => messages.filter((message) => message.id > hiddenBeforeId),
@@ -31,7 +33,7 @@ export function Transcript({ messages, hiddenBeforeId, pendingTurn, liveEvents =
           {messages.length ? "Transcript cleared locally. New canonical messages will appear here." : "Choose a story to load the canonical transcript."}
         </div>
       ) : (
-        visibleMessages.map((message) => <TranscriptMessage key={message.id} message={message} />)
+        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
       {liveEvents.length > 0 && <TurnEventStream events={liveEvents} />}
@@ -39,7 +41,7 @@ export function Transcript({ messages, hiddenBeforeId, pendingTurn, liveEvents =
   );
 }
 
-function TranscriptMessage({ message }: { message: MessageView }) {
+function TranscriptMessage({ storyId, message }: { storyId: string; message: MessageView }) {
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
   const content = readableStructuredText(message.content) || compactText(message.content || "(empty)", 160);
@@ -57,6 +59,7 @@ function TranscriptMessage({ message }: { message: MessageView }) {
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={`Structured dialogue for turn ${message.turn}`}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || "Unknown speaker"}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
         <MessageDiagnostics message={message} />
+        {message.role === "assistant" && Boolean(message.source_commit_id) && <AudioControls storyId={storyId} messageId={message.id} />}
       </div>
     </article>
   );

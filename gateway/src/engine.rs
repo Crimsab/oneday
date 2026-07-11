@@ -419,6 +419,32 @@ pub struct GatewayMiniGameResponse {
     pub error: String,
 }
 
+#[derive(Debug, Default, Deserialize, Serialize)]
+pub struct GatewayAudioResponse {
+    #[serde(default)]
+    pub providers: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub voices: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub settings: Option<serde_json::Value>,
+    #[serde(default)]
+    pub assignments: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub assignment: Option<serde_json::Value>,
+    #[serde(default)]
+    pub assets: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub jobs: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub asset: Option<serde_json::Value>,
+    #[serde(default)]
+    pub file_path: String,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub error: String,
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MiniGameStartEnvelope {
     pub definition: serde_json::Value,
@@ -797,6 +823,21 @@ async fn call_minigame_gateway(
     Ok(parsed)
 }
 
+pub async fn audio(
+    state: Arc<AppState>,
+    request: serde_json::Value,
+) -> anyhow::Result<GatewayAudioResponse> {
+    let (parsed, status_ok, stderr) =
+        call_gateway::<_, GatewayAudioResponse>(state, "gateway-audio", &request).await?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !status_ok {
+        return Err(anyhow!("gateway-audio failed: {}", compact_stderr(&stderr)));
+    }
+    Ok(parsed)
+}
+
 async fn call_gateway_turn_stream(
     state: Arc<AppState>,
     req: &GatewayTurnRequest<'_>,
@@ -819,6 +860,7 @@ async fn call_gateway_turn_stream(
     let mut stdin = child.stdin.take().context("opening gateway-turn stdin")?;
     stdin.write_all(&input).await?;
     stdin.shutdown().await?;
+    drop(stdin);
 
     let stdout = child.stdout.take().context("opening gateway-turn stdout")?;
     let stderr = child.stderr.take().context("opening gateway-turn stderr")?;
@@ -1098,6 +1140,7 @@ where
         .with_context(|| format!("opening {command} stdin"))?;
     stdin.write_all(&input).await?;
     stdin.shutdown().await?;
+    drop(stdin);
 
     let output = tokio::time::timeout(Duration::from_secs(360), child.wait_with_output())
         .await
@@ -1145,7 +1188,7 @@ mod tests {
 
     #[tokio::test]
     async fn call_gateway_turn_stream_broadcasts_live_but_returns_final_only() {
-        let script = fake_oneday_script(&[
+        let script = fake_oneday_input_script(&[
             r#"{"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"narrative.delta","payload":{"text":"Hello"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
             r#"{"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.started","payload":{},"created_at":"2026-01-01T00:00:01Z"},"phase":"final"}"#,
             r#"{"event":{"id":"idem:2","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:02Z"},"phase":"final"}"#,
@@ -1198,7 +1241,7 @@ mod tests {
 
     #[tokio::test]
     async fn minigame_bridge_preserves_player_instance_contract() {
-        let script = fake_oneday_script(&[
+        let script = fake_oneday_input_script(&[
             r#"{"instance":{"protocol_version":1,"id":"mini-1","definition":{"id":"deduction","kind":"deduction","difficulty":50},"runtime":{"phase":"active","revision":1}}}"#,
         ]);
         let state = test_state(script).await;
@@ -1217,6 +1260,23 @@ mod tests {
         assert_eq!(instance["runtime"]["phase"], "active");
     }
 
+    #[tokio::test]
+    async fn audio_bridge_preserves_provider_and_branch_asset_contracts() {
+        let script = fake_oneday_input_script(&[
+            r#"{"providers":[{"id":"cloud","available":false,"reason":"disabled"}],"assets":[{"id":"audio-1","branch_id":"branch-1","source_commit_id":"commit-1","status":"ready"}],"jobs":[]}"#,
+        ]);
+        let state = test_state(script).await;
+        let response = audio(
+            state,
+            serde_json::json!({"operation":"message-get","story_id":"story-1","message_id":42}),
+        )
+        .await
+        .expect("audio bridge");
+        assert_eq!(response.providers[0]["reason"], "disabled");
+        assert_eq!(response.assets[0]["branch_id"], "branch-1");
+        assert_eq!(response.assets[0]["source_commit_id"], "commit-1");
+    }
+
     #[test]
     fn canonical_minigame_fixture_is_player_safe() {
         let fixture: serde_json::Value =
@@ -1229,7 +1289,7 @@ mod tests {
 
     #[tokio::test]
     async fn call_gateway_turn_stream_requires_done_line() {
-        let script = fake_oneday_script(&[
+        let script = fake_oneday_input_script(&[
             r#"{"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:00Z"},"phase":"final"}"#,
         ]);
         let state = test_state(script).await;
@@ -1266,7 +1326,7 @@ mod tests {
 
     #[tokio::test]
     async fn call_gateway_turn_stream_error_event_returns_error() {
-        let script = fake_oneday_script(&[
+        let script = fake_oneday_input_script(&[
             r#"{"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"error","payload":{"message":"provider failed"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
         ]);
         let state = test_state(script).await;
@@ -1325,26 +1385,22 @@ mod tests {
         })
     }
 
-    fn fake_oneday_script(lines: &[&str]) -> PathBuf {
+    fn fake_oneday_input_script(lines: &[&str]) -> PathBuf {
         let root = std::env::temp_dir().join(format!("oneday-gateway-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).expect("create temp root");
         let script = root.join("oneday-fake");
-        write_script(&script, lines);
-        script
-    }
-
-    fn write_script(path: &Path, lines: &[&str]) {
-        let mut file = fs::File::create(path).expect("create fake oneday script");
-        writeln!(file, "#!/usr/bin/env bash").expect("write shebang");
+        let mut file = fs::File::create(&script).expect("create fake oneday script");
+        writeln!(file, "#!/usr/bin/env bash\ncat >/dev/null").expect("write input reader");
         for line in lines {
             writeln!(file, "printf '%s\\n' '{}'", line.replace('\'', "'\\''"))
-                .expect("write stream line");
+                .expect("write response line");
         }
         #[cfg(unix)]
         {
             let mut permissions = file.metadata().expect("script metadata").permissions();
             permissions.set_mode(0o755);
-            fs::set_permissions(path, permissions).expect("chmod fake script");
+            fs::set_permissions(&script, permissions).expect("chmod fake script");
         }
+        script
     }
 }

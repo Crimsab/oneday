@@ -233,6 +233,81 @@ export interface MessageView {
 	source_commit_id: string;
 }
 
+export type TTSMode = "off" | "narrator" | "dialogue" | "all";
+export type VoiceEnabledMode = "inherit" | "on" | "off";
+
+export interface TTSProviderStatus {
+  id: string;
+  available: boolean;
+  reason?: string;
+}
+
+export interface VoiceProfile {
+  id: string;
+  provider: string;
+  model: string;
+  provider_voice_id: string;
+  display_name: string;
+  language_tags: string[];
+  version: string;
+  style_family: string;
+  enabled: boolean;
+}
+
+export interface StoryTTSSettings {
+  story_id: string;
+  mode: TTSMode;
+  autoplay: boolean;
+  default_language_tag: string;
+  provider_policy: Record<string, unknown>;
+}
+
+export interface VoiceAssignment {
+  id: string;
+  assignment_key: string;
+  story_id: string;
+  entity_id?: string;
+  identity_id?: string;
+  form_id?: string;
+  role: "narrator" | "protagonist" | "npc";
+  voice_profile_id: string;
+  enabled_mode: VoiceEnabledMode;
+  language_tag: string;
+  locked: boolean;
+  importance: "major" | "supporting" | "minor";
+  allow_duplicate: boolean;
+}
+
+export interface AudioAsset {
+  id: string;
+  story_id: string;
+  source_message_id: number;
+  segment_index: number;
+  segment_kind: string;
+  status: "queued" | "running" | "ready" | "failed" | string;
+  duration_ms: number;
+  language_tag: string;
+  error?: string;
+}
+
+export interface TTSJob {
+  id: string;
+  audio_asset_id: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+  error?: string;
+}
+
+export interface TTSCatalogResponse {
+  providers: TTSProviderStatus[];
+  voices: VoiceProfile[];
+}
+
+export interface TTSSettingsResponse { settings: StoryTTSSettings; }
+export interface VoiceAssignmentsResponse { assignments: VoiceAssignment[]; assignment?: VoiceAssignment; }
+export interface MessageAudioResponse { assets: AudioAsset[]; jobs: TTSJob[]; }
+
 export interface PendingTurnView {
   id: string;
   turn: number;

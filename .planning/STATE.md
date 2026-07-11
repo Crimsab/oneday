@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
 current_phase: 37
 status: in_progress
-stopped_at: Phase 37.2 complete; proceeding to gateway audio APIs and browser playback
-last_updated: "2026-07-11T17:18:00+02:00"
-last_activity: 2026-07-11 -- Post-commit segmentation, durable queue, cache identity, TTS telemetry, and cloud/Piper adapters deployed
+stopped_at: Phase 37.3 complete; proceeding to pronunciation, retry/cleanup/export, and the full audio matrix
+last_updated: "2026-07-11T17:36:00+02:00"
+last_activity: 2026-07-11 -- Branch-safe audio APIs, native browser playback, and story/character voice controls deployed
 progress:
   total_phases: 39
   completed_phases: 36
   total_plans: 89
-  completed_plans: 111
+  completed_plans: 112
   percent: 92
 ---
 

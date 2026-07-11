@@ -101,6 +101,92 @@ func (service *Service) EnsureConfiguredVoiceProfiles() ([]storage.VoiceProfile,
 	return profiles, nil
 }
 
+// DiscoverVoiceProfiles refreshes provider voice catalogs without making an
+// unavailable provider fatal. The returned statuses make that state explicit.
+func (service *Service) DiscoverVoiceProfiles(ctx context.Context, providerFilter, language string) ([]ProviderStatus, []storage.VoiceProfile, error) {
+	if service == nil || service.db == nil {
+		return nil, nil, errors.New("audio service database is unavailable")
+	}
+	_, _ = service.EnsureConfiguredVoiceProfiles()
+	statuses := service.ProviderStatuses(ctx)
+	for _, status := range statuses {
+		if providerFilter != "" && status.ID != providerFilter {
+			continue
+		}
+		if !status.Available {
+			continue
+		}
+		provider := service.providers[status.ID]
+		voices, err := provider.Voices(ctx, language)
+		if err != nil {
+			continue
+		}
+		endpoint := service.cfg.Cloud
+		if status.ID == "local" {
+			endpoint = service.cfg.Local
+		}
+		for _, voice := range voices {
+			digest := sha256.Sum256([]byte(strings.Join([]string{status.ID, endpoint.Model, voice.ID, endpoint.Version}, "\x00")))
+			languages, _ := json.Marshal(voice.Languages)
+			_, err = service.db.UpsertVoiceProfile(storage.VoiceProfile{
+				ID: "voice-" + hex.EncodeToString(digest[:8]), Provider: status.ID, Model: endpoint.Model,
+				ProviderVoiceID: voice.ID, DisplayName: voice.Name, LanguageTags: languages,
+				Traits: json.RawMessage(`{"source":"provider_catalog"}`), Rights: json.RawMessage(`{"operator_verified":false}`),
+				Version: endpoint.Version, StyleFamily: "neutral", Enabled: true,
+			})
+			if err != nil {
+				return statuses, nil, err
+			}
+		}
+	}
+	profiles, err := service.db.ListVoiceProfiles(true)
+	if err != nil {
+		return statuses, nil, err
+	}
+	if providerFilter != "" {
+		filtered := profiles[:0]
+		for _, profile := range profiles {
+			if profile.Provider == providerFilter {
+				filtered = append(filtered, profile)
+			}
+		}
+		profiles = filtered
+	}
+	return statuses, profiles, nil
+}
+
+// ResolveAudioFile prevents stale-branch assets and paths outside the
+// configured canonical audio root from being served.
+func (service *Service) ResolveAudioFile(assetID string) (*storage.AudioAsset, string, error) {
+	asset, err := service.db.GetActiveAudioAssetByID(strings.TrimSpace(assetID))
+	if err != nil {
+		return nil, "", err
+	}
+	if asset.Status != "ready" || strings.TrimSpace(asset.FilePath) == "" {
+		return nil, "", errors.New("audio asset is not ready")
+	}
+	root := service.cfg.OutputDir
+	if strings.TrimSpace(root) == "" {
+		root = "./oneday_data/audio"
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, "", err
+	}
+	pathAbs, err := filepath.Abs(asset.FilePath)
+	if err != nil {
+		return nil, "", err
+	}
+	rel, err := filepath.Rel(rootAbs, pathAbs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return nil, "", errors.New("audio asset path is outside the canonical audio root")
+	}
+	if !safeRegularFile(pathAbs) {
+		return nil, "", errors.New("audio asset file is unavailable")
+	}
+	return asset, pathAbs, nil
+}
+
 func (service *Service) QueueCommittedMessage(ctx context.Context, storyID string, messageID int64) ([]storage.AudioAsset, error) {
 	if service == nil || service.db == nil {
 		return nil, errors.New("audio service database is unavailable")
