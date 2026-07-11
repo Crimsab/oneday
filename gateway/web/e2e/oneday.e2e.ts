@@ -235,6 +235,12 @@ test("shows canonical visual lineage and branch-local selection controls", async
   await page.getByRole("button", { name: "Options" }).click();
 
   const dialog = page.getByRole("dialog");
+  const search = dialog.getByPlaceholder("Search options");
+  await expect(search).toBeVisible();
+  await search.fill("known location icons");
+  await expect(dialog.getByRole("button", { name: /Map art/ })).toBeVisible();
+  await dialog.getByRole("button", { name: /Map art/ }).click();
+  await expect(dialog.getByRole("heading", { name: "Visuals and map" })).toBeVisible();
   expect(errors).toEqual([]);
   await expect(dialog.getByText("New canonical form")).toBeVisible();
   await expect(dialog.getByText("Mira's restored form has not been rendered on this branch.")).toBeVisible();
@@ -295,6 +301,7 @@ test("generates committed audio and exposes per-story and per-character voice co
 
   await page.getByRole("button", { name: "Options" }).click();
   const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: /Spoken audio/ }).click();
   await expect(dialog.getByRole("heading", { name: "Spoken audio" })).toBeVisible();
   await expect(dialog.getByText("cloud: available")).toBeVisible();
   await expect(dialog.getByText("local: disabled")).toBeVisible();
