@@ -1153,6 +1153,11 @@ func (m NarrativeModel) showThoughts() (NarrativeModel, tea.Cmd) {
 // showMap displays the discovered world locations overlay.
 func (m NarrativeModel) showMap() (NarrativeModel, tea.Cmd) {
 	mapText := engine.FormatMapView(m.narrator.World())
+	if m.narrator != nil && m.narrator.DB() != nil && m.narrator.Story() != nil {
+		if projection, err := m.narrator.DB().PlayerWorld(m.narrator.Story().ID); err == nil {
+			mapText = engine.FormatCanonicalMapView(projection)
+		}
+	}
 	m.showOverlay("World Map", mapText)
 	return m, nil
 }

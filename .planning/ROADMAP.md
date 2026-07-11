@@ -732,10 +732,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 31.1: Add locations, aliases, regions, containment, graph edges, and current-position events
-- [ ] Plan 31.2: Add configurable calendar/clock, timeskip/travel advancement, and weather states
-- [ ] Plan 31.3: Normalize causal world events/threads and visibility-safe quick-fact projections
-- [ ] Plan 31.4: Migrate map and world-state consumers away from string and turn heuristics
+- [x] Plan 31.1: Add locations, aliases, regions, containment, graph edges, and current-position events
+- [x] Plan 31.2: Add configurable calendar/clock, timeskip/travel advancement, and weather states
+- [x] Plan 31.3: Normalize causal world events/threads and visibility-safe quick-fact projections
+- [x] Plan 31.4: Migrate map and world-state consumers away from string and turn heuristics
 
 ---
 

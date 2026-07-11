@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -358,6 +359,23 @@ func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world
 		}
 		if err := db.UpdateWorldStateExpectedTurnTx(tx, world, entry.Turn); err != nil {
 			return fmt.Errorf("saving world state: %w", err)
+		}
+		if entry.Input != nil {
+			command := strings.ToLower(strings.TrimSpace(entry.Input.Text))
+			delta := 0
+			reason := ""
+			if strings.HasPrefix(command, "/timeskip") {
+				delta = 1440
+				reason = "timeskip"
+			} else if strings.HasPrefix(command, "/downtime") {
+				delta = 480
+				reason = "downtime"
+			}
+			if delta > 0 {
+				if _, err := db.AdvanceWorldTimeTx(tx, gs.storyID, reason, delta, world.CurrentTurn); err != nil {
+					return fmt.Errorf("advancing canonical world time: %w", err)
+				}
+			}
 		}
 		if err := gs.appendEntryToDB(tx, db, entry); err != nil {
 			return err

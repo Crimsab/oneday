@@ -122,6 +122,40 @@ func FormatMapView(world *storage.WorldState) string {
 	return sb.String()
 }
 
+func FormatCanonicalMapView(world *storage.PlayerWorldProjection) string {
+	if world == nil {
+		return "No world state available."
+	}
+	var sb strings.Builder
+	sb.WriteString("=== World Map ===\n\n")
+	sb.WriteString(fmt.Sprintf("Current Location: >> %s <<\n", world.CurrentLocation))
+	sb.WriteString(fmt.Sprintf("World Time: %s\n", world.Clock.DisplayText))
+	sb.WriteString(fmt.Sprintf("Weather: %s\n", world.Weather.Label))
+	sb.WriteString("\nDiscovered Locations:\n")
+	for _, loc := range world.Locations {
+		marker := "  * "
+		if loc.ID == world.CurrentLocationID {
+			marker = "  > "
+		}
+		sb.WriteString(marker + loc.Name + "\n")
+	}
+	if len(world.Edges) > 0 {
+		sb.WriteString("\nKnown Routes:\n")
+		names := map[string]string{}
+		for _, loc := range world.Locations {
+			names[loc.ID] = loc.Name
+		}
+		for _, edge := range world.Edges {
+			sb.WriteString(fmt.Sprintf("  %s -> %s (%d min", names[edge.FromLocationID], names[edge.ToLocationID], edge.TravelMinutes))
+			if edge.Direction != "" {
+				sb.WriteString(", " + edge.Direction)
+			}
+			sb.WriteString(")\n")
+		}
+	}
+	return sb.String()
+}
+
 // AddLocationToWorldState adds a location to world.KnownLocationsJSON if not already present.
 // Handles both string-array and object-array formats transparently.
 func AddLocationToWorldState(world *storage.WorldState, locationName string, currentTurn int) bool {

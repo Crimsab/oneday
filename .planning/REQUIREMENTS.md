@@ -286,14 +286,14 @@
 
 ### Canonical World, Time, Weather, and Events
 
-- [ ] **WORLD2-01**: Locations have stable IDs, aliases, regions, containment, discovery state, and temporally valid graph edges with direction, travel cost, and conditions.
-- [ ] **WORLD2-02**: Current position uses a canonical location ID and branch-aware location event rather than only a display string.
-- [ ] **WORLD2-03**: A configurable world calendar/clock records diegetic time independently from server timestamps and turn count.
-- [ ] **WORLD2-04**: `/timeskip`, travel, downtime, and resolved events advance world time through explicit canonical events.
-- [ ] **WORLD2-05**: Weather is explicit, optional, region/location-aware, temporally valid, and displayed as “Not tracked” when absent.
-- [ ] **WORLD2-06**: World events and active threads are append-only, causal, visibility-aware, and linked to locations, factions, entities, and source commits.
-- [ ] **WORLD2-07**: Quick facts and world-state panels are built from typed player-safe projections rather than string/JSON heuristics.
-- [ ] **WORLD2-08**: Browser and TUI map/navigation surfaces consume the same typed spatial graph and known-edge projection.
+- [x] **WORLD2-01**: Locations have stable IDs, aliases, regions, containment, discovery state, and temporally valid graph edges with direction, travel cost, and conditions.
+- [x] **WORLD2-02**: Current position uses a canonical location ID and branch-aware location event rather than only a display string.
+- [x] **WORLD2-03**: A configurable world calendar/clock records diegetic time independently from server timestamps and turn count.
+- [x] **WORLD2-04**: `/timeskip`, travel, downtime, and resolved events advance world time through explicit canonical events.
+- [x] **WORLD2-05**: Weather is explicit, optional, region/location-aware, temporally valid, and displayed as “Not tracked” when absent.
+- [x] **WORLD2-06**: World events and active threads are append-only, causal, visibility-aware, and linked to locations, factions, entities, and source commits.
+- [x] **WORLD2-07**: Quick facts and world-state panels are built from typed player-safe projections rather than string/JSON heuristics.
+- [x] **WORLD2-08**: Browser and TUI map/navigation surfaces consume the same typed spatial graph and known-edge projection.
 
 ### Authoritative Outcomes and Challenge Protocol
 
