@@ -2,26 +2,35 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
-current_phase: 35
+current_phase: 36
 status: in_progress
-stopped_at: Phase 35.2 complete; proceeding to branch-safe version selection and undo/redo UX
-last_updated: "2026-07-11T15:36:00+02:00"
-last_activity: 2026-07-11 -- Canonical portrait/location gates and checkout-safe image worker completed
+stopped_at: Phase 35 complete; proceeding to extensible minigames, fairness, and story evals
+last_updated: "2026-07-11T16:04:00+02:00"
+last_activity: 2026-07-11 -- Branch-safe visual version selection, undo/redo, and canon UX completed
 progress:
   total_phases: 39
-  completed_phases: 34
+  completed_phases: 35
   total_plans: 89
-  completed_plans: 104
-  percent: 87
+  completed_plans: 105
+  percent: 90
 ---
 
 # Project State
 
-**Current Phase:** 35
-**Status:** Phase 34 implementation complete; Phase 35 ready
+**Current Phase:** 36
+**Status:** Phase 35 implementation complete; Phase 36 ready
 **Last Updated:** 2026-07-11
 
 ## Phase History
+
+- 2026-07-11: Phase 35 implementation completed on `homelab-main`. Visual
+  profiles, assets, versions, and jobs now carry canonical branch/entity/form/
+  location lineage and profile fingerprints. Portrait and location generation
+  are canon-gated; stale or sibling jobs cannot publish; browser selection,
+  regeneration, undo, and redo are branch-local and player-readable. Migration
+  V33, Go/Rust/browser tests, Playwright desktop/mobile, live API, SQLite
+  integrity, clean-start restart count, and rendered desktop/mobile checks
+  passed.
 
 - 2026-07-11: Phase 34 implementation completed on `homelab-main`. Versioned
   prompt profiles and causal generation runs now retain provider attempts,

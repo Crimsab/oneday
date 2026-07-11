@@ -80,6 +80,10 @@ interface PanelDrawerProps {
     assetId: string,
     versionId: number,
   ) => Promise<void>;
+  onVisualAssetSelectionStep: (
+    assetId: string,
+    action: "undo" | "redo",
+  ) => Promise<void>;
   onRunStoryWizard: (
     payload: StoryWizardEnvelope,
   ) => Promise<StoryWizardResponse>;
@@ -125,6 +129,7 @@ export function PanelDrawer({
   onVisualAssetVersionsLoad,
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
+  onVisualAssetSelectionStep,
   onRunStoryWizard,
   onEnhanceStoryText,
   onCreateSave,
@@ -181,6 +186,7 @@ export function PanelDrawer({
             onVisualAssetVersionsLoad={onVisualAssetVersionsLoad}
             onVisualAssetPromptSave={onVisualAssetPromptSave}
             onVisualAssetVersionSelect={onVisualAssetVersionSelect}
+            onVisualAssetSelectionStep={onVisualAssetSelectionStep}
           />
         )}
         {overlay === "saves" && (
@@ -268,6 +274,7 @@ function OptionsContent({
   onVisualAssetVersionsLoad,
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
+  onVisualAssetSelectionStep,
 }: {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
@@ -298,6 +305,10 @@ function OptionsContent({
   onVisualAssetVersionSelect: (
     assetId: string,
     versionId: number,
+  ) => Promise<void>;
+  onVisualAssetSelectionStep: (
+    assetId: string,
+    action: "undo" | "redo",
   ) => Promise<void>;
 }) {
   const update = <K extends keyof AppPreferences>(
@@ -420,6 +431,7 @@ function OptionsContent({
         onVersionsLoad={onVisualAssetVersionsLoad}
         onAssetPromptSave={onVisualAssetPromptSave}
         onVersionSelect={onVisualAssetVersionSelect}
+        onSelectionStep={onVisualAssetSelectionStep}
       />
     </div>
   );
@@ -440,6 +452,7 @@ function VisualDirectionSettings({
   onVersionsLoad,
   onAssetPromptSave,
   onVersionSelect,
+  onSelectionStep,
 }: {
   profile: VisualProfile | null;
   assets: VisualAsset[];
@@ -458,6 +471,7 @@ function VisualDirectionSettings({
     payload: VisualAssetPromptUpdate,
   ) => Promise<void>;
   onVersionSelect: (assetId: string, versionId: number) => Promise<void>;
+  onSelectionStep: (assetId: string, action: "undo" | "redo") => Promise<void>;
 }) {
   const [draft, setDraft] = useState<VisualProfileUpdate>(() =>
     profileDraft(profile),
@@ -612,6 +626,7 @@ function VisualDirectionSettings({
       await onGenerate({
         asset_ids: [selectedAsset.id],
         force: true,
+        allow_silhouette: selectedAsset.gate_state === "silhouette_available",
         limit: 1,
       });
       const nextVersions = await onVersionsLoad(selectedAsset.id);
@@ -635,6 +650,23 @@ function VisualDirectionSettings({
       );
     }
   };
+
+  const stepSelection = async (action: "undo" | "redo") => {
+    if (!selectedAsset) return;
+    setSaveError("");
+    try {
+      await onSelectionStep(selectedAsset.id, action);
+    } catch (failure) {
+      setSaveError(failure instanceof Error ? failure.message : String(failure));
+    }
+  };
+
+  const generationAllowed = Boolean(
+    selectedAsset &&
+      (selectedAsset.generation_eligible ||
+        selectedAsset.gate_state === "explicit_request_available" ||
+        selectedAsset.gate_state === "silhouette_available"),
+  );
 
   return (
     <div className="visual-direction">
@@ -701,7 +733,7 @@ function VisualDirectionSettings({
                 <span>{asset.kind}</span>
                 <strong>{asset.subject}</strong>
                 <small title={asset.error || asset.provider}>
-                  {asset.status}
+                  {asset.canon_status} · {asset.status}
                   {asset.error ? " !" : ""}
                 </small>
               </button>
@@ -745,7 +777,16 @@ function VisualDirectionSettings({
                   <span>{selectedAsset.kind}</span>
                   <strong>{selectedAsset.subject}</strong>
                   <small title={selectedAsset.provider}>
-                    {selectedAsset.status}
+                    {selectedAsset.canon_status} · {selectedAsset.status}
+                  </small>
+                </div>
+                <div className="visual-lineage-note">
+                  <strong>{gateLabel(selectedAsset.gate_state)}</strong>
+                  <span>{selectedAsset.gate_reason || "No gating detail."}</span>
+                  <small>
+                    Profile rev {profile.revision}
+                    {selectedAsset.form_id ? ` · form ${compactId(selectedAsset.form_id)}` : ""}
+                    {selectedAsset.inherited ? " · inherited from ancestor branch" : " · current branch"}
                   </small>
                 </div>
                 <label>
@@ -808,6 +849,10 @@ function VisualDirectionSettings({
                       Version from {displayTimestamp(activeVersion.created_at)}{" "}
                       via {activeVersion.provider || "unknown provider"}.
                     </p>
+                    <p>
+                      {activeVersion.canon_status} · {activeVersion.form_id ? `form ${compactId(activeVersion.form_id)} · ` : ""}
+                      {activeVersion.id === selectedAsset.selected_version_id ? "currently selected" : "preview only"}
+                    </p>
                     {activeVersion.revised_prompt ? (
                       <p>Revised: {activeVersion.revised_prompt}</p>
                     ) : null}
@@ -830,11 +875,25 @@ function VisualDirectionSettings({
                   </button>
                   <button
                     type="button"
+                    onClick={() => void stepSelection("undo")}
+                    disabled={busy || !selectedAsset.can_undo_selection}
+                  >
+                    Undo selection
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void stepSelection("redo")}
+                    disabled={busy || !selectedAsset.can_redo_selection}
+                  >
+                    Redo selection
+                  </button>
+                  <button
+                    type="button"
                     className="primary-action"
                     onClick={() => void regenerateSelectedAsset()}
-                    disabled={busy}
+                    disabled={busy || !generationAllowed}
                   >
-                    Regenerate
+                    {selectedAsset.gate_state === "silhouette_available" ? "Generate silhouette" : "Regenerate"}
                   </button>
                 </div>
               </div>
@@ -1943,4 +2002,26 @@ function storyDefinitionSummary(value: unknown): {
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function gateLabel(value: string): string {
+  const labels: Record<string, string> = {
+    insufficient_observation: "Observation required",
+    silhouette_available: "Silhouette available",
+    identified_draft: "Identity draft",
+    established_canonical: "Canonical identity",
+    form_changed: "New canonical form",
+    identity_contradiction: "Identity contradiction",
+    insufficient_canon: "Location canon required",
+    explicit_request_available: "Available on request",
+    narrative_significance: "Narratively significant",
+    meaningful_stay: "Meaningful stay",
+    chapter_milestone: "Chapter milestone",
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+function compactId(value: string): string {
+  if (value.length <= 20) return value;
+  return `${value.slice(0, 9)}…${value.slice(-7)}`;
 }

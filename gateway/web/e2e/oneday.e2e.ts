@@ -31,6 +31,14 @@ const timeline = {
   head: { id: "commit-4", branch_id: "branch-main", parent_commit_id: "commit-3", canonical_turn: 4, kind: "turn", message: "Seal", created_at: now },
 };
 
+function visualResponse(canUndo = true, canRedo = false) {
+  return {
+    profile: { id: "profile-1", story_id: story.id, revision: 3, fingerprint: "profile-fingerprint", branch_id: "branch-main", source_commit_id: "commit-4", world_style_prompt: "Glass and brass", character_style_prompt: "Grounded portrait", negative_prompt: "", palette: "amber", updated_at: now },
+    assets: [{ id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", entity_id: "npc-mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", lineage_key: "npc-mira:form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "form_changed", gate_reason: "Mira's restored form has not been rendered on this branch.", generation_eligible: true, prompt: "Mira restored portrait", negative_prompt: "", status: "pending", url: "", provider: "", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: 21, can_undo_selection: canUndo, can_redo_selection: canRedo, inherited: false, updated_at: now }],
+    jobs: [],
+  };
+}
+
 async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
@@ -48,9 +56,18 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     if (path === "/api/health") return json(route, { status: "ok", stories: 1 });
     if (path === "/api/stories" && request.method() === "GET") return json(route, [story]);
     if (path === "/api/contracts/commands") return json(route, []);
-    if (path === "/api/config/models") return json(route, { providers: [], active: { provider: "", model: "" }, generation: {} });
+    if (path === "/api/config/models") return json(route, {
+      config_path: "/test/config.yaml", config_revision: "revision-1", provider_priority: ["codex"],
+      providers: [{ id: "codex", label: "Codex", enabled: true, model: "gpt-5.5", reasoning: "off", supports_model: true, supports_reasoning: true }],
+      narrative_models: ["gpt-5.5"], utility_models: ["gpt-5.5"], repair_models: ["gpt-5.5"], image_models: ["gpt-image-1"], ascii_models: ["gpt-5.5"], embedding_providers: ["auto"],
+      image_generation: { provider: "openclaw-bridge", base_url: "", api_key_configured: false, model: "gpt-image-1", openclaw_bridge_url: "http://image.test/generate", default_size: "1024x1024", location_size: "1536x1024", character_size: "1024x1024", default_resolution: "", location_resolution: "", character_resolution: "", default_aspect_ratio: "", location_aspect_ratio: "", character_aspect_ratio: "", quality: "", output_format: "png", background: "", timeout_seconds: 180, auto_generate: false, append_negative_prompt: true, available: true, status: "configured" },
+      active: { provider: "codex", narrative_model: "gpt-5.5", utility_model: "gpt-5.5", repair_model: "gpt-5.5", repair_fallback_models: [], image_model: "gpt-image-1", ascii_model: "gpt-5.5", embedding_provider: "auto", embedding_model: "text-embedding-3-small", codex_reasoning: "off" },
+      tts_status: "planned",
+    });
     if (path.endsWith("/snapshot")) return json(route, snapshot());
-    if (path.endsWith("/visual-assets")) return json(route, { profile: { story_id: story.id, world_style_prompt: "", character_style_prompt: "", negative_prompt: "", palette: "", updated_at: now }, assets: [], jobs: [] });
+    if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }]);
+    if (path.endsWith("/visual-assets/asset-mira-new/selection/undo")) return json(route, visualResponse(false, true));
+    if (path.endsWith("/visual-assets")) return json(route, visualResponse());
     if (path.endsWith("/timeline") && request.method() === "GET") return json(route, timeline);
     if (path.endsWith("/timeline") && request.method() === "POST") {
       const nextTimeline = { ...timeline, active_branch_id: "branch-alt", revision: 8, head: { ...timeline.head, id: "commit-alt", branch_id: "branch-alt", canonical_turn: 3 } };
@@ -80,7 +97,7 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   const requests = await mockGateway(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Narrative Transcript" })).toBeVisible();
-  await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.getByLabel("Structured dialogue for turn 4")).toContainText("Choose carefully.");
   await expect(page.getByText("codex · gpt-5.5 · 1.3 s · 321 tokens · streamed")).toBeVisible();
   await page.getByText("Operator diagnostics").click();
@@ -128,4 +145,28 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth, fontSize: Number.parseFloat(getComputedStyle(document.querySelector("textarea")!).fontSize) }));
   expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
   if (browserName === "chromium" && page.viewportSize()!.width < 860) expect(overflow.fontSize).toBeGreaterThanOrEqual(16);
+});
+
+test("shows canonical visual lineage and branch-local selection controls", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await mockGateway(page);
+  const visualsLoaded = page.waitForResponse((response) => response.url().endsWith("/visual-assets"));
+  await page.goto("/");
+  await visualsLoaded;
+  await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
+  await page.getByRole("button", { name: "Options" }).click();
+
+  const dialog = page.getByRole("dialog");
+  expect(errors).toEqual([]);
+  await expect(dialog.getByText("New canonical form")).toBeVisible();
+  await expect(dialog.getByText("Mira's restored form has not been rendered on this branch.")).toBeVisible();
+  await expect(dialog.getByText(/Profile rev 3.*form form-mira-restored.*current branch/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Undo selection" })).toBeEnabled();
+  const undoRequest = page.waitForRequest((request) => request.url().endsWith("/visual-assets/asset-mira-new/selection/undo"));
+  await dialog.getByRole("button", { name: "Undo selection" }).click();
+  await undoRequest;
+  await expect(dialog.getByRole("button", { name: "Redo selection" })).toBeEnabled();
+  expect(errors).toEqual([]);
 });

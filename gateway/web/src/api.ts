@@ -206,6 +206,13 @@ export function selectVisualAssetVersion(storyId: string, assetId: string, versi
   );
 }
 
+export function stepVisualAssetSelection(storyId: string, assetId: string, action: "undo" | "redo"): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(
+    `/api/stories/${encodeURIComponent(storyId)}/visual-assets/${encodeURIComponent(assetId)}/selection/${action}`,
+    { method: "POST" },
+  );
+}
+
 export function getCommandDescriptors(): Promise<CommandDescriptor[]> {
   return request<CommandDescriptor[]>("/api/contracts/commands");
 }

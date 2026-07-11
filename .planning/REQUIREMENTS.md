@@ -328,11 +328,11 @@
 
 ### Branch-Aware Visual Canon
 
-- [ ] **VISUAL2-01**: Visual profiles, assets, versions, and jobs carry branch, source commit, canonical entity/location/form IDs, appearance fingerprint, and profile revision.
-- [ ] **VISUAL2-02**: Rewind/checkout cannot select or expose images created from future or sibling-branch facts.
-- [ ] **VISUAL2-03**: Portrait gating distinguishes insufficient observation, optional silhouette, identified draft, established canonical, form change, and identity contradiction.
-- [ ] **VISUAL2-04**: Location generation waits for canonical location identity plus narrative significance, explicit request, meaningful stay, or chapter milestone.
-- [ ] **VISUAL2-05**: Browser users can inspect versions, regenerate, select, undo/redo selection, and understand whether an image is draft or canonical.
+- [x] **VISUAL2-01**: Visual profiles, assets, versions, and jobs carry branch, source commit, canonical entity/location/form IDs, appearance fingerprint, and profile revision.
+- [x] **VISUAL2-02**: Rewind/checkout cannot select or expose images created from future or sibling-branch facts.
+- [x] **VISUAL2-03**: Portrait gating distinguishes insufficient observation, optional silhouette, identified draft, established canonical, form change, and identity contradiction.
+- [x] **VISUAL2-04**: Location generation waits for canonical location identity plus narrative significance, explicit request, meaningful stay, or chapter milestone.
+- [x] **VISUAL2-05**: Browser users can inspect versions, regenerate, select, undo/redo selection, and understand whether an image is draft or canonical.
 
 ### Minigames, Fairness, and Playtest Evals
 
