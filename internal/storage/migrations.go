@@ -52,6 +52,7 @@ func (db *DB) migrate() error {
 		{29, migrationV29},
 		{30, migrationV30},
 		{31, migrationV31},
+		{32, migrationV32},
 	}
 
 	for _, m := range migrations {
@@ -1146,4 +1147,106 @@ CREATE TRIGGER IF NOT EXISTS trg_challenge_runs_immutable
 BEFORE UPDATE ON challenge_runs
 WHEN NOT (OLD.source_commit_id='' AND NEW.source_commit_id!='' AND OLD.branch_id=NEW.branch_id)
 BEGIN SELECT RAISE(ABORT,'challenge runs are immutable'); END;
+`
+
+const migrationV32 = `
+CREATE TABLE IF NOT EXISTS prompt_profiles (
+	id TEXT PRIMARY KEY,
+	name TEXT NOT NULL UNIQUE,
+	description TEXT NOT NULL DEFAULT '',
+	redaction_policy TEXT NOT NULL DEFAULT 'secrets_and_reasoning',
+	retention_days INTEGER NOT NULL DEFAULT 30 CHECK(retention_days BETWEEN 1 AND 3650),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS prompt_profile_revisions (
+	id TEXT PRIMARY KEY,
+	profile_id TEXT NOT NULL REFERENCES prompt_profiles(id) ON DELETE CASCADE,
+	version INTEGER NOT NULL CHECK(version > 0),
+	template_version TEXT NOT NULL DEFAULT '',
+	prompt_hash TEXT NOT NULL,
+	response_schema_hash TEXT NOT NULL DEFAULT '',
+	config_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(config_json)),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(profile_id, version),
+	UNIQUE(profile_id, prompt_hash, response_schema_hash)
+);
+
+CREATE TABLE IF NOT EXISTS generation_runs (
+	id TEXT PRIMARY KEY,
+	trace_id TEXT NOT NULL,
+	parent_run_id TEXT REFERENCES generation_runs(id),
+	story_id TEXT NOT NULL DEFAULT '',
+	branch_id TEXT NOT NULL DEFAULT '',
+	source_commit_id TEXT NOT NULL DEFAULT '',
+	message_id INTEGER,
+	stage TEXT NOT NULL,
+	status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','cancelled')),
+	prompt_revision_id TEXT REFERENCES prompt_profile_revisions(id),
+	prompt_hash TEXT NOT NULL,
+	request_config_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(request_config_json)),
+	requested_streaming INTEGER NOT NULL DEFAULT 0 CHECK(requested_streaming IN (0,1)),
+	observed_streaming INTEGER NOT NULL DEFAULT 0 CHECK(observed_streaming IN (0,1)),
+	input_tokens INTEGER NOT NULL DEFAULT 0,
+	output_tokens INTEGER NOT NULL DEFAULT 0,
+	reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+	cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+	total_tokens INTEGER NOT NULL DEFAULT 0,
+	cost_usd REAL NOT NULL DEFAULT 0,
+	ttft_ms INTEGER NOT NULL DEFAULT 0,
+	duration_ms INTEGER NOT NULL DEFAULT 0,
+	error_class TEXT NOT NULL DEFAULT '',
+	metadata_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(metadata_json)),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	finished_at DATETIME
+);
+
+CREATE TABLE IF NOT EXISTS generation_attempts (
+	id TEXT PRIMARY KEY,
+	run_id TEXT NOT NULL REFERENCES generation_runs(id) ON DELETE CASCADE,
+	sequence INTEGER NOT NULL CHECK(sequence > 0),
+	provider TEXT NOT NULL,
+	requested_model TEXT NOT NULL DEFAULT '',
+	resolved_model TEXT NOT NULL DEFAULT '',
+	reasoning_config_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(reasoning_config_json)),
+	requested_streaming INTEGER NOT NULL DEFAULT 0 CHECK(requested_streaming IN (0,1)),
+	observed_streaming INTEGER NOT NULL DEFAULT 0 CHECK(observed_streaming IN (0,1)),
+	status TEXT NOT NULL CHECK(status IN ('running','succeeded','failed','cancelled')),
+	ttft_ms INTEGER NOT NULL DEFAULT 0,
+	duration_ms INTEGER NOT NULL DEFAULT 0,
+	input_tokens INTEGER NOT NULL DEFAULT 0,
+	output_tokens INTEGER NOT NULL DEFAULT 0,
+	reasoning_tokens INTEGER NOT NULL DEFAULT 0,
+	cached_input_tokens INTEGER NOT NULL DEFAULT 0,
+	total_tokens INTEGER NOT NULL DEFAULT 0,
+	cost_usd REAL NOT NULL DEFAULT 0,
+	retry_reason TEXT NOT NULL DEFAULT '',
+	error_class TEXT NOT NULL DEFAULT '',
+	error_summary TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	finished_at DATETIME,
+	UNIQUE(run_id, sequence)
+);
+
+CREATE TABLE IF NOT EXISTS generation_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	run_id TEXT NOT NULL REFERENCES generation_runs(id) ON DELETE CASCADE,
+	attempt_id TEXT REFERENCES generation_attempts(id) ON DELETE CASCADE,
+	event_type TEXT NOT NULL,
+	payload_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(payload_json)),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_generation_runs_trace ON generation_runs(trace_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_generation_runs_story_lineage ON generation_runs(story_id, branch_id, source_commit_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_generation_runs_message ON generation_runs(message_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_generation_attempts_run ON generation_attempts(run_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_generation_events_run ON generation_events(run_id, id);
+CREATE INDEX IF NOT EXISTS idx_prompt_revisions_profile ON prompt_profile_revisions(profile_id, version DESC);
+
+CREATE TRIGGER IF NOT EXISTS trg_prompt_revisions_immutable BEFORE UPDATE ON prompt_profile_revisions
+BEGIN SELECT RAISE(ABORT,'prompt profile revisions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_generation_events_immutable BEFORE UPDATE ON generation_events
+BEGIN SELECT RAISE(ABORT,'generation events are append-only'); END;
 `
