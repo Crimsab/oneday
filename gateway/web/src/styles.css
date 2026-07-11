@@ -2980,6 +2980,7 @@ input:disabled {
 }
 
 .settings-section-head h3,
+.settings-section-head h4,
 .settings-section-head p {
   margin: 0;
 }
@@ -2987,6 +2988,11 @@ input:disabled {
 .settings-section-head h3 {
   color: var(--text);
   font-size: 14px;
+}
+
+.settings-section-head h4 {
+  color: var(--text);
+  font-size: 13px;
 }
 
 .settings-section-head p {
@@ -3054,6 +3060,83 @@ input:disabled {
 
 .voice-assignment-row select:focus-visible { border-color: var(--accent-2); }
 .voice-assignment-row select:disabled { cursor: not-allowed; opacity: .55; }
+
+.audio-language-tools {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 12px;
+}
+
+.pronunciation-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pronunciation-form label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.pronunciation-form label > span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.pronunciation-form input:not([type="checkbox"]),
+.pronunciation-form select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #0a1115;
+  color: var(--text);
+  padding: 0 9px;
+}
+
+.pronunciation-form .toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--line-soft);
+  padding: 0 10px;
+}
+
+.pronunciation-form button[type="submit"] { grid-column: 1 / -1; }
+
+.pronunciation-list {
+  display: grid;
+  gap: 5px;
+}
+
+.pronunciation-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line-soft);
+  background: #0a1115;
+  padding: 7px 9px;
+}
+
+.pronunciation-list span { min-width: 0; display: grid; gap: 2px; }
+.pronunciation-list strong { overflow-wrap: anywhere; }
+.pronunciation-list small { color: var(--muted); }
+
+.audio-maintenance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.audio-maintenance-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
 .model-routing {
   display: grid;
@@ -4774,6 +4857,17 @@ button.ws-npc:focus-visible {
 
   .voice-assignment-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pronunciation-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pronunciation-form button[type="submit"] { grid-column: auto; }
+
+  .pronunciation-form input:not([type="checkbox"]),
+  .pronunciation-form select {
+    font-size: 16px;
   }
 
   .voice-assignment-row select,

@@ -27,6 +27,15 @@ type Service struct {
 	providerOrder []string
 }
 
+type CleanupResult struct {
+	DryRun           bool     `json:"dry_run"`
+	FilesScanned     int      `json:"files_scanned"`
+	OrphanFiles      int      `json:"orphan_files"`
+	FilesRemoved     int      `json:"files_removed"`
+	InvalidCacheRows int      `json:"invalid_cache_rows"`
+	Errors           []string `json:"errors,omitempty"`
+}
+
 func NewService(db *storage.DB, cfg config.TTSConfig) *Service {
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
 	if timeout <= 0 {
@@ -185,6 +194,80 @@ func (service *Service) ResolveAudioFile(assetID string) (*storage.AudioAsset, s
 		return nil, "", errors.New("audio asset file is unavailable")
 	}
 	return asset, pathAbs, nil
+}
+
+// CleanupAudioCache invalidates cache rows whose files are no longer safe and
+// removes only regular audio files that no ready cache row references.
+func (service *Service) CleanupAudioCache(dryRun bool) (CleanupResult, error) {
+	result := CleanupResult{DryRun: dryRun}
+	entries, err := service.db.ListReadyTTSCacheEntries()
+	if err != nil {
+		return result, err
+	}
+	root := service.cfg.OutputDir
+	if strings.TrimSpace(root) == "" {
+		root = "./oneday_data/audio"
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return result, err
+	}
+	referenced := map[string]bool{}
+	for _, entry := range entries {
+		pathAbs, pathErr := filepath.Abs(entry.FilePath)
+		rel, relErr := filepath.Rel(rootAbs, pathAbs)
+		safe := pathErr == nil && relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) && safeRegularFile(pathAbs)
+		if !safe {
+			result.InvalidCacheRows++
+			if !dryRun {
+				if invalidateErr := service.db.InvalidateTTSCacheEntry(entry.CacheKey, "cached audio file is missing or outside the canonical root"); invalidateErr != nil {
+					result.Errors = appendBounded(result.Errors, invalidateErr.Error())
+				}
+			}
+			continue
+		}
+		referenced[pathAbs] = true
+	}
+	if _, err := os.Stat(rootAbs); errors.Is(err, os.ErrNotExist) {
+		return result, nil
+	} else if err != nil {
+		return result, err
+	}
+	err = filepath.Walk(rootAbs, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			result.Errors = appendBounded(result.Errors, walkErr.Error())
+			return nil
+		}
+		if !info.Mode().IsRegular() {
+			return nil
+		}
+		extension := strings.ToLower(filepath.Ext(path))
+		if extension != ".mp3" && extension != ".wav" && extension != ".opus" && extension != ".aac" && extension != ".flac" {
+			return nil
+		}
+		result.FilesScanned++
+		pathAbs, absErr := filepath.Abs(path)
+		if absErr != nil || referenced[pathAbs] {
+			return nil
+		}
+		result.OrphanFiles++
+		if !dryRun {
+			if removeErr := os.Remove(pathAbs); removeErr != nil {
+				result.Errors = appendBounded(result.Errors, removeErr.Error())
+			} else {
+				result.FilesRemoved++
+			}
+		}
+		return nil
+	})
+	return result, err
+}
+
+func appendBounded(values []string, value string) []string {
+	if len(values) >= 20 {
+		return values
+	}
+	return append(values, value)
 }
 
 func (service *Service) QueueCommittedMessage(ctx context.Context, storyID string, messageID int64) ([]storage.AudioAsset, error) {

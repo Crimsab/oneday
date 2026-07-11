@@ -432,6 +432,10 @@ pub struct GatewayAudioResponse {
     #[serde(default)]
     pub assignment: Option<serde_json::Value>,
     #[serde(default)]
+    pub pronunciations: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub pronunciation: Option<serde_json::Value>,
+    #[serde(default)]
     pub assets: Vec<serde_json::Value>,
     #[serde(default)]
     pub jobs: Vec<serde_json::Value>,
@@ -441,6 +445,10 @@ pub struct GatewayAudioResponse {
     pub file_path: String,
     #[serde(default)]
     pub format: String,
+    #[serde(default)]
+    pub cleanup: Option<serde_json::Value>,
+    #[serde(default)]
+    pub export: Option<serde_json::Value>,
     #[serde(default)]
     pub error: String,
 }
@@ -1180,7 +1188,7 @@ mod tests {
     use crate::{config, AppState};
     use std::fs;
     use std::io::Write;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use tokio::sync::broadcast;
 
     #[cfg(unix)]

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw, Volume2 } from "lucide-react";
-import { createMessageAudio, getMessageAudio, getTTSSettings } from "../api";
+import { cancelAudioJob, createMessageAudio, getMessageAudio, getTTSSettings, retryAudioJob } from "../api";
 import type { AudioAsset, MessageAudioResponse } from "../types";
 
 const settingsRequests = new Map<string, Promise<boolean>>();
@@ -59,11 +59,18 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
     void audio.play().catch(() => setError("Autoplay was blocked. Use the playback control below."));
   }, [autoplay, response.assets]);
 
+  useEffect(() => {
+    if (!response.jobs.some((job) => job.status === "queued" || job.status === "running")) return;
+    const timer = window.setTimeout(() => { void load(); }, 1500);
+    return () => window.clearTimeout(timer);
+  }, [response.jobs, storyId, messageId]);
+
   const generate = async () => {
     setBusy(true);
     setError("");
     try {
-      setResponse(await createMessageAudio(storyId, messageId));
+      const retryable = response.jobs.find((job) => job.status === "failed" || job.status === "cancelled" || job.status === "canceled");
+      setResponse(retryable ? await retryAudioJob(storyId, retryable.id) : await createMessageAudio(storyId, messageId));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Audio generation failed");
     } finally {
@@ -71,9 +78,18 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
     }
   };
 
+  const cancel = async () => {
+    const job = response.jobs.find((item) => item.status === "queued" || item.status === "running");
+    if (!job) return;
+    setBusy(true); setError("");
+    try { setResponse(await cancelAudioJob(storyId, job.id)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not cancel audio generation"); }
+    finally { setBusy(false); }
+  };
+
   const ready = response.assets.filter((asset) => asset.status === "ready");
   const active = response.assets.some((asset) => asset.status === "queued" || asset.status === "running");
-  const failed = response.assets.find((asset) => asset.status === "failed");
+  const failed = response.assets.find((asset) => asset.status === "failed" || asset.status === "cancelled" || asset.status === "canceled");
 
   return (
     <section className="message-audio" aria-label="Spoken audio">
@@ -83,6 +99,7 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
           {failed ? <RefreshCw size={14} aria-hidden="true" /> : <Volume2 size={14} aria-hidden="true" />}
           {busy ? "Generating…" : failed ? "Retry" : ready.length ? "Regenerate" : "Generate"}
         </button>
+        {active && <button type="button" disabled={busy} onClick={cancel}>Cancel</button>}
       </div>
       {ready.map((asset) => (
         <audio key={asset.id} controls preload="none" src={assetUrl(asset)}>

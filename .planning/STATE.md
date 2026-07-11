@@ -2,26 +2,35 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
-current_phase: 37
+current_phase: 38
 status: in_progress
-stopped_at: Phase 37.3 complete; proceeding to pronunciation, retry/cleanup/export, and the full audio matrix
-last_updated: "2026-07-11T17:36:00+02:00"
-last_activity: 2026-07-11 -- Branch-safe audio APIs, native browser playback, and story/character voice controls deployed
+stopped_at: Phase 37 complete; proceeding to universal authoring, simulation, export, compatibility, and release gates
+last_updated: "2026-07-11T17:56:00+02:00"
+last_activity: 2026-07-11 -- Canonical TTS, voice registry, playback, pronunciation, retry, cleanup, export, and full audio matrix completed
 progress:
   total_phases: 39
-  completed_phases: 36
+  completed_phases: 37
   total_plans: 89
-  completed_plans: 112
-  percent: 92
+  completed_plans: 113
+  percent: 95
 ---
 
 # Project State
 
-**Current Phase:** 37
-**Status:** Phase 36 implementation complete; Phase 37 ready
+**Current Phase:** 38
+**Status:** Phase 37 implementation complete; Phase 38 ready
 **Last Updated:** 2026-07-11
 
 ## Phase History
+
+- 2026-07-11: Phase 37 implementation completed on `homelab-main`. TTS now
+  starts only from committed active-branch text, preserves narrator/dialogue
+  order and speaker identity, applies story/per-character/language policy, and
+  persists complete cache and causal generation lineage. Cloud Speech and
+  persistent Piper share one graceful provider contract. Browser playback,
+  voice assignment, pronunciation, retry/cancel, conservative cache cleanup,
+  and path-redacted manifest export pass unit, integration, desktop/mobile E2E,
+  copied-live-DB preflight, and live release checks.
 
 - 2026-07-11: Phase 36 implementation completed on `homelab-main`. One
   replayable host now covers repaired legacy games plus deduction, negotiation,

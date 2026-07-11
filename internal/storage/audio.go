@@ -400,6 +400,17 @@ func (db *DB) ListPronunciations(storyID, languageTag string) ([]PronunciationEn
 	return entries, rows.Err()
 }
 
+func (db *DB) DeletePronunciation(storyID, id string) error {
+	result, err := db.conn.Exec(`DELETE FROM pronunciation_lexicon WHERE story_id=? AND id=?`, storyID, id)
+	if err != nil {
+		return err
+	}
+	if affected, _ := result.RowsAffected(); affected != 1 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (db *DB) GetActiveEntityFormID(storyID, entityID string) string {
 	var id string
 	_ = db.conn.QueryRow(`SELECT f.id FROM entity_forms f JOIN stories s ON s.id=f.story_id WHERE f.story_id=? AND f.entity_id=? AND f.branch_id=s.active_branch_id AND f.valid_to_turn IS NULL ORDER BY f.valid_from_turn DESC,f.created_at DESC LIMIT 1`, storyID, entityID).Scan(&id)
@@ -411,6 +422,28 @@ func (db *DB) GetTTSCacheEntry(cacheKey string) (*TTSCacheEntry, error) {
 	err := db.conn.QueryRow(`SELECT cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,style_json,speed,output_format,status,file_path,duration_ms,timings_json,error,created_at,updated_at FROM tts_cache_entries WHERE cache_key=?`, cacheKey).
 		Scan(&entry.CacheKey, &entry.Provider, &entry.Model, &entry.ProviderVoiceID, &entry.VoiceVersion, &entry.LanguageTag, &entry.TextHash, &entry.StyleHash, &entry.Style, &entry.Speed, &entry.OutputFormat, &entry.Status, &entry.FilePath, &entry.DurationMS, &entry.Timings, &entry.Error, &entry.CreatedAt, &entry.UpdatedAt)
 	return &entry, err
+}
+
+func (db *DB) ListReadyTTSCacheEntries() ([]TTSCacheEntry, error) {
+	rows, err := db.conn.Query(`SELECT cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,style_json,speed,output_format,status,file_path,duration_ms,timings_json,error,created_at,updated_at FROM tts_cache_entries WHERE status='ready' ORDER BY cache_key`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []TTSCacheEntry{}
+	for rows.Next() {
+		var entry TTSCacheEntry
+		if err := rows.Scan(&entry.CacheKey, &entry.Provider, &entry.Model, &entry.ProviderVoiceID, &entry.VoiceVersion, &entry.LanguageTag, &entry.TextHash, &entry.StyleHash, &entry.Style, &entry.Speed, &entry.OutputFormat, &entry.Status, &entry.FilePath, &entry.DurationMS, &entry.Timings, &entry.Error, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (db *DB) InvalidateTTSCacheEntry(cacheKey, reason string) error {
+	_, err := db.conn.Exec(`UPDATE tts_cache_entries SET status='failed',file_path='',error=?,updated_at=CURRENT_TIMESTAMP WHERE cache_key=?`, reason, cacheKey)
+	return err
 }
 
 func (db *DB) QueueAudioAsset(asset AudioAsset, job TTSJob) (*AudioAsset, *TTSJob, error) {
@@ -516,6 +549,23 @@ func (db *DB) ListMessageAudio(storyID string, messageID int64) ([]AudioAsset, e
 	return assets, rows.Err()
 }
 
+func (db *DB) ListStoryAudio(storyID string) ([]AudioAsset, error) {
+	rows, err := db.conn.Query(audioAssetSelect+` WHERE a.story_id=? AND a.branch_id=(SELECT active_branch_id FROM stories WHERE id=?) ORDER BY a.source_message_id,a.segment_index,a.created_at`, storyID, storyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	assets := []AudioAsset{}
+	for rows.Next() {
+		asset, err := scanAudioAsset(rows)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, *asset)
+	}
+	return assets, rows.Err()
+}
+
 // GetActiveAudioAssetByID resolves an asset only when its immutable branch
 // lineage still belongs to the story's active branch.
 func (db *DB) GetActiveAudioAssetByID(id string) (*AudioAsset, error) {
@@ -526,6 +576,28 @@ func (db *DB) ListMessageTTSJobs(storyID string, messageID int64) ([]TTSJob, err
 	rows, err := db.conn.Query(`SELECT j.id,j.audio_asset_id,j.story_id,j.branch_id,j.source_commit_id,j.status,j.provider,j.attempts,j.max_attempts,j.next_attempt_at,j.trace_id,COALESCE(j.parent_run_id,''),COALESCE(j.generation_run_id,''),j.error_class,j.error,j.created_at,j.updated_at
 		FROM tts_jobs j JOIN audio_assets a ON a.id=j.audio_asset_id JOIN stories s ON s.id=j.story_id
 		WHERE j.story_id=? AND a.source_message_id=? AND j.branch_id=s.active_branch_id ORDER BY a.segment_index,j.created_at`, storyID, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	jobs := []TTSJob{}
+	for rows.Next() {
+		var job TTSJob
+		var next sql.NullString
+		if err := rows.Scan(&job.ID, &job.AudioAssetID, &job.StoryID, &job.BranchID, &job.SourceCommitID, &job.Status, &job.Provider, &job.Attempts, &job.MaxAttempts, &next, &job.TraceID, &job.ParentRunID, &job.GenerationRunID, &job.ErrorClass, &job.Error, &job.CreatedAt, &job.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if next.Valid {
+			job.NextAttemptAt = next.String
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, rows.Err()
+}
+
+func (db *DB) ListStoryTTSJobs(storyID string) ([]TTSJob, error) {
+	rows, err := db.conn.Query(`SELECT j.id,j.audio_asset_id,j.story_id,j.branch_id,j.source_commit_id,j.status,j.provider,j.attempts,j.max_attempts,j.next_attempt_at,j.trace_id,COALESCE(j.parent_run_id,''),COALESCE(j.generation_run_id,''),j.error_class,j.error,j.created_at,j.updated_at
+		FROM tts_jobs j JOIN stories s ON s.id=j.story_id WHERE j.story_id=? AND j.branch_id=s.active_branch_id ORDER BY j.created_at,j.id`, storyID)
 	if err != nil {
 		return nil, err
 	}
@@ -578,6 +650,44 @@ func (db *DB) GetTTSJob(jobID string) (*TTSJob, error) {
 	return &job, err
 }
 
+func (db *DB) CancelTTSJob(storyID, jobID string) (*TTSJob, error) {
+	err := db.WithTx(func(tx *sql.Tx) error {
+		result, err := tx.Exec(`UPDATE tts_jobs SET status='cancelled',next_attempt_at=NULL,error_class='',error='',updated_at=CURRENT_TIMESTAMP
+			WHERE id=? AND story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND status IN ('queued','running','failed')`, jobID, storyID, storyID)
+		if err != nil {
+			return err
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return errors.New("TTS job is not cancelable on the active branch")
+		}
+		_, err = tx.Exec(`UPDATE audio_assets SET status='cancelled',error='',updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT audio_asset_id FROM tts_jobs WHERE id=?)`, jobID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db.GetTTSJob(jobID)
+}
+
+func (db *DB) RetryTTSJob(storyID, jobID string) (*TTSJob, error) {
+	err := db.WithTx(func(tx *sql.Tx) error {
+		result, err := tx.Exec(`UPDATE tts_jobs SET status='queued',attempts=0,next_attempt_at=NULL,generation_run_id=NULL,error_class='',error='',updated_at=CURRENT_TIMESTAMP
+			WHERE id=? AND story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND status IN ('failed','cancelled')`, jobID, storyID, storyID)
+		if err != nil {
+			return err
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return errors.New("TTS job is not retryable on the active branch")
+		}
+		_, err = tx.Exec(`UPDATE audio_assets SET status='queued',error='',updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT audio_asset_id FROM tts_jobs WHERE id=?)`, jobID)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return db.GetTTSJob(jobID)
+}
+
 func (db *DB) CompleteTTSJob(jobID string, cache TTSCacheEntry, filePath string, durationMS int64, timings json.RawMessage, generationRunID string) error {
 	cache.Style = validJSONOr(cache.Style, `{}`)
 	timings = validJSONOr(timings, `[]`)
@@ -585,6 +695,13 @@ func (db *DB) CompleteTTSJob(jobID string, cache TTSCacheEntry, filePath string,
 		return errors.New("cache style and timings must be valid JSON")
 	}
 	return db.WithTx(func(tx *sql.Tx) error {
+		var status string
+		if err := tx.QueryRow(`SELECT status FROM tts_jobs WHERE id=?`, jobID).Scan(&status); err != nil {
+			return err
+		}
+		if status != "running" {
+			return fmt.Errorf("TTS job completion rejected from status %q", status)
+		}
 		_, err := tx.Exec(`INSERT INTO tts_cache_entries(cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,style_json,speed,output_format,status,file_path,duration_ms,timings_json,error)
 			VALUES(?,?,?,?,?,?,?,?,?,?,?,'ready',?,?,?,'') ON CONFLICT(cache_key) DO UPDATE SET status='ready',file_path=excluded.file_path,duration_ms=excluded.duration_ms,timings_json=excluded.timings_json,error='',updated_at=CURRENT_TIMESTAMP`, cache.CacheKey, cache.Provider, cache.Model, cache.ProviderVoiceID, cache.VoiceVersion, cache.LanguageTag, cache.TextHash, cache.StyleHash, cache.Style, cache.Speed, cache.OutputFormat, filePath, durationMS, timings)
 		if err != nil {
@@ -609,10 +726,14 @@ func (db *DB) FailTTSJob(jobID, errorClass, detail, generationRunID string, retr
 		next = time.Now().UTC().Add(30 * time.Second)
 	}
 	return db.WithTx(func(tx *sql.Tx) error {
-		if _, err := tx.Exec(`UPDATE tts_jobs SET status=?,next_attempt_at=?,generation_run_id=?,error_class=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`, status, next, nullableString(generationRunID), errorClass, detail, jobID); err != nil {
+		result, err := tx.Exec(`UPDATE tts_jobs SET status=?,next_attempt_at=?,generation_run_id=?,error_class=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='cancelled'`, status, next, nullableString(generationRunID), errorClass, detail, jobID)
+		if err != nil {
 			return err
 		}
-		_, err := tx.Exec(`UPDATE audio_assets SET status='failed',generation_run_id=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT audio_asset_id FROM tts_jobs WHERE id=?)`, nullableString(generationRunID), detail, jobID)
+		if affected, _ := result.RowsAffected(); affected == 0 {
+			return nil
+		}
+		_, err = tx.Exec(`UPDATE audio_assets SET status='failed',generation_run_id=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT audio_asset_id FROM tts_jobs WHERE id=?)`, nullableString(generationRunID), detail, jobID)
 		return err
 	})
 }

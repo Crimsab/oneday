@@ -321,7 +321,7 @@
 
 - [x] **TRACE-01**: Every AI operation persists a generation run with trace, parent run, story, branch, source commit, message, stage, and aggregate usage/cost/timing.
 - [x] **TRACE-02**: Every provider attempt persists provider/model, reasoning configuration, streaming request/observation, TTFT, duration, tokens, cost, retry/repair/reroll reason, and error classification.
-- [ ] **TRACE-03**: Narrator, scene judge, repair, reroll, chapter summary, image, and TTS stages retain causal parent/child lineage instead of only aggregate totals.
+- [x] **TRACE-03**: Narrator, scene judge, repair, reroll, chapter summary, image, and TTS stages retain causal parent/child lineage instead of only aggregate totals.
 - [x] **TRACE-04**: Prompt profiles and revisions are versioned and hashed without persisting private chain-of-thought or unredacted secrets.
 - [x] **TRACE-05**: Each AI-authored message exposes a compact player-safe info summary and an optional diagnostics drawer with attempt details.
 - [x] **TRACE-06**: Structured JSONL export and retention/redaction policies make telemetry useful for evals without leaking secrets or hidden reasoning.
@@ -346,13 +346,13 @@
 
 ### TTS, Voice, and Audio
 
-- [ ] **AUDIO-01**: TTS runs only from committed canonical text after dialogue/narration segmentation and never synthesizes provisional or rejected output by default.
-- [ ] **AUDIO-02**: Story settings support global off/narrator/dialogue/all policy, separate autoplay, and per-character inherit/on/off controls.
-- [ ] **AUDIO-03**: Voice profiles and assignments distinguish narrator, protagonist, NPC entity/identity/form roles while preventing accidental duplicate voices for major characters.
-- [ ] **AUDIO-04**: Audio assets and durable TTS jobs carry language, pronunciation, provider/model/voice revision, branch/source commit, text hash, timing, and status.
-- [ ] **AUDIO-05**: Cache identity includes provider, model, voice/version, language, canonical text, style, speed, and format, with safe invalidation.
-- [ ] **AUDIO-06**: One cloud adapter and one persistent local/offline adapter implement the same provider contract with graceful unavailable-provider behavior.
-- [ ] **AUDIO-07**: Browser playback, per-character controls, multilingual pronunciation overrides, export, retry, and cleanup are covered by unit, integration, and E2E tests.
+- [x] **AUDIO-01**: TTS runs only from committed canonical text after dialogue/narration segmentation and never synthesizes provisional or rejected output by default.
+- [x] **AUDIO-02**: Story settings support global off/narrator/dialogue/all policy, separate autoplay, and per-character inherit/on/off controls.
+- [x] **AUDIO-03**: Voice profiles and assignments distinguish narrator, protagonist, NPC entity/identity/form roles while preventing accidental duplicate voices for major characters.
+- [x] **AUDIO-04**: Audio assets and durable TTS jobs carry language, pronunciation, provider/model/voice revision, branch/source commit, text hash, timing, and status.
+- [x] **AUDIO-05**: Cache identity includes provider, model, voice/version, language, canonical text, style, speed, and format, with safe invalidation.
+- [x] **AUDIO-06**: One cloud adapter and one persistent local/offline adapter implement the same provider contract with graceful unavailable-provider behavior.
+- [x] **AUDIO-07**: Browser playback, per-character controls, multilingual pronunciation overrides, export, retry, and cleanup are covered by unit, integration, and E2E tests.
 
 ### Advanced Universal-Story Product Capabilities
 
