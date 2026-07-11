@@ -915,6 +915,103 @@ pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
     });
 }
 
+const AUTOMATIC_VISUAL_CATCHUP_LIMIT: usize = 3;
+
+pub fn spawn_automatic_visual_catchup(state: Arc<AppState>) {
+    if !image_generation_config(&state)
+        .map(|config| config.auto_generate && image_generation_available(&config))
+        .unwrap_or(false)
+    {
+        return;
+    }
+
+    tokio::spawn(async move {
+        match automatic_visual_catchup(state.clone(), AUTOMATIC_VISUAL_CATCHUP_LIMIT).await {
+            Ok(queued) if queued > 0 => {
+                tracing::info!(queued, "queued bounded visual asset catch-up");
+            }
+            Ok(_) => {}
+            Err(err) => tracing::warn!(error = %err, "visual asset catch-up failed"),
+        }
+    });
+}
+
+async fn automatic_visual_catchup(state: Arc<AppState>, limit: usize) -> anyhow::Result<usize> {
+    let mut remaining = limit.clamp(1, AUTOMATIC_VISUAL_CATCHUP_LIMIT);
+    let mut queued = 0;
+    for story in db::list_stories(&state.pool)
+        .await?
+        .into_iter()
+        .filter(|story| !story.is_archived)
+    {
+        if remaining == 0 {
+            break;
+        }
+        let response = visual_assets(&state.pool, &story.id).await?;
+        let asset_ids = automatic_catchup_candidates(&response.assets, &response.jobs, remaining);
+        if asset_ids.is_empty() {
+            continue;
+        }
+        let requested = asset_ids.len();
+        generate_visual_assets(
+            state.clone(),
+            &story.id,
+            GenerateVisualAssetsRequest {
+                asset_ids,
+                force: false,
+                allow_silhouette: false,
+                limit: Some(requested),
+            },
+        )
+        .await?;
+        queued += requested;
+        remaining -= requested;
+    }
+    Ok(queued)
+}
+
+fn automatic_catchup_candidates(
+    assets: &[VisualAsset],
+    jobs: &[VisualGenerationJobView],
+    limit: usize,
+) -> Vec<String> {
+    let active_jobs = jobs
+        .iter()
+        .filter(|job| matches!(job.status.as_str(), "queued" | "running"))
+        .map(|job| job.asset_id.as_str())
+        .collect::<HashSet<_>>();
+    let mut candidates = assets
+        .iter()
+        .filter(|asset| {
+            asset.generation_eligible
+                && asset.status == "pending"
+                && asset.gate_state != "legacy"
+                && !active_jobs.contains(asset.id.as_str())
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        automatic_visual_priority(left)
+            .cmp(&automatic_visual_priority(right))
+            .then_with(|| right.turn.cmp(&left.turn))
+            .then_with(|| left.subject.cmp(&right.subject))
+    });
+    candidates
+        .into_iter()
+        .take(limit)
+        .map(|asset| asset.id.clone())
+        .collect()
+}
+
+fn automatic_visual_priority(asset: &VisualAsset) -> u8 {
+    match asset.kind.as_str() {
+        "map_icon" => 0,
+        "map_background" => 1,
+        "location" => 2,
+        "character" => 3,
+        _ => 4,
+    }
+}
+
 pub async fn generate_visual_assets(
     state: Arc<AppState>,
     story_id: &str,
@@ -1340,9 +1437,10 @@ async fn generation_targets(
     let requested: HashSet<&str> = request.asset_ids.iter().map(String::as_str).collect();
     let limit = request.limit.unwrap_or(6).clamp(1, 12);
     let assets = list_assets(pool, story_id).await?;
-    Ok(assets
+    let mut targets = assets
         .into_iter()
         .filter(|asset| requested.is_empty() || requested.contains(asset.id.as_str()))
+        .filter(|asset| !requested.is_empty() || asset.gate_state != "legacy")
         .filter(|asset| {
             asset.generation_eligible
                 || (requested.contains(asset.id.as_str())
@@ -1353,8 +1451,15 @@ async fn generation_targets(
         })
         .filter(|asset| request.force || asset.status != "ready")
         .filter(|asset| asset.status != "running")
-        .take(limit)
-        .collect())
+        .collect::<Vec<_>>();
+    targets.sort_by(|left, right| {
+        automatic_visual_priority(left)
+            .cmp(&automatic_visual_priority(right))
+            .then_with(|| right.turn.cmp(&left.turn))
+            .then_with(|| left.subject.cmp(&right.subject))
+    });
+    targets.truncate(limit);
+    Ok(targets)
 }
 
 async fn enqueue_visual_generation_jobs(
@@ -3552,6 +3657,74 @@ mod tests {
                 .find(|spec| spec.kind == "map_background")
                 .unwrap()
                 .generation_eligible
+        );
+    }
+
+    #[test]
+    fn automatic_catchup_is_bounded_prioritized_and_skips_legacy_rows() {
+        let asset = |id: &str, kind: &str, gate_state: &str, eligible: bool, status: &str, turn| {
+            VisualAsset {
+                id: id.into(),
+                kind: kind.into(),
+                subject: id.into(),
+                gate_state: gate_state.into(),
+                generation_eligible: eligible,
+                status: status.into(),
+                turn,
+                ..VisualAsset::default()
+            }
+        };
+        let assets = vec![
+            asset(
+                "character-new",
+                "character",
+                "established_canonical",
+                true,
+                "pending",
+                8,
+            ),
+            asset("legacy-copy", "character", "legacy", true, "pending", 9),
+            asset(
+                "map-symbol",
+                "map_icon",
+                "known_map_symbol",
+                true,
+                "pending",
+                4,
+            ),
+            asset(
+                "map-layer",
+                "map_background",
+                "known_map_ready",
+                true,
+                "pending",
+                4,
+            ),
+            asset(
+                "blocked",
+                "character",
+                "insufficient_observation",
+                false,
+                "pending",
+                10,
+            ),
+            asset(
+                "already-ready",
+                "location",
+                "established_canonical",
+                true,
+                "ready",
+                11,
+            ),
+        ];
+
+        assert_eq!(
+            automatic_catchup_candidates(&assets, &[], 2),
+            vec!["map-symbol", "map-layer"]
+        );
+        assert_eq!(
+            automatic_catchup_candidates(&assets, &[], 3),
+            vec!["map-symbol", "map-layer", "character-new"]
         );
     }
 

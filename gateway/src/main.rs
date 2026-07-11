@@ -67,6 +67,7 @@ async fn main() -> anyhow::Result<()> {
     });
     assets::spawn_visual_generation_maintenance(state.clone());
     assets::spawn_visual_generation_worker(state.clone());
+    assets::spawn_automatic_visual_catchup(state.clone());
     let app: Router = routes::router(state);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
