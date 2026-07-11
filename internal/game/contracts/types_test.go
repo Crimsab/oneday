@@ -1,6 +1,65 @@
 package contracts
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"testing"
+)
+
+func TestCanonicalChallengeFixtureUsesCurrentProtocol(t *testing.T) {
+	raw, err := os.ReadFile("../../../contracts/challenge-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Instance   ChallengeInstance   `json:"instance"`
+		Input      ChallengeInput      `json:"input"`
+		Resolution ChallengeResolution `json:"resolution"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.Instance.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.Resolution.InstanceID != fixture.Instance.ID || fixture.Resolution.Outcome.Seed != fixture.Instance.Seed {
+		t.Fatalf("fixture lineage mismatch: %+v", fixture)
+	}
+}
+
+func TestOutcomeEnvelopeRoundTripPreservesAuthoritativeFields(t *testing.T) {
+	outcome := OutcomeEnvelope{
+		Version:          ChallengeProtocolVersion,
+		Degree:           OutcomeSuccessWithCost,
+		Difficulty:       62,
+		Seed:             44,
+		Roll:             57,
+		Margin:           -5,
+		Costs:            []OutcomeEffect{{Kind: "time", Amount: 10, Detail: "A slower route"}},
+		Consequences:     []string{"The patrol notices the delay"},
+		StateDeltas:      []OutcomeEffect{{Kind: "progress", Amount: 1}},
+		RevealedFacts:    []string{"The side gate is watched"},
+		FollowUpPressure: 2,
+	}
+	raw, err := json.Marshal(outcome)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded OutcomeEnvelope
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Degree != OutcomeSuccessWithCost || decoded.Margin != -5 || decoded.Seed != 44 || len(decoded.Costs) != 1 {
+		t.Fatalf("round trip lost authoritative fields: %+v", decoded)
+	}
+}
+
+func TestChallengeInstanceValidateRejectsUnsupportedProtocol(t *testing.T) {
+	instance := ChallengeInstance{ProtocolVersion: 99, ID: "challenge-1", Definition: ChallengeDefinition{ID: "ordinary-action", Kind: "action"}}
+	if err := instance.Validate(); err == nil {
+		t.Fatal("Validate error = nil, want unsupported protocol error")
+	}
+}
 
 func TestSubmitActionRejectsStaleClientTurn(t *testing.T) {
 	req := SubmitActionRequest{

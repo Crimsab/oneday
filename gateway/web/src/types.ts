@@ -549,6 +549,28 @@ export interface PlayerAction {
   choice_id?: number;
 }
 
+export type OutcomeDegree = "critical_success" | "full_success" | "success_with_cost" | "failure_with_progress" | "hard_failure" | "catastrophe";
+export interface ChallengeModifier { source: string; value: number }
+export interface OutcomeEnvelope {
+  version: 1;
+  degree: OutcomeDegree;
+  difficulty: number;
+  seed: number;
+  roll: number;
+  modifiers?: ChallengeModifier[];
+  total: number;
+  margin: number;
+  costs?: JsonValue[];
+  consequences?: string[];
+  state_deltas?: JsonValue[];
+  revealed_facts?: string[];
+  follow_up_pressure?: number;
+}
+export interface ChallengeDefinition { id: string; kind: string; description?: string; difficulty: number }
+export interface ChallengeInstance { protocol_version: 1; id: string; story_id?: string; branch_id?: string; turn: number; definition: ChallengeDefinition; seed: number; policy: JsonObject; timing?: JsonObject }
+export interface ChallengeInput { actor_id?: string; intent: string; choice_id?: number; modifiers?: ChallengeModifier[]; payload?: JsonValue; elapsed_ms?: number }
+export interface ChallengeResolution { protocol_version: 1; instance_id: string; input: ChallengeInput; outcome: OutcomeEnvelope }
+
 export interface ActionEnvelope {
   session_id: string;
   client_turn: number;

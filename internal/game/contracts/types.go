@@ -28,6 +28,133 @@ type ClientCapabilities struct {
 	RollLog bool `json:"roll_log,omitempty"`
 }
 
+const (
+	ChallengeProtocolVersion       = 1
+	MaxPortableChallengeSeed int64 = (1 << 53) - 1
+)
+
+type OutcomeDegree string
+
+const (
+	OutcomeCriticalSuccess     OutcomeDegree = "critical_success"
+	OutcomeFullSuccess         OutcomeDegree = "full_success"
+	OutcomeSuccessWithCost     OutcomeDegree = "success_with_cost"
+	OutcomeFailureWithProgress OutcomeDegree = "failure_with_progress"
+	OutcomeHardFailure         OutcomeDegree = "hard_failure"
+	OutcomeCatastrophe         OutcomeDegree = "catastrophe"
+)
+
+func ValidOutcomeDegree(degree OutcomeDegree) bool {
+	switch degree {
+	case OutcomeCriticalSuccess, OutcomeFullSuccess, OutcomeSuccessWithCost,
+		OutcomeFailureWithProgress, OutcomeHardFailure, OutcomeCatastrophe:
+		return true
+	default:
+		return false
+	}
+}
+
+type ChallengeModifier struct {
+	Source string `json:"source"`
+	Value  int    `json:"value"`
+}
+
+type TimingPolicy struct {
+	Mode          string `json:"mode,omitempty"`
+	LimitMillis   int64  `json:"limit_ms,omitempty"`
+	StartedUnixMs int64  `json:"started_unix_ms,omitempty"`
+}
+
+type OutcomePolicy struct {
+	ID                string `json:"id"`
+	Genre             string `json:"genre,omitempty"`
+	DifficultyProfile string `json:"difficulty_profile,omitempty"`
+	ConsequenceBudget int    `json:"consequence_budget"`
+	CriticalBand      int    `json:"critical_band"`
+	Fairness          string `json:"fairness"`
+}
+
+type ChallengeDefinition struct {
+	ID          string            `json:"id"`
+	Kind        string            `json:"kind"`
+	Description string            `json:"description,omitempty"`
+	Difficulty  int               `json:"difficulty"`
+	Rules       map[string]string `json:"rules,omitempty"`
+}
+
+type ChallengeInstance struct {
+	ProtocolVersion int                 `json:"protocol_version"`
+	ID              string              `json:"id"`
+	StoryID         string              `json:"story_id,omitempty"`
+	BranchID        string              `json:"branch_id,omitempty"`
+	Turn            int                 `json:"turn"`
+	Definition      ChallengeDefinition `json:"definition"`
+	Seed            int64               `json:"seed"`
+	Policy          OutcomePolicy       `json:"policy"`
+	Timing          TimingPolicy        `json:"timing,omitempty"`
+}
+
+func (i ChallengeInstance) Validate() error {
+	if i.ProtocolVersion != ChallengeProtocolVersion {
+		return fmt.Errorf("unsupported challenge protocol version %d", i.ProtocolVersion)
+	}
+	if strings.TrimSpace(i.ID) == "" || strings.TrimSpace(i.Definition.ID) == "" || strings.TrimSpace(i.Definition.Kind) == "" {
+		return errors.New("challenge instance id, definition id, and kind are required")
+	}
+	if i.Definition.Difficulty < 1 || i.Definition.Difficulty > 100 {
+		return fmt.Errorf("challenge difficulty %d is outside 1..100", i.Definition.Difficulty)
+	}
+	if i.Seed < 0 || i.Seed > MaxPortableChallengeSeed {
+		return fmt.Errorf("challenge seed %d is not portable across JSON hosts", i.Seed)
+	}
+	return nil
+}
+
+type ChallengeInput struct {
+	ActorID   string              `json:"actor_id,omitempty"`
+	Intent    string              `json:"intent"`
+	ChoiceID  int                 `json:"choice_id,omitempty"`
+	Modifiers []ChallengeModifier `json:"modifiers,omitempty"`
+	Payload   json.RawMessage     `json:"payload,omitempty"`
+	ElapsedMS int64               `json:"elapsed_ms,omitempty"`
+}
+
+type OutcomeEffect struct {
+	Kind   string `json:"kind"`
+	Target string `json:"target,omitempty"`
+	Field  string `json:"field,omitempty"`
+	Amount int    `json:"amount,omitempty"`
+	Detail string `json:"detail,omitempty"`
+}
+
+type OutcomeEnvelope struct {
+	Version          int                 `json:"version"`
+	Degree           OutcomeDegree       `json:"degree"`
+	Difficulty       int                 `json:"difficulty"`
+	Seed             int64               `json:"seed"`
+	Roll             int                 `json:"roll"`
+	Modifiers        []ChallengeModifier `json:"modifiers,omitempty"`
+	Total            int                 `json:"total"`
+	Margin           int                 `json:"margin"`
+	Costs            []OutcomeEffect     `json:"costs,omitempty"`
+	Consequences     []string            `json:"consequences,omitempty"`
+	StateDeltas      []OutcomeEffect     `json:"state_deltas,omitempty"`
+	RevealedFacts    []string            `json:"revealed_facts,omitempty"`
+	FollowUpPressure int                 `json:"follow_up_pressure,omitempty"`
+}
+
+func (o OutcomeEnvelope) Succeeded() bool {
+	return o.Degree == OutcomeCriticalSuccess || o.Degree == OutcomeFullSuccess || o.Degree == OutcomeSuccessWithCost
+}
+
+type ChallengeResolution struct {
+	ProtocolVersion int             `json:"protocol_version"`
+	InstanceID      string          `json:"instance_id"`
+	Input           ChallengeInput  `json:"input"`
+	Outcome         OutcomeEnvelope `json:"outcome"`
+	ResolvedAt      *time.Time      `json:"resolved_at,omitempty"`
+}
+
 type SubmitActionRequest struct {
 	StoryID        string             `json:"story_id"`
 	SessionID      string             `json:"session_id"`

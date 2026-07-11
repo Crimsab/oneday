@@ -267,6 +267,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		updated, cmd := m.challengeView.Update(msg)
 		m.challengeView = updated
 		if crMsg, ok := msg.(ChallengeResolvedMsg); ok {
+			crMsg.Result = engine.EnsureLegacyChallengeOutcome(crMsg.Result)
 			m.inChallenge = false
 			m.challengeView = nil
 			m.choices.SetChoices(nil)

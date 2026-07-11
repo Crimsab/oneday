@@ -10,6 +10,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -26,12 +27,13 @@ type CraftedItem struct {
 
 // CraftingResponse is the AI's evaluation of a crafting attempt.
 type CraftingResponse struct {
-	Feasible     bool         `json:"feasible"`
-	Narrative    string       `json:"narrative"`              // AI's description of the attempt
-	Item         *CraftedItem `json:"item,omitempty"`         // only if feasible
-	Missing      []string     `json:"missing,omitempty"`      // what player lacks
-	Alternatives []string     `json:"alternatives,omitempty"` // what they could make instead
-	Choices      []Choice     `json:"choices,omitempty"`      // next options
+	Feasible        bool                       `json:"feasible"`
+	Narrative       string                     `json:"narrative"`              // AI's description of the attempt
+	Item            *CraftedItem               `json:"item,omitempty"`         // only if feasible
+	Missing         []string                   `json:"missing,omitempty"`      // what player lacks
+	Alternatives    []string                   `json:"alternatives,omitempty"` // what they could make instead
+	Choices         []Choice                   `json:"choices,omitempty"`      // next options
+	ResolvedOutcome *contracts.OutcomeEnvelope `json:"resolved_outcome,omitempty"`
 }
 
 // CraftingGuidance is local QoL data derived from inventory + known recipes.
@@ -107,6 +109,14 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 		{Role: ai.RoleSystem, Content: systemPrompt},
 	}
 	messages = append(messages, ce.chatHistory...)
+	instance := NewOrdinaryActionChallenge(story.ID, story.ActiveBranchID, ce.narrator.session.Turn(), fmt.Sprintf("crafting:%d:%s", ce.turnCount, message), DefaultOutcomePolicy(story.Genre, ce.narrator.contextCfg.RewardBudget))
+	instance.Definition.ID = "crafting-attempt"
+	instance.Definition.Kind = "crafting"
+	resolution, resolveErr := ResolveChallengeInstance(instance, contracts.ChallengeInput{ActorID: char.ID, Intent: message})
+	if resolveErr != nil {
+		return nil, fmt.Errorf("resolving crafting outcome: %w", resolveErr)
+	}
+	messages = appendOutcomeGuidance(messages, OutcomePromptContract(instance, *resolution))
 
 	start := time.Now()
 	req := ai.Request{
@@ -134,6 +144,14 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 				{ID: 2, Text: "Leave crafting"},
 			},
 		}
+	}
+	craftResp.ResolvedOutcome = &resolution.Outcome
+	if !resolution.Outcome.Succeeded() {
+		craftResp.Feasible = false
+		craftResp.Item = nil
+	}
+	if err := ce.narrator.db.RecordChallengeResolutionAtHead(story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, *resolution); err != nil {
+		return nil, fmt.Errorf("persisting crafting outcome: %w", err)
 	}
 
 	// If feasible and item was created, apply state changes.
@@ -175,8 +193,9 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 			Text: message,
 		},
 		Output: &ChatOutput{
-			Narrative: craftResp.Narrative,
-			Mood:      "focused",
+			Narrative:       craftResp.Narrative,
+			Mood:            "focused",
+			ResolvedOutcome: craftResp.ResolvedOutcome,
 		},
 		AIModel:   resp.Model,
 		AILatency: latency,

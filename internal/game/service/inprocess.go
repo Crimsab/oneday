@@ -633,6 +633,16 @@ func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.Game
 	}); err != nil {
 		return nil, err
 	}
+	if resp.ChallengeInstance != nil {
+		if err := appendEvent(contracts.EventChallengeStarted, map[string]any{"instance": resp.ChallengeInstance}); err != nil {
+			return nil, err
+		}
+	}
+	if resp.ChallengeResolution != nil {
+		if err := appendEvent(contracts.EventChallengeResolved, map[string]any{"resolution": resp.ChallengeResolution, "outcome": resp.ResolvedOutcome}); err != nil {
+			return nil, err
+		}
+	}
 
 	if err := appendEvent(contracts.EventNarrativeFinal, map[string]any{
 		"narrative": resp.Narrative,

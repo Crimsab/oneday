@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -37,22 +38,39 @@ func (ce *ChallengeEngine) Resolve(
 		return nil, fmt.Errorf("nil challenge spec")
 	}
 
+	var result *ChallengeResult
+	var err error
 	switch spec.Type {
 	case ChallengeStatCheck:
-		return ce.resolveStatCheck(spec, char)
+		result, err = ce.resolveStatCheck(spec, char)
 	case ChallengeDiceRoll:
-		return ce.resolveDiceRoll(spec)
+		result, err = ce.resolveDiceRoll(spec)
 	case ChallengeItemCheck:
-		return ce.resolveItemCheck(spec, char)
+		result, err = ce.resolveItemCheck(spec, char)
 	case ChallengeSkillCheck:
-		return ce.resolveSkillCheck(spec, char)
+		result, err = ce.resolveSkillCheck(spec, char)
 	case ChallengeRelCheck:
-		return ce.resolveRelationshipCheck(spec, char, db, storyID)
+		result, err = ce.resolveRelationshipCheck(spec, char, db, storyID)
 	case ChallengeMiniGame:
 		return nil, fmt.Errorf("mini-game %q requires TUI interaction; use minigame resolvers directly", spec.MiniGame)
 	default:
 		return nil, fmt.Errorf("unknown challenge type: %q", spec.Type)
 	}
+	if err != nil || result == nil {
+		return result, err
+	}
+	if result.Outcome == nil {
+		outcome := OutcomeFromLegacy(result.Passed, result.Difficulty)
+		if len(result.RollLog) > 0 || result.Roll != 0 {
+			outcome.Roll, outcome.Total = result.Roll, result.Total
+			outcome.Margin = result.Total - result.Difficulty
+		}
+		if len(result.RollLog) > 0 {
+			outcome.Seed = result.RollLog[0].Seed & contracts.MaxPortableChallengeSeed
+		}
+		result.Outcome = &outcome
+	}
+	return result, nil
 }
 
 // resolveStatCheck compares a character stat value against a difficulty threshold.

@@ -310,7 +310,7 @@ func (db *DB) SealTurnSnapshotTx(tx *sql.Tx, commitID, storyID, payloadJSON stri
 // commit that will own them. Existing rows already bound to older commits are
 // never rewritten.
 func (db *DB) BindPendingLineageTx(tx *sql.Tx, storyID, branchID, commitID string) error {
-	for _, table := range []string{"sessions", "chat_messages", "chapters", "rag_chunks", "saves", "combat_log", "visual_assets", "visual_asset_versions", "visual_generation_jobs"} {
+	for _, table := range []string{"sessions", "chat_messages", "chapters", "rag_chunks", "saves", "combat_log", "visual_assets", "visual_asset_versions", "visual_generation_jobs", "challenge_runs"} {
 		stmt := fmt.Sprintf(`UPDATE %s SET branch_id=?, source_commit_id=? WHERE story_id=? AND source_commit_id='' AND (branch_id='' OR branch_id=?)`, table)
 		if _, err := tx.Exec(stmt, branchID, commitID, storyID, branchID); err != nil {
 			return fmt.Errorf("binding %s lineage: %w", table, err)
