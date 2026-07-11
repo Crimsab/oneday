@@ -59,13 +59,12 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
   return (
     <aside className="right-inspector">
       <div className="inspector-head">
-        <h2>{selectedTab === "history" ? "World State" : title}</h2>
+        <div><span>Story details</span><h2>{title}</h2></div>
         <div className="inspector-head-actions">
-          {selectedTab !== "history" && <span className="inspector-mode">{title}</span>}
-          <button type="button" className="square-button" onClick={onOpenModule} title="Open module in modal">
+          <button type="button" className="square-button" onClick={onOpenModule} title={`Open ${title} in a larger view`} aria-label={`Open ${title} in a larger view`}>
             <Maximize2 size={15} />
           </button>
-          <button type="button" className="square-button" onClick={onRefresh} title="Refresh snapshot">
+          <button type="button" className="square-button" onClick={onRefresh} title="Refresh story details" aria-label="Refresh story details">
             <RefreshCw size={15} />
           </button>
         </div>

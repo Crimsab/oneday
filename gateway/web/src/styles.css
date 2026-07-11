@@ -1252,8 +1252,10 @@ input:disabled {
 
 .markdown-body blockquote {
   margin: 0 0 13px;
-  border-left: 3px solid var(--accent);
-  padding-left: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line-soft));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  padding: 10px 12px;
   color: var(--accent);
 }
 
@@ -1272,7 +1274,7 @@ input:disabled {
 .diagnostics-run { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 8px 10px; border: 1px solid var(--line-soft); border-radius: 5px; background: color-mix(in srgb,var(--panel-2) 82%,transparent); }
 .diagnostics-run strong { color: var(--accent); }
 .diagnostics-attempts { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
-.diagnostics-attempts li { min-width: 0; padding: 8px 10px; border-left: 2px solid color-mix(in srgb,var(--accent) 42%,var(--line)); background: color-mix(in srgb,var(--panel-2) 64%,transparent); }
+.diagnostics-attempts li { min-width: 0; padding: 8px 10px; border: 1px solid color-mix(in srgb,var(--accent) 24%,var(--line)); border-radius: 4px; background: color-mix(in srgb,var(--panel-2) 64%,transparent); }
 .diagnostics-attempts header { display: flex; justify-content: space-between; gap: 10px; color: var(--text); }
 .diagnostics-attempts p { margin: 3px 0 !important; overflow-wrap: anywhere; color: var(--muted); }
 .diagnostics-attempts small { display: block; color: var(--faint); }

@@ -1,4 +1,4 @@
-import { BookOpen, ImageOff, MapPin, Moon, Sun, Sunrise, Sunset } from "lucide-react";
+import { BookOpen, ImageOff, Moon, Sun, Sunrise, Sunset } from "lucide-react";
 import type { StorySnapshot, VisualAsset } from "../types";
 import { displayClock } from "../format";
 import { readyAssetUrl } from "../visualAssets";
@@ -31,7 +31,7 @@ export function StoryPath({ snapshot, locationAsset, onOpenVisualAsset }: StoryP
     .map((part) => part.trim())
     .filter(Boolean)
     .slice(0, 4);
-  const parts = [snapshot.story.name || "Story", `Chapter ${snapshot.world.current_chapter}`, ...locationParts];
+  const parts = locationParts.slice(1);
 
   const imageUrl = readyAssetUrl(locationAsset);
   const clock = displayClock(snapshot);
@@ -56,8 +56,8 @@ export function StoryPath({ snapshot, locationAsset, onOpenVisualAsset }: StoryP
       <div className="scene-copy">
         <div className="scene-copy-head">
           <span className="scene-kicker">
-            <MapPin size={14} />
-            {snapshot.story.name || "Story"}
+            <BookOpen size={14} />
+            Chapter {snapshot.world.current_chapter}
           </span>
           <span className="scene-cycle-chip">
             <CycleIcon size={13} />
@@ -65,22 +65,18 @@ export function StoryPath({ snapshot, locationAsset, onOpenVisualAsset }: StoryP
           </span>
         </div>
         <h2 title={snapshot.world.current_location}>{snapshot.world.current_location || "Unknown location"}</h2>
-        <div className="scene-path">
-          {parts.slice(1).map((part, index) => (
+        {parts.length > 0 && <div className="scene-path">
+          {parts.map((part, index) => (
             <span key={`${part}-${index}`}>{part}</span>
           ))}
+        </div>}
+      </div>
+      {locationAsset && locationAsset.status !== "ready" && (
+        <div className="scene-asset-state" title={locationAsset.prompt || "Scene art is not ready yet"}>
+          <ImageOff size={14} />
+          <span>Scene art {locationAsset.status}</span>
         </div>
-      </div>
-      <div className="scene-asset-state" title={locationAsset?.prompt || "No visual prompt available yet"}>
-        {locationAsset?.status === "ready" ? (
-          <span>Image ready</span>
-        ) : (
-          <>
-            <ImageOff size={14} />
-            <span>{locationAsset ? `Image ${locationAsset.status}` : "Image pending"}</span>
-          </>
-        )}
-      </div>
+      )}
     </div>
   );
 }

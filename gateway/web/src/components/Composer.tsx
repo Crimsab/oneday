@@ -115,7 +115,7 @@ export function Composer({
         submitCurrentDraft();
       }}
     >
-      <div className="composer-title">Action Composer</div>
+      <div className="composer-title"><span>Something else?</span><small>Describe any action in your own words.</small></div>
       <div className="composer-row">
         <span className="prompt-marker">&gt;</span>
         <textarea
@@ -175,10 +175,11 @@ export function Composer({
               }
             }
           }}
-          placeholder="Enter command or action..."
+          placeholder="What do you want to try?"
           rows={2}
         />
         <label className="select-wrap">
+          <span className="sr-only">Action type</span>
           <select value={mode} onChange={(event) => onModeChange(event.target.value)}>
             <option value="action">Action</option>
             <option value="talk">Talk</option>
@@ -189,12 +190,12 @@ export function Composer({
         </label>
         <button type="submit" className="execute-button" disabled={disabled || !draft.trim()}>
           <CornerDownLeft size={16} />
-          Execute
+          Send action
         </button>
       </div>
       <div className="composer-tip">
-        <span>{notice || "Tip: /advance, /timeskip, /downtime, /talk, /inventory, /stats, /characters, /fronts, /projects, /history, /saves"}</span>
-        <span>Ctrl+K palette - Tab/Enter accept - Ctrl+Enter executes</span>
+        <span>{notice || "Type / for commands or use Ctrl+K to explore them."}</span>
+        <span>Ctrl+Enter to send</span>
       </div>
       {paletteOpen && (
         <CommandPalette

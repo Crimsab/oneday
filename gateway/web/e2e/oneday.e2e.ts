@@ -171,19 +171,18 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   const requests = await mockGateway(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Narrative Transcript" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "The Glass Archive" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Challenge host" })).toHaveCount(0);
   await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.getByLabel("Structured dialogue for turn 4")).toContainText("Choose carefully.");
-  await expect(page.getByText("codex · gpt-5.5 · 1.3 s · 321 tokens · streamed")).toBeVisible();
-  await page.getByText("Operator diagnostics").click();
+  await page.getByText("Technical details", { exact: true }).click();
   await expect(page.getByText("narrator rev 3")).toBeVisible();
   await expect(page.getByRole("list", { name: "Provider attempts" })).toContainText("TTFT 180 ms");
 
-  const composer = page.getByPlaceholder("Enter command or action...");
+  const composer = page.getByPlaceholder("What do you want to try?");
   await composer.fill("Trace the silver fracture");
   const actionRequest = page.waitForRequest((request) => request.url().endsWith("/actions"));
-  await page.getByRole("button", { name: "Execute" }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
+  await page.getByRole("button", { name: "Send action" }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
   await actionRequest;
   await expect(composer).toHaveValue("");
   expect(requests.actionRequests()).toBe(1);
@@ -195,23 +194,24 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
 test("restores a failed draft, checks out a branch, and exposes searchable history/export", async ({ page, browserName }) => {
   await mockGateway(page, { failAction: true });
   await page.goto("/");
-  const composer = page.getByPlaceholder("Enter command or action...");
+  const composer = page.getByPlaceholder("What do you want to try?");
   await composer.fill("Open the forbidden door");
-  await page.getByRole("button", { name: "Execute" }).click();
+  await page.getByRole("button", { name: "Send action" }).click();
   await expect(composer).toHaveValue("Open the forbidden door");
   await expect(page.getByText("simulated rollback")).toBeVisible();
 
   await composer.fill("/checkout quiet route");
-  await page.getByRole("button", { name: "Execute" }).click();
+  await page.getByRole("button", { name: "Send action" }).click();
   await expect(page.getByText("Active branch: quiet route.")).toBeVisible();
 
   await composer.fill("/history");
-  await page.getByRole("button", { name: "Execute" }).click();
+  await page.getByRole("button", { name: "Send action" }).click();
   const history = page.viewportSize()!.width <= 1240 ? page.getByRole("dialog") : page.locator(".right-inspector");
   await expect(history.getByPlaceholder("Search this branch")).toBeVisible();
   await history.getByPlaceholder("Search this branch").fill("seal");
   await expect(history.getByRole("heading", { name: "Transcript", exact: true })).toBeVisible();
   await expect(history.getByText("Arrival at the archive.")).toBeVisible();
+  await history.getByText("Export this branch", { exact: true }).click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
     history.getByRole("button", { name: "Export Markdown" }).click(),
@@ -219,6 +219,7 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   expect(download.suggestedFilename()).toBe("glass-archive-history.md");
   const [epubDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Export EPUB" }).click()]);
   expect(epubDownload.suggestedFilename()).toBe("glass-archive.epub");
+  await history.getByText("Technical exports", { exact: true }).click();
   const [replayDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Export media replay" }).click()]);
   expect(replayDownload.suggestedFilename()).toBe("glass-archive-replay.json");
 
@@ -282,8 +283,8 @@ test("plays a timing-free minigame through the shared browser host", async ({ pa
 test("renders only canonical known map topology and bounded agency events", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
-  await page.getByPlaceholder("Enter command or action...").fill("/map");
-  await page.getByRole("button", { name: "Execute" }).click();
+  await page.getByPlaceholder("What do you want to try?").fill("/map");
+  await page.getByRole("button", { name: "Send action" }).click();
   await expect(page.locator(".agency-feed:visible").filter({ hasText: "Mira advances an offscreen goal." })).toBeVisible();
   const map = page.locator('.canonical-map:visible svg[role="img"]');
   await expect(map).toHaveAttribute("aria-label", "Canonical map with 2 known locations and 1 known routes");

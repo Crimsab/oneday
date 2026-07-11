@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { compactText, messageClock, readableStructuredText } from "../format";
+import { compactText, readableStructuredText } from "../format";
 import { turnEventDetail, turnEventTitle } from "../turnEvents";
 import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
@@ -50,10 +50,8 @@ function TranscriptMessage({ storyId, message }: { storyId: string; message: Mes
   return (
     <article className={`transcript-message ${message.role} ${isSystem ? "system-line" : ""}`}>
       <div className="message-stamp">
-        <span>[{messageClock(message)}]</span>
-        <small>
-          {isUser ? "Command" : message.message_type || message.role} - Turn {message.turn}
-        </small>
+        <span>Turn {message.turn}</span>
+        <small>{isUser ? "Your action" : isSystem ? "Story state" : "Narration"}</small>
       </div>
       <div className="message-body">
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
@@ -82,8 +80,8 @@ function PendingTurnMessage({ pendingTurn }: { pendingTurn: PendingTurnView }) {
   return (
     <article className="transcript-message user pending-turn">
       <div className="message-stamp">
-        <span>[now]</span>
-        <small>Command - Turn {pendingTurn.turn}</small>
+        <span>Turn {pendingTurn.turn}</span>
+        <small>Your action · sending</small>
       </div>
       <div className="message-body">
         <MarkdownText>{pendingTurn.source}</MarkdownText>

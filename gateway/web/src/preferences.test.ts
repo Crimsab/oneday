@@ -48,14 +48,14 @@ describe("loadPreferences and savePreferences", () => {
   it("loads defaults when storage is empty or malformed", () => {
     stubLocalStorage();
     expect(loadPreferences()).toEqual(defaultPreferences);
-    localStorage.setItem("oneday-browser-preferences-v1", "{bad json");
+    localStorage.setItem("oneday-browser-preferences-v2", "{bad json");
     expect(loadPreferences()).toEqual(defaultPreferences);
   });
 
   it("persists normalized preferences", () => {
     const storage = stubLocalStorage();
     savePreferences({ ...defaultPreferences, density: "comfortable", accent: "rose" });
-    expect(storage.get("oneday-browser-preferences-v1")).toContain("comfortable");
+    expect(storage.get("oneday-browser-preferences-v2")).toContain("comfortable");
     expect(loadPreferences()).toMatchObject({ density: "comfortable", accent: "rose" });
   });
 });
