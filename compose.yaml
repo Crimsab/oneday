@@ -16,6 +16,7 @@ services:
       - /srv/oneday/data/secrets/oneday/app.env
     environment:
       TZ: Europe/Rome
+      ONEDAY_IMAGEGEN_OPENCLAW_URL: http://example.com:8099/generate
     volumes:
       - type: bind
         source: /srv/oneday/docker/oneday
