@@ -1432,6 +1432,9 @@ CREATE TABLE IF NOT EXISTS visual_asset_branch_overrides (
 	source_commit_id TEXT NOT NULL,
 	prompt_override TEXT NOT NULL DEFAULT '',
 	negative_prompt_override TEXT NOT NULL DEFAULT '',
+	gate_state TEXT NOT NULL DEFAULT '',
+	gate_reason TEXT NOT NULL DEFAULT '',
+	generation_eligible INTEGER CHECK(generation_eligible IN (0,1)),
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY(asset_id,branch_id)
@@ -1453,4 +1456,6 @@ CREATE INDEX IF NOT EXISTS idx_visual_profile_revisions_reachable ON visual_prof
 CREATE INDEX IF NOT EXISTS idx_visual_asset_versions_lineage ON visual_asset_versions(story_id,branch_id,source_commit_id,appearance_fingerprint,id DESC);
 CREATE INDEX IF NOT EXISTS idx_visual_jobs_lineage ON visual_generation_jobs(story_id,branch_id,source_commit_id,status,created_at);
 CREATE INDEX IF NOT EXISTS idx_visual_overrides_lineage ON visual_asset_branch_overrides(story_id,asset_id,source_commit_id);
+DROP INDEX IF EXISTS idx_visual_generation_jobs_active_asset;
+CREATE UNIQUE INDEX idx_visual_generation_jobs_active_asset ON visual_generation_jobs(asset_id,branch_id) WHERE status IN ('queued','running');
 `
