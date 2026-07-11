@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Download, Trash2, Wrench } from "lucide-react";
 import { cleanupAudio, deletePronunciation, getAudioExport, getPronunciations, updatePronunciation } from "../api";
 import type { AudioCleanupResult, PronunciationEntry } from "../types";
+import { CustomSelect } from "./CustomSelect";
 
 export function AudioLanguageTools({ storyId, language, revision }: { storyId: string; language: string; revision: number }) {
   const [entries, setEntries] = useState<PronunciationEntry[]>([]);
@@ -75,7 +76,7 @@ export function AudioLanguageTools({ storyId, language, revision }: { storyId: s
       <form className="pronunciation-form" onSubmit={save}>
         <label><span>Written text</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Lyanna" required /></label>
         <label><span>Spoken form</span><input value={spoken} onChange={(event) => setSpoken(event.target.value)} placeholder="Lee-ah-na" required /></label>
-        <label><span>Alphabet</span><select value={alphabet} onChange={(event) => setAlphabet(event.target.value as PronunciationEntry["alphabet"])}><option value="provider">Provider guidance</option><option value="ipa">IPA</option><option value="x-sampa">X-SAMPA</option></select></label>
+        <label><span>Alphabet</span><CustomSelect value={alphabet} ariaLabel="Pronunciation alphabet" onChange={(value) => setAlphabet(value as PronunciationEntry["alphabet"])} options={[{ value: "provider", label: "Provider guidance" }, { value: "ipa", label: "IPA" }, { value: "x-sampa", label: "X-SAMPA" }]} /></label>
         <label className="toggle-row"><span>Case sensitive</span><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} /></label>
         <button type="submit" disabled={busy || !source.trim() || !spoken.trim()}>Add pronunciation</button>
       </form>

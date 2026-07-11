@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { getTTSCatalog, getTTSSettings, getVoiceAssignments, updateTTSSettings, updateVoiceAssignment } from "../api";
 import type { RecordView, StoryTTSSettings, VoiceAssignment, VoiceProfile } from "../types";
 import { AudioLanguageTools } from "./AudioLanguageTools";
+import { CustomSelect } from "./CustomSelect";
 
 interface VoiceAssignmentEditorProps {
   storyId: string;
@@ -73,7 +74,7 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
     <section className="voice-settings" aria-labelledby="voice-settings-title">
       <div className="settings-section-head"><div><h3 id="voice-settings-title">{heading}</h3><p>Committed narration and dialogue only. Autoplay is controlled separately.</p></div><button type="button" disabled={busy} onClick={saveSettings}>Save audio settings</button></div>
       <div className="settings-grid voice-global-settings">
-        <label><span>Speech mode</span><select value={settings.mode} onChange={(event) => setSettings({ ...settings, mode: event.target.value as StoryTTSSettings["mode"] })}><option value="off">Off</option><option value="narrator">Narrator only</option><option value="dialogue">Dialogue only</option><option value="all">Narration and dialogue</option></select></label>
+        <label><span>Speech mode</span><CustomSelect value={settings.mode} ariaLabel="Speech mode" onChange={(value) => setSettings({ ...settings, mode: value as StoryTTSSettings["mode"] })} options={[{ value: "off", label: "Off" }, { value: "narrator", label: "Narrator only" }, { value: "dialogue", label: "Dialogue only" }, { value: "all", label: "Narration and dialogue" }]} /></label>
         <label><span>Default language</span><input value={settings.default_language_tag} onChange={(event) => setSettings({ ...settings, default_language_tag: event.target.value })} placeholder="en-US" /></label>
         <label className="toggle-row"><span>Autoplay new audio</span><input type="checkbox" checked={settings.autoplay} onChange={(event) => setSettings({ ...settings, autoplay: event.target.checked })} /></label>
       </div>
@@ -82,7 +83,7 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
         <div className="voice-assignment-list">
           {targets.map((target) => {
             const current = assignments.find((item) => item.assignment_key === assignmentKey(target.role, target.entityId));
-            return <div className="voice-assignment-row" key={target.key}><strong>{target.label}</strong><label><span>Voice</span><select disabled={busy || current?.locked} value={current?.voice_profile_id || ""} onChange={(event) => void saveTarget(target, event.target.value, current?.enabled_mode || "inherit")}><option value="">Select a voice</option>{voices.map((voice) => <option key={voice.id} value={voice.id}>{voice.display_name} · {voice.provider}</option>)}</select></label><label><span>Playback</span><select disabled={busy} value={current?.enabled_mode || "inherit"} onChange={(event) => void saveTarget(target, current?.voice_profile_id || voices[0]?.id || "", event.target.value as VoiceAssignment["enabled_mode"])}><option value="inherit">Inherit story</option><option value="on">On</option><option value="off">Off</option></select></label></div>;
+            return <div className="voice-assignment-row" key={target.key}><strong>{target.label}</strong><label><span>Voice</span><CustomSelect disabled={busy || current?.locked} value={current?.voice_profile_id || ""} ariaLabel={`Voice for ${target.label}`} onChange={(value) => void saveTarget(target, value, current?.enabled_mode || "inherit")} options={[{ value: "", label: "Select a voice" }, ...voices.map((voice) => ({ value: voice.id, label: `${voice.display_name} · ${voice.provider}` }))]} /></label><label><span>Playback</span><CustomSelect disabled={busy} value={current?.enabled_mode || "inherit"} ariaLabel={`Playback for ${target.label}`} onChange={(value) => void saveTarget(target, current?.voice_profile_id || voices[0]?.id || "", value as VoiceAssignment["enabled_mode"])} options={[{ value: "inherit", label: "Inherit story" }, { value: "on", label: "On" }, { value: "off", label: "Off" }]} /></label></div>;
           })}
         </div>
       )}

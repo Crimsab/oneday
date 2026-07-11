@@ -41,6 +41,7 @@ import type { VisualCatalog } from "../visualAssets";
 import { readyAssetUrl } from "../visualAssets";
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
+import { CustomSelect } from "./CustomSelect";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -328,9 +329,9 @@ function OptionsContent({
     {
       id: "general",
       content: <div className="settings-grid general-settings">
-        <label data-setting-id="density"><span>Density</span><select value={preferences.density} onChange={(event) => update("density", event.target.value as AppPreferences["density"])}><option value="compact">Compact</option><option value="balanced">Balanced</option><option value="comfortable">Comfortable</option></select></label>
-        <label data-setting-id="font-size"><span>Font size</span><select value={preferences.fontSize} onChange={(event) => update("fontSize", event.target.value as AppPreferences["fontSize"])}><option value="small">Small</option><option value="base">Base</option><option value="large">Large</option></select></label>
-        <label data-setting-id="accent"><span>Accent</span><select value={preferences.accent} onChange={(event) => update("accent", event.target.value as AppPreferences["accent"])}><option value="amber">Amber</option><option value="green">Green</option><option value="blue">Blue</option><option value="rose">Rose</option></select></label>
+        <label data-setting-id="density"><span>Density</span><CustomSelect value={preferences.density} ariaLabel="Interface density" onChange={(value) => update("density", value as AppPreferences["density"])} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfortable", label: "Comfortable" }]} /></label>
+        <label data-setting-id="font-size"><span>Font size</span><CustomSelect value={preferences.fontSize} ariaLabel="Font size" onChange={(value) => update("fontSize", value as AppPreferences["fontSize"])} options={[{ value: "small", label: "Small" }, { value: "base", label: "Base" }, { value: "large", label: "Large" }]} /></label>
+        <label data-setting-id="accent"><span>Accent</span><CustomSelect value={preferences.accent} ariaLabel="Accent color" onChange={(value) => update("accent", value as AppPreferences["accent"])} options={[{ value: "amber", label: "Amber" }, { value: "green", label: "Green" }, { value: "blue", label: "Blue" }, { value: "rose", label: "Rose" }]} /></label>
         <label className="toggle-row" data-setting-id="stories-sidebar"><span>Stories sidebar</span><input type="checkbox" checked={preferences.showLeftRail} onChange={(event) => update("showLeftRail", event.target.checked)} /></label>
         <label className="toggle-row" data-setting-id="inspector"><span>Inspector panel</span><input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} /></label>
         <label className="toggle-row" data-setting-id="transcript-wrap"><span>Transcript wrap</span><input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} /></label>
@@ -342,6 +343,7 @@ function OptionsContent({
         <article data-setting-id="automatic-challenges"><strong>Automatic challenges</strong><p>NPC situations can open an interactive challenge. OneDay selects the family automatically, so the player never chooses the easiest mechanic.</p><span className="settings-status">Enabled</span></article>
         <article data-setting-id="timing-free"><strong>Timing-free selection</strong><p>The selector excludes reflex-only challenges when a timing-free mechanic can represent the same scene.</p><span className="settings-status">Required</span></article>
         <article data-setting-id="challenge-cooldown"><strong>Challenge cooldown</strong><p>Recent branch history reduces repetition and blocks a family during its cooldown window.</p><span className="settings-status">Active branch</span></article>
+        <label className="toggle-row choice-detail-setting" data-setting-id="choice-details"><span><strong>Choice details</strong><small>Show intent, risk, scope, certainty, and related attributes beneath each suggested action.</small></span><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /></label>
       </div>,
     },
     {
@@ -1053,32 +1055,28 @@ function ModelRoutingSettings({
       <div className="settings-grid">
         <label>
           <span>Provider priority</span>
-          <select
+          <CustomSelect
             value={activeProvider}
-            onChange={(event) =>
+            ariaLabel="Provider priority"
+            onChange={(nextProvider) =>
               updateDraft((value) => ({
                 ...value,
                 providerPriority: promoteProvider(
                   value.providerPriority,
                   providerIds,
-                  event.target.value,
+                  nextProvider,
                 ),
                 providers: {
                   ...value.providers,
-                  [event.target.value]: {
-                    ...value.providers[event.target.value],
+                  [nextProvider]: {
+                    ...value.providers[nextProvider],
                     enabled: true,
                   },
                 },
               }))
             }
-          >
-            {modelSettings.providers.map((provider) => (
-              <option key={provider.id} value={provider.id}>
-                {provider.label}
-              </option>
-            ))}
-          </select>
+            options={modelSettings.providers.map((provider) => ({ value: provider.id, label: provider.label }))}
+          />
         </label>
         <label>
           <span>Utility model</span>
@@ -1183,18 +1181,7 @@ function ModelRoutingSettings({
         </label>
         <label>
           <span>Image output format</span>
-          <select
-            value={draft.imageGeneration.outputFormat}
-            onChange={(event) =>
-              updateImageGeneration({ outputFormat: event.target.value })
-            }
-          >
-            {["png", "jpeg", "webp"].map((format) => (
-              <option key={format} value={format}>
-                {format}
-              </option>
-            ))}
-          </select>
+          <CustomSelect value={draft.imageGeneration.outputFormat} ariaLabel="Image output format" onChange={(value) => updateImageGeneration({ outputFormat: value })} options={["png", "jpeg", "webp"].map((format) => ({ value: format, label: format.toUpperCase() }))} />
         </label>
         <label>
           <span>Image timeout seconds</span>
@@ -1243,21 +1230,17 @@ function ModelRoutingSettings({
         </label>
         <label>
           <span>Embedding provider</span>
-          <select
+          <CustomSelect
             value={draft.embeddingProvider}
-            onChange={(event) =>
+            ariaLabel="Embedding provider"
+            onChange={(nextProvider) =>
               updateDraft((draft) => ({
                 ...draft,
-                embeddingProvider: event.target.value,
+                embeddingProvider: nextProvider,
               }))
             }
-          >
-            {modelSettings.embedding_providers.map((provider) => (
-              <option key={provider} value={provider}>
-                {provider}
-              </option>
-            ))}
-          </select>
+            options={modelSettings.embedding_providers.map((provider) => ({ value: provider, label: provider }))}
+          />
         </label>
         <label>
           <span>Embedding model</span>
@@ -1307,15 +1290,15 @@ function ModelRoutingSettings({
               {provider.supports_reasoning && (
                 <label>
                   <span>Reasoning</span>
-                  <select
+                  <CustomSelect
                     value={providerDraft?.reasoning ?? "off"}
-                    onChange={(event) =>
+                    ariaLabel={`Reasoning for ${provider.label}`}
+                    onChange={(reasoning) =>
                       updateProvider(provider.id, {
-                        reasoning: event.target.value,
+                        reasoning,
                       })
                     }
-                  >
-                    {[
+                    options={[
                       "off",
                       "none",
                       "minimal",
@@ -1323,12 +1306,8 @@ function ModelRoutingSettings({
                       "medium",
                       "high",
                       "xhigh",
-                    ].map((level) => (
-                      <option key={level} value={level}>
-                        {level}
-                      </option>
-                    ))}
-                  </select>
+                    ].map((level) => ({ value: level, label: level }))}
+                  />
                 </label>
               )}
             </div>

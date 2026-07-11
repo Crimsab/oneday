@@ -13,6 +13,7 @@ describe("normalizePreferences", () => {
         showLeftRail: false,
         showInspector: false,
         wrapTranscript: false,
+        showChoiceDetails: true,
       }),
     ).toEqual({
       density: "compact",
@@ -21,6 +22,7 @@ describe("normalizePreferences", () => {
       showLeftRail: false,
       showInspector: false,
       wrapTranscript: false,
+      showChoiceDetails: true,
     });
 
     expect(
@@ -31,6 +33,7 @@ describe("normalizePreferences", () => {
         showLeftRail: "yes" as never,
         showInspector: "yes" as never,
         wrapTranscript: "no" as never,
+        showChoiceDetails: "yes" as never,
       }),
     ).toEqual(defaultPreferences);
   });

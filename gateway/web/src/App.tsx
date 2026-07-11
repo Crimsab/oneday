@@ -1227,22 +1227,15 @@ function App() {
         ) : null}
         <main className="center-stage">
           <section className="transcript-panel" aria-labelledby="story-surface-title">
-            <div className="panel-head story-toolbar">
-              <div>
-                <span>Now playing</span>
-                <h1 id="story-surface-title">{snapshot?.story.name || "Your story"}</h1>
-              </div>
-              <details className="reading-controls">
-                <summary>Reading controls</summary>
-                <div>
-                  <button type="button" onClick={() => setPaused((value) => !value)}>
-                    {paused ? "Resume live updates" : "Pause live updates"}
-                  </button>
-                  <button type="button" onClick={clearTranscript}>Hide messages on this screen</button>
-                </div>
-              </details>
-            </div>
-            <StoryPath snapshot={snapshot} locationAsset={visuals.location} onOpenVisualAsset={openVisualAssetEditor} />
+            <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || "Your story"}</h1>
+            <StoryPath
+              snapshot={snapshot}
+              locationAsset={visuals.location}
+              paused={paused}
+              onTogglePaused={() => setPaused((value) => !value)}
+              onClearTranscript={clearTranscript}
+              onOpenVisualAsset={openVisualAssetEditor}
+            />
             <Transcript
               storyId={snapshot?.story.id ?? ""}
               messages={snapshot?.messages ?? []}
@@ -1258,7 +1251,7 @@ function App() {
 
           {snapshot && snapshot.choices.length > 0 && (
             <section className="inline-choice-panel" aria-label="Suggested actions">
-              <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} onChoice={sendChoice} onDraft={setDraft} />
+              <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} showDetails={preferences.showChoiceDetails} onChoice={sendChoice} onDraft={setDraft} />
             </section>
           )}
 

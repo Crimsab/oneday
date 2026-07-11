@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Archive, ArchiveRestore, Check, MoreHorizontal, PanelLeftOpen, Pencil, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import { asArray, compactText, displayTimestamp, entryLabel } from "../format";
@@ -260,15 +261,95 @@ function StoryRow({
         </span>
         <small title={story.description || story.tone || story.id}>{compactText(story.description || story.tone || story.id, 54)}</small>
       </button>
-      <details className="story-row-actions">
-        <summary aria-label={`Manage ${story.name || story.id}`} title={`Manage ${story.name || story.id}`}><MoreHorizontal size={16} /></summary>
-        <div>
-          <button type="button" onClick={() => { resetDraft(); onEdit(); }} disabled={busy}><Pencil size={14} />Edit</button>
-          <button type="button" onClick={() => void onSetArchived(!story.is_archived)} disabled={busy}>{story.is_archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{story.is_archived ? "Restore" : "Archive"}</button>
-          <button type="button" className="danger-action" onClick={() => void deleteWithConfirm()} disabled={busy}><Trash2 size={14} />Delete</button>
-        </div>
-      </details>
+      <StoryActionsMenu
+        label={`Manage ${story.name || story.id}`}
+        archived={Boolean(story.is_archived)}
+        busy={busy}
+        onEdit={() => { resetDraft(); onEdit(); }}
+        onSetArchived={() => onSetArchived(!story.is_archived)}
+        onDelete={deleteWithConfirm}
+      />
     </div>
+  );
+}
+
+function StoryActionsMenu({
+  label,
+  archived,
+  busy,
+  onEdit,
+  onSetArchived,
+  onDelete,
+}: {
+  label: string;
+  archived: boolean;
+  busy: boolean;
+  onEdit: () => void;
+  onSetArchived: () => Promise<void>;
+  onDelete: () => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const reposition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const width = 172;
+    const estimatedHeight = 126;
+    const top = rect.bottom + estimatedHeight > window.innerHeight - 8 ? rect.top - estimatedHeight - 4 : rect.bottom + 4;
+    setPosition({ top: Math.max(8, top), left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) });
+  };
+
+  useLayoutEffect(() => {
+    if (open) reposition();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    window.addEventListener("pointerdown", closeOutside);
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      window.removeEventListener("pointerdown", closeOutside);
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const run = (action: () => void | Promise<void>) => {
+    setOpen(false);
+    void action();
+  };
+
+  return (
+    <>
+      <button ref={triggerRef} type="button" className="story-row-actions-trigger" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+        <MoreHorizontal size={16} />
+      </button>
+      {open && createPortal(
+        <div ref={menuRef} className="story-row-menu" role="menu" style={position}>
+          <button type="button" role="menuitem" onClick={() => run(onEdit)} disabled={busy}><Pencil size={14} />Edit</button>
+          <button type="button" role="menuitem" onClick={() => run(onSetArchived)} disabled={busy}>{archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{archived ? "Restore" : "Archive"}</button>
+          <button type="button" role="menuitem" className="danger-action" onClick={() => run(onDelete)} disabled={busy}><Trash2 size={14} />Delete</button>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 

@@ -27,6 +27,7 @@ export interface AppPreferences {
   showLeftRail: boolean;
   showInspector: boolean;
   wrapTranscript: boolean;
+  showChoiceDetails: boolean;
 }
 
 export interface ModelProviderSetting {

@@ -31,6 +31,7 @@ export const settingsSearchEntries: SettingsSearchEntry[] = [
   entry("inspector", "general", "Inspector panel", "Show or hide the canonical inspector.", "right rail panel"),
   entry("transcript-wrap", "general", "Transcript wrap", "Wrap long narrative lines.", "reading prose line width"),
   entry("automatic-challenges", "gameplay", "Automatic challenges", "NPC situations trigger challenges without a player chooser.", "minigame automatic npc challenge host"),
+  entry("choice-details", "gameplay", "Choice details", "Show requirements, affected stats, risk, and outcome hints below choices.", "choices tags requirements stats risk outcomes metadata"),
   entry("timing-free", "gameplay", "Timing-free selection", "Prefer accessible challenges that do not require reflex timing.", "accessibility cooldown quick time reflex"),
   entry("challenge-cooldown", "gameplay", "Challenge cooldown", "Avoid repeating the same challenge family too soon.", "repetition variety selector"),
   entry("speech-mode", "audio", "Speech mode", "Choose narration, dialogue, both, or off.", "tts spoken voice narrator dialogue"),
