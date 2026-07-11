@@ -25,6 +25,7 @@ run make universal-release-check
 run make friend-safe-check
 
 step "Release Artifact Builds"
+run make build
 run make build-bench
 run make build-ascii-bench
 run make build-cross
