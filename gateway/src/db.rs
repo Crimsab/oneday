@@ -1,7 +1,10 @@
 use anyhow::Context;
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{Row, SqlitePool};
+use std::io::{Cursor, Write};
+use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
 #[derive(Debug, Serialize)]
 pub struct StorySummary {
@@ -141,6 +144,52 @@ pub struct StoryExport {
     pub format: String,
     pub filename: String,
     pub content: String,
+    pub encoding: String,
+    pub content_type: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AgencyEventView {
+    pub id: i64,
+    pub story_id: String,
+    pub branch_id: String,
+    pub commit_id: String,
+    pub canonical_turn: i64,
+    pub entity_id: String,
+    pub entity_name: String,
+    pub action: String,
+    pub summary: String,
+    pub created_at: String,
+}
+
+pub async fn agency_events(
+    pool: &SqlitePool,
+    story_id: &str,
+    limit: i64,
+) -> anyhow::Result<Vec<AgencyEventView>> {
+    let limit = limit.clamp(1, 100);
+    let rows = sqlx::query(r#"SELECT ce.id,ce.story_id,ce.branch_id,ce.commit_id,tc.canonical_turn,
+        COALESCE(json_extract(ce.payload_json,'$.entity_id'),''),COALESCE(json_extract(ce.payload_json,'$.entity_name'),''),
+        COALESCE(json_extract(ce.payload_json,'$.action'),''),COALESCE(json_extract(ce.payload_json,'$.summary'),''),CAST(ce.created_at AS TEXT)
+        FROM canonical_events ce JOIN turn_commits tc ON tc.id=ce.commit_id JOIN stories s ON s.id=ce.story_id
+        WHERE ce.story_id=? AND ce.branch_id=s.active_branch_id AND ce.event_type='npc.agency'
+        ORDER BY tc.canonical_turn DESC,ce.sequence DESC LIMIT ?"#).bind(story_id).bind(limit).fetch_all(pool).await?;
+    rows.into_iter()
+        .map(|row| {
+            Ok(AgencyEventView {
+                id: row.try_get(0)?,
+                story_id: row.try_get(1)?,
+                branch_id: row.try_get(2)?,
+                commit_id: row.try_get(3)?,
+                canonical_turn: row.try_get(4)?,
+                entity_id: row.try_get(5)?,
+                entity_name: row.try_get(6)?,
+                action: row.try_get(7)?,
+                summary: row.try_get(8)?,
+                created_at: row.try_get(9)?,
+            })
+        })
+        .collect()
 }
 
 #[derive(Debug, Serialize)]
@@ -713,6 +762,30 @@ pub async fn export_story(
             format: "json".into(),
             filename: format!("{safe_name}-history.json"),
             content: serde_json::to_string_pretty(&payload)?,
+            encoding: "utf-8".into(),
+            content_type: "application/json".into(),
+        });
+    }
+    if format.eq_ignore_ascii_case("replay") {
+        let visuals = sqlx::query(r#"SELECT id,kind,subject,url,branch_id,source_commit_id FROM visual_assets WHERE story_id=? AND branch_id=? AND status='ready' ORDER BY kind,subject,id"#).bind(story_id).bind(&active_branch_id).fetch_all(pool).await?.into_iter().map(|row| json!({"id":row.get::<String,_>(0),"kind":row.get::<String,_>(1),"subject":row.get::<String,_>(2),"url":row.get::<String,_>(3),"branch_id":row.get::<String,_>(4),"source_commit_id":row.get::<String,_>(5)})).collect::<Vec<_>>();
+        let audio = sqlx::query(r#"SELECT id,source_message_id,segment_index,segment_kind,language_tag,duration_ms,branch_id,source_commit_id FROM audio_assets WHERE story_id=? AND branch_id=? AND status='ready' ORDER BY source_message_id,segment_index"#).bind(story_id).bind(&active_branch_id).fetch_all(pool).await?.into_iter().map(|row| { let id:String=row.get(0); json!({"id":id,"url":format!("/api/audio/{id}"),"source_message_id":row.get::<i64,_>(1),"segment_index":row.get::<i64,_>(2),"segment_kind":row.get::<String,_>(3),"language_tag":row.get::<String,_>(4),"duration_ms":row.get::<i64,_>(5),"branch_id":row.get::<String,_>(6),"source_commit_id":row.get::<String,_>(7)}) }).collect::<Vec<_>>();
+        let payload = json!({"format":"oneday-replay-v1","story":story,"active_branch_id":active_branch_id,"chapters":chapters,"messages":messages,"visual_assets":visuals,"audio_assets":audio});
+        return Ok(StoryExport {
+            format: "replay".into(),
+            filename: format!("{safe_name}-replay.json"),
+            content: serde_json::to_string_pretty(&payload)?,
+            encoding: "utf-8".into(),
+            content_type: "application/json".into(),
+        });
+    }
+    if format.eq_ignore_ascii_case("epub") {
+        let bytes = build_epub(&story, &active_branch_id, &chapters, &messages)?;
+        return Ok(StoryExport {
+            format: "epub".into(),
+            filename: format!("{safe_name}.epub"),
+            content: BASE64.encode(bytes),
+            encoding: "base64".into(),
+            content_type: "application/epub+zip".into(),
         });
     }
     let mut content = format!("# {}\n\nBranch: `{}`\n\n", story.name, active_branch_id);
@@ -741,7 +814,82 @@ pub async fn export_story(
         format: "markdown".into(),
         filename: format!("{safe_name}-history.md"),
         content,
+        encoding: "utf-8".into(),
+        content_type: "text/markdown".into(),
     })
+}
+
+fn build_epub(
+    story: &StorySummary,
+    branch_id: &str,
+    chapters: &[ChapterView],
+    messages: &[MessageView],
+) -> anyhow::Result<Vec<u8>> {
+    let mut body = format!(
+        "<h1>{}</h1><p>Branch: <code>{}</code></p>",
+        xml_escape(&story.name),
+        xml_escape(branch_id)
+    );
+    for chapter in chapters {
+        body.push_str(&format!(
+            "<section><h2>{}</h2><p>{}</p></section>",
+            xml_escape(&chapter.title),
+            xml_escape(&chapter.summary)
+        ));
+    }
+    body.push_str("<section><h2>Transcript</h2>");
+    for message in messages {
+        body.push_str(&format!(
+            "<article><h3>Turn {} — {}</h3><p>{}</p></article>",
+            message.turn,
+            xml_escape(&message.role),
+            xml_escape(&message.content)
+        ));
+    }
+    body.push_str("</section>");
+    let xhtml = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" lang="{}"><head><meta charset="utf-8"/><title>{}</title></head><body>{}</body></html>"#,
+        xml_escape(&story.language),
+        xml_escape(&story.name),
+        body
+    );
+    let nav = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Navigation</title></head><body><nav epub:type="toc"><ol><li><a href="content.xhtml">{}</a></li></ol></nav></body></html>"#,
+        xml_escape(&story.name)
+    );
+    let opf = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">urn:oneday:{}</dc:identifier><dc:title>{}</dc:title><dc:language>{}</dc:language><meta property="dcterms:modified">{}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="content" href="content.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="content"/></spine></package>"#,
+        xml_escape(&story.id),
+        xml_escape(&story.name),
+        xml_escape(&story.language),
+        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
+    );
+    let cursor = Cursor::new(Vec::new());
+    let mut zip = ZipWriter::new(cursor);
+    zip.start_file(
+        "mimetype",
+        SimpleFileOptions::default().compression_method(CompressionMethod::Stored),
+    )?;
+    zip.write_all(b"application/epub+zip")?;
+    let compressed = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    zip.start_file("META-INF/container.xml", compressed)?;
+    zip.write_all(br#"<?xml version="1.0"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>"#)?;
+    zip.start_file("OEBPS/content.opf", compressed)?;
+    zip.write_all(opf.as_bytes())?;
+    zip.start_file("OEBPS/nav.xhtml", compressed)?;
+    zip.write_all(nav.as_bytes())?;
+    zip.start_file("OEBPS/content.xhtml", compressed)?;
+    zip.write_all(xhtml.as_bytes())?;
+    Ok(zip.finish()?.into_inner())
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
 }
 
 async fn load_achievements(
@@ -1292,6 +1440,24 @@ mod tests {
         assert_eq!(payload["messages"].as_array().map(Vec::len), Some(3));
         assert_eq!(payload["chapters"].as_array().map(Vec::len), Some(1));
         assert_eq!(payload["chapters"][0]["title"], "Main Chapter");
+
+        let epub = export_story(&pool, "story-1", "epub")
+            .await
+            .expect("EPUB export");
+        assert_eq!(epub.encoding, "base64");
+        let bytes = BASE64.decode(&epub.content).expect("base64 EPUB");
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).expect("valid EPUB zip");
+        let mut mimetype = String::new();
+        std::io::Read::read_to_string(
+            &mut archive
+                .by_name("mimetype")
+                .expect("mimetype first-class entry"),
+            &mut mimetype,
+        )
+        .expect("read mimetype");
+        assert_eq!(mimetype, "application/epub+zip");
+        assert!(archive.by_name("OEBPS/content.opf").is_ok());
+        assert!(archive.by_name("OEBPS/content.xhtml").is_ok());
     }
 
     #[test]

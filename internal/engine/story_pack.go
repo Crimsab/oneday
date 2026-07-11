@@ -16,10 +16,44 @@ type StoryPack struct {
 	Name               string                                `json:"name" yaml:"name"`
 	Description        string                                `json:"description" yaml:"description"`
 	Genre              string                                `json:"genre,omitempty" yaml:"genre,omitempty"`
+	RecommendedRAG     string                                `json:"recommended_rag,omitempty" yaml:"recommended_rag,omitempty"`
 	StatsSchema        *StatsSchema                          `json:"stats_schema,omitempty" yaml:"stats_schema,omitempty"`
+	WorldRules         *StoryPackWorldRules                  `json:"world_rules,omitempty" yaml:"world_rules,omitempty"`
+	VisualBible        *StoryPackVisualBible                 `json:"visual_bible,omitempty" yaml:"visual_bible,omitempty"`
+	VoiceBible         *StoryPackVoiceBible                  `json:"voice_bible,omitempty" yaml:"voice_bible,omitempty"`
 	DifficultyProfiles map[string]StoryPackDifficultyProfile `json:"difficulty_profiles,omitempty" yaml:"difficulty_profiles,omitempty"`
 	ChallengePools     map[string]StoryPackChallengePool     `json:"challenge_pools,omitempty" yaml:"challenge_pools,omitempty"`
 	OutcomePolicies    map[string]contracts.OutcomePolicy    `json:"outcome_policies,omitempty" yaml:"outcome_policies,omitempty"`
+}
+
+type StoryPackWorldRules struct {
+	ClockMode          string   `json:"clock_mode" yaml:"clock_mode"`
+	WeatherMode        string   `json:"weather_mode" yaml:"weather_mode"`
+	TravelMode         string   `json:"travel_mode" yaml:"travel_mode"`
+	MaxOffscreenEvents int      `json:"max_offscreen_events,omitempty" yaml:"max_offscreen_events,omitempty"`
+	Rules              []string `json:"rules,omitempty" yaml:"rules,omitempty"`
+}
+
+type StoryPackVisualBible struct {
+	WorldStylePrompt     string   `json:"world_style_prompt" yaml:"world_style_prompt"`
+	CharacterStylePrompt string   `json:"character_style_prompt" yaml:"character_style_prompt"`
+	NegativePrompt       string   `json:"negative_prompt,omitempty" yaml:"negative_prompt,omitempty"`
+	Palette              []string `json:"palette,omitempty" yaml:"palette,omitempty"`
+}
+
+type StoryPackVoiceBible struct {
+	DefaultLanguage string                  `json:"default_language" yaml:"default_language"`
+	MajorUnique     bool                    `json:"major_voice_unique" yaml:"major_voice_unique"`
+	Profiles        []StoryPackVoiceProfile `json:"profiles" yaml:"profiles"`
+}
+
+type StoryPackVoiceProfile struct {
+	ID              string   `json:"id" yaml:"id"`
+	Provider        string   `json:"provider" yaml:"provider"`
+	ProviderVoiceID string   `json:"provider_voice_id" yaml:"provider_voice_id"`
+	Languages       []string `json:"languages" yaml:"languages"`
+	Roles           []string `json:"roles,omitempty" yaml:"roles,omitempty"`
+	ModelLicense    string   `json:"model_license" yaml:"model_license"`
 }
 
 type StoryPackDifficultyProfile struct {
@@ -40,7 +74,9 @@ func LoadStoryPack(path string) (*StoryPack, error) {
 		return nil, err
 	}
 	var pack StoryPack
-	if err := yaml.Unmarshal(data, &pack); err != nil {
+	decoder := yaml.NewDecoder(strings.NewReader(string(data)))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&pack); err != nil {
 		return nil, fmt.Errorf("decoding story pack: %w", err)
 	}
 	if err := pack.Validate(); err != nil {
@@ -56,6 +92,32 @@ func (pack StoryPack) Validate() error {
 	if pack.StatsSchema != nil {
 		if err := validateStoryPackStats(*pack.StatsSchema); err != nil {
 			return err
+		}
+	}
+	if pack.WorldRules != nil {
+		if !oneOf(pack.WorldRules.ClockMode, "tracked", "untracked") || !oneOf(pack.WorldRules.WeatherMode, "tracked", "untracked") || !oneOf(pack.WorldRules.TravelMode, "graph", "narrative") {
+			return errors.New("world rules require explicit clock/weather tracked|untracked and travel graph|narrative modes")
+		}
+		if pack.WorldRules.MaxOffscreenEvents < 0 || pack.WorldRules.MaxOffscreenEvents > 3 {
+			return errors.New("world rules max_offscreen_events must be within 0..3")
+		}
+	}
+	if pack.VisualBible != nil && (strings.TrimSpace(pack.VisualBible.WorldStylePrompt) == "" || strings.TrimSpace(pack.VisualBible.CharacterStylePrompt) == "") {
+		return errors.New("visual bible requires world and character style prompts")
+	}
+	if pack.VoiceBible != nil {
+		if strings.TrimSpace(pack.VoiceBible.DefaultLanguage) == "" || len(pack.VoiceBible.Profiles) == 0 {
+			return errors.New("voice bible requires a default language and profiles")
+		}
+		seenVoices := map[string]bool{}
+		for _, voice := range pack.VoiceBible.Profiles {
+			if strings.TrimSpace(voice.ID) == "" || strings.TrimSpace(voice.Provider) == "" || strings.TrimSpace(voice.ProviderVoiceID) == "" || len(voice.Languages) == 0 || strings.TrimSpace(voice.ModelLicense) == "" {
+				return fmt.Errorf("voice bible profile %q requires provider voice, language, and model license", voice.ID)
+			}
+			if seenVoices[voice.ID] {
+				return fmt.Errorf("duplicate voice bible profile %q", voice.ID)
+			}
+			seenVoices[voice.ID] = true
 		}
 	}
 	for name, profile := range pack.DifficultyProfiles {
@@ -130,10 +192,28 @@ func validateStoryPackStats(schema StatsSchema) error {
 			if seen[key] {
 				return fmt.Errorf("duplicate story pack stat key %q", key)
 			}
+			if stat.Type != "" && !oneOf(stat.Type, "integer", "number", "clock") {
+				return fmt.Errorf("story pack stat %q has unsupported type %q", key, stat.Type)
+			}
+			if stat.Min != nil && stat.Max != nil && *stat.Min > *stat.Max {
+				return fmt.Errorf("story pack stat %q has min greater than max", key)
+			}
+			if stat.Min != nil && stat.Starting < *stat.Min || stat.Max != nil && stat.Starting > *stat.Max {
+				return fmt.Errorf("story pack stat %q starting value is outside its range", key)
+			}
 			seen[key] = true
 		}
 	}
 	return nil
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func validatePackMiniGameDefinition(definition MiniGameDefinition) error {

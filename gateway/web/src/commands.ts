@@ -1,4 +1,4 @@
-import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Hammer, Search } from "lucide-react";
+import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Hammer, MapPin, Search } from "lucide-react";
 import type { CommandDescriptor, MetaCommand, ModuleTab, OverlayKind } from "./types";
 
 export interface CommandResult {
@@ -55,6 +55,7 @@ export const moduleSpecs: Array<{
   Icon: typeof Clock3;
 }> = [
   { tab: "history", label: "History", hotkey: "H", command: "/history", Icon: Clock3 },
+  { tab: "map", label: "Map", hotkey: "M", command: "/map", Icon: MapPin },
   { tab: "inventory", label: "Inventory", hotkey: "I", command: "/inventory", Icon: Archive },
   { tab: "craft", label: "Craft", hotkey: "R", command: "/craft", Icon: Hammer },
   { tab: "stats", label: "Stats", hotkey: "S", command: "/stats", Icon: BarChart3 },
@@ -138,7 +139,7 @@ const panelByCanonical: Record<string, ModuleTab> = {
   craft: "craft",
   history: "history",
   achievements: "saves",
-  map: "history",
+  map: "map",
 };
 
 export const tabHotkeys: Record<string, ModuleTab> = moduleSpecs.reduce<Record<string, ModuleTab>>((acc, item) => {

@@ -44,9 +44,16 @@ type StatsSchema struct {
 
 // StatDef is a single stat definition.
 type StatDef struct {
-	Key      string `json:"key" yaml:"key"`
-	Label    string `json:"label" yaml:"label"`
-	Starting int    `json:"starting,omitempty" yaml:"starting,omitempty"`
+	Key            string   `json:"key" yaml:"key"`
+	Label          string   `json:"label" yaml:"label"`
+	Type           string   `json:"type,omitempty" yaml:"type,omitempty"`
+	Starting       int      `json:"starting,omitempty" yaml:"starting,omitempty"`
+	Min            *int     `json:"min,omitempty" yaml:"min,omitempty"`
+	Max            *int     `json:"max,omitempty" yaml:"max,omitempty"`
+	Formula        string   `json:"formula,omitempty" yaml:"formula,omitempty"`
+	Tags           []string `json:"tags,omitempty" yaml:"tags,omitempty"`
+	RecoveryPolicy string   `json:"recovery_policy,omitempty" yaml:"recovery_policy,omitempty"`
+	Progression    string   `json:"progression,omitempty" yaml:"progression,omitempty"`
 }
 
 // CurrencyDef defines the in-game currency.
