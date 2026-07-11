@@ -82,13 +82,19 @@ function DiagnosticsBody({ diagnostics }: { diagnostics: GenerationDiagnostics }
 export function generationSummary(metadata: JsonValue): string {
   const value = objectValue(metadata);
   const usage = objectValue(value.usage);
-  const parts = [stringValue(value.provider), stringValue(value.model)].filter(Boolean);
+  const parts = [stringValue(value.provider), displayModelName(stringValue(value.model))].filter(Boolean);
   const latency = numberValue(value.latency_ms);
   const tokens = numberValue(usage.total_tokens);
   if (latency > 0) parts.push(formatDuration(latency));
   if (tokens > 0) parts.push(formatTokens(tokens));
   if (value.streamed === true) parts.push("streamed");
   return parts.join(" · ");
+}
+
+export function displayModelName(model: string): string {
+  return model
+    .replace(/^chatgpt-/, "")
+    .replace(/-20\d{2}-\d{2}-\d{2}$/, "");
 }
 
 function objectValue(value: JsonValue | undefined): Record<string, JsonValue> {

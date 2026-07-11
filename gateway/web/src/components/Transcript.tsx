@@ -4,7 +4,8 @@ import { turnEventDetail, turnEventTitle } from "../turnEvents";
 import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
 import { AudioControls } from "./AudioControls";
-import type { MessageView, PendingTurnView, TurnStreamEvent } from "../types";
+import { MessageBranchControls } from "./MessageBranchControls";
+import type { MessageView, PendingTurnView, TimelineResponse, TurnStreamEvent } from "../types";
 
 interface TranscriptProps {
   storyId: string;
@@ -12,14 +13,25 @@ interface TranscriptProps {
   hiddenBeforeId: number;
   pendingTurn?: PendingTurnView | null;
   liveEvents?: TurnStreamEvent[];
+  timeline: TimelineResponse | null;
+  timelineBusy: boolean;
+  onCheckoutBranch: (branchId: string) => Promise<void>;
+  onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void>;
 }
 
-export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liveEvents = [] }: TranscriptProps) {
+export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liveEvents = [], timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
   const ref = useRef<HTMLDivElement>(null);
   const visibleMessages = useMemo(
     () => messages.filter((message) => message.id > hiddenBeforeId),
     [messages, hiddenBeforeId],
   );
+  const latestMessageByCommit = useMemo(() => {
+    const latest = new Map<string, number>();
+    for (const message of visibleMessages) {
+      if (message.role === "assistant" && message.source_commit_id) latest.set(message.source_commit_id, message.id);
+    }
+    return latest;
+  }, [visibleMessages]);
 
   useEffect(() => {
     const node = ref.current;
@@ -33,7 +45,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liv
           {messages.length ? "Transcript cleared locally. New canonical messages will appear here." : "Choose a story to load the canonical transcript."}
         </div>
       ) : (
-        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} />)
+        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} showTimelineControls={latestMessageByCommit.get(message.source_commit_id) === message.id} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
       {liveEvents.length > 0 && <TurnEventStream events={liveEvents} />}
@@ -41,7 +53,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liv
   );
 }
 
-function TranscriptMessage({ storyId, message }: { storyId: string; message: MessageView }) {
+function TranscriptMessage({ storyId, message, showTimelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; showTimelineControls: boolean; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
   const content = readableStructuredText(message.content) || compactText(message.content || "(empty)", 160);
@@ -58,6 +70,9 @@ function TranscriptMessage({ storyId, message }: { storyId: string; message: Mes
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={`Structured dialogue for turn ${message.turn}`}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || "Unknown speaker"}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
         <MessageDiagnostics message={message} />
         {message.role === "assistant" && Boolean(message.source_commit_id) && <AudioControls storyId={storyId} messageId={message.id} />}
+        {message.role === "assistant" && showTimelineControls && (
+          <MessageBranchControls message={message} timeline={timeline} busy={timelineBusy} onCheckout={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />
+        )}
       </div>
     </article>
   );
