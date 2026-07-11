@@ -118,7 +118,7 @@ jobs:
 
       - name: Run web tests
         working-directory: gateway/web
-        run: bun test src
+        run: bun run test
 
       - name: Build web app
         working-directory: gateway/web
