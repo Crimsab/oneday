@@ -61,7 +61,7 @@ export function LeftRail({
   const [editingStoryId, setEditingStoryId] = useState("");
 
   return (
-    <aside className="left-rail">
+    <aside className="left-rail" id="story-library" aria-label="Story library">
       <div className="rail-brand">
         <strong>OneDay</strong>
         <small>{healthText}</small>
@@ -119,7 +119,7 @@ export function LeftRail({
             {group.tabs.map((tab) => {
               const spec = moduleSpecs.find((item) => item.tab === tab)!;
               const Icon = spec.Icon;
-              return <button type="button" key={tab} className={selectedTab === tab ? "active" : ""} onClick={() => onSelectTab(tab)} title={`${spec.label} (${spec.hotkey})`}><Icon size={17} /><span>{spec.label}</span></button>;
+              return <button type="button" key={tab} className={selectedTab === tab ? "active" : ""} onClick={() => onSelectTab(tab)} title={`${spec.label} (${spec.hotkey})`} aria-current={selectedTab === tab ? "page" : undefined}><Icon size={17} /><span>{spec.label}</span></button>;
             })}
           </div>
         ))}
@@ -249,7 +249,7 @@ function StoryRow({
 
   return (
     <div className={`story-row ${active ? "active" : ""} ${story.is_archived ? "archived" : ""}`}>
-      <button type="button" className="story-select" onClick={onSelect} disabled={busy}>
+      <button type="button" className="story-select" onClick={onSelect} disabled={busy} aria-current={active ? "true" : undefined}>
         <strong>{story.name || story.id}</strong>
         <span>
           Turn {turnLabel} - {story.genre || "Story"}

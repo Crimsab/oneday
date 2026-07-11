@@ -33,6 +33,8 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
           onClick={onToggleLeftRail}
           title={`${showLeftRail ? "Hide" : "Show"} library ([)`}
           aria-label={`${showLeftRail ? "Hide" : "Show"} library`}
+          aria-expanded={showLeftRail}
+          aria-controls="story-library"
         >
           {showLeftRail ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
           <span>Library</span>
@@ -43,6 +45,8 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
           onClick={onToggleInspector}
           title={`${showInspector ? "Hide" : "Show"} story details (])`}
           aria-label={`${showInspector ? "Hide" : "Show"} story details`}
+          aria-expanded={showInspector}
+          aria-controls="story-details"
         >
           {showInspector ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           <span>Details</span>
