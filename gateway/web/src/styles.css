@@ -4096,6 +4096,66 @@ input:disabled {
   letter-spacing: 0.04em;
 }
 
+.agency-feed > div {
+  display: grid;
+  gap: 2px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 44%, var(--line));
+  padding: 4px 8px;
+}
+
+.agency-feed > div span {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.agency-feed > div small {
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: capitalize;
+}
+
+.canonical-map {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--line-soft);
+  background: #090f11;
+}
+
+.canonical-map svg {
+  display: block;
+  width: 100%;
+  min-width: 420px;
+  height: auto;
+}
+
+.canonical-map line {
+  stroke: #526168;
+  stroke-width: 2;
+}
+
+.canonical-map circle {
+  fill: #111c20;
+  stroke: #8b989e;
+  stroke-width: 2;
+}
+
+.canonical-map g.current circle {
+  fill: color-mix(in srgb, var(--accent) 18%, #111c20);
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.canonical-map text {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.canonical-map .node-label {
+  fill: var(--text);
+  font-size: 12px;
+}
+
 .ws-location {
   min-width: 0;
   display: grid;

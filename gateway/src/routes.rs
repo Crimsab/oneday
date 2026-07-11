@@ -40,6 +40,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(timeline).post(update_timeline),
         )
         .route("/api/stories/:story_id/history", get(history))
+        .route("/api/stories/:story_id/agency-events", get(agency_events))
         .route("/api/stories/:story_id/chapters", get(chapters))
         .route("/api/stories/:story_id/export", get(export_story))
         .route(
@@ -173,6 +174,21 @@ async fn stories(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<db::StorySummary>>, ApiError> {
     Ok(Json(db::list_stories(&state.pool).await?))
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct LimitQuery {
+    limit: Option<i64>,
+}
+
+async fn agency_events(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Query(query): Query<LimitQuery>,
+) -> Result<Json<Vec<db::AgencyEventView>>, ApiError> {
+    Ok(Json(
+        db::agency_events(&state.pool, &story_id, query.limit.unwrap_or(20)).await?,
+    ))
 }
 
 async fn start_minigame(

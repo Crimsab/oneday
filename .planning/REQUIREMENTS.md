@@ -356,10 +356,10 @@
 
 ### Advanced Universal-Story Product Capabilities
 
-- [ ] **UNIV-01**: NPC agency/offscreen simulation advances through bounded, inspectable canonical events and cannot mutate hidden state without provenance.
-- [ ] **UNIV-02**: The browser offers a visual map over the canonical known-location graph without inventing undiscovered edges.
-- [ ] **UNIV-03**: Story export can produce branch-specific Markdown, JSON, EPUB, and optional image/audio replay packages.
-- [ ] **UNIV-04**: Authoring tools validate stat schemas, world rules, difficulty profiles, challenge pools, visual bibles, and voice bibles.
+- [x] **UNIV-01**: NPC agency/offscreen simulation advances through bounded, inspectable canonical events and cannot mutate hidden state without provenance.
+- [x] **UNIV-02**: The browser offers a visual map over the canonical known-location graph without inventing undiscovered edges.
+- [x] **UNIV-03**: Story export can produce branch-specific Markdown, JSON, EPUB, and optional image/audio replay packages.
+- [x] **UNIV-04**: Authoring tools validate stat schemas, world rules, difficulty profiles, challenge pools, visual bibles, and voice bibles.
 - [ ] **UNIV-05**: The complete Go, Rust, React/Vitest, Playwright, browser/TUI contract, migration, golden prompt/output, and playtest-eval matrix gates release.
 - [ ] **UNIV-06**: Migration and compatibility tests prove existing stories, saves, configs, story packs, and generated assets remain usable or fail with actionable guidance.
 

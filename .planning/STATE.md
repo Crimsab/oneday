@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
 current_phase: 38
 status: in_progress
-stopped_at: Phase 37 complete; proceeding to universal authoring, simulation, export, compatibility, and release gates
-last_updated: "2026-07-11T17:56:00+02:00"
-last_activity: 2026-07-11 -- Canonical TTS, voice registry, playback, pronunciation, retry, cleanup, export, and full audio matrix completed
+stopped_at: Phase 38.3 complete; proceeding to compatibility and universal release gates
+last_updated: "2026-07-11T18:18:00+02:00"
+last_activity: 2026-07-11 -- Bounded NPC agency, canonical map, EPUB/replay export, and strict authoring bibles deployed
 progress:
   total_phases: 39
   completed_phases: 37
   total_plans: 89
-  completed_plans: 113
+  completed_plans: 116
   percent: 95
 ---
 

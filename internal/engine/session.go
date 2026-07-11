@@ -399,6 +399,14 @@ func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world
 		if err != nil {
 			return fmt.Errorf("encoding committed turn event: %w", err)
 		}
+		events := []storage.CanonicalEventInput{{
+			Type: "turn.committed", PayloadJSON: string(eventPayload),
+		}}
+		agencyEvents, err := db.PlanOffscreenAgencyEventsTx(tx, gs.storyID, head.Branch.ID, world.CurrentTurn, 2)
+		if err != nil {
+			return fmt.Errorf("planning bounded offscreen agency: %w", err)
+		}
+		events = append(events, agencyEvents...)
 		_, err = db.AppendTurnCommitTx(tx, storage.AppendTurnCommitParams{
 			CommitID:       commitID,
 			StoryID:        gs.storyID,
@@ -408,10 +416,7 @@ func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world
 			Kind:           "turn",
 			Message:        entry.MessageType,
 			PayloadJSON:    payload,
-			Events: []storage.CanonicalEventInput{{
-				Type:        "turn.committed",
-				PayloadJSON: string(eventPayload),
-			}},
+			Events:         events,
 		})
 		return err
 	}); err != nil {

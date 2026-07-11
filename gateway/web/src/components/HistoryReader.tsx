@@ -67,13 +67,12 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     }
   };
 
-  const exportAs = async (format: "markdown" | "json") => {
+  const exportAs = async (format: "markdown" | "json" | "epub" | "replay") => {
     setBusy(true);
     try {
       const result = await getStoryExport(snapshot.story.id, format);
-      const url = URL.createObjectURL(new Blob([result.content], {
-        type: format === "json" ? "application/json" : "text/markdown",
-      }));
+      const bytes = result.encoding === "base64" ? Uint8Array.from(atob(result.content), (character) => character.charCodeAt(0)) : result.content;
+      const url = URL.createObjectURL(new Blob([bytes], { type: result.content_type || (format === "json" || format === "replay" ? "application/json" : "text/markdown") }));
       const link = document.createElement("a");
       link.href = url;
       link.download = result.filename;
@@ -113,6 +112,8 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
       <div className="history-export">
         <button type="button" disabled={busy} onClick={() => void exportAs("markdown")}>Export Markdown</button>
         <button type="button" disabled={busy} onClick={() => void exportAs("json")}>Export JSON</button>
+        <button type="button" disabled={busy} onClick={() => void exportAs("epub")}>Export EPUB</button>
+        <button type="button" disabled={busy} onClick={() => void exportAs("replay")}>Export media replay</button>
         <button type="button" disabled={busy} onClick={() => void exportTelemetry()}>Export telemetry</button>
       </div>
       {error && <p className="inline-error" role="alert">{error}</p>}

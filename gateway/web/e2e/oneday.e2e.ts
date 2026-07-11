@@ -13,7 +13,7 @@ function snapshot(turn = 4, branchId = "branch-main") {
     version: { turn, revision: branchId === "branch-main" ? 7 : 8, story_updated_at: now, active_session_id: "session-1", last_message_id: 2, world_updated_at: now, character_updated_at: now, npc_count: 1, npc_updated_at: now, chapter_count: 1, achievement_count: 0, latest_achievement_at: "", save_count: 0, latest_save_at: "", visual_asset_updated_at: "", visual_job_updated_at: "", active_visual_job_count: 0 },
     story,
     character: { id: "hero", name: "Iria", fields: { stats: { resolve: 42 }, condition: "Steady", inventory: [] } },
-    world: { id: "world", current_location: "Glass Archive", current_location_id: "loc-archive", current_chapter: 1, current_turn: turn, spatial_locations: [], spatial_edges: [], world_time: { day: 2, minute_of_day: 780, display_text: "Day 2, 13:00" }, weather: { weather_kind: "clear", description: "Cold clear air" }, known_locations: [], global_events: [], faction_standings: {}, story_hooks: [], world_reactions: [], investigations: [], projects: [], guidance: [], fronts: [], timeline: [], scene_contract: {}, updated_at: now },
+    world: { id: "world", current_location: "Glass Archive", current_location_id: "loc-archive", current_chapter: 1, current_turn: turn, spatial_locations: [{ id: "loc-archive", name: "Glass Archive", description: "The known archive", discovery_state: "visited" }, { id: "loc-court", name: "Outer Court", description: "A known courtyard", discovery_state: "known" }], spatial_edges: [{ id: "edge-court", from_location_id: "loc-archive", to_location_id: "loc-court", direction: "south", travel_minutes: 5 }], world_time: { day: 2, minute_of_day: 780, display_text: "Day 2, 13:00" }, weather: { weather_kind: "clear", description: "Cold clear air" }, known_locations: [], global_events: [], faction_standings: {}, story_hooks: [], world_reactions: [], investigations: [], projects: [], guidance: [], fronts: [], timeline: [], scene_contract: {}, updated_at: now },
     active_session: { id: "session-1", story_id: story.id, started_at: now, ended_at: null, summary: "" },
     choices: [{ id: 1, text: "Inspect the seal", intent: "investigate", risk: "measured", scope: "local", certainty: "uncertain", related_stats: ["resolve"] }],
     messages,
@@ -61,6 +61,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     }
     if (path === "/api/health") return json(route, { status: "ok", stories: 1 });
     if (path === "/api/stories" && request.method() === "GET") return json(route, [story]);
+    if (path.endsWith("/agency-events")) return json(route, [{ id: 1, story_id: story.id, branch_id: "branch-main", commit_id: "commit-4", canonical_turn: 4, entity_id: "npc-mira", entity_name: "Mira", action: "pursues_goal", summary: "Mira advances an offscreen goal.", created_at: now }]);
     if (path === "/api/contracts/commands") return json(route, []);
     if (path === "/api/tts/voices" || path === "/api/tts/providers") return json(route, {
       providers: [{ id: "cloud", available: true }, { id: "local", available: false, reason: "disabled" }],
@@ -136,7 +137,12 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     if (path.endsWith("/chapters")) return json(route, { items: snapshot().panels.chapters, next_cursor: null });
     if (path.endsWith("/messages/2/diagnostics")) return json(route, { run_id: "run-2", trace_id: "trace-2", parent_run_id: "", story_id: story.id, branch_id: "branch-main", source_commit_id: "commit-4", message_id: 2, stage: "narrator", status: "succeeded", prompt_profile: "narrator", prompt_revision: 3, prompt_hash: "sha256:redacted", requested_streaming: true, observed_streaming: true, ttft_ms: 180, duration_ms: 1250, usage: { input_tokens: 200, output_tokens: 121, reasoning_tokens: 40, cached_input_tokens: 0, total_tokens: 321, cost_usd: 0.003 }, error_class: "", created_at: now, finished_at: now, attempts: [{ sequence: 1, provider: "codex", requested_model: "gpt-5.5", resolved_model: "gpt-5.5", requested_streaming: true, observed_streaming: true, status: "succeeded", ttft_ms: 180, duration_ms: 1250, usage: { input_tokens: 200, output_tokens: 121, reasoning_tokens: 40, cached_input_tokens: 0, total_tokens: 321, cost_usd: 0.003 }, retry_reason: "", error_class: "" }] });
     if (path.endsWith("/telemetry/export")) return json(route, { format: "jsonl", filename: "glass-archive-generation-telemetry.jsonl", content: "{\"run_id\":\"run-2\"}\n", count: 1, truncated: false });
-    if (path.endsWith("/export")) return json(route, { format: url.searchParams.get("format") === "json" ? "json" : "markdown", filename: "glass-archive-history.md", content: "# The Glass Archive\n\nCanonical export" });
+    if (path.endsWith("/export")) {
+      const format = url.searchParams.get("format") || "markdown";
+      if (format === "epub") return json(route, { format, filename: "glass-archive.epub", content: btoa("PK EPUB"), encoding: "base64", content_type: "application/epub+zip" });
+      if (format === "replay") return json(route, { format, filename: "glass-archive-replay.json", content: JSON.stringify({ format: "oneday-replay-v1", visual_assets: [], audio_assets: [] }), encoding: "utf-8", content_type: "application/json" });
+      return json(route, { format: format === "json" ? "json" : "markdown", filename: "glass-archive-history.md", content: "# The Glass Archive\n\nCanonical export", encoding: "utf-8" });
+    }
     if (path.endsWith("/actions") && request.method() === "POST") {
       actionRequests += 1;
       if (failAction) {
@@ -200,6 +206,10 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
     history.getByRole("button", { name: "Export Markdown" }).click(),
   ]);
   expect(download.suggestedFilename()).toBe("glass-archive-history.md");
+  const [epubDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Export EPUB" }).click()]);
+  expect(epubDownload.suggestedFilename()).toBe("glass-archive.epub");
+  const [replayDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Export media replay" }).click()]);
+  expect(replayDownload.suggestedFilename()).toBe("glass-archive-replay.json");
 
   const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth, fontSize: Number.parseFloat(getComputedStyle(document.querySelector("textarea")!).fontSize) }));
   expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
@@ -250,6 +260,19 @@ test("plays a timing-free minigame through the shared browser host", async ({ pa
   await expect(host.getByText("full success", { exact: true })).toBeVisible();
   await expect(host.getByText("Pattern answer: 8 → FULL SUCCESS")).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+test("renders only canonical known map topology and bounded agency events", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByPlaceholder("Enter command or action...").fill("/map");
+  await page.getByRole("button", { name: "Execute" }).click();
+  await expect(page.locator(".agency-feed:visible").filter({ hasText: "Mira advances an offscreen goal." })).toBeVisible();
+  const map = page.locator('.canonical-map:visible svg[role="img"]');
+  await expect(map).toHaveAttribute("aria-label", "Canonical map with 2 known locations and 1 known routes");
+  await expect(map).toBeVisible();
+  await expect(map.getByText("Glass Archive", { exact: true })).toBeVisible();
+  await expect(map.getByText("Outer Court", { exact: true })).toBeVisible();
 });
 
 test("generates committed audio and exposes per-story and per-character voice controls", async ({ page }) => {

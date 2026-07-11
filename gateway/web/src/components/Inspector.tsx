@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Activity, ChevronDown, Clock3, Hash, MapPin, Maximize2, RefreshCw, Search, Sun, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
+import { getAgencyEvents } from "../api";
 import {
   asArray,
   asObject,
@@ -16,11 +17,12 @@ import {
   titleCase,
   valueToText,
 } from "../format";
-import type { JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
+import type { AgencyEventView, JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
 import type { VisualCatalog } from "../visualAssets";
 import { characterAsset, readyAssetUrl } from "../visualAssets";
 import { HistoryReader } from "./HistoryReader";
 import { MarkdownText } from "./MarkdownText";
+import { CanonicalMap } from "./CanonicalMap";
 
 interface InspectorProps {
   snapshot: StorySnapshot | null;
@@ -121,6 +123,7 @@ function renderModule(
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
 	if (tab === "history") return <HistoryReader snapshot={snapshot} />;
+  if (tab === "map") return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
   return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
 }
 
@@ -303,6 +306,13 @@ function WorldStateModule({
         </section>
       )}
 
+      <AgencyFeed storyId={snapshot.story.id} />
+
+      <section className="ws-block">
+        <header className="ws-block-head"><MapPin size={14} /><span>Known-location map</span></header>
+        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} />
+      </section>
+
       {threads.length > 0 && (
         <section className="ws-block">
           <header className="ws-block-head">
@@ -336,6 +346,24 @@ function WorldStateModule({
         </section>
       )}
     </div>
+  );
+}
+
+function AgencyFeed({ storyId }: { storyId: string }) {
+  const [events, setEvents] = useState<AgencyEventView[]>([]);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    void getAgencyEvents(storyId, 8)
+      .then((items) => { if (active) { setEvents(items); setError(""); } })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Offscreen activity unavailable"); });
+    return () => { active = false; };
+  }, [storyId]);
+  return (
+    <section className="ws-block agency-feed">
+      <header className="ws-block-head"><Activity size={14} /><span>Offscreen activity</span></header>
+      {events.length > 0 ? events.map((event) => <div key={event.id}><span>{event.summary}</span><small>Turn {event.canonical_turn} · {event.action.replaceAll("_", " ")}</small></div>) : <p className="empty-copy">{error || "No bounded offscreen actions recorded on this branch."}</p>}
+    </section>
   );
 }
 

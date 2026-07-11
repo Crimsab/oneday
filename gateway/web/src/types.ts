@@ -3,6 +3,7 @@ export type SyncState =
 
 export type ModuleTab =
   | "history"
+  | "map"
   | "inventory"
   | "craft"
   | "stats"
@@ -374,6 +375,19 @@ export interface TurnStreamEvent {
   created_at: string;
 }
 
+export interface AgencyEventView {
+  id: number;
+  story_id: string;
+  branch_id: string;
+  commit_id: string;
+  canonical_turn: number;
+  entity_id: string;
+  entity_name: string;
+  action: string;
+  summary: string;
+  created_at: string;
+}
+
 export interface ChoiceView {
   id: number;
   text: string;
@@ -403,7 +417,7 @@ export interface TimelineEnvelope { action:"fork"|"rename"|"checkout"; client_re
 export interface TimelineMutationResponse { timeline:TimelineResponse; snapshot:StorySnapshot }
 export interface HistoryPage { items:MessageView[]; next_cursor?:number|null }
 export interface ChapterPage { items:ChapterView[]; next_cursor?:number|null }
-export interface StoryExport { format:"markdown"|"json"; filename:string; content:string }
+export interface StoryExport { format:"markdown"|"json"|"epub"|"replay"; filename:string; content:string; encoding?:"utf-8"|"base64"; content_type?:string }
 
 export interface TelemetryUsage {
   input_tokens: number;

@@ -892,9 +892,9 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 38.1: Add bounded offscreen agency scheduler and canonical-event audit surfaces
-- [ ] Plan 38.2: Build canonical visual map and branch-specific EPUB/media replay export
-- [ ] Plan 38.3: Add stat/world/difficulty/challenge/visual/voice authoring validators
+- [x] Plan 38.1: Add bounded offscreen agency scheduler and canonical-event audit surfaces
+- [x] Plan 38.2: Build canonical visual map and branch-specific EPUB/media replay export
+- [x] Plan 38.3: Add stat/world/difficulty/challenge/visual/voice authoring validators
 - [ ] Plan 38.4: Complete migration compatibility and full Go/Rust/React/Playwright/contract/golden/eval release gates
 
 ---

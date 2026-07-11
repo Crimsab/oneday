@@ -23,6 +23,27 @@ stats_schema:
     name: Favors
     starting: 2
   has_combat: false
+world_rules:
+  clock_mode: tracked
+  weather_mode: tracked
+  travel_mode: graph
+  max_offscreen_events: 2
+  rules: [Evidence cannot appear without a canonical source event.]
+visual_bible:
+  world_style_prompt: Grounded noir environments with practical light and readable geography.
+  character_style_prompt: Naturalistic character portraits with stable identity and form details.
+  negative_prompt: Avoid glamour retouching and identity drift.
+  palette: [charcoal, amber, rain-blue]
+voice_bible:
+  default_language: en
+  major_voice_unique: true
+  profiles:
+    - id: narrator-neutral
+      provider: cloud
+      provider_voice_id: alloy
+      languages: [en]
+      roles: [narrator]
+      model_license: provider-hosted
 difficulty_profiles:
   balanced:
     target_difficulty: 50
