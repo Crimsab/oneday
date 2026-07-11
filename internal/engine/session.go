@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/crimsab/oneday/internal/ai"
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -40,23 +41,26 @@ type ChatInput struct {
 
 // ChatOutput represents the AI's output for a turn.
 type ChatOutput struct {
-	Narrative         string                 `json:"narrative"`
-	Choices           []string               `json:"choices,omitempty"`
-	ChoicesData       []Choice               `json:"choices_data,omitempty"`
-	TurnDelta         *TurnDelta             `json:"turn_delta,omitempty"`
-	Mood              string                 `json:"mood,omitempty"`
-	Location          string                 `json:"location,omitempty"`
-	SceneType         string                 `json:"scene_type,omitempty"`
-	DialogueBlocks    []DialogueBlock        `json:"dialogue_blocks,omitempty"`
-	EntitiesMentioned []EntityMention        `json:"entities_mentioned,omitempty"`
-	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
-	ASCIICue          *ASCIIArtCue           `json:"ascii_cue,omitempty"`
-	ASCIIArt          string                 `json:"ascii_art,omitempty"`
-	OpenHooks         []StoryHook            `json:"open_hooks,omitempty"`
-	WorldReactions    []WorldReaction        `json:"world_reactions,omitempty"`
-	SocialDuel        *SocialDuelCue         `json:"social_duel,omitempty"`
-	RollLog           []RollRecord           `json:"roll_log,omitempty"`
-	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
+	Narrative           string                         `json:"narrative"`
+	Choices             []string                       `json:"choices,omitempty"`
+	ChoicesData         []Choice                       `json:"choices_data,omitempty"`
+	TurnDelta           *TurnDelta                     `json:"turn_delta,omitempty"`
+	Mood                string                         `json:"mood,omitempty"`
+	Location            string                         `json:"location,omitempty"`
+	SceneType           string                         `json:"scene_type,omitempty"`
+	DialogueBlocks      []DialogueBlock                `json:"dialogue_blocks,omitempty"`
+	EntitiesMentioned   []EntityMention                `json:"entities_mentioned,omitempty"`
+	EventCallouts       []EventCallout                 `json:"event_callouts,omitempty"`
+	ASCIICue            *ASCIIArtCue                   `json:"ascii_cue,omitempty"`
+	ASCIIArt            string                         `json:"ascii_art,omitempty"`
+	OpenHooks           []StoryHook                    `json:"open_hooks,omitempty"`
+	WorldReactions      []WorldReaction                `json:"world_reactions,omitempty"`
+	SocialDuel          *SocialDuelCue                 `json:"social_duel,omitempty"`
+	RollLog             []RollRecord                   `json:"roll_log,omitempty"`
+	StateChanges        map[string]interface{}         `json:"state_changes,omitempty"`
+	ResolvedOutcome     *contracts.OutcomeEnvelope     `json:"resolved_outcome,omitempty"`
+	ChallengeInstance   *contracts.ChallengeInstance   `json:"challenge_instance,omitempty"`
+	ChallengeResolution *contracts.ChallengeResolution `json:"challenge_resolution,omitempty"`
 }
 
 // GameSession manages a play session's lifecycle and JSONL persistence.

@@ -1,4 +1,5 @@
 mod assets;
+mod challenge;
 mod config;
 mod db;
 mod engine;

@@ -51,6 +51,7 @@ func (db *DB) migrate() error {
 		{28, migrationV28},
 		{29, migrationV29},
 		{30, migrationV30},
+		{31, migrationV31},
 	}
 
 	for _, m := range migrations {
@@ -1112,4 +1113,37 @@ CREATE TRIGGER IF NOT EXISTS trg_position_events_immutable BEFORE UPDATE ON enti
 CREATE TRIGGER IF NOT EXISTS trg_world_time_events_immutable BEFORE UPDATE ON world_time_events BEGIN SELECT RAISE(ABORT,'world time events are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS trg_weather_states_immutable BEFORE UPDATE ON weather_states BEGIN SELECT RAISE(ABORT,'weather states are append-only'); END;
 CREATE TRIGGER IF NOT EXISTS trg_canonical_world_events_immutable BEFORE UPDATE ON canonical_world_events BEGIN SELECT RAISE(ABORT,'world events are append-only'); END;
+`
+
+const migrationV31 = `
+CREATE TABLE IF NOT EXISTS challenge_runs (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	session_id TEXT NOT NULL DEFAULT '',
+	turn INTEGER NOT NULL,
+	protocol_version INTEGER NOT NULL,
+	definition_json TEXT NOT NULL CHECK(json_valid(definition_json)),
+	instance_json TEXT NOT NULL CHECK(json_valid(instance_json)),
+	input_json TEXT NOT NULL CHECK(json_valid(input_json)),
+	resolution_json TEXT NOT NULL CHECK(json_valid(resolution_json)),
+	outcome_json TEXT NOT NULL CHECK(json_valid(outcome_json)),
+	degree TEXT NOT NULL CHECK(degree IN ('critical_success','full_success','success_with_cost','failure_with_progress','hard_failure','catastrophe')),
+	difficulty INTEGER NOT NULL,
+	seed INTEGER NOT NULL,
+	roll INTEGER NOT NULL,
+	total INTEGER NOT NULL,
+	margin INTEGER NOT NULL,
+	modifiers_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(modifiers_json)),
+	timing_policy_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(timing_policy_json)),
+	costs_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(costs_json)),
+	state_deltas_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(state_deltas_json)),
+	branch_id TEXT NOT NULL,
+	source_commit_id TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_challenge_runs_lineage ON challenge_runs(story_id,branch_id,source_commit_id,turn,created_at);
+CREATE TRIGGER IF NOT EXISTS trg_challenge_runs_immutable
+BEFORE UPDATE ON challenge_runs
+WHEN NOT (OLD.source_commit_id='' AND NEW.source_commit_id!='' AND OLD.branch_id=NEW.branch_id)
+BEGIN SELECT RAISE(ABORT,'challenge runs are immutable'); END;
 `

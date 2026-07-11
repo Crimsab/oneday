@@ -173,6 +173,8 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 	events := collectTurnEvents(stream)
 	wantTypes := []contracts.TurnEventType{
 		contracts.EventTurnStarted,
+		contracts.EventChallengeStarted,
+		contracts.EventChallengeResolved,
 		contracts.EventNarrativeFinal,
 		contracts.EventStateDelta,
 		contracts.EventChoicesUpdated,
@@ -188,7 +190,7 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 	}
 	choicesPayload := decodeTurnPayload[struct {
 		Choices []contracts.ChoiceView `json:"choices"`
-	}](t, events[3])
+	}](t, events[5])
 	if len(choicesPayload.Choices) != 2 {
 		t.Fatalf("choices payload count = %d, want 2", len(choicesPayload.Choices))
 	}
@@ -209,6 +211,16 @@ func TestInProcessTurnServiceSubmitActionProducesOrderedEvents(t *testing.T) {
 	}
 	if world.CurrentLocation != "Market" {
 		t.Fatalf("world current location = %q, want Market", world.CurrentLocation)
+	}
+	var challengeCommit, activeHead, degree string
+	if err := db.Conn().QueryRow(`SELECT source_commit_id,degree FROM challenge_runs WHERE story_id='story-browser'`).Scan(&challengeCommit, &degree); err != nil {
+		t.Fatalf("persisted outcome: %v", err)
+	}
+	if err := db.Conn().QueryRow(`SELECT b.head_commit_id FROM stories s JOIN story_branches b ON b.id=s.active_branch_id WHERE s.id='story-browser'`).Scan(&activeHead); err != nil {
+		t.Fatalf("active outcome lineage: %v", err)
+	}
+	if challengeCommit == "" || challengeCommit != activeHead || degree == "" {
+		t.Fatalf("outcome lineage commit=%q head=%q degree=%q", challengeCommit, activeHead, degree)
 	}
 
 	replay, err := svc.SubmitAction(context.Background(), contracts.SubmitActionRequest{

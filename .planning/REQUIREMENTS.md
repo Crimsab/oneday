@@ -297,13 +297,13 @@
 
 ### Authoritative Outcomes and Challenge Protocol
 
-- [ ] **OUTCOME-01**: The engine resolves an `OutcomeEnvelope` before narration with degree, difficulty, seed/roll, margin, costs, consequences, state deltas, revealed facts, and follow-up pressure.
-- [ ] **OUTCOME-02**: Outcome degrees support critical success, full success, success with cost, failure with progress, hard failure, and catastrophe.
-- [ ] **OUTCOME-03**: Genre/difficulty policies configure consequence budgets and fairness without allowing the narrator to override resolved results.
-- [ ] **OUTCOME-04**: Challenge definition, instance, input, resolution, and outcome are serializable and shared by TUI, browser, autoplay, fixtures, and replay.
-- [ ] **OUTCOME-05**: Legacy boolean challenge results map deterministically to graded outcomes without breaking old stories or saves.
-- [ ] **OUTCOME-06**: Challenge seed, modifiers, timing policy, result, costs, and applied deltas persist with branch/source-commit lineage.
-- [ ] **OUTCOME-07**: Narrator prompts describe engine-resolved outcomes and cannot canonize unsupported player intent as automatic success.
+- [x] **OUTCOME-01**: The engine resolves an `OutcomeEnvelope` before narration with degree, difficulty, seed/roll, margin, costs, consequences, state deltas, revealed facts, and follow-up pressure.
+- [x] **OUTCOME-02**: Outcome degrees support critical success, full success, success with cost, failure with progress, hard failure, and catastrophe.
+- [x] **OUTCOME-03**: Genre/difficulty policies configure consequence budgets and fairness without allowing the narrator to override resolved results.
+- [x] **OUTCOME-04**: Challenge definition, instance, input, resolution, and outcome are serializable and shared by TUI, browser, autoplay, fixtures, and replay.
+- [x] **OUTCOME-05**: Legacy boolean challenge results map deterministically to graded outcomes without breaking old stories or saves.
+- [x] **OUTCOME-06**: Challenge seed, modifiers, timing policy, result, costs, and applied deltas persist with branch/source-commit lineage.
+- [x] **OUTCOME-07**: Narrator prompts describe engine-resolved outcomes and cannot canonize unsupported player intent as automatic success.
 
 ### Browser/TUI Correctness and Narrative UX
 

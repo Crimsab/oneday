@@ -2,26 +2,32 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
-current_phase: 32
+current_phase: 33
 status: in_progress
-stopped_at: Phase 31 complete on homelab-main; proceeding to Phase 32 authoritative outcomes and challenge protocol
-last_updated: "2026-07-11T01:00:00+02:00"
-last_activity: 2026-07-11 -- Phase 30 universal character canon and reputation ledgers deployed
+stopped_at: Phase 32 complete on homelab-main; proceeding to Phase 33 branch navigation and surface parity
+last_updated: "2026-07-11T02:45:00+02:00"
+last_activity: 2026-07-11 -- Phase 32 authoritative outcomes and portable challenge protocol deployed
 progress:
   total_phases: 39
-  completed_phases: 31
+  completed_phases: 32
   total_plans: 89
-  completed_plans: 93
-  percent: 72
+  completed_plans: 97
+  percent: 74
 ---
 
 # Project State
 
-**Current Phase:** 32
-**Status:** Phase 31 complete; Phase 32 in progress
+**Current Phase:** 33
+**Status:** Phase 32 complete; Phase 33 ready
 **Last Updated:** 2026-07-11
 
 ## Phase History
+
+- 2026-07-11: Phase 32 completed on `homelab-main`. One versioned challenge
+  contract now resolves graded outcomes before narration, persists immutable
+  replay data with branch/source-commit lineage, feeds browser/TUI/autoplay
+  lifecycle events, and retains deterministic adapters for legacy checks and
+  the existing minigames. Migration V31 and live gateway checks passed.
 
 - 2026-04-09: `23.4` completed with summary in `.planning/phases/23-active-systems-ux-and-world-state-navigation/23-04-SUMMARY.md`.
   Added active-system jump shortcuts (`P / I / F / C`), codex/browser navigation hints,

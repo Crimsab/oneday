@@ -10,6 +10,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -152,6 +153,28 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 	result.PlayerDamage = playerDamage
 	result.PlayerHP = ce.state.PlayerHP
 	result.EnemyHP = ce.state.Enemy.HP
+	combatOutcome := OutcomeFromLegacy(result.EnemyDamage > 0, ce.state.Enemy.Defense)
+	if len(result.RollLog) > 0 {
+		combatOutcome.Seed = result.RollLog[0].Seed & contracts.MaxPortableChallengeSeed
+		combatOutcome.Roll = result.RollLog[0].Raw
+		combatOutcome.Total = result.RollLog[0].Total
+		combatOutcome.Margin = result.RollLog[0].Total - result.RollLog[0].Target
+	}
+	if result.EnemyDamage > 0 && result.PlayerDamage > 0 {
+		combatOutcome.Degree = contracts.OutcomeSuccessWithCost
+		applyDefaultOutcomeBudget(&combatOutcome, DefaultOutcomePolicy("combat", "balanced"))
+	} else if result.EnemyDamage == 0 && result.PlayerDamage > 0 {
+		combatOutcome.Degree = contracts.OutcomeHardFailure
+		applyDefaultOutcomeBudget(&combatOutcome, DefaultOutcomePolicy("combat", "balanced"))
+	}
+	result.Outcome = &combatOutcome
+	if ce.state.Enemy.HP <= 0 {
+		result.Outcome.Degree = contracts.OutcomeCriticalSuccess
+	}
+	if ce.state.PlayerHP <= 0 {
+		result.Outcome.Degree = contracts.OutcomeCatastrophe
+		applyDefaultOutcomeBudget(result.Outcome, DefaultOutcomePolicy("combat", "balanced"))
+	}
 
 	// --- Check win/lose conditions ---
 	if ce.state.Enemy.HP <= 0 {
@@ -238,6 +261,16 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 	}
 
 	if result.Narrative == "" {
+		instance := NewOrdinaryActionChallenge(ce.narrator.story.ID, ce.narrator.story.ActiveBranchID, ce.narrator.session.Turn(), fmt.Sprintf("combat:%d:%s", ce.state.Turn, action), DefaultOutcomePolicy("combat", "balanced"))
+		instance.Definition.ID, instance.Definition.Kind, instance.Definition.Difficulty = "combat-turn", "combat", maxInt(1, ce.state.Enemy.Defense)
+		if result.Outcome.Seed == 0 {
+			result.Outcome.Seed = instance.Seed
+		}
+		resolution := contracts.ChallengeResolution{ProtocolVersion: contracts.ChallengeProtocolVersion, InstanceID: instance.ID, Input: contracts.ChallengeInput{ActorID: ce.narrator.character.ID, Intent: action}, Outcome: *result.Outcome}
+		result.ChallengeInstance, result.ChallengeResolution = &instance, &resolution
+		if err := ce.narrator.db.RecordChallengeResolutionAtHead(ce.narrator.story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, resolution); err != nil {
+			return nil, fmt.Errorf("persisting combat outcome: %w", err)
+		}
 		narrative, aiResp, aiLatency, err := ce.narrateResolvedCombatTurn(ctx, action, result)
 		if err != nil {
 			return nil, err
@@ -247,6 +280,18 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		result.Narrative = narrative.Narrative
 		result.Choices = narrative.Choices
 		result.Mood = narrative.Mood
+	}
+	if result.ChallengeResolution == nil {
+		instance := NewOrdinaryActionChallenge(ce.narrator.story.ID, ce.narrator.story.ActiveBranchID, ce.narrator.session.Turn(), fmt.Sprintf("combat:%d:%s", ce.state.Turn, action), DefaultOutcomePolicy("combat", "balanced"))
+		instance.Definition.ID, instance.Definition.Kind, instance.Definition.Difficulty = "combat-turn", "combat", maxInt(1, ce.state.Enemy.Defense)
+		if result.Outcome.Seed == 0 {
+			result.Outcome.Seed = instance.Seed
+		}
+		resolution := contracts.ChallengeResolution{ProtocolVersion: contracts.ChallengeProtocolVersion, InstanceID: instance.ID, Input: contracts.ChallengeInput{ActorID: ce.narrator.character.ID, Intent: action}, Outcome: *result.Outcome}
+		result.ChallengeInstance, result.ChallengeResolution = &instance, &resolution
+		if err := ce.narrator.db.RecordChallengeResolutionAtHead(ce.narrator.story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, resolution); err != nil {
+			return nil, fmt.Errorf("persisting combat outcome: %w", err)
+		}
 	}
 	if mechanicalNote != "" {
 		result.Narrative += "\n\n" + mechanicalNote
@@ -262,9 +307,12 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 				Text: action,
 			},
 			Output: &ChatOutput{
-				Narrative: result.Narrative,
-				Mood:      result.Mood,
-				RollLog:   result.RollLog,
+				Narrative:           result.Narrative,
+				Mood:                result.Mood,
+				RollLog:             result.RollLog,
+				ResolvedOutcome:     result.Outcome,
+				ChallengeInstance:   result.ChallengeInstance,
+				ChallengeResolution: result.ChallengeResolution,
 			},
 			AIModel:   resp.Model,
 			AILatency: latency,
@@ -317,6 +365,9 @@ func (ce *CombatEngine) narrateResolvedCombatTurn(ctx context.Context, action st
 			combatResolutionForPrompt(result),
 		)},
 	}
+	if result.Outcome != nil {
+		messages = appendOutcomeGuidance(messages, "Authoritative combat outcome: "+mustOutcomeJSON(result.Outcome))
+	}
 
 	start := time.Now()
 	req := ai.Request{
@@ -340,7 +391,13 @@ func (ce *CombatEngine) narrateResolvedCombatTurn(ctx context.Context, action st
 			Mood:      "tense",
 		}
 	}
+	EnforceOutcomeNarrative(narrative, result.Outcome)
 	return narrative, resp, latency, nil
+}
+
+func mustOutcomeJSON(outcome *contracts.OutcomeEnvelope) string {
+	raw, _ := json.Marshal(outcome)
+	return string(raw)
 }
 
 func combatResolutionForPrompt(result *CombatTurnResult) string {

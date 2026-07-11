@@ -1,0 +1,49 @@
+{
+  "instance": {
+    "protocol_version": 1,
+    "id": "challenge-contract-fixture",
+    "story_id": "story-fixture",
+    "branch_id": "branch-main",
+    "turn": 4,
+    "definition": {
+      "id": "sealed-gate",
+      "kind": "action",
+      "description": "Open the sealed gate",
+      "difficulty": 55
+    },
+    "seed": 90210,
+    "policy": {
+      "id": "oneday.v1.balanced",
+      "difficulty_profile": "balanced",
+      "consequence_budget": 2,
+      "critical_band": 5,
+      "fairness": "fail_forward"
+    },
+    "timing": { "mode": "untimed" }
+  },
+  "input": {
+    "actor_id": "hero",
+    "intent": "Open the sealed gate",
+    "modifiers": [{ "source": "etched key", "value": 8 }]
+  },
+  "resolution": {
+    "protocol_version": 1,
+    "instance_id": "challenge-contract-fixture",
+    "input": {
+      "actor_id": "hero",
+      "intent": "Open the sealed gate",
+      "modifiers": [{ "source": "etched key", "value": 8 }]
+    },
+    "outcome": {
+      "version": 1,
+      "degree": "full_success",
+      "difficulty": 55,
+      "seed": 90210,
+      "roll": 63,
+      "modifiers": [{ "source": "etched key", "value": 8 }],
+      "total": 71,
+      "margin": 16,
+      "revealed_facts": ["The gate recognizes the key"]
+    }
+  }
+}

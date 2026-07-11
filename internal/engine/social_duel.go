@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -80,21 +81,22 @@ type SocialDuelSpec struct {
 }
 
 type SocialRoundResult struct {
-	PlayerAction  SocialAction       `json:"player_action"`
-	NPCAction     SocialAction       `json:"npc_action"`
-	PlayerRoll    int                `json:"player_roll"`
-	NPCRoll       int                `json:"npc_roll"`
-	PlayerScore   int                `json:"player_score"`
-	NPCScore      int                `json:"npc_score"`
-	PlayerDamage  int                `json:"player_damage"`
-	NPCDamage     int                `json:"npc_damage"`
-	TempoDelta    int                `json:"tempo_delta"`
-	Consumed      *SocialLeverage    `json:"consumed,omitempty"`
-	Resolved      bool               `json:"resolved"`
-	Winner        string             `json:"winner,omitempty"`
-	Outcome       string             `json:"outcome,omitempty"`
-	FailForward   *SocialFailForward `json:"fail_forward,omitempty"`
-	ExchangeLabel string             `json:"exchange_label"`
+	PlayerAction    SocialAction               `json:"player_action"`
+	NPCAction       SocialAction               `json:"npc_action"`
+	PlayerRoll      int                        `json:"player_roll"`
+	NPCRoll         int                        `json:"npc_roll"`
+	PlayerScore     int                        `json:"player_score"`
+	NPCScore        int                        `json:"npc_score"`
+	PlayerDamage    int                        `json:"player_damage"`
+	NPCDamage       int                        `json:"npc_damage"`
+	TempoDelta      int                        `json:"tempo_delta"`
+	Consumed        *SocialLeverage            `json:"consumed,omitempty"`
+	Resolved        bool                       `json:"resolved"`
+	Winner          string                     `json:"winner,omitempty"`
+	Outcome         string                     `json:"outcome,omitempty"`
+	FailForward     *SocialFailForward         `json:"fail_forward,omitempty"`
+	ExchangeLabel   string                     `json:"exchange_label"`
+	ResolvedOutcome *contracts.OutcomeEnvelope `json:"resolved_outcome,omitempty"`
 }
 
 type SocialDuelEngine struct {
@@ -190,6 +192,11 @@ func (e *SocialDuelEngine) ResolveRound(state *SocialDuelState, char *storage.Ch
 			Outcome:       state.Outcome,
 			FailForward:   fail,
 			ExchangeLabel: fail.Title,
+			ResolvedOutcome: func() *contracts.OutcomeEnvelope {
+				value := OutcomeFromLegacy(false, 0)
+				value.Degree = contracts.OutcomeHardFailure
+				return &value
+			}(),
 		}, nil
 	}
 
@@ -244,6 +251,18 @@ func (e *SocialDuelEngine) ResolveRound(state *SocialDuelState, char *storage.Ch
 			strings.Title(string(npcAction)),
 		),
 	}
+	socialOutcome := OutcomeFromLegacy(playerScore >= npcScore, npcScore)
+	socialOutcome.Roll = playerRoll
+	socialOutcome.Total = playerScore
+	socialOutcome.Margin = playerScore - npcScore
+	if playerScore < npcScore && playerDamage > 0 {
+		socialOutcome.Degree = contracts.OutcomeHardFailure
+	}
+	if playerScore >= npcScore && playerDamage > 0 {
+		socialOutcome.Degree = contracts.OutcomeSuccessWithCost
+		applyDefaultOutcomeBudget(&socialOutcome, DefaultOutcomePolicy("social", "balanced"))
+	}
+	result.ResolvedOutcome = &socialOutcome
 	if playerConsumed != nil {
 		result.Consumed = playerConsumed
 	}

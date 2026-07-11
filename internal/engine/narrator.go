@@ -15,6 +15,7 @@ import (
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
 	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 )
@@ -565,14 +566,16 @@ func (n *Narrator) acquireTurnLock(ctx context.Context) (*storage.StoryTurnLock,
 }
 
 type preparedTurn struct {
-	inputType        string
-	currentTurn      int
-	storyRevision    int64
-	req              ai.Request
-	preflightUsage   ai.Usage
-	preflightLatency int64
-	recentMessages   []storage.ChatMessage
-	sceneProgression *SceneProgressionGuidance
+	inputType           string
+	currentTurn         int
+	storyRevision       int64
+	req                 ai.Request
+	preflightUsage      ai.Usage
+	preflightLatency    int64
+	recentMessages      []storage.ChatMessage
+	sceneProgression    *SceneProgressionGuidance
+	challengeInstance   contracts.ChallengeInstance
+	challengeResolution contracts.ChallengeResolution
 }
 
 func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn, error) {
@@ -641,15 +644,31 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 		sceneProgression,
 	)
 	messages = appendRewardBudgetGuidance(messages, n.contextCfg.RewardBudget)
+	branchID := n.story.ActiveBranchID
+	if branchID == "" {
+		head, timelineErr := n.db.GetActiveTimeline(n.story.ID)
+		if timelineErr != nil {
+			return nil, fmt.Errorf("loading outcome branch: %w", timelineErr)
+		}
+		branchID = head.Branch.ID
+	}
+	instance := NewOrdinaryActionChallenge(n.story.ID, branchID, currentTurn, input, DefaultOutcomePolicy(n.story.Genre, n.contextCfg.RewardBudget))
+	resolution, err := ResolveChallengeInstance(instance, contracts.ChallengeInput{ActorID: n.character.ID, Intent: input})
+	if err != nil {
+		return nil, fmt.Errorf("resolving authoritative outcome: %w", err)
+	}
+	messages = appendOutcomeGuidance(messages, OutcomePromptContract(instance, *resolution))
 
 	return &preparedTurn{
-		inputType:        inputType,
-		currentTurn:      currentTurn,
-		storyRevision:    storyRevision,
-		preflightUsage:   preflightUsage,
-		preflightLatency: preflightLatency,
-		recentMessages:   recentMsgs,
-		sceneProgression: sceneProgression,
+		inputType:           inputType,
+		currentTurn:         currentTurn,
+		storyRevision:       storyRevision,
+		preflightUsage:      preflightUsage,
+		preflightLatency:    preflightLatency,
+		recentMessages:      recentMsgs,
+		sceneProgression:    sceneProgression,
+		challengeInstance:   instance,
+		challengeResolution: *resolution,
 		req: ai.Request{
 			Messages:       messages,
 			Temperature:    n.genCfg.Temperature,
@@ -657,6 +676,17 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 			ResponseFormat: ai.NarrativeResponseFormat(),
 		},
 	}, nil
+}
+
+func appendOutcomeGuidance(messages []ai.Message, content string) []ai.Message {
+	message := ai.Message{Role: ai.RoleSystem, Content: content}
+	if len(messages) == 0 || messages[len(messages)-1].Role != ai.RoleUser {
+		return append(messages, message)
+	}
+	out := make([]ai.Message, 0, len(messages)+1)
+	out = append(out, messages[:len(messages)-1]...)
+	out = append(out, message, messages[len(messages)-1])
+	return out
 }
 
 func (n *Narrator) recentMessagesForTurn(limit int) ([]storage.ChatMessage, error) {
@@ -757,6 +787,9 @@ func (n *Narrator) finalizeTurn(
 			return nil, fmt.Errorf("continuity guard blocked response after repair: %w", remaining)
 		}
 	}
+	EnforceOutcomeNarrative(narrative, &prep.challengeResolution.Outcome)
+	narrative.ChallengeInstance = &prep.challengeInstance
+	narrative.ChallengeResolution = &prep.challengeResolution
 
 	// Apply state_changes from AI response, including NPC creation/updates.
 	var appliedChanges []StateChange
@@ -799,6 +832,11 @@ func (n *Narrator) finalizeTurn(
 			narrative.EventCallouts,
 			StateChangesToEventCallouts(appliedChanges),
 		)
+	}
+	for _, change := range appliedChanges {
+		prep.challengeResolution.Outcome.StateDeltas = append(prep.challengeResolution.Outcome.StateDeltas, contracts.OutcomeEffect{
+			Kind: "state", Target: change.Target, Field: change.Field, Detail: change.Description,
+		})
 	}
 	narrative.TurnDelta = mergeTurnDelta(buildTurnDelta(appliedChanges), narrative.TurnDelta)
 	narrative.OpenHooks = activeStoryHooks(loadStoryHooks(n.world))
@@ -848,22 +886,25 @@ func (n *Narrator) finalizeTurn(
 			Text: input,
 		},
 		Output: &ChatOutput{
-			Narrative:         narrative.Narrative,
-			Choices:           choiceTexts,
-			ChoicesData:       narrative.Choices,
-			TurnDelta:         narrative.TurnDelta,
-			Mood:              narrative.Mood,
-			Location:          n.world.CurrentLocation,
-			SceneType:         narrative.SceneType,
-			DialogueBlocks:    narrative.DialogueBlocks,
-			EntitiesMentioned: narrative.EntitiesMentioned,
-			EventCallouts:     narrative.EventCallouts,
-			ASCIICue:          narrative.ASCIICue,
-			ASCIIArt:          narrative.ASCIIArt,
-			OpenHooks:         narrative.OpenHooks,
-			WorldReactions:    narrative.WorldReactions,
-			SocialDuel:        narrative.SocialDuel,
-			StateChanges:      narrative.StateChanges,
+			Narrative:           narrative.Narrative,
+			Choices:             choiceTexts,
+			ChoicesData:         narrative.Choices,
+			TurnDelta:           narrative.TurnDelta,
+			Mood:                narrative.Mood,
+			Location:            n.world.CurrentLocation,
+			SceneType:           narrative.SceneType,
+			DialogueBlocks:      narrative.DialogueBlocks,
+			EntitiesMentioned:   narrative.EntitiesMentioned,
+			EventCallouts:       narrative.EventCallouts,
+			ASCIICue:            narrative.ASCIICue,
+			ASCIIArt:            narrative.ASCIIArt,
+			OpenHooks:           narrative.OpenHooks,
+			WorldReactions:      narrative.WorldReactions,
+			SocialDuel:          narrative.SocialDuel,
+			StateChanges:        narrative.StateChanges,
+			ResolvedOutcome:     narrative.ResolvedOutcome,
+			ChallengeInstance:   narrative.ChallengeInstance,
+			ChallengeResolution: narrative.ChallengeResolution,
 		},
 		AIModel:    resp.Model,
 		AILatency:  n.lastLatency,
@@ -875,6 +916,9 @@ func (n *Narrator) finalizeTurn(
 	var committedRevision int64
 	beforeCommit := func(tx *sql.Tx) error {
 		if err := n.db.RequireStoryRevisionTx(tx, n.story.ID, prep.storyRevision); err != nil {
+			return err
+		}
+		if err := n.db.RecordChallengeResolutionTx(tx, n.story.ID, n.session.SessionID(), prep.challengeInstance.BranchID, prep.currentTurn, prep.challengeInstance, prep.challengeResolution); err != nil {
 			return err
 		}
 		if npcRecorder != nil {

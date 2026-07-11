@@ -73,6 +73,7 @@ var canonicalTableSpecs = []timelineTableSpec{
 	{name: "weather_states", filter: "story_id = ? AND branch_id = ?"},
 	{name: "canonical_world_events", filter: "story_id = ? AND branch_id = ?"},
 	{name: "world_thread_events", filter: "story_id = ? AND branch_id = ?"},
+	{name: "challenge_runs", filter: "story_id = ? AND branch_id = ?"},
 }
 
 func (db *DB) CaptureTimelineMaterializationTx(tx *sql.Tx, storyID, branchID string) (string, error) {
@@ -124,7 +125,7 @@ func (db *DB) RestoreCanonicalStateTx(tx *sql.Tx, storyID, branchID, payloadJSON
 	for _, table := range m.Tables {
 		byName[table.Name] = table
 	}
-	deleteOrder := []string{"entity_position_events", "location_edges", "location_aliases", "weather_states", "canonical_world_events", "world_thread_events", "world_time_events", "world_clocks", "world_calendars", "locations", "regions", "reputation_events", "faction_relationship_events", "faction_membership_events", "entity_controller_events", "entity_lifecycle_events", "character_facts", "identity_claims", "entity_aliases", "entity_field_locks", "entity_forms", "factions", "canonical_entities"}
+	deleteOrder := []string{"challenge_runs", "entity_position_events", "location_edges", "location_aliases", "weather_states", "canonical_world_events", "world_thread_events", "world_time_events", "world_clocks", "world_calendars", "locations", "regions", "reputation_events", "faction_relationship_events", "faction_membership_events", "entity_controller_events", "entity_lifecycle_events", "character_facts", "identity_claims", "entity_aliases", "entity_field_locks", "entity_forms", "factions", "canonical_entities"}
 	for _, table := range deleteOrder {
 		if table == "entity_field_locks" {
 			if _, err := tx.Exec(`DELETE FROM entity_field_locks WHERE entity_id IN (SELECT id FROM canonical_entities WHERE story_id=?)`, storyID); err != nil {
@@ -136,9 +137,12 @@ func (db *DB) RestoreCanonicalStateTx(tx *sql.Tx, storyID, branchID, payloadJSON
 			return err
 		}
 	}
-	restoreOrder := []string{"canonical_entities", "entity_field_locks", "entity_aliases", "identity_claims", "entity_forms", "entity_controller_events", "entity_lifecycle_events", "character_facts", "factions", "faction_membership_events", "faction_relationship_events", "reputation_events", "regions", "locations", "location_aliases", "location_edges", "world_calendars", "world_clocks", "world_time_events", "weather_states", "canonical_world_events", "world_thread_events", "entity_position_events"}
+	restoreOrder := []string{"canonical_entities", "entity_field_locks", "entity_aliases", "identity_claims", "entity_forms", "entity_controller_events", "entity_lifecycle_events", "character_facts", "factions", "faction_membership_events", "faction_relationship_events", "reputation_events", "regions", "locations", "location_aliases", "location_edges", "world_calendars", "world_clocks", "world_time_events", "weather_states", "canonical_world_events", "world_thread_events", "entity_position_events", "challenge_runs"}
 	for _, name := range restoreOrder {
 		table, ok := byName[name]
+		if !ok && name == "challenge_runs" {
+			continue // snapshots produced before protocol v1 remain restorable
+		}
 		if !ok {
 			return fmt.Errorf("canonical snapshot is missing table %s", name)
 		}
@@ -243,7 +247,7 @@ func (db *DB) RestoreTimelineMaterializationTx(tx *sql.Tx, storyID, branchID, pa
 		byName[table.Name] = table
 	}
 
-	for _, table := range []string{"entity_position_events", "location_edges", "location_aliases", "weather_states", "canonical_world_events", "world_thread_events", "world_time_events", "world_clocks", "world_calendars", "locations", "regions", "reputation_events", "faction_relationship_events", "faction_membership_events", "entity_controller_events", "entity_lifecycle_events", "character_facts", "identity_claims", "entity_aliases", "entity_field_locks", "entity_forms", "factions", "canonical_entities", "chat_messages", "combat_log", "rag_chunks", "chapters", "sessions", "achievements", "npcs", "world_state", "characters"} {
+	for _, table := range []string{"challenge_runs", "entity_position_events", "location_edges", "location_aliases", "weather_states", "canonical_world_events", "world_thread_events", "world_time_events", "world_clocks", "world_calendars", "locations", "regions", "reputation_events", "faction_relationship_events", "faction_membership_events", "entity_controller_events", "entity_lifecycle_events", "character_facts", "identity_claims", "entity_aliases", "entity_field_locks", "entity_forms", "factions", "canonical_entities", "chat_messages", "combat_log", "rag_chunks", "chapters", "sessions", "achievements", "npcs", "world_state", "characters"} {
 		if table == "entity_field_locks" {
 			if _, err := tx.Exec(`DELETE FROM entity_field_locks WHERE entity_id IN (SELECT id FROM canonical_entities WHERE story_id=?)`, storyID); err != nil {
 				return err
@@ -254,8 +258,11 @@ func (db *DB) RestoreTimelineMaterializationTx(tx *sql.Tx, storyID, branchID, pa
 			return fmt.Errorf("clearing %s for checkout: %w", table, err)
 		}
 	}
-	for _, table := range []string{"characters", "world_state", "npcs", "achievements", "sessions", "chapters", "chat_messages", "rag_chunks", "combat_log", "canonical_entities", "entity_field_locks", "entity_aliases", "identity_claims", "entity_forms", "entity_controller_events", "entity_lifecycle_events", "character_facts", "factions", "faction_membership_events", "faction_relationship_events", "reputation_events", "regions", "locations", "location_aliases", "location_edges", "world_calendars", "world_clocks", "world_time_events", "weather_states", "canonical_world_events", "world_thread_events", "entity_position_events"} {
+	for _, table := range []string{"characters", "world_state", "npcs", "achievements", "sessions", "chapters", "chat_messages", "rag_chunks", "combat_log", "canonical_entities", "entity_field_locks", "entity_aliases", "identity_claims", "entity_forms", "entity_controller_events", "entity_lifecycle_events", "character_facts", "factions", "faction_membership_events", "faction_relationship_events", "reputation_events", "regions", "locations", "location_aliases", "location_edges", "world_calendars", "world_clocks", "world_time_events", "weather_states", "canonical_world_events", "world_thread_events", "entity_position_events", "challenge_runs"} {
 		data, ok := byName[table]
+		if !ok && table == "challenge_runs" {
+			continue
+		}
 		if !ok {
 			return fmt.Errorf("turn snapshot is missing table %s", table)
 		}

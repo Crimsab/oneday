@@ -63,9 +63,11 @@ func rpsOutcome(player, ai RPSChoice) string {
 func RPSToChallengeResult(r RPSResult) *ChallengeResult {
 	passed := r.Outcome == "win"
 	detail := fmt.Sprintf("RPS: you chose %s, opponent chose %s → %s", r.PlayerChoice, r.AIChoice, strings.ToUpper(r.Outcome))
+	outcome := OutcomeFromLegacy(passed, 0)
 	return &ChallengeResult{
-		Passed: passed,
-		Detail: detail,
+		Passed:  passed,
+		Detail:  detail,
+		Outcome: &outcome,
 	}
 }
 
@@ -112,9 +114,11 @@ func (mc *MemoryChallenge) CheckMemory(playerSequence []string) *ChallengeResult
 
 	if len(playerSequence) != total {
 		detail := fmt.Sprintf("Memory: wrong length — expected %d steps, got %d → FAIL", total, len(playerSequence))
+		outcome := OutcomeFromLegacy(false, total)
 		return &ChallengeResult{
-			Passed: false,
-			Detail: detail,
+			Passed:  false,
+			Detail:  detail,
+			Outcome: &outcome,
 		}
 	}
 
@@ -130,9 +134,11 @@ func (mc *MemoryChallenge) CheckMemory(playerSequence []string) *ChallengeResult
 		outcome = "FAIL"
 	}
 	detail := fmt.Sprintf("Memory: %d/%d correct → %s", correct, total, outcome)
+	graded := OutcomeFromLegacy(passed, total)
 	return &ChallengeResult{
-		Passed: passed,
-		Detail: detail,
+		Passed:  passed,
+		Detail:  detail,
+		Outcome: &graded,
 	}
 }
 
@@ -165,9 +171,11 @@ func (qtc *QuickTimeChallenge) CheckQuickTime(responseTime time.Time) *Challenge
 	}
 	detail := fmt.Sprintf("QuickTime: responded in %.2fs (limit %.2fs) → %s",
 		elapsed.Seconds(), qtc.TimeLimit.Seconds(), outcome)
+	graded := OutcomeFromLegacy(passed, int(qtc.TimeLimit.Milliseconds()))
 	return &ChallengeResult{
-		Passed: passed,
-		Detail: detail,
+		Passed:  passed,
+		Detail:  detail,
+		Outcome: &graded,
 	}
 }
 
@@ -204,8 +212,10 @@ func (rc *RiddleChallenge) CheckRiddle(playerAnswer string) *ChallengeResult {
 		outcome = "FAIL"
 	}
 	detail := fmt.Sprintf("Riddle: your answer %q → %s", playerAnswer, outcome)
+	graded := OutcomeFromLegacy(passed, 0)
 	return &ChallengeResult{
-		Passed: passed,
-		Detail: detail,
+		Passed:  passed,
+		Detail:  detail,
+		Outcome: &graded,
 	}
 }

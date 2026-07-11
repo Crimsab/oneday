@@ -1,6 +1,9 @@
 package engine
 
-import "github.com/crimsab/oneday/internal/storage"
+import (
+	"github.com/crimsab/oneday/internal/game/contracts"
+	"github.com/crimsab/oneday/internal/storage"
+)
 
 // StoryDefinition is the AI-generated story structure (story.json equivalent).
 type StoryDefinition struct {
@@ -146,29 +149,32 @@ type VisualEntity struct {
 
 // NarrativeResponse is the standard AI response format during gameplay (AI-02).
 type NarrativeResponse struct {
-	Narrative            string                 `json:"narrative"`
-	Choices              []Choice               `json:"choices"`
-	StateChanges         map[string]interface{} `json:"state_changes,omitempty"`
-	TurnDelta            *TurnDelta             `json:"turn_delta,omitempty"`
-	Mood                 string                 `json:"mood,omitempty"`
-	Location             string                 `json:"location,omitempty"`
-	SceneType            string                 `json:"scene_type,omitempty"`
-	DialogueBlocks       []DialogueBlock        `json:"dialogue_blocks,omitempty"`
-	EntitiesMentioned    []EntityMention        `json:"entities_mentioned,omitempty"`
-	EventCallouts        []EventCallout         `json:"event_callouts,omitempty"`
-	ASCIICue             *ASCIIArtCue           `json:"ascii_cue,omitempty"`
-	VisualCue            *VisualCue             `json:"visual_cue,omitempty"`
-	ASCIIArt             string                 `json:"ascii_art,omitempty"`
-	OpenHooks            []StoryHook            `json:"open_hooks,omitempty"`
-	WorldReactions       []WorldReaction        `json:"world_reactions,omitempty"`
-	Challenges           []*ChallengeSpec       `json:"challenges,omitempty"`
-	SocialDuel           *SocialDuelCue         `json:"social_duel,omitempty"`
-	AchievementEarned    *AchievementData       `json:"achievement_earned,omitempty"`
-	ChapterEnd           bool                   `json:"chapter_end,omitempty"`
-	ChapterTitle         string                 `json:"chapter_title,omitempty"` // title for the ending chapter
-	CombatStart          *EnemyStats            `json:"combat_start,omitempty"`  // set by AI to initiate combat
-	PersistedAchievement *storage.Achievement   `json:"-"`                       // TUI-only: set after DB persist
-	AppliedStateChanges  []StateChange          `json:"-"`                       // TUI-only: engine-applied changes for renderer/callouts
+	Narrative            string                         `json:"narrative"`
+	Choices              []Choice                       `json:"choices"`
+	StateChanges         map[string]interface{}         `json:"state_changes,omitempty"`
+	TurnDelta            *TurnDelta                     `json:"turn_delta,omitempty"`
+	Mood                 string                         `json:"mood,omitempty"`
+	Location             string                         `json:"location,omitempty"`
+	SceneType            string                         `json:"scene_type,omitempty"`
+	DialogueBlocks       []DialogueBlock                `json:"dialogue_blocks,omitempty"`
+	EntitiesMentioned    []EntityMention                `json:"entities_mentioned,omitempty"`
+	EventCallouts        []EventCallout                 `json:"event_callouts,omitempty"`
+	ASCIICue             *ASCIIArtCue                   `json:"ascii_cue,omitempty"`
+	VisualCue            *VisualCue                     `json:"visual_cue,omitempty"`
+	ASCIIArt             string                         `json:"ascii_art,omitempty"`
+	OpenHooks            []StoryHook                    `json:"open_hooks,omitempty"`
+	WorldReactions       []WorldReaction                `json:"world_reactions,omitempty"`
+	Challenges           []*ChallengeSpec               `json:"challenges,omitempty"`
+	SocialDuel           *SocialDuelCue                 `json:"social_duel,omitempty"`
+	AchievementEarned    *AchievementData               `json:"achievement_earned,omitempty"`
+	ChapterEnd           bool                           `json:"chapter_end,omitempty"`
+	ChapterTitle         string                         `json:"chapter_title,omitempty"` // title for the ending chapter
+	CombatStart          *EnemyStats                    `json:"combat_start,omitempty"`  // set by AI to initiate combat
+	PersistedAchievement *storage.Achievement           `json:"-"`                       // TUI-only: set after DB persist
+	AppliedStateChanges  []StateChange                  `json:"-"`                       // TUI-only: engine-applied changes for renderer/callouts
+	ResolvedOutcome      *contracts.OutcomeEnvelope     `json:"resolved_outcome,omitempty"`
+	ChallengeInstance    *contracts.ChallengeInstance   `json:"challenge_instance,omitempty"`
+	ChallengeResolution  *contracts.ChallengeResolution `json:"challenge_resolution,omitempty"`
 }
 
 // Choice represents an AI-suggested action.
@@ -259,13 +265,14 @@ type Modifier struct {
 
 // ChallengeResult is the engine's resolution of a challenge.
 type ChallengeResult struct {
-	Passed     bool         `json:"passed"`
-	Roll       int          `json:"roll,omitempty"`  // the raw d100 roll (for dice_roll)
-	Total      int          `json:"total,omitempty"` // roll + modifiers
-	Difficulty int          `json:"difficulty,omitempty"`
-	Modifiers  []Modifier   `json:"modifiers,omitempty"`
-	Detail     string       `json:"detail"` // human-readable summary
-	RollLog    []RollRecord `json:"roll_log,omitempty"`
+	Passed     bool                       `json:"passed"`
+	Roll       int                        `json:"roll,omitempty"`  // the raw d100 roll (for dice_roll)
+	Total      int                        `json:"total,omitempty"` // roll + modifiers
+	Difficulty int                        `json:"difficulty,omitempty"`
+	Modifiers  []Modifier                 `json:"modifiers,omitempty"`
+	Detail     string                     `json:"detail"` // human-readable summary
+	RollLog    []RollRecord               `json:"roll_log,omitempty"`
+	Outcome    *contracts.OutcomeEnvelope `json:"outcome,omitempty"`
 }
 
 // --- Combat Types ---
@@ -310,18 +317,21 @@ type CombatState struct {
 
 // CombatTurnResult contains everything the TUI needs after a combat turn.
 type CombatTurnResult struct {
-	Narrative     string
-	Choices       []Choice
-	PlayerDamage  int // damage dealt TO player this turn
-	EnemyDamage   int // damage dealt TO enemy this turn
-	PlayerHP      int
-	EnemyHP       int
-	CombatOver    bool
-	Victory       bool
-	DefeatOutcome string // only set if CombatOver && !Victory
-	Summary       string // only set if CombatOver
-	Mood          string
-	RollLog       []RollRecord
+	Narrative           string
+	Choices             []Choice
+	PlayerDamage        int // damage dealt TO player this turn
+	EnemyDamage         int // damage dealt TO enemy this turn
+	PlayerHP            int
+	EnemyHP             int
+	CombatOver          bool
+	Victory             bool
+	DefeatOutcome       string // only set if CombatOver && !Victory
+	Summary             string // only set if CombatOver
+	Mood                string
+	RollLog             []RollRecord
+	Outcome             *contracts.OutcomeEnvelope
+	ChallengeInstance   *contracts.ChallengeInstance
+	ChallengeResolution *contracts.ChallengeResolution
 }
 
 // MiniGameType identifies a specific mini-game.

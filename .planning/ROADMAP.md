@@ -755,10 +755,10 @@ Plans:
 
 ### Plans
 
-- [ ] Plan 32.1: Define outcome degrees, policies, consequence budgets, and persistence schema
-- [ ] Plan 32.2: Introduce serializable challenge definition/instance/input/resolution contracts
-- [ ] Plan 32.3: Integrate engine-first resolution into narrator, combat, crafting, and ordinary actions
-- [ ] Plan 32.4: Add legacy adapters, deterministic replay, and cross-host contract tests
+- [x] Plan 32.1: Define outcome degrees, policies, consequence budgets, and persistence schema
+- [x] Plan 32.2: Introduce serializable challenge definition/instance/input/resolution contracts
+- [x] Plan 32.3: Integrate engine-first resolution into narrator, combat, crafting, and ordinary actions
+- [x] Plan 32.4: Add legacy adapters, deterministic replay, and cross-host contract tests
 
 ---
 

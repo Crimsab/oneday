@@ -20,6 +20,10 @@ export function turnEventDetail(event: TurnStreamEvent): string {
       return streamingDeltaText(event) || "Narrative is streaming.";
     case "narrative.final":
       return "Narrative generated; applying state updates.";
+    case "challenge.started":
+	  return "Engine challenge locked before narration.";
+    case "challenge.resolved":
+	  return "Authoritative outcome resolved.";
     case "state.delta":
       return "State delta received.";
     case "choices.updated":
@@ -108,6 +112,10 @@ function messageForEventType(eventType: string): string {
       return "Turn accepted by the live engine.";
     case "narrative.final":
       return "Narrative generated; applying state changes.";
+    case "challenge.started":
+      return "Engine challenge locked before narration.";
+    case "challenge.resolved":
+      return "Authoritative outcome resolved before narration.";
     case "choices.updated":
       return "Choices refreshed from the engine.";
     case "state.delta":
