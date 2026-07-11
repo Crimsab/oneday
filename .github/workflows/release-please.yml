@@ -73,6 +73,8 @@ jobs:
           bun install --frozen-lockfile
           bun test src
           bun run build
+          bunx playwright install --with-deps chromium
+          bun run test:e2e
 
       - name: Build release artifacts
         if: steps.release.outputs.release_created == 'true'
