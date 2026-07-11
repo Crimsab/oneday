@@ -1,0 +1,29 @@
+{
+  "instance": {
+    "protocol_version": 1,
+    "id": "mini-fixture",
+    "story_id": "story-fixture",
+    "branch_id": "branch-main",
+    "turn": 4,
+    "seed": 42,
+    "definition": {
+      "id": "deduction-fixture",
+      "kind": "deduction",
+      "prompt": "Which conclusion fits both clues?",
+      "difficulty": 50,
+      "options": ["curator", "guard"],
+      "rules": {"required_evidence": "2"}
+    },
+    "runtime": {
+      "phase": "active",
+      "revision": 1,
+      "state": {},
+      "history": [{"action": "start"}]
+    }
+  },
+  "input": {
+    "action": "submit",
+    "value": "curator",
+    "values": ["broken seal", "ink trace"]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "prompt_profile_revision": "narrative-kernel-v4",
+  "schema_version": 1,
+  "cases": [
+    {"id":"deduction-supported","seed":7,"definition":{"id":"deduction-supported","kind":"deduction","difficulty":50,"answers":["the curator"],"rules":{"required_evidence":"2"}},"input":{"value":"curator","values":["broken seal","ink trace"]},"expected_degree":"full_success","concerns":["generosity_bias","false_identity","cross_surface_parity"]},
+    {"id":"deduction-wrong-progress","seed":7,"definition":{"id":"deduction-wrong-progress","kind":"deduction","difficulty":50,"answers":["the curator"],"rules":{"required_evidence":"2"}},"input":{"value":"the guard","values":["broken seal","ink trace"]},"expected_degree":"failure_with_progress","concerns":["false_identity","anti_loop"]},
+    {"id":"pattern-complete","seed":11,"definition":{"id":"pattern-complete","kind":"pattern","difficulty":50,"answers":["8"]},"input":{"value":"8"},"expected_degree":"full_success","concerns":["metamorphosis","deterministic_replay"]},
+    {"id":"pattern-attempt","seed":11,"definition":{"id":"pattern-attempt","kind":"pattern","difficulty":50,"answers":["8"]},"input":{"value":"9"},"expected_degree":"failure_with_progress","concerns":["metamorphosis","anti_loop"]},
+    {"id":"bid-fair","seed":13,"definition":{"id":"bid-fair","kind":"bidding","difficulty":50,"rules":{"reserve":"40","market_value":"60","budget":"90"}},"input":{"value":"55"},"expected_degree":"full_success","concerns":["generosity_bias","cross_surface_parity"]},
+    {"id":"bid-over-budget","seed":13,"definition":{"id":"bid-over-budget","kind":"bidding","difficulty":50,"rules":{"reserve":"40","market_value":"60","budget":"90"}},"input":{"value":"100"},"expected_degree":"catastrophe","concerns":["generosity_bias","anti_loop"]},
+    {"id":"court-evidence","seed":17,"definition":{"id":"court-evidence","kind":"courtroom","difficulty":10,"options":["present evidence"]},"input":{"value":"present evidence","values":["ledger","witness"]},"expected_degree":"full_success","concerns":["zero_combat","cross_surface_parity"]},
+    {"id":"court-empty-objection","seed":17,"definition":{"id":"court-empty-objection","kind":"courtroom","difficulty":100,"options":["object"]},"input":{"value":"object"},"expected_degree":"hard_failure","concerns":["zero_combat","anti_loop"]},
+    {"id":"comedy-callback","seed":19,"definition":{"id":"comedy-callback","kind":"comedy","difficulty":10,"options":["callback"]},"input":{"value":"callback","values":["earlier boast","broken hat"]},"expected_degree":"full_success","concerns":["social_comedy","zero_combat"]},
+    {"id":"comedy-escalation","seed":19,"definition":{"id":"comedy-escalation","kind":"comedy","difficulty":100,"options":["escalation"]},"input":{"value":"escalation"},"expected_degree":"hard_failure","concerns":["social_comedy","anti_loop"]},
+    {"id":"negotiation-leverage","seed":23,"definition":{"id":"negotiation-leverage","kind":"negotiation","difficulty":10,"options":["cooperative"]},"input":{"value":"cooperative","values":["shared goal","deadline"]},"expected_degree":"full_success","concerns":["zero_combat","deterministic_replay"]},
+    {"id":"negotiation-bluff","seed":23,"definition":{"id":"negotiation-bluff","kind":"negotiation","difficulty":100,"options":["deceptive"]},"input":{"value":"deceptive"},"expected_degree":"hard_failure","concerns":["zero_combat","anti_loop"]}
+  ]
+}

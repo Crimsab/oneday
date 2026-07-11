@@ -108,14 +108,15 @@ func TestDiscoverStoryPacks(t *testing.T) {
 func TestValidateStoryPack(t *testing.T) {
 	dir := t.TempDir()
 	pack := filepath.Join(dir, "pack.yaml")
-	if err := os.WriteFile(pack, []byte("id: pack\nname: Pack\ndescription: Demo\n"), 0644); err != nil {
+	valid := "id: pack\nname: Pack\ndescription: Demo\nstats_schema:\n  attributes: [{key: insight, label: Insight, starting: 2}]\nchallenge_pools:\n  clues:\n    definitions: [{id: clue, kind: deduction, difficulty: 40, answers: [mara]}]\n"
+	if err := os.WriteFile(pack, []byte(valid), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateStoryPack(pack); err != nil {
 		t.Fatalf("validateStoryPack: %v", err)
 	}
 	bad := filepath.Join(dir, "bad.yaml")
-	if err := os.WriteFile(bad, []byte("id: bad\n"), 0644); err != nil {
+	if err := os.WriteFile(bad, []byte("id: bad\nname: Bad\ndescription: Bad\nchallenge_pools:\n  clues:\n    definitions: [{id: clue, kind: deduction, difficulty: 40}]\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := validateStoryPack(bad); err == nil {

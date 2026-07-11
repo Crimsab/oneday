@@ -21,6 +21,7 @@ import (
 	"github.com/crimsab/oneday/internal/aifactory"
 	"github.com/crimsab/oneday/internal/buildinfo"
 	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui"
@@ -1173,17 +1174,8 @@ func discoverStoryPacks(roots []string) ([]string, error) {
 }
 
 func validateStoryPack(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	text := string(data)
-	for _, field := range []string{"id:", "name:", "description:"} {
-		if !strings.Contains(text, field) {
-			return fmt.Errorf("missing %s", strings.TrimSuffix(field, ":"))
-		}
-	}
-	return nil
+	_, err := engine.LoadStoryPack(path)
+	return err
 }
 
 func reportConfigConsistency(cfg config.Config) {

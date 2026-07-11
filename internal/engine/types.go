@@ -35,24 +35,24 @@ type Setting struct {
 
 // StatsSchema defines what stats exist in this story.
 type StatsSchema struct {
-	Vitals     []StatDef    `json:"vitals"`
-	Attributes []StatDef    `json:"attributes"`
-	Secondary  []StatDef    `json:"secondary"`
-	Currency   *CurrencyDef `json:"currency,omitempty"`
-	HasCombat  bool         `json:"has_combat"`
+	Vitals     []StatDef    `json:"vitals" yaml:"vitals"`
+	Attributes []StatDef    `json:"attributes" yaml:"attributes"`
+	Secondary  []StatDef    `json:"secondary" yaml:"secondary"`
+	Currency   *CurrencyDef `json:"currency,omitempty" yaml:"currency,omitempty"`
+	HasCombat  bool         `json:"has_combat" yaml:"has_combat"`
 }
 
 // StatDef is a single stat definition.
 type StatDef struct {
-	Key      string `json:"key"`
-	Label    string `json:"label"`
-	Starting int    `json:"starting,omitempty"`
+	Key      string `json:"key" yaml:"key"`
+	Label    string `json:"label" yaml:"label"`
+	Starting int    `json:"starting,omitempty" yaml:"starting,omitempty"`
 }
 
 // CurrencyDef defines the in-game currency.
 type CurrencyDef struct {
-	Name     string `json:"name"`
-	Starting int    `json:"starting"`
+	Name     string `json:"name" yaml:"name"`
+	Starting int    `json:"starting" yaml:"starting"`
 }
 
 // InitialStats generates starting stats JSON from the schema.

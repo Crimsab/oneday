@@ -3,3 +3,67 @@ name: Noir Investigation
 description: Detective-focused story pack with cases, suspects, contradictions, and pressure clocks.
 genre: noir
 recommended_rag: bge-m3
+stats_schema:
+  vitals:
+    - key: composure
+      label: Composure
+      starting: 6
+  attributes:
+    - key: insight
+      label: Insight
+      starting: 3
+    - key: presence
+      label: Presence
+      starting: 2
+  secondary:
+    - key: heat
+      label: Heat
+      starting: 0
+  currency:
+    name: Favors
+    starting: 2
+  has_combat: false
+difficulty_profiles:
+  balanced:
+    target_difficulty: 50
+    consequence_budget: 4
+  accessible:
+    target_difficulty: 35
+    timing_free_only: true
+    consequence_budget: 3
+challenge_pools:
+  investigation:
+    narrative_tags: [clue, contradiction, testimony]
+    cooldown_turns: 2
+    definitions:
+      - id: reconcile-testimony
+        kind: deduction
+        prompt: Which suspect contradicts the station clock?
+        difficulty: 45
+        answers: [mara vale, mara]
+      - id: reconstruct-route
+        kind: pattern
+        prompt: Reconstruct the courier's route.
+        difficulty: 55
+        options: [station, arcade, docks]
+        answers: [station, arcade, docks]
+  social:
+    narrative_tags: [pressure, testimony, reputation]
+    cooldown_turns: 2
+    definitions:
+      - id: expose-contradiction
+        kind: courtroom
+        prompt: Expose the contradiction without inventing evidence.
+        difficulty: 50
+      - id: defuse-gala
+        kind: comedy
+        prompt: Defuse the gala scandal without humiliating the witness.
+        difficulty: 40
+outcome_policies:
+  balanced:
+    id: noir-balanced-v1
+    genre: noir
+    difficulty_profile: balanced
+    consequence_budget: 4
+    critical_band: 8
+    fairness: Telegraph stakes, preserve partial progress, and never invent failure evidence.
