@@ -516,6 +516,35 @@ func (db *DB) ListMessageAudio(storyID string, messageID int64) ([]AudioAsset, e
 	return assets, rows.Err()
 }
 
+// GetActiveAudioAssetByID resolves an asset only when its immutable branch
+// lineage still belongs to the story's active branch.
+func (db *DB) GetActiveAudioAssetByID(id string) (*AudioAsset, error) {
+	return scanAudioAsset(db.conn.QueryRow(audioAssetSelect+` JOIN stories s ON s.id=a.story_id WHERE a.id=? AND a.branch_id=s.active_branch_id`, id))
+}
+
+func (db *DB) ListMessageTTSJobs(storyID string, messageID int64) ([]TTSJob, error) {
+	rows, err := db.conn.Query(`SELECT j.id,j.audio_asset_id,j.story_id,j.branch_id,j.source_commit_id,j.status,j.provider,j.attempts,j.max_attempts,j.next_attempt_at,j.trace_id,COALESCE(j.parent_run_id,''),COALESCE(j.generation_run_id,''),j.error_class,j.error,j.created_at,j.updated_at
+		FROM tts_jobs j JOIN audio_assets a ON a.id=j.audio_asset_id JOIN stories s ON s.id=j.story_id
+		WHERE j.story_id=? AND a.source_message_id=? AND j.branch_id=s.active_branch_id ORDER BY a.segment_index,j.created_at`, storyID, messageID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	jobs := []TTSJob{}
+	for rows.Next() {
+		var job TTSJob
+		var next sql.NullString
+		if err := rows.Scan(&job.ID, &job.AudioAssetID, &job.StoryID, &job.BranchID, &job.SourceCommitID, &job.Status, &job.Provider, &job.Attempts, &job.MaxAttempts, &next, &job.TraceID, &job.ParentRunID, &job.GenerationRunID, &job.ErrorClass, &job.Error, &job.CreatedAt, &job.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if next.Valid {
+			job.NextAttemptAt = next.String
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, rows.Err()
+}
+
 const audioAssetSelect = `SELECT a.id,a.story_id,a.branch_id,a.source_commit_id,a.source_message_id,a.segment_index,a.segment_kind,COALESCE(a.speaker_entity_id,''),COALESCE(a.identity_id,''),COALESCE(a.form_id,''),a.voice_profile_id,a.provider,a.model,a.provider_voice_id,a.voice_version,a.language_tag,a.pronunciation_revision,a.text,a.text_hash,a.cache_key,a.style_json,a.speed,a.output_format,a.status,a.url,a.file_path,a.duration_ms,a.timings_json,COALESCE(a.generation_run_id,''),a.error,a.created_at,a.updated_at FROM audio_assets a`
 
 func scanAudioAsset(row rowScanner) (*AudioAsset, error) {

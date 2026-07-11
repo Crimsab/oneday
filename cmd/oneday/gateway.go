@@ -140,6 +140,111 @@ type gatewayMiniGameResponse struct {
 	Error    string                   `json:"error,omitempty"`
 }
 
+type gatewayAudioRequest struct {
+	Operation      string                    `json:"operation"`
+	StoryID        string                    `json:"story_id,omitempty"`
+	MessageID      int64                     `json:"message_id,omitempty"`
+	AssetID        string                    `json:"asset_id,omitempty"`
+	AssignmentID   string                    `json:"assignment_id,omitempty"`
+	Provider       string                    `json:"provider,omitempty"`
+	Language       string                    `json:"language,omitempty"`
+	ClientRevision int64                     `json:"client_revision,omitempty"`
+	Settings       *storage.StoryTTSSettings `json:"settings,omitempty"`
+	Assignment     *storage.VoiceAssignment  `json:"assignment,omitempty"`
+}
+
+type gatewayAudioResponse struct {
+	Statuses    []audioservice.ProviderStatus `json:"providers,omitempty"`
+	Profiles    []storage.VoiceProfile        `json:"voices,omitempty"`
+	Settings    *storage.StoryTTSSettings     `json:"settings,omitempty"`
+	Assignments []storage.VoiceAssignment     `json:"assignments,omitempty"`
+	Assignment  *storage.VoiceAssignment      `json:"assignment,omitempty"`
+	Assets      []storage.AudioAsset          `json:"assets,omitempty"`
+	Jobs        []storage.TTSJob              `json:"jobs,omitempty"`
+	Asset       *storage.AudioAsset           `json:"asset,omitempty"`
+	FilePath    string                        `json:"file_path,omitempty"`
+	Format      string                        `json:"format,omitempty"`
+	Error       string                        `json:"error,omitempty"`
+}
+
+func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in io.Reader, out io.Writer) error {
+	var req gatewayAudioRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return json.NewEncoder(out).Encode(gatewayAudioResponse{Error: fmt.Sprintf("invalid audio request: %v", err)})
+	}
+	req.Operation, req.StoryID = strings.TrimSpace(req.Operation), strings.TrimSpace(req.StoryID)
+	service := audioservice.NewService(db, cfg.AI.TTS)
+	response := gatewayAudioResponse{}
+	var err error
+	requireRevision := func() error {
+		current, revisionErr := db.GetStoryRevision(req.StoryID)
+		if revisionErr != nil {
+			return revisionErr
+		}
+		if current != req.ClientRevision {
+			return fmt.Errorf("%w: expected revision %d, current revision is %d", storage.ErrStaleStoryRevision, req.ClientRevision, current)
+		}
+		return nil
+	}
+	switch req.Operation {
+	case "catalog":
+		response.Statuses, response.Profiles, err = service.DiscoverVoiceProfiles(ctx, strings.TrimSpace(req.Provider), strings.TrimSpace(req.Language))
+	case "settings-get":
+		response.Settings, err = db.GetStoryTTSSettings(req.StoryID)
+	case "settings-put":
+		if req.Settings == nil {
+			err = errors.New("TTS settings are required")
+		} else if err = requireRevision(); err == nil {
+			req.Settings.StoryID = req.StoryID
+			response.Settings, err = db.UpsertStoryTTSSettings(*req.Settings)
+		}
+	case "assignments-get":
+		response.Assignments, err = db.ListVoiceAssignments(req.StoryID)
+	case "assignment-put":
+		if req.Assignment == nil {
+			err = errors.New("voice assignment is required")
+		} else if err = requireRevision(); err == nil {
+			req.Assignment.StoryID = req.StoryID
+			if req.AssignmentID != "" {
+				req.Assignment.ID = req.AssignmentID
+			}
+			response.Assignment, err = db.UpsertVoiceAssignment(*req.Assignment)
+		}
+	case "message-get":
+		response.Assets, err = db.ListMessageAudio(req.StoryID, req.MessageID)
+		if err == nil {
+			response.Jobs, err = db.ListMessageTTSJobs(req.StoryID, req.MessageID)
+		}
+	case "message-create":
+		_, err = service.QueueCommittedMessage(ctx, req.StoryID, req.MessageID)
+		if err == nil {
+			response.Jobs, err = db.ListMessageTTSJobs(req.StoryID, req.MessageID)
+		}
+		if err == nil {
+			for _, job := range response.Jobs {
+				if job.Status == "queued" || job.Status == "failed" {
+					_ = service.ProcessJob(ctx, job.ID)
+				}
+			}
+			response.Assets, err = db.ListMessageAudio(req.StoryID, req.MessageID)
+			if err == nil {
+				response.Jobs, err = db.ListMessageTTSJobs(req.StoryID, req.MessageID)
+			}
+		}
+	case "asset-path":
+		response.Asset, response.FilePath, err = service.ResolveAudioFile(req.AssetID)
+		if response.Asset != nil {
+			response.Format = response.Asset.OutputFormat
+		}
+	default:
+		err = fmt.Errorf("unknown audio operation %q", req.Operation)
+	}
+	if err != nil {
+		response.Error = err.Error()
+	}
+	return json.NewEncoder(out).Encode(response)
+}
+
 func runGatewayMiniGame(db *storage.DB, operation string, in io.Reader, out io.Writer) error {
 	var req gatewayMiniGameRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {

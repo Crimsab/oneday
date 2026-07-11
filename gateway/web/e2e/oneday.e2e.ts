@@ -49,6 +49,8 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
   let activeMiniGame: any = null;
   let visualCanUndo = true;
   let visualCanRedo = false;
+  let audioGenerated = false;
+  let ttsSettings = { story_id: story.id, mode: "all", autoplay: false, default_language_tag: "en", provider_policy: {} };
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -59,6 +61,24 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     if (path === "/api/health") return json(route, { status: "ok", stories: 1 });
     if (path === "/api/stories" && request.method() === "GET") return json(route, [story]);
     if (path === "/api/contracts/commands") return json(route, []);
+    if (path === "/api/tts/voices" || path === "/api/tts/providers") return json(route, {
+      providers: [{ id: "cloud", available: true }, { id: "local", available: false, reason: "disabled" }],
+      voices: [{ id: "voice-alloy", provider: "cloud", model: "gpt-4o-mini-tts", provider_voice_id: "alloy", display_name: "Alloy", language_tags: ["en"], version: "1", style_family: "neutral", enabled: true }],
+    });
+    if (path.endsWith("/tts/settings") && request.method() === "GET") return json(route, { settings: ttsSettings });
+    if (path.endsWith("/tts/settings") && request.method() === "PUT") {
+      const body = request.postDataJSON();
+      ttsSettings = { ...ttsSettings, ...body };
+      return json(route, { settings: ttsSettings });
+    }
+    if (path.endsWith("/voice-assignments") && request.method() === "GET") return json(route, { assignments: [] });
+    if (path.includes("/voice-assignments/") && request.method() === "PUT") return json(route, { assignment: request.postDataJSON() });
+    if (/\/messages\/\d+\/audio$/.test(path) && request.method() === "GET") return json(route, { assets: audioGenerated ? [{ id: "audio-2", story_id: story.id, source_message_id: 2, segment_index: 0, segment_kind: "narrator", status: "ready", duration_ms: 300, language_tag: "en" }] : [], jobs: [] });
+    if (/\/messages\/\d+\/audio$/.test(path) && request.method() === "POST") {
+      audioGenerated = true;
+      return json(route, { assets: [{ id: "audio-2", story_id: story.id, source_message_id: 2, segment_index: 0, segment_kind: "narrator", status: "ready", duration_ms: 300, language_tag: "en" }], jobs: [{ id: "job-2", audio_asset_id: "audio-2", status: "succeeded", attempts: 1, max_attempts: 3 }] });
+    }
+    if (path === "/api/audio/audio-2") return route.fulfill({ status: 200, contentType: "audio/wav", body: Buffer.from("RIFFtest") });
     if (path === "/api/config/models") return json(route, {
       config_path: "/test/config.yaml", config_revision: "revision-1", provider_priority: ["codex"],
       providers: [{ id: "codex", label: "Codex", enabled: true, model: "gpt-5.5", reasoning: "off", supports_model: true, supports_reasoning: true }],
@@ -215,5 +235,31 @@ test("plays a timing-free minigame through the shared browser host", async ({ pa
   await host.getByRole("button", { name: "Resolve challenge" }).click();
   await expect(host.getByText("full success", { exact: true })).toBeVisible();
   await expect(host.getByText("Pattern answer: 8 → FULL SUCCESS")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("generates committed audio and exposes per-story and per-character voice controls", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await mockGateway(page);
+  await page.goto("/");
+  const message = page.locator("article.transcript-message").filter({ hasText: "Mira studies the fractured seal." });
+  await expect(message.getByText("Spoken audio")).toBeVisible();
+  await message.getByRole("button", { name: "Generate" }).click();
+  await expect(message.locator("audio")).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Options" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Spoken audio" })).toBeVisible();
+  await expect(dialog.getByText("cloud: available")).toBeVisible();
+  await expect(dialog.getByText("local: disabled")).toBeVisible();
+  await expect(dialog.getByText("Narrator", { exact: true })).toBeVisible();
+  await expect(dialog.locator(".voice-assignment-row").filter({ hasText: "Mira" }).getByText("Mira", { exact: true })).toBeVisible();
+  await dialog.getByLabel("Speech mode").selectOption("narrator");
+  await dialog.getByRole("button", { name: "Save audio settings" }).click();
+  await expect(dialog.getByRole("button", { name: "Save audio settings" })).toBeEnabled();
+  const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));
+  expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
   expect(errors).toEqual([]);
 });

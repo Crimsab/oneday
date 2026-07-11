@@ -1184,6 +1184,7 @@ function App() {
             </div>
             <StoryPath snapshot={snapshot} locationAsset={visuals.location} onOpenVisualAsset={openVisualAssetEditor} />
             <Transcript
+              storyId={snapshot?.story.id ?? ""}
               messages={snapshot?.messages ?? []}
               hiddenBeforeId={hiddenBeforeMessageId}
               pendingTurn={pendingTurn}

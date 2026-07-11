@@ -42,6 +42,12 @@ import type {
   VisualAssetPromptUpdate,
   VisualAssetVersion,
   VisualProfileUpdate,
+  TTSCatalogResponse,
+  TTSSettingsResponse,
+  VoiceAssignmentsResponse,
+  MessageAudioResponse,
+  StoryTTSSettings,
+  VoiceAssignment,
 } from "./types";
 
 interface ErrorPayload {
@@ -80,6 +86,42 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export function getHealth(): Promise<Health> {
   return request<Health>("/api/health");
+}
+
+export function getTTSCatalog(language = ""): Promise<TTSCatalogResponse> {
+  const query = new URLSearchParams();
+  if (language) query.set("language", language);
+  return request<TTSCatalogResponse>(`/api/tts/voices${query.size ? `?${query}` : ""}`);
+}
+
+export function getTTSSettings(storyId: string): Promise<TTSSettingsResponse> {
+  return request<TTSSettingsResponse>(`/api/stories/${encodeURIComponent(storyId)}/tts/settings`);
+}
+
+export function updateTTSSettings(storyId: string, settings: StoryTTSSettings, clientRevision: number): Promise<TTSSettingsResponse> {
+  return request<TTSSettingsResponse>(`/api/stories/${encodeURIComponent(storyId)}/tts/settings`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...settings, client_revision: clientRevision }),
+  });
+}
+
+export function getVoiceAssignments(storyId: string): Promise<VoiceAssignmentsResponse> {
+  return request<VoiceAssignmentsResponse>(`/api/stories/${encodeURIComponent(storyId)}/voice-assignments`);
+}
+
+export function updateVoiceAssignment(storyId: string, assignment: VoiceAssignment, clientRevision: number): Promise<VoiceAssignmentsResponse> {
+  return request<VoiceAssignmentsResponse>(`/api/stories/${encodeURIComponent(storyId)}/voice-assignments/${encodeURIComponent(assignment.id)}`, {
+    method: "PUT", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ ...assignment, client_revision: clientRevision }),
+  });
+}
+
+export function getMessageAudio(storyId: string, messageId: number): Promise<MessageAudioResponse> {
+  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/messages/${messageId}/audio`);
+}
+
+export function createMessageAudio(storyId: string, messageId: number): Promise<MessageAudioResponse> {
+  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/messages/${messageId}/audio`, { method: "POST" });
 }
 
 export function getStories(): Promise<StorySummary[]> {

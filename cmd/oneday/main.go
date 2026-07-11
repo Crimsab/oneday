@@ -149,6 +149,13 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayAudio(os.Args[1:]) {
+		if err := runGatewayAudio(context.Background(), cfg, db, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway audio failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Create AI router
 	router, err := aifactory.NewRouterFromConfig(cfg)
@@ -379,6 +386,10 @@ func wantsGatewayMiniGameGet(args []string) bool {
 
 func wantsGatewayMiniGameInput(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-minigame-input"
+}
+
+func wantsGatewayAudio(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-audio"
 }
 
 func wantsGatewayMeta(args []string) bool {
