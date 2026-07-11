@@ -51,6 +51,12 @@ jobs:
           go run ./cmd/oneday config show --safe
           go run ./cmd/oneday rag benchmark
           go run ./cmd/oneday story-packs list
+          go run ./cmd/oneday-minigame-eval -corpus internal/engine/testdata/minigame-evals.json
+
+      - name: Run migration and compatibility gates
+        run: |
+          go test -count=1 ./internal/storage -run 'TestMigration|TestLegacy|TestVisualCanon|TestWorldCanon|TestSnapshot'
+          go test -count=1 ./internal/engine -run 'TestLoadStoryPack|TestSaveGame|TestLoadGame|TestLegacy|TestOutcome|TestOffscreen'
 
       - name: Cross-compile release binaries
         run: |
@@ -81,6 +87,9 @@ jobs:
 
       - name: Test gateway
         run: cargo test --manifest-path gateway/Cargo.toml
+
+      - name: Lint gateway
+        run: cargo clippy --manifest-path gateway/Cargo.toml --all-targets -- -A clippy::too_many_arguments -D warnings
 
       - name: Build gateway
         run: cargo build --manifest-path gateway/Cargo.toml
@@ -114,6 +123,14 @@ jobs:
       - name: Build web app
         working-directory: gateway/web
         run: bun run build
+
+      - name: Install Chromium
+        working-directory: gateway/web
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run desktop and mobile browser gates
+        working-directory: gateway/web
+        run: bun run test:e2e
 
   gateway-docker-build:
     name: Gateway Docker build

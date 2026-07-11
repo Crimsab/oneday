@@ -21,7 +21,7 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 step "Verification"
-run make verify
+run make universal-release-check
 run make friend-safe-check
 
 step "Release Artifact Builds"
