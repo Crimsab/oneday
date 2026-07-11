@@ -54,6 +54,8 @@ pub struct GenerateVisualAssetsRequest {
     #[serde(default)]
     pub force: bool,
     #[serde(default)]
+    pub allow_silhouette: bool,
+    #[serde(default)]
     pub limit: Option<usize>,
 }
 
@@ -289,7 +291,8 @@ pub async fn visual_assets(
 ) -> anyhow::Result<VisualAssetsResponse> {
     let snapshot = db::snapshot(pool, story_id).await?;
     let profile = ensure_profile(pool, &snapshot).await?;
-    let specs = visual_specs(&snapshot, &profile);
+    let existing = list_assets(pool, story_id).await?;
+    let specs = visual_specs(pool, &snapshot, &profile, &existing).await?;
     ensure_asset_rows(pool, story_id, &specs).await?;
     let assets = list_assets(pool, story_id).await?;
     let jobs = list_visual_generation_jobs(pool, story_id).await?;
@@ -480,12 +483,20 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
             asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
             story_id TEXT NOT NULL,branch_id TEXT NOT NULL,source_commit_id TEXT NOT NULL,
             prompt_override TEXT NOT NULL DEFAULT '',negative_prompt_override TEXT NOT NULL DEFAULT '',
+            gate_state TEXT NOT NULL DEFAULT '',gate_reason TEXT NOT NULL DEFAULT '',generation_eligible INTEGER,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(asset_id,branch_id)
         )"#,
     )
     .execute(pool)
     .await?;
+    for (column, definition) in [
+        ("gate_state", "TEXT NOT NULL DEFAULT ''"),
+        ("gate_reason", "TEXT NOT NULL DEFAULT ''"),
+        ("generation_eligible", "INTEGER"),
+    ] {
+        ensure_text_column(pool, "visual_asset_branch_overrides", column, definition).await?;
+    }
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS visual_asset_selection_states (
             asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
@@ -537,14 +548,6 @@ async fn ensure_visual_generation_job_schema(pool: &SqlitePool) -> anyhow::Resul
     .execute(pool)
     .await
     .context("creating visual generation job story index")?;
-    sqlx::query(
-        r#"CREATE UNIQUE INDEX IF NOT EXISTS idx_visual_generation_jobs_active_asset
-           ON visual_generation_jobs(asset_id)
-           WHERE status IN ('queued', 'running')"#,
-    )
-    .execute(pool)
-    .await
-    .context("creating visual generation active asset index")?;
     ensure_text_column(
         pool,
         "visual_generation_jobs",
@@ -568,6 +571,17 @@ async fn ensure_visual_generation_job_schema(pool: &SqlitePool) -> anyhow::Resul
         "TEXT NOT NULL DEFAULT ''",
     )
     .await?;
+    sqlx::query("DROP INDEX IF EXISTS idx_visual_generation_jobs_active_asset")
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        r#"CREATE UNIQUE INDEX idx_visual_generation_jobs_active_asset
+           ON visual_generation_jobs(asset_id,branch_id)
+           WHERE status IN ('queued','running')"#,
+    )
+    .execute(pool)
+    .await
+    .context("creating visual generation active branch asset index")?;
     Ok(())
 }
 
@@ -793,6 +807,7 @@ pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
         let request = GenerateVisualAssetsRequest {
             asset_ids: Vec::new(),
             force: false,
+            allow_silhouette: false,
             limit: Some(3),
         };
         if let Err(err) = generate_visual_assets(state.clone(), &story_id, request).await {
@@ -864,13 +879,15 @@ pub async fn cancel_visual_generation_job(
                error = 'Cancelled by user.',
                finished_at = ?,
                updated_at = ?
-           WHERE story_id = ? AND id = ? AND status IN ('queued', 'running')
+           WHERE story_id = ? AND id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
+             AND status IN ('queued','running')
            RETURNING asset_id"#,
     )
     .bind(&now)
     .bind(&now)
     .bind(story_id)
     .bind(job_id)
+    .bind(story_id)
     .fetch_optional(pool)
     .await
     .with_context(|| format!("cancelling visual generation job {job_id}"))?;
@@ -882,7 +899,9 @@ pub async fn cancel_visual_generation_job(
            SET status = CASE WHEN url = '' THEN 'pending' ELSE 'ready' END,
                error = 'Generation cancelled.',
                updated_at = CURRENT_TIMESTAMP
-           WHERE story_id = ? AND id = ?"#,
+           WHERE story_id = ? AND id = ? AND NOT EXISTS (
+             SELECT 1 FROM visual_generation_jobs j WHERE j.asset_id=visual_assets.id AND j.status IN ('queued','running')
+           )"#,
     )
     .bind(story_id)
     .bind(asset_id)
@@ -1048,6 +1067,22 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                     );
                     continue;
                 }
+                if !visual_generation_job_publishable(&state.pool, job.id).await? {
+                    if let Some(trace) = generation_trace.take() {
+                        let _ = trace.succeed(&state.pool, &config.model).await;
+                    }
+                    discard_generated_asset(&generated).await;
+                    cancel_stale_lineage_job(&state.pool, &job).await?;
+                    emit_visual_asset_event(
+                        &state,
+                        "asset.cancelled",
+                        &job.asset,
+                        Some(job.id),
+                        "cancelled",
+                        format!("Discarded stale branch image for {}.", job.asset.subject),
+                    );
+                    continue;
+                }
                 if let Some(trace) = generation_trace.take() {
                     if let Err(err) = trace.succeed(&state.pool, &config.model).await {
                         tracing::warn!(job_id = job.id, error = %err, "could not finish image generation telemetry");
@@ -1101,6 +1136,18 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                         "cancelled",
                         format!("Image generation cancelled for {}.", job.asset.subject),
                     );
+                    continue;
+                }
+                if !visual_generation_job_publishable(&state.pool, job.id).await? {
+                    if let Some(trace) = generation_trace.take() {
+                        let _ = trace
+                            .fail(
+                                &state.pool,
+                                crate::telemetry::classify_image_error(&err.to_string()),
+                            )
+                            .await;
+                    }
+                    cancel_stale_lineage_job(&state.pool, &job).await?;
                     continue;
                 }
                 let terminal = job.attempts >= job.max_attempts;
@@ -1193,7 +1240,14 @@ async fn generation_targets(
     Ok(assets
         .into_iter()
         .filter(|asset| requested.is_empty() || requested.contains(asset.id.as_str()))
-        .filter(|asset| asset.generation_eligible)
+        .filter(|asset| {
+            asset.generation_eligible
+                || (requested.contains(asset.id.as_str())
+                    && asset.gate_state == "explicit_request_available")
+                || (requested.contains(asset.id.as_str())
+                    && request.allow_silhouette
+                    && asset.gate_state == "silhouette_available")
+        })
         .filter(|asset| request.force || asset.status != "ready")
         .filter(|asset| asset.status != "running")
         .take(limit)
@@ -1276,16 +1330,25 @@ async fn claim_visual_generation_job(
                started_at = CASE WHEN started_at = '' THEN ? ELSE started_at END,
                updated_at = ?
            WHERE id = (
-               SELECT id FROM visual_generation_jobs
-               WHERE (
-                    status = 'queued'
-                    AND (locked_until = '' OR locked_until <= ?)
+               SELECT j.id FROM visual_generation_jobs j
+               JOIN stories s ON s.id=j.story_id
+               JOIN story_branches b ON b.id=s.active_branch_id
+               WHERE ((
+                    j.status = 'queued'
+                    AND (j.locked_until = '' OR j.locked_until <= ?)
                ) OR (
-                    status = 'running'
-                    AND locked_until != ''
-                    AND locked_until <= ?
+                    j.status = 'running'
+                    AND j.locked_until != ''
+                    AND j.locked_until <= ?
+               ))
+               AND j.branch_id=s.active_branch_id
+               AND j.source_commit_id IN (
+                   WITH RECURSIVE ancestors(id) AS (
+                       SELECT b.head_commit_id
+                       UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
+                   ) SELECT id FROM ancestors
                )
-               ORDER BY created_at ASC, id ASC
+               ORDER BY j.created_at ASC,j.id ASC
                LIMIT 1
            )
            RETURNING id, asset_id, story_id, attempts, max_attempts"#,
@@ -1320,6 +1383,52 @@ async fn claim_visual_generation_job(
         attempts: row.try_get("attempts").unwrap_or_default(),
         max_attempts: row.try_get("max_attempts").unwrap_or(3),
     }))
+}
+
+async fn visual_generation_job_publishable(pool: &SqlitePool, job_id: i64) -> anyhow::Result<bool> {
+    let count: i64 = sqlx::query_scalar(
+        r#"SELECT COUNT(*) FROM visual_generation_jobs j
+           JOIN stories s ON s.id=j.story_id
+           JOIN story_branches b ON b.id=s.active_branch_id
+           JOIN visual_assets a ON a.id=j.asset_id
+           WHERE j.id=? AND j.status='running' AND j.branch_id=s.active_branch_id
+             AND j.source_commit_id IN (
+               WITH RECURSIVE ancestors(id) AS (
+                 SELECT b.head_commit_id
+                 UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors x ON c.id=x.id WHERE c.parent_commit_id IS NOT NULL
+               ) SELECT id FROM ancestors
+             )
+             AND a.appearance_fingerprint=j.appearance_fingerprint
+             AND COALESCE(a.profile_revision_id,'')=COALESCE(j.profile_revision_id,'')"#,
+    )
+    .bind(job_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(count == 1)
+}
+
+async fn cancel_stale_lineage_job(
+    pool: &SqlitePool,
+    job: &VisualGenerationJob,
+) -> anyhow::Result<()> {
+    mark_generation_job_terminal(
+        pool,
+        job.id,
+        "cancelled",
+        "Branch, commit, form, or profile lineage changed before publication.",
+    )
+    .await?;
+    sqlx::query(
+        r#"UPDATE visual_assets SET status=CASE WHEN url!='' THEN 'ready' ELSE 'pending' END,
+              error='Stale branch generation discarded.',updated_at=CURRENT_TIMESTAMP
+           WHERE id=? AND NOT EXISTS (
+             SELECT 1 FROM visual_generation_jobs j WHERE j.asset_id=visual_assets.id AND j.status IN ('queued','running')
+           )"#,
+    )
+    .bind(&job.asset.id)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 async fn mark_generation_job_succeeded(pool: &SqlitePool, job_id: i64) -> anyhow::Result<()> {
@@ -2156,15 +2265,58 @@ fn default_profile(snapshot: &db::StorySnapshot) -> VisualProfile {
     }
 }
 
-fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<VisualSpec> {
+async fn visual_specs(
+    pool: &SqlitePool,
+    snapshot: &db::StorySnapshot,
+    profile: &VisualProfile,
+    existing: &[VisualAsset],
+) -> anyhow::Result<Vec<VisualSpec>> {
     let mut specs = Vec::new();
     let location = snapshot.world.current_location.trim();
     if !location.is_empty() {
-        let details = first_string(
+        let fallback_details = first_string(
             &snapshot.world.known_locations,
             &["details", "description", "notes", "summary"],
         )
         .unwrap_or_else(|| value_to_text(&snapshot.world.known_locations));
+        let location_row = sqlx::query(
+            "SELECT description,discovery_state,discovered_turn FROM locations WHERE story_id=? AND id=? LIMIT 1",
+        )
+        .bind(&snapshot.story.id)
+        .bind(&snapshot.world.current_location_id)
+        .fetch_optional(pool)
+        .await?;
+        let canonical_details = location_row
+            .as_ref()
+            .map(|row| row_string(row, "description"))
+            .unwrap_or_default();
+        let discovered_turn = location_row
+            .as_ref()
+            .and_then(|row| row.try_get::<i64, _>("discovered_turn").ok())
+            .unwrap_or(snapshot.world.current_turn);
+        let significant: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM canonical_world_events WHERE story_id=? AND location_id=? AND visibility IN ('public','player')",
+        )
+        .bind(&snapshot.story.id)
+        .bind(&snapshot.world.current_location_id)
+        .fetch_one(pool)
+        .await?;
+        let chapter_milestone: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM chapters WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND (start_turn=? OR end_turn=?)",
+        )
+        .bind(&snapshot.story.id)
+        .bind(&snapshot.story.id)
+        .bind(snapshot.world.current_turn)
+        .bind(snapshot.world.current_turn)
+        .fetch_one(pool)
+        .await?;
+        let gate = location_gate(
+            location_row.is_some() && !snapshot.world.current_location_id.is_empty(),
+            significant > 0,
+            snapshot.world.current_turn.saturating_sub(discovered_turn) >= 2,
+            chapter_milestone > 0,
+        );
+        let details = clean_or(&canonical_details, &fallback_details);
         let prompt = format!(
             "{} Current location: {}. Details: {}. Composition: wide browser hero banner, deep perspective, safe area for overlay text at left. Palette: {}.",
             profile.world_style_prompt,
@@ -2191,10 +2343,10 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
             ),
             appearance_fingerprint,
             profile_revision_id: profile.id.clone(),
-            canon_status: "canonical".to_string(),
-            gate_state: "eligible".to_string(),
-            gate_reason: "Canonical current location".to_string(),
-            generation_eligible: !snapshot.world.current_location_id.is_empty(),
+            canon_status: gate.canon_status,
+            gate_state: gate.state,
+            gate_reason: gate.reason,
+            generation_eligible: gate.generation_eligible,
             prompt,
             negative_prompt: profile.negative_prompt.clone(),
             turn: snapshot.world.current_turn,
@@ -2203,9 +2355,6 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
 
     for npc in snapshot.panels.npcs.iter().take(8) {
         let discovery = npc.fields.get("discovery").unwrap_or(&Value::Null);
-        if !npc_character_visual_ready(npc, discovery) {
-            continue;
-        }
         let appearance = npc
             .fields
             .get("appearance")
@@ -2213,19 +2362,68 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
             .unwrap_or("");
         let role = npc.fields.get("role").and_then(Value::as_str).unwrap_or("");
         let relationship = value_to_text(npc.fields.get("relationship").unwrap_or(&Value::Null));
-        let visual_details = npc_visual_prompt_details(appearance, discovery);
-        if visual_details.is_empty() {
-            continue;
-        }
-        let prompt = format!(
-            "{} Character: {}. Role: {}. Appearance: {}. Relationship context: {}. Composition: square bust-up portrait, readable at small card size, coherent lighting with the current scene.",
-            profile.character_style_prompt,
-            npc.name,
-            clean_or(role, "unknown"),
-            visual_details,
-            clean_or(&relationship, "unknown")
-        );
-        let form_id = format!("form-{}", npc.id);
+        let form = sqlx::query(
+            r#"SELECT id,appearance_json FROM entity_forms
+               WHERE story_id=? AND entity_id=? AND valid_from_turn<=?
+                 AND (valid_to_turn IS NULL OR valid_to_turn>=?)
+               ORDER BY valid_from_turn DESC,created_at DESC LIMIT 1"#,
+        )
+        .bind(&snapshot.story.id)
+        .bind(&npc.id)
+        .bind(snapshot.world.current_turn)
+        .bind(snapshot.world.current_turn)
+        .fetch_optional(pool)
+        .await?;
+        let form_id = form
+            .as_ref()
+            .map(|row| row_string(row, "id"))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| format!("form-{}", npc.id));
+        let form_details = form
+            .as_ref()
+            .map(|row| row_string(row, "appearance_json"))
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .map(|value| value_to_text(&value))
+            .unwrap_or_default();
+        let identity_contradiction: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM identity_claims i WHERE i.story_id=? AND i.subject_entity_id=?
+               AND (i.status='contradicted' OR i.contradicts_claim_id IS NOT NULL)
+               AND NOT EXISTS (SELECT 1 FROM identity_claims newer WHERE newer.supersedes_claim_id=i.id OR newer.retracts_claim_id=i.id)"#,
+        )
+        .bind(&snapshot.story.id)
+        .bind(&npc.id)
+        .fetch_one(pool)
+        .await?;
+        let form_changed = existing.iter().any(|asset| {
+            asset.kind == "character"
+                && asset.canonical_entity_id == npc.id
+                && !asset.form_id.is_empty()
+                && asset.form_id != form_id
+                && asset.status == "ready"
+        });
+        let gate = portrait_gate(npc, discovery, identity_contradiction > 0, form_changed);
+        let known_details = npc_visual_prompt_details(appearance, discovery);
+        let visual_details = if gate.state == "silhouette_available" {
+            silhouette_prompt_details(discovery)
+        } else {
+            [form_details, known_details]
+                .into_iter()
+                .filter(|value| !value.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join(". ")
+        };
+        let prompt = if visual_details.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "{} Character: {}. Role: {}. Appearance: {}. Relationship context: {}. Composition: square bust-up portrait, readable at small card size, coherent lighting with the current scene.",
+                profile.character_style_prompt,
+                npc.name,
+                clean_or(role, "unknown"),
+                visual_details,
+                clean_or(&relationship, "unknown")
+            )
+        };
         let appearance_fingerprint = visual_fingerprint(&[
             "character",
             &npc.id,
@@ -2233,7 +2431,6 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
             &visual_details,
             &profile.fingerprint,
         ]);
-        let canonical = value_at(discovery, "visual_readiness") == "canonical";
         specs.push(VisualSpec {
             kind: "character".to_string(),
             subject: npc.name.clone(),
@@ -2244,34 +2441,67 @@ fn visual_specs(snapshot: &db::StorySnapshot, profile: &VisualProfile) -> Vec<Vi
             lineage_key: format!("character:{}:{form_id}:{appearance_fingerprint}", npc.id),
             appearance_fingerprint,
             profile_revision_id: profile.id.clone(),
-            canon_status: if canonical { "canonical" } else { "draft" }.to_string(),
-            gate_state: if canonical {
-                "established_canonical"
-            } else {
-                "identified_draft"
-            }
-            .to_string(),
-            gate_reason: if canonical {
-                "Established canonical appearance"
-            } else {
-                "Identified appearance draft"
-            }
-            .to_string(),
-            generation_eligible: true,
+            canon_status: gate.canon_status,
+            gate_state: gate.state,
+            gate_reason: gate.reason,
+            generation_eligible: gate.generation_eligible && !visual_details.is_empty(),
             prompt,
             negative_prompt: profile.negative_prompt.clone(),
             turn: snapshot.world.current_turn,
         });
     }
-    specs
+    Ok(specs)
 }
 
-fn npc_character_visual_ready(npc: &db::RecordView, discovery: &Value) -> bool {
+fn silhouette_prompt_details(discovery: &Value) -> String {
+    let facts = discovery.get("visual_facts").and_then(Value::as_object);
+    ["silhouette", "build", "clothing"]
+        .iter()
+        .filter_map(|key| {
+            facts
+                .and_then(|items| items.get(*key))
+                .and_then(Value::as_str)
+        })
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>()
+        .join(". ")
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+struct VisualGate {
+    state: String,
+    canon_status: String,
+    reason: String,
+    generation_eligible: bool,
+}
+
+fn portrait_gate(
+    npc: &db::RecordView,
+    discovery: &Value,
+    identity_contradiction: bool,
+    form_changed: bool,
+) -> VisualGate {
+    if identity_contradiction {
+        return VisualGate {
+            state: "identity_contradiction".into(),
+            canon_status: "contradicted".into(),
+            reason:
+                "Conflicting canonical identity claims must be resolved before portrait generation."
+                    .into(),
+            generation_eligible: false,
+        };
+    }
     let stage = value_at(discovery, "stage");
     let readiness = value_at(discovery, "visual_readiness");
     let manual_locked = bool_at(discovery, "manual_visual_lock");
     if manual_locked {
-        return false;
+        return VisualGate {
+            state: "insufficient_observation".into(),
+            canon_status: "draft".into(),
+            reason: "Portrait generation is manually locked until more appearance facts are established.".into(),
+            generation_eligible: false,
+        };
     }
     let role = npc.fields.get("role").and_then(Value::as_str).unwrap_or("");
     let appearance = npc
@@ -2291,22 +2521,123 @@ fn npc_character_visual_ready(npc: &db::RecordView, discovery: &Value) -> bool {
         && !is_concrete_character_appearance(appearance)
         && visual_anchors < 2
     {
-        return false;
+        return VisualGate {
+            state: "insufficient_observation".into(),
+            canon_status: "draft".into(),
+            reason: "Only a rumor-level identity is known; more visual anchors are required."
+                .into(),
+            generation_eligible: false,
+        };
     }
-    match (stage.as_str(), readiness.as_str()) {
-        ("established", "canonical") => {
-            visual_score >= 65
-                && (is_concrete_character_appearance(appearance) || visual_anchors >= 2)
+    if form_changed {
+        return VisualGate {
+            state: "form_changed".into(),
+            canon_status: if readiness == "canonical" { "canonical" } else { "draft" }.into(),
+            reason: "The canonical form or established appearance changed; a new visual lineage is required.".into(),
+            generation_eligible: visual_score >= 45,
+        };
+    }
+    if matches!(readiness.as_str(), "silhouette" | "outline")
+        || (stage == "observed" && visual_anchors > 0 && visual_score < 45)
+    {
+        return VisualGate {
+            state: "silhouette_available".into(),
+            canon_status: "silhouette".into(),
+            reason: "Only a silhouette is established; generation requires an explicit silhouette request.".into(),
+            generation_eligible: false,
+        };
+    }
+    if stage == "established"
+        && readiness == "canonical"
+        && visual_score >= 65
+        && (is_concrete_character_appearance(appearance) || visual_anchors >= 2)
+    {
+        return VisualGate {
+            state: "established_canonical".into(),
+            canon_status: "canonical".into(),
+            reason: "Established canonical appearance.".into(),
+            generation_eligible: true,
+        };
+    }
+    if matches!(stage.as_str(), "identified" | "observed")
+        && readiness == "draft"
+        && visual_score >= 45
+        && (is_concrete_character_appearance(appearance) || visual_anchors >= 2)
+    {
+        return VisualGate {
+            state: "identified_draft".into(),
+            canon_status: "draft".into(),
+            reason: "Identified appearance draft; later facts may create a new lineage.".into(),
+            generation_eligible: true,
+        };
+    }
+    if stage.is_empty()
+        && readiness.is_empty()
+        && is_concrete_character_appearance(appearance)
+        && !role.eq_ignore_ascii_case("person of interest")
+    {
+        return VisualGate {
+            state: "identified_draft".into(),
+            canon_status: "draft".into(),
+            reason: "Legacy concrete appearance treated as an identified draft.".into(),
+            generation_eligible: true,
+        };
+    }
+    VisualGate {
+        state: "insufficient_observation".into(),
+        canon_status: "draft".into(),
+        reason: "Not enough player-known appearance facts to generate a reliable portrait.".into(),
+        generation_eligible: false,
+    }
+}
+
+fn location_gate(
+    has_canonical_identity: bool,
+    narrative_significance: bool,
+    meaningful_stay: bool,
+    chapter_milestone: bool,
+) -> VisualGate {
+    let (state, reason, eligible) = if !has_canonical_identity {
+        (
+            "insufficient_canon",
+            "The location has no canonical location identity yet.",
+            false,
+        )
+    } else if narrative_significance {
+        (
+            "narrative_significance",
+            "A canonical world event makes this location narratively significant.",
+            true,
+        )
+    } else if chapter_milestone {
+        (
+            "chapter_milestone",
+            "The current chapter milestone makes this location eligible.",
+            true,
+        )
+    } else if meaningful_stay {
+        (
+            "meaningful_stay",
+            "The party has remained here long enough to establish the location.",
+            true,
+        )
+    } else {
+        (
+            "explicit_request_available",
+            "Canonical location known; image generation requires an explicit request.",
+            false,
+        )
+    };
+    VisualGate {
+        state: state.into(),
+        canon_status: if has_canonical_identity {
+            "canonical"
+        } else {
+            "draft"
         }
-        ("identified", "draft") | ("observed", "draft") => {
-            visual_score >= 45
-                && (is_concrete_character_appearance(appearance) || visual_anchors >= 2)
-        }
-        _ if stage.is_empty() && readiness.is_empty() => {
-            is_concrete_character_appearance(appearance)
-                && !role.eq_ignore_ascii_case("person of interest")
-        }
-        _ => false,
+        .into(),
+        reason: reason.into(),
+        generation_eligible: eligible,
     }
 }
 
@@ -2442,7 +2773,16 @@ async fn ensure_asset_rows(
         .bind(&spec.lineage_key)
         .fetch_optional(pool)
         .await?;
-        if reachable.is_some() {
+        if let Some(asset_id) = reachable {
+            upsert_asset_branch_override(
+                pool,
+                &asset_id,
+                story_id,
+                &branch_id,
+                &source_commit_id,
+                spec,
+            )
+            .await?;
             continue;
         }
         let id = asset_id(story_id, &spec.kind, &spec.lineage_key);
@@ -2482,7 +2822,43 @@ async fn ensure_asset_rows(
         .execute(pool)
         .await
         .with_context(|| format!("ensuring visual asset {} {}", spec.kind, spec.subject))?;
+        let id = asset_id(story_id, &spec.kind, &spec.lineage_key);
+        upsert_asset_branch_override(pool, &id, story_id, &branch_id, &source_commit_id, spec)
+            .await?;
     }
+    Ok(())
+}
+
+async fn upsert_asset_branch_override(
+    pool: &SqlitePool,
+    asset_id: &str,
+    story_id: &str,
+    branch_id: &str,
+    source_commit_id: &str,
+    spec: &VisualSpec,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"INSERT INTO visual_asset_branch_overrides
+           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,gate_state,gate_reason,generation_eligible)
+           VALUES (?,?,?,?,?,?,?,?,?)
+           ON CONFLICT(asset_id,branch_id) DO UPDATE SET
+             source_commit_id=excluded.source_commit_id,
+             prompt_override=CASE WHEN visual_asset_branch_overrides.prompt_override='' THEN excluded.prompt_override ELSE visual_asset_branch_overrides.prompt_override END,
+             negative_prompt_override=CASE WHEN visual_asset_branch_overrides.negative_prompt_override='' THEN excluded.negative_prompt_override ELSE visual_asset_branch_overrides.negative_prompt_override END,
+             gate_state=excluded.gate_state,gate_reason=excluded.gate_reason,
+             generation_eligible=excluded.generation_eligible,updated_at=CURRENT_TIMESTAMP"#,
+    )
+    .bind(asset_id)
+    .bind(story_id)
+    .bind(branch_id)
+    .bind(source_commit_id)
+    .bind(&spec.prompt)
+    .bind(&spec.negative_prompt)
+    .bind(&spec.gate_state)
+    .bind(&spec.gate_reason)
+    .bind(if spec.generation_eligible { 1_i64 } else { 0_i64 })
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -2495,19 +2871,28 @@ async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Vi
               SELECT head_commit_id FROM active
               UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
            )
-           SELECT id, story_id, kind, subject, entity_id, canonical_entity_id,
-                  canonical_location_id, form_id, lineage_key, appearance_fingerprint,
-                  COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
-                  gate_state, gate_reason, generation_eligible, prompt, negative_prompt,
-                  status, url, provider, source, error, turn, v.branch_id AS branch_id, source_commit_id,
-                  CAST(updated_at AS TEXT) AS updated_at
+           SELECT v.id,v.story_id,v.kind,v.subject,v.entity_id,v.canonical_entity_id,
+                  v.canonical_location_id,v.form_id,v.lineage_key,v.appearance_fingerprint,
+                  COALESCE(v.profile_revision_id,'') AS profile_revision_id,v.canon_status,
+                  COALESCE(NULLIF(o.gate_state,''),v.gate_state) AS gate_state,
+                  COALESCE(NULLIF(o.gate_reason,''),v.gate_reason) AS gate_reason,
+                  COALESCE(o.generation_eligible,v.generation_eligible) AS generation_eligible,
+                  CASE WHEN o.asset_id IS NULL THEN v.prompt ELSE o.prompt_override END AS prompt,
+                  CASE WHEN o.asset_id IS NULL THEN v.negative_prompt ELSE o.negative_prompt_override END AS negative_prompt,
+                  COALESCE((SELECT j.status FROM visual_generation_jobs j
+                    WHERE j.asset_id=v.id AND j.branch_id=x.branch_id AND j.status IN ('queued','running')
+                    ORDER BY CASE j.status WHEN 'running' THEN 0 ELSE 1 END,j.id DESC LIMIT 1),
+                    CASE WHEN v.status IN ('queued','running') THEN CASE WHEN v.url!='' THEN 'ready' ELSE 'pending' END ELSE v.status END) AS status,
+                  v.url,v.provider,v.source,v.error,v.turn,v.branch_id AS branch_id,v.source_commit_id,
+                  CAST(v.updated_at AS TEXT) AS updated_at
            FROM visual_assets v CROSS JOIN active x
-           WHERE story_id = ? AND source_commit_id IN (SELECT id FROM ancestors)
-             AND (v.branch_id=x.branch_id OR source_commit_id!=COALESCE(x.fork_commit_id,'') OR created_at<=x.branch_created)
+           LEFT JOIN visual_asset_branch_overrides o ON o.asset_id=v.id AND o.branch_id=x.branch_id
+           WHERE v.story_id = ? AND v.source_commit_id IN (SELECT id FROM ancestors)
+             AND (v.branch_id=x.branch_id OR v.source_commit_id!=COALESCE(x.fork_commit_id,'') OR v.created_at<=x.branch_created)
            ORDER BY
-             CASE kind WHEN 'location' THEN 0 WHEN 'character' THEN 1 ELSE 2 END,
-             updated_at DESC,
-             subject ASC"#,
+             CASE v.kind WHEN 'location' THEN 0 WHEN 'character' THEN 1 ELSE 2 END,
+             v.updated_at DESC,
+             v.subject ASC"#,
     )
     .bind(story_id)
     .bind(story_id)
@@ -2755,6 +3140,7 @@ fn value_to_text(value: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
 
     fn test_config() -> ImageGenerationConfig {
@@ -2840,7 +3226,7 @@ mod tests {
                 current_turn INTEGER NOT NULL DEFAULT 3,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
-            r#"CREATE TABLE locations (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,canonical_name TEXT NOT NULL,region_id TEXT,parent_location_id TEXT,description TEXT NOT NULL DEFAULT '',discovery_state TEXT NOT NULL DEFAULT 'unknown',visibility TEXT NOT NULL DEFAULT 'player')"#,
+            r#"CREATE TABLE locations (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,canonical_name TEXT NOT NULL,region_id TEXT,parent_location_id TEXT,description TEXT NOT NULL DEFAULT '',discovery_state TEXT NOT NULL DEFAULT 'unknown',discovered_turn INTEGER NOT NULL DEFAULT 0,visibility TEXT NOT NULL DEFAULT 'player')"#,
             r#"CREATE TABLE location_edges (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,from_location_id TEXT NOT NULL,to_location_id TEXT NOT NULL,direction TEXT NOT NULL DEFAULT '',travel_minutes INTEGER NOT NULL DEFAULT 0,conditions_json TEXT NOT NULL DEFAULT '{}',visibility TEXT NOT NULL DEFAULT 'player')"#,
             r#"CREATE TABLE world_clocks (story_id TEXT PRIMARY KEY,day INTEGER NOT NULL DEFAULT 0,minute_of_day INTEGER NOT NULL DEFAULT 0,display_text TEXT NOT NULL DEFAULT 'Day 0, 00:00')"#,
             r#"CREATE TABLE weather_states (story_id TEXT NOT NULL,location_id TEXT,weather_kind TEXT NOT NULL,intensity TEXT NOT NULL DEFAULT '',description TEXT NOT NULL DEFAULT '',valid_from_day INTEGER NOT NULL DEFAULT 0,valid_from_minute INTEGER NOT NULL DEFAULT 0,visibility TEXT NOT NULL DEFAULT 'player')"#,
@@ -2915,6 +3301,9 @@ mod tests {
 				supersedes_fact_id TEXT,
 				retracts_fact_id TEXT
 			)"#,
+            r#"CREATE TABLE entity_forms (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,entity_id TEXT NOT NULL,appearance_json TEXT NOT NULL DEFAULT '{}',valid_from_turn INTEGER NOT NULL DEFAULT 0,valid_to_turn INTEGER,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"#,
+            r#"CREATE TABLE identity_claims (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,subject_entity_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'confirmed',contradicts_claim_id TEXT,supersedes_claim_id TEXT,retracts_claim_id TEXT)"#,
+            r#"CREATE TABLE canonical_world_events (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,location_id TEXT,visibility TEXT NOT NULL DEFAULT 'private')"#,
             r#"CREATE TABLE saves (
                 id TEXT PRIMARY KEY,
                 story_id TEXT NOT NULL,
@@ -3131,6 +3520,86 @@ mod tests {
     }
 
     #[test]
+    fn portrait_gate_distinguishes_observation_canon_forms_and_contradictions() {
+        let npc = db::RecordView {
+            id: "entity-mara".to_string(),
+            name: "Mara".to_string(),
+            fields: json!({"role":"witness","appearance":"Tall figure in a red coat."}),
+        };
+        let insufficient = portrait_gate(&npc, &json!({"stage":"rumor"}), false, false);
+        assert_eq!(insufficient.state, "insufficient_observation");
+        assert!(!insufficient.generation_eligible);
+
+        let silhouette = portrait_gate(
+            &npc,
+            &json!({"stage":"observed","visual_readiness":"silhouette","visual_facts":{"silhouette":"tall angular outline"}}),
+            false,
+            false,
+        );
+        assert_eq!(silhouette.state, "silhouette_available");
+        assert_eq!(silhouette.canon_status, "silhouette");
+
+        let draft = portrait_gate(
+            &npc,
+            &json!({"stage":"identified","visual_readiness":"draft","visual_completeness":55}),
+            false,
+            false,
+        );
+        assert_eq!(draft.state, "identified_draft");
+        assert!(draft.generation_eligible);
+
+        let canonical = portrait_gate(
+            &npc,
+            &json!({"stage":"established","visual_readiness":"canonical","visual_completeness":80}),
+            false,
+            false,
+        );
+        assert_eq!(canonical.state, "established_canonical");
+
+        let changed = portrait_gate(
+            &npc,
+            &json!({"stage":"established","visual_readiness":"canonical","visual_completeness":80}),
+            false,
+            true,
+        );
+        assert_eq!(changed.state, "form_changed");
+
+        let contradicted = portrait_gate(
+            &npc,
+            &json!({"stage":"established","visual_readiness":"canonical","visual_completeness":80}),
+            true,
+            false,
+        );
+        assert_eq!(contradicted.state, "identity_contradiction");
+        assert!(!contradicted.generation_eligible);
+    }
+
+    #[test]
+    fn location_gate_requires_canon_and_a_significance_trigger() {
+        assert_eq!(
+            location_gate(false, false, false, false).state,
+            "insufficient_canon"
+        );
+        assert_eq!(
+            location_gate(true, false, false, false).state,
+            "explicit_request_available"
+        );
+        assert_eq!(
+            location_gate(true, true, false, false).state,
+            "narrative_significance"
+        );
+        assert_eq!(
+            location_gate(true, false, true, false).state,
+            "meaningful_stay"
+        );
+        assert_eq!(
+            location_gate(true, false, false, true).state,
+            "chapter_milestone"
+        );
+        assert!(location_gate(true, true, false, false).generation_eligible);
+    }
+
+    #[test]
     fn openclaw_bridge_does_not_require_api_key() {
         let config = ImageGenerationConfig {
             base_url: String::new(),
@@ -3314,6 +3783,7 @@ mod tests {
         let request = GenerateVisualAssetsRequest {
             asset_ids: vec!["asset-location".to_string()],
             force: false,
+            allow_silhouette: false,
             limit: Some(1),
         };
 
@@ -3425,7 +3895,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn visual_specs_skips_rumor_placeholder_npcs() {
+    async fn visual_specs_exposes_rumor_portrait_as_blocked_without_a_prompt() {
         let pool = visual_job_pool().await;
         sqlx::query(
             r#"INSERT INTO npcs (
@@ -3441,14 +3911,14 @@ mod tests {
         .expect("insert rumor npc");
 
         let response = visual_assets(&pool, "story").await.expect("visual assets");
-        assert!(
-            response
-                .assets
-                .iter()
-                .all(|asset| !(asset.kind == "character" && asset.subject == "Marek")),
-            "rumor NPC should not create a character asset: {:?}",
-            response.assets
-        );
+        let asset = response
+            .assets
+            .iter()
+            .find(|asset| asset.kind == "character" && asset.subject == "Marek")
+            .expect("blocked rumor portrait state");
+        assert_eq!(asset.gate_state, "insufficient_observation");
+        assert!(!asset.generation_eligible);
+        assert!(asset.prompt.is_empty());
     }
 
     #[tokio::test]
@@ -3479,14 +3949,131 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn location_and_silhouette_gates_require_explicit_requests() {
+        let pool = visual_job_pool().await;
+        sqlx::query("UPDATE locations SET discovered_turn=3 WHERE id='loc-station'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            r#"INSERT INTO npcs (id,story_id,name,role,appearance,discovery_json,last_seen_turn)
+               VALUES ('npc-shadow','story','The Shadow','observer','',
+               '{"stage":"observed","visual_readiness":"silhouette","visual_completeness":20,"visual_facts":{"silhouette":"tall angular outline"}}',3)"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let response = visual_assets(&pool, "story").await.unwrap();
+        let location = response
+            .assets
+            .iter()
+            .find(|asset| {
+                asset.kind == "location" && asset.lineage_key != "location:loc-station:base"
+            })
+            .unwrap();
+        assert_eq!(location.gate_state, "explicit_request_available");
+        let silhouette = response
+            .assets
+            .iter()
+            .find(|asset| asset.subject == "The Shadow")
+            .unwrap();
+        assert_eq!(silhouette.gate_state, "silhouette_available");
+
+        let automatic = generation_targets(
+            &pool,
+            "story",
+            &GenerateVisualAssetsRequest {
+                asset_ids: vec![],
+                force: false,
+                allow_silhouette: false,
+                limit: Some(12),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!automatic.iter().any(|asset| asset.id == location.id));
+        assert!(!automatic.iter().any(|asset| asset.id == silhouette.id));
+
+        let explicit_location = generation_targets(
+            &pool,
+            "story",
+            &GenerateVisualAssetsRequest {
+                asset_ids: vec![location.id.clone()],
+                force: false,
+                allow_silhouette: false,
+                limit: Some(1),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(explicit_location.len(), 1);
+        let explicit_silhouette = generation_targets(
+            &pool,
+            "story",
+            &GenerateVisualAssetsRequest {
+                asset_ids: vec![silhouette.id.clone()],
+                force: false,
+                allow_silhouette: true,
+                limit: Some(1),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(explicit_silhouette.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn visual_specs_create_new_lineage_for_form_change_and_block_identity_conflict() {
+        let pool = visual_job_pool().await;
+        sqlx::query(
+            r#"INSERT INTO npcs (id,story_id,name,role,appearance,discovery_json,last_seen_turn)
+               VALUES ('npc-form','story','Mara','guide','Red coat and silver braid.',
+               '{"stage":"established","visual_readiness":"canonical","visual_completeness":85}',3)"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO entity_forms (id,story_id,entity_id,appearance_json,valid_from_turn) VALUES ('form-new','story','npc-form','{\"description\":\"silver-eyed transformed form\"}',3)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO visual_assets (id,story_id,kind,subject,canonical_entity_id,form_id,lineage_key,appearance_fingerprint,status,branch_id,source_commit_id) VALUES ('asset-old-form','story','character','Mara','npc-form','form-old','old-form','old-form','ready','branch-main','commit-main')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let changed = visual_assets(&pool, "story").await.unwrap();
+        let changed_asset = changed
+            .assets
+            .iter()
+            .find(|asset| asset.canonical_entity_id == "npc-form" && asset.form_id == "form-new")
+            .unwrap();
+        assert_eq!(changed_asset.gate_state, "form_changed");
+        assert_ne!(changed_asset.lineage_key, "old-form");
+
+        sqlx::query("INSERT INTO identity_claims (id,story_id,subject_entity_id,status,contradicts_claim_id) VALUES ('claim-conflict','story','npc-form','contradicted','claim-old')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let blocked = visual_assets(&pool, "story").await.unwrap();
+        let blocked_asset = blocked
+            .assets
+            .iter()
+            .find(|asset| asset.id == changed_asset.id)
+            .unwrap();
+        assert_eq!(blocked_asset.gate_state, "identity_contradiction");
+        assert!(!blocked_asset.generation_eligible);
+    }
+
+    #[tokio::test]
     async fn claim_visual_generation_job_recovers_stale_running_jobs() {
         let pool = visual_job_pool().await;
         let config = test_config();
         let stale = (chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339();
         sqlx::query(
             r#"INSERT INTO visual_generation_jobs (
-                asset_id, story_id, status, attempts, max_attempts, locked_until, provider
-            ) VALUES (?, ?, 'running', 1, 3, ?, ?)"#,
+                asset_id,story_id,status,attempts,max_attempts,locked_until,provider,
+                branch_id,source_commit_id,appearance_fingerprint
+            ) VALUES (?,?,'running',1,3,?,?, 'branch-main','commit-main','base')"#,
         )
         .bind("asset-location")
         .bind("story")
@@ -3510,6 +4097,40 @@ mod tests {
                 .await
                 .expect("job status");
         assert_eq!(status, "running");
+    }
+
+    #[tokio::test]
+    async fn worker_ignores_inactive_branch_jobs_and_rechecks_before_publish() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+        for statement in [
+            "INSERT INTO story_branches (id,story_id,name,fork_commit_id,head_commit_id) VALUES ('branch-left','story','left','commit-main','commit-left')",
+            "INSERT INTO turn_commits (id,story_id,branch_id,parent_commit_id,canonical_turn) VALUES ('commit-left','story','branch-left','commit-main',4)",
+            "INSERT INTO visual_generation_jobs (asset_id,story_id,status,branch_id,source_commit_id,appearance_fingerprint) VALUES ('asset-location','story','queued','branch-left','commit-left','base')",
+        ] {
+            sqlx::query(statement).execute(&pool).await.expect("inactive fixture");
+        }
+        assert!(claim_visual_generation_job(&pool, &config)
+            .await
+            .expect("claim inactive")
+            .is_none());
+
+        let job_id: i64 = sqlx::query_scalar(
+            "INSERT INTO visual_generation_jobs (asset_id,story_id,status,branch_id,source_commit_id,appearance_fingerprint) VALUES ('asset-location','story','running','branch-main','commit-main','base') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("active job");
+        assert!(visual_generation_job_publishable(&pool, job_id)
+            .await
+            .unwrap());
+        sqlx::query("UPDATE stories SET active_branch_id='branch-left' WHERE id='story'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(!visual_generation_job_publishable(&pool, job_id)
+            .await
+            .unwrap());
     }
 
     #[test]
@@ -3553,8 +4174,8 @@ mod tests {
         let pool = visual_job_pool().await;
         let job_id: i64 = sqlx::query_scalar(
             r#"INSERT INTO visual_generation_jobs (
-                asset_id, story_id, status, attempts, max_attempts, locked_until, provider
-            ) VALUES (?, ?, 'running', 1, 3, '', ?)
+                asset_id,story_id,status,attempts,max_attempts,locked_until,provider,branch_id,source_commit_id
+            ) VALUES (?,?,'running',1,3,'',?,'branch-main','commit-main')
             RETURNING id"#,
         )
         .bind("asset-location")

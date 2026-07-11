@@ -824,7 +824,7 @@ Plans:
 ### Plans
 
 - [x] Plan 35.1: Add visual branch/source/entity/form/fingerprint/profile lineage and migration
-- [ ] Plan 35.2: Rework portrait/location gating and checkout-safe asset catalog selection
+- [x] Plan 35.2: Rework portrait/location gating and checkout-safe asset catalog selection
 - [ ] Plan 35.3: Build version inspection, regenerate, select, and undo/redo UX with tests
 
 ---

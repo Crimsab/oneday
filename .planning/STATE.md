@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
 current_phase: 35
 status: in_progress
-stopped_at: Phase 35.1 complete; proceeding to canonical visual gating and checkout-safe generation
-last_updated: "2026-07-11T15:18:00+02:00"
-last_activity: 2026-07-11 -- Migration V33 and ancestor-aware visual/profile lineage completed
+stopped_at: Phase 35.2 complete; proceeding to branch-safe version selection and undo/redo UX
+last_updated: "2026-07-11T15:36:00+02:00"
+last_activity: 2026-07-11 -- Canonical portrait/location gates and checkout-safe image worker completed
 progress:
   total_phases: 39
   completed_phases: 34
   total_plans: 89
-  completed_plans: 103
+  completed_plans: 104
   percent: 87
 ---
 
