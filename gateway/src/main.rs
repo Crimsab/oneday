@@ -54,6 +54,9 @@ async fn main() -> anyhow::Result<()> {
     assets::ensure_visual_asset_version_schema(&pool)
         .await
         .context("ensuring visual asset version schema")?;
+    if let Err(err) = telemetry::prune_expired(&pool).await {
+        tracing::warn!(error = %err, "generation telemetry retention pass failed");
+    }
 
     let (turn_events, _) = broadcast::channel(128);
     let state = Arc::new(AppState {

@@ -1,4 +1,5 @@
 use anyhow::Context;
+use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
@@ -9,6 +10,215 @@ pub struct ImageGenerationTrace {
     pub run_id: String,
     pub attempt_id: String,
     started: Instant,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UsageView {
+    pub input_tokens: i64,
+    pub output_tokens: i64,
+    pub reasoning_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub total_tokens: i64,
+    pub cost_usd: f64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AttemptDiagnostics {
+    pub sequence: i64,
+    pub provider: String,
+    pub requested_model: String,
+    pub resolved_model: String,
+    pub requested_streaming: bool,
+    pub observed_streaming: bool,
+    pub status: String,
+    pub ttft_ms: i64,
+    pub duration_ms: i64,
+    pub usage: UsageView,
+    pub retry_reason: String,
+    pub error_class: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GenerationDiagnostics {
+    pub run_id: String,
+    pub trace_id: String,
+    pub parent_run_id: String,
+    pub story_id: String,
+    pub branch_id: String,
+    pub source_commit_id: String,
+    pub message_id: Option<i64>,
+    pub stage: String,
+    pub status: String,
+    pub prompt_profile: String,
+    pub prompt_revision: i64,
+    pub prompt_hash: String,
+    pub requested_streaming: bool,
+    pub observed_streaming: bool,
+    pub ttft_ms: i64,
+    pub duration_ms: i64,
+    pub usage: UsageView,
+    pub error_class: String,
+    pub created_at: String,
+    pub finished_at: String,
+    pub attempts: Vec<AttemptDiagnostics>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TelemetryExport {
+    pub format: String,
+    pub filename: String,
+    pub content: String,
+    pub count: usize,
+    pub truncated: bool,
+}
+
+pub async fn message_diagnostics(
+    pool: &SqlitePool,
+    story_id: &str,
+    message_id: i64,
+) -> anyhow::Result<GenerationDiagnostics> {
+    let run_id: String = sqlx::query_scalar(
+        "SELECT id FROM generation_runs WHERE story_id=? AND message_id=? ORDER BY created_at DESC,id DESC LIMIT 1",
+    )
+    .bind(story_id)
+    .bind(message_id)
+    .fetch_one(pool)
+    .await
+    .context("generation diagnostics not found")?;
+    run_diagnostics(pool, &run_id).await
+}
+
+pub async fn export_story_telemetry(
+    pool: &SqlitePool,
+    story_id: &str,
+    limit: i64,
+) -> anyhow::Result<TelemetryExport> {
+    let limit = limit.clamp(1, 5000);
+    let ids: Vec<String> = sqlx::query_scalar(
+        "SELECT id FROM generation_runs WHERE story_id=? ORDER BY created_at,id LIMIT ?",
+    )
+    .bind(story_id)
+    .bind(limit + 1)
+    .fetch_all(pool)
+    .await?;
+    let truncated = ids.len() as i64 > limit;
+    let mut lines = Vec::with_capacity(ids.len().min(limit as usize));
+    for run_id in ids.into_iter().take(limit as usize) {
+        lines.push(serde_json::to_string(
+            &run_diagnostics(pool, &run_id).await?,
+        )?);
+    }
+    let safe_story: String = story_id
+        .chars()
+        .map(|value| if value.is_alphanumeric() { value } else { '-' })
+        .collect();
+    Ok(TelemetryExport {
+        format: "jsonl".into(),
+        filename: format!("{safe_story}-generation-telemetry.jsonl"),
+        content: lines.join("\n") + if lines.is_empty() { "" } else { "\n" },
+        count: lines.len(),
+        truncated,
+    })
+}
+
+pub async fn prune_expired(pool: &SqlitePool) -> anyhow::Result<u64> {
+    let result = sqlx::query(
+        r#"DELETE FROM generation_runs
+           WHERE id IN (
+             SELECT r.id FROM generation_runs r
+             JOIN prompt_profile_revisions pr ON pr.id=r.prompt_revision_id
+             JOIN prompt_profiles p ON p.id=pr.profile_id
+             WHERE r.finished_at IS NOT NULL
+               AND datetime(r.finished_at) < datetime('now', '-' || p.retention_days || ' days')
+           )"#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+async fn run_diagnostics(pool: &SqlitePool, run_id: &str) -> anyhow::Result<GenerationDiagnostics> {
+    let row = sqlx::query(
+        r#"SELECT r.id,r.trace_id,COALESCE(r.parent_run_id,'') AS parent_run_id,
+                  r.story_id,r.branch_id,r.source_commit_id,r.message_id,r.stage,r.status,
+                  COALESCE(p.name,'') AS prompt_profile,COALESCE(pr.version,0) AS prompt_revision,
+                  r.prompt_hash,r.requested_streaming,r.observed_streaming,r.ttft_ms,r.duration_ms,
+                  r.input_tokens,r.output_tokens,r.reasoning_tokens,r.cached_input_tokens,r.total_tokens,r.cost_usd,
+                  r.error_class,CAST(r.created_at AS TEXT) AS created_at,COALESCE(CAST(r.finished_at AS TEXT),'') AS finished_at
+           FROM generation_runs r
+           LEFT JOIN prompt_profile_revisions pr ON pr.id=r.prompt_revision_id
+           LEFT JOIN prompt_profiles p ON p.id=pr.profile_id
+           WHERE r.id=?"#,
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await?;
+    let attempt_rows = sqlx::query(
+        r#"SELECT sequence,provider,requested_model,resolved_model,requested_streaming,observed_streaming,status,
+                  ttft_ms,duration_ms,input_tokens,output_tokens,reasoning_tokens,cached_input_tokens,total_tokens,cost_usd,
+                  retry_reason,error_class
+           FROM generation_attempts WHERE run_id=? ORDER BY sequence"#,
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+    let attempts = attempt_rows
+        .into_iter()
+        .map(|attempt| AttemptDiagnostics {
+            sequence: attempt.try_get("sequence").unwrap_or_default(),
+            provider: attempt.try_get("provider").unwrap_or_default(),
+            requested_model: attempt.try_get("requested_model").unwrap_or_default(),
+            resolved_model: attempt.try_get("resolved_model").unwrap_or_default(),
+            requested_streaming: attempt
+                .try_get::<i64, _>("requested_streaming")
+                .unwrap_or_default()
+                != 0,
+            observed_streaming: attempt
+                .try_get::<i64, _>("observed_streaming")
+                .unwrap_or_default()
+                != 0,
+            status: attempt.try_get("status").unwrap_or_default(),
+            ttft_ms: attempt.try_get("ttft_ms").unwrap_or_default(),
+            duration_ms: attempt.try_get("duration_ms").unwrap_or_default(),
+            usage: usage_from_row(&attempt),
+            retry_reason: attempt.try_get("retry_reason").unwrap_or_default(),
+            error_class: attempt.try_get("error_class").unwrap_or_default(),
+        })
+        .collect();
+    Ok(GenerationDiagnostics {
+        run_id: row.try_get("id")?,
+        trace_id: row.try_get("trace_id")?,
+        parent_run_id: row.try_get("parent_run_id")?,
+        story_id: row.try_get("story_id")?,
+        branch_id: row.try_get("branch_id")?,
+        source_commit_id: row.try_get("source_commit_id")?,
+        message_id: row.try_get("message_id")?,
+        stage: row.try_get("stage")?,
+        status: row.try_get("status")?,
+        prompt_profile: row.try_get("prompt_profile")?,
+        prompt_revision: row.try_get("prompt_revision")?,
+        prompt_hash: row.try_get("prompt_hash")?,
+        requested_streaming: row.try_get::<i64, _>("requested_streaming")? != 0,
+        observed_streaming: row.try_get::<i64, _>("observed_streaming")? != 0,
+        ttft_ms: row.try_get("ttft_ms")?,
+        duration_ms: row.try_get("duration_ms")?,
+        usage: usage_from_row(&row),
+        error_class: row.try_get("error_class")?,
+        created_at: row.try_get("created_at")?,
+        finished_at: row.try_get("finished_at")?,
+        attempts,
+    })
+}
+
+fn usage_from_row(row: &sqlx::sqlite::SqliteRow) -> UsageView {
+    UsageView {
+        input_tokens: row.try_get("input_tokens").unwrap_or_default(),
+        output_tokens: row.try_get("output_tokens").unwrap_or_default(),
+        reasoning_tokens: row.try_get("reasoning_tokens").unwrap_or_default(),
+        cached_input_tokens: row.try_get("cached_input_tokens").unwrap_or_default(),
+        total_tokens: row.try_get("total_tokens").unwrap_or_default(),
+        cost_usd: row.try_get("cost_usd").unwrap_or_default(),
+    }
 }
 
 pub async fn start_image_generation(
@@ -227,6 +437,7 @@ pub fn classify_image_error(message: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
 
     #[test]
     fn hashes_prompts_without_retaining_prompt_text() {
@@ -236,5 +447,58 @@ mod tests {
         assert!(!hash.contains("private"));
         assert_eq!(classify_image_error("request timeout"), "timeout");
         assert_eq!(classify_image_error("HTTP 429"), "rate_limit");
+    }
+
+    #[tokio::test]
+    async fn diagnostics_export_and_retention_are_redacted_and_bounded() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("memory pool");
+        for statement in [
+            "CREATE TABLE prompt_profiles (id TEXT PRIMARY KEY,name TEXT,retention_days INTEGER)",
+            "CREATE TABLE prompt_profile_revisions (id TEXT PRIMARY KEY,profile_id TEXT,version INTEGER,prompt_hash TEXT,response_schema_hash TEXT)",
+            "CREATE TABLE generation_runs (id TEXT PRIMARY KEY,trace_id TEXT,parent_run_id TEXT,story_id TEXT,branch_id TEXT,source_commit_id TEXT,message_id INTEGER,stage TEXT,status TEXT,prompt_revision_id TEXT,prompt_hash TEXT,request_config_json TEXT,requested_streaming INTEGER,observed_streaming INTEGER,input_tokens INTEGER,output_tokens INTEGER,reasoning_tokens INTEGER,cached_input_tokens INTEGER,total_tokens INTEGER,cost_usd REAL,ttft_ms INTEGER,duration_ms INTEGER,error_class TEXT,metadata_json TEXT,created_at TEXT,finished_at TEXT)",
+            "CREATE TABLE generation_attempts (id TEXT PRIMARY KEY,run_id TEXT,sequence INTEGER,provider TEXT,requested_model TEXT,resolved_model TEXT,requested_streaming INTEGER,observed_streaming INTEGER,status TEXT,ttft_ms INTEGER,duration_ms INTEGER,input_tokens INTEGER,output_tokens INTEGER,reasoning_tokens INTEGER,cached_input_tokens INTEGER,total_tokens INTEGER,cost_usd REAL,retry_reason TEXT,error_class TEXT)",
+            "CREATE TABLE generation_events (id INTEGER PRIMARY KEY,run_id TEXT,attempt_id TEXT,event_type TEXT,payload_json TEXT)",
+        ] {
+            sqlx::query(statement).execute(&pool).await.expect("schema");
+        }
+        sqlx::query("INSERT INTO prompt_profiles VALUES ('profile','narrator',1)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "INSERT INTO prompt_profile_revisions VALUES ('revision','profile',2,'sha256:safe','')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query("INSERT INTO generation_runs VALUES ('run','trace','', 'story','branch','commit',42,'narrator','succeeded','revision','sha256:safe','{}',1,1,10,5,2,1,15,0.01,12,30,'','{}','2020-01-01','2020-01-01')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO generation_attempts VALUES ('attempt','run',1,'provider','requested','resolved',1,1,'succeeded',12,30,10,5,2,1,15,0.01,'','')")
+            .execute(&pool)
+            .await
+            .unwrap();
+
+        let diagnostics = message_diagnostics(&pool, "story", 42).await.unwrap();
+        assert_eq!(diagnostics.prompt_profile, "narrator");
+        assert_eq!(diagnostics.attempts.len(), 1);
+        assert_eq!(diagnostics.usage.reasoning_tokens, 2);
+        let export = export_story_telemetry(&pool, "story", 1).await.unwrap();
+        assert_eq!(export.count, 1);
+        assert!(!export.content.contains("request_config_json"));
+        assert!(!export.content.contains("metadata_json"));
+        serde_json::from_str::<serde_json::Value>(export.content.trim()).unwrap();
+
+        assert_eq!(prune_expired(&pool).await.unwrap(), 1);
+        let remaining: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM generation_runs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(remaining, 0);
     }
 }

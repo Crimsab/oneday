@@ -6,7 +6,7 @@ const story = { id: "story-1", name: "The Glass Archive", description: "A branch
 function snapshot(turn = 4, branchId = "branch-main") {
   const messages = [
     { id: 1, session_id: "session-1", story_id: story.id, turn: 3, role: "assistant", content: "The archive doors wait in silence.", message_type: "narrative", metadata: {}, created_at: now, branch_id: branchId, source_commit_id: "commit-3" },
-    { id: 2, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "Mira studies the fractured seal.", message_type: "narrative", metadata: { output: { dialogue_blocks: [{ speaker_id: "npc-mira", speaker: "Mira", role: "Archivist", text: "Choose carefully." }] } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
+    { id: 2, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "Mira studies the fractured seal.", message_type: "narrative", metadata: { provider: "codex", model: "gpt-5.5", latency_ms: 1250, streamed: true, usage: { total_tokens: 321 }, generation: { run_id: "run-2", trace_id: "trace-2", stage: "narrator" }, output: { dialogue_blocks: [{ speaker_id: "npc-mira", speaker: "Mira", role: "Archivist", text: "Choose carefully." }] } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
   ];
   return {
     server_time: new Date().toISOString(),
@@ -58,6 +58,8 @@ async function mockGateway(page: Page, options: { failAction?: boolean } = {}) {
     }
     if (path.endsWith("/history")) return json(route, { items: snapshot().messages, next_cursor: null });
     if (path.endsWith("/chapters")) return json(route, { items: snapshot().panels.chapters, next_cursor: null });
+    if (path.endsWith("/messages/2/diagnostics")) return json(route, { run_id: "run-2", trace_id: "trace-2", parent_run_id: "", story_id: story.id, branch_id: "branch-main", source_commit_id: "commit-4", message_id: 2, stage: "narrator", status: "succeeded", prompt_profile: "narrator", prompt_revision: 3, prompt_hash: "sha256:redacted", requested_streaming: true, observed_streaming: true, ttft_ms: 180, duration_ms: 1250, usage: { input_tokens: 200, output_tokens: 121, reasoning_tokens: 40, cached_input_tokens: 0, total_tokens: 321, cost_usd: 0.003 }, error_class: "", created_at: now, finished_at: now, attempts: [{ sequence: 1, provider: "codex", requested_model: "gpt-5.5", resolved_model: "gpt-5.5", requested_streaming: true, observed_streaming: true, status: "succeeded", ttft_ms: 180, duration_ms: 1250, usage: { input_tokens: 200, output_tokens: 121, reasoning_tokens: 40, cached_input_tokens: 0, total_tokens: 321, cost_usd: 0.003 }, retry_reason: "", error_class: "" }] });
+    if (path.endsWith("/telemetry/export")) return json(route, { format: "jsonl", filename: "glass-archive-generation-telemetry.jsonl", content: "{\"run_id\":\"run-2\"}\n", count: 1, truncated: false });
     if (path.endsWith("/export")) return json(route, { format: url.searchParams.get("format") === "json" ? "json" : "markdown", filename: "glass-archive-history.md", content: "# The Glass Archive\n\nCanonical export" });
     if (path.endsWith("/actions") && request.method() === "POST") {
       actionRequests += 1;
@@ -80,6 +82,10 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   await expect(page.getByRole("heading", { name: "Narrative Transcript" })).toBeVisible();
   await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.getByLabel("Structured dialogue for turn 4")).toContainText("Choose carefully.");
+  await expect(page.getByText("codex · gpt-5.5 · 1.3 s · 321 tokens · streamed")).toBeVisible();
+  await page.getByText("Operator diagnostics").click();
+  await expect(page.getByText("narrator rev 3")).toBeVisible();
+  await expect(page.getByRole("list", { name: "Provider attempts" })).toContainText("TTFT 180 ms");
 
   const composer = page.getByPlaceholder("Enter command or action...");
   await composer.fill("Trace the silver fracture");

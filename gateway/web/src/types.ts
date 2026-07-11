@@ -293,6 +293,62 @@ export interface HistoryPage { items:MessageView[]; next_cursor?:number|null }
 export interface ChapterPage { items:ChapterView[]; next_cursor?:number|null }
 export interface StoryExport { format:"markdown"|"json"; filename:string; content:string }
 
+export interface TelemetryUsage {
+  input_tokens: number;
+  output_tokens: number;
+  reasoning_tokens: number;
+  cached_input_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
+export interface GenerationAttemptDiagnostics {
+  sequence: number;
+  provider: string;
+  requested_model: string;
+  resolved_model: string;
+  requested_streaming: boolean;
+  observed_streaming: boolean;
+  status: string;
+  ttft_ms: number;
+  duration_ms: number;
+  usage: TelemetryUsage;
+  retry_reason: string;
+  error_class: string;
+}
+
+export interface GenerationDiagnostics {
+  run_id: string;
+  trace_id: string;
+  parent_run_id: string;
+  story_id: string;
+  branch_id: string;
+  source_commit_id: string;
+  message_id?: number | null;
+  stage: string;
+  status: string;
+  prompt_profile: string;
+  prompt_revision: number;
+  prompt_hash: string;
+  requested_streaming: boolean;
+  observed_streaming: boolean;
+  ttft_ms: number;
+  duration_ms: number;
+  usage: TelemetryUsage;
+  error_class: string;
+  created_at: string;
+  finished_at: string;
+  attempts: GenerationAttemptDiagnostics[];
+}
+
+export interface TelemetryExport {
+  format: "jsonl";
+  filename: string;
+  content: string;
+  count: number;
+  truncated: boolean;
+}
+
 export interface AchievementView {
   id: number;
   name: string;
