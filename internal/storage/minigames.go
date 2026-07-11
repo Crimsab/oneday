@@ -64,6 +64,29 @@ func (db *DB) GetActiveMiniGameInstance(storyID string) (*MiniGameInstanceRecord
 		ORDER BY m.updated_at DESC,m.id DESC LIMIT 1`, storyID))
 }
 
+func (db *DB) ListRecentMiniGameInstances(storyID string, limit int) ([]MiniGameInstanceRecord, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := db.conn.Query(`SELECT m.id,m.story_id,m.turn,m.protocol_version,m.kind,m.phase,m.instance_json,m.branch_id,m.source_commit_id,m.created_at,m.updated_at
+		FROM minigame_instances m JOIN stories s ON s.id=m.story_id
+		WHERE m.story_id=? AND m.branch_id=s.active_branch_id
+		ORDER BY m.updated_at DESC,m.id DESC LIMIT ?`, storyID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []MiniGameInstanceRecord{}
+	for rows.Next() {
+		var record MiniGameInstanceRecord
+		if err := rows.Scan(&record.ID, &record.StoryID, &record.Turn, &record.ProtocolVersion, &record.Kind, &record.Phase, &record.Instance, &record.BranchID, &record.SourceCommitID, &record.CreatedAt, &record.UpdatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, record)
+	}
+	return result, rows.Err()
+}
+
 func scanMiniGameInstance(row *sql.Row) (*MiniGameInstanceRecord, error) {
 	var record MiniGameInstanceRecord
 	if err := row.Scan(&record.ID, &record.StoryID, &record.Turn, &record.ProtocolVersion, &record.Kind, &record.Phase, &record.Instance, &record.BranchID, &record.SourceCommitID, &record.CreatedAt, &record.UpdatedAt); err != nil {

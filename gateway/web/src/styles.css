@@ -3456,7 +3456,7 @@ input:disabled {
 .minigame-host-head span,
 .minigame-host-head small { color: var(--faint); font-size: 10px; text-transform: uppercase; }
 .minigame-host-head strong { color: var(--accent); font-size: 12px; text-transform: capitalize; }
-.minigame-launchers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.minigame-launchers { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
 .minigame-launchers button,
 .minigame-actions button { min-height: 32px; border: 1px solid var(--line); background: #11181a; color: var(--text); }
 .minigame-play { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, .55fr) minmax(180px, .65fr); gap: 8px; align-items: end; }
@@ -3468,6 +3468,7 @@ input:disabled {
 .minigame-result { border-left: 2px solid var(--accent); padding: 7px 9px; background: rgba(255,255,255,.025); }
 .minigame-result strong { color: var(--accent); text-transform: uppercase; font-size: 10px; }
 .minigame-result p { margin: 3px 0 0; color: var(--muted); font-size: 11px; }
+.minigame-selection-reason { color: var(--faint); font-size: 10px; line-height: 1.35; }
 
 @media (max-width: 760px) {
   .minigame-launchers { grid-template-columns: 1fr 1fr; }

@@ -94,7 +94,7 @@ func NewMiniGameHost() *MiniGameHost {
 		host.Register(kind, legacy)
 	}
 	families := genreNeutralMiniGameReducer{}
-	for _, kind := range []MiniGameType{MiniGameDeduction, MiniGameNegotiation, MiniGamePattern, MiniGameBidding} {
+	for _, kind := range []MiniGameType{MiniGameDeduction, MiniGameNegotiation, MiniGamePattern, MiniGameBidding, MiniGameCourtroom, MiniGameComedy} {
 		host.Register(kind, families)
 	}
 	return host

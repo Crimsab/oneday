@@ -847,7 +847,7 @@ Plans:
 
 - [x] Plan 36.1: Repair legacy minigames and implement serializable challenge-host lifecycle
 - [x] Plan 36.2: Add deduction, negotiation, pattern, and bidding minigames across TUI/browser
-- [ ] Plan 36.3: Add courtroom/comedy encounters plus repetition/accessibility selection policy
+- [x] Plan 36.3: Add courtroom/comedy encounters plus repetition/accessibility selection policy
 - [ ] Plan 36.4: Add story-pack authoring hooks and comprehensive fairness/playtest eval corpus
 
 ---

@@ -29,6 +29,10 @@ func DefaultMiniGameDefinition(kind MiniGameType) MiniGameDefinition {
 		return MiniGameDefinition{ID: "pattern-generic", Kind: kind, Prompt: "Complete the pattern: 2, 4, 6, ?", Difficulty: 50, Options: []string{"8", "9", "10"}, Sequence: []string{"2", "4", "6"}, Answers: []string{"8"}}
 	case MiniGameBidding:
 		return MiniGameDefinition{ID: "bidding-generic", Kind: kind, Prompt: "Make an integer offer without exceeding your budget.", Difficulty: 50, Rules: map[string]string{"reserve": "40", "market_value": "60", "budget": "90"}}
+	case MiniGameCourtroom:
+		return MiniGameDefinition{ID: "courtroom-generic", Kind: kind, Prompt: "Choose a procedural move and commit any evidence you are ready to expose.", Difficulty: 55, Options: []string{"present evidence", "cross-examine", "object", "appeal to procedure"}}
+	case MiniGameComedy:
+		return MiniGameDefinition{ID: "comedy-generic", Kind: kind, Prompt: "Choose a conversational move to turn the social beat without requiring reflex timing.", Difficulty: 50, Options: []string{"callback", "misdirection", "self-deprecation", "escalation"}}
 	default:
 		return MiniGameDefinition{ID: string(kind), Kind: kind, Difficulty: 50}
 	}
@@ -42,7 +46,7 @@ func (genreNeutralMiniGameReducer) Initialize(definition MiniGameDefinition, _ i
 			return nil, fmt.Errorf("%s minigame requires an explicit answer", definition.Kind)
 		}
 		state.RequiredEvidence = ruleInt(definition.Rules, "required_evidence", 2)
-	case MiniGameNegotiation:
+	case MiniGameNegotiation, MiniGameCourtroom, MiniGameComedy:
 		if len(definition.Options) == 0 {
 			definition.Options = []string{"cooperative", "assertive", "deceptive"}
 		}
@@ -128,6 +132,36 @@ func (genreNeutralMiniGameReducer) Reduce(definition MiniGameDefinition, seed in
 		}
 		result = miniGameResult(degree, definition.Difficulty, bid, state.Reserve,
 			fmt.Sprintf("Bidding: offer %d (reserve %d, value %d, budget %d)", bid, state.Reserve, state.MarketValue, state.Budget))
+	case MiniGameCourtroom:
+		move := normalizeRiddleAnswer(input.Value)
+		if move == "" {
+			return payload, nil, errors.New("courtroom move is required")
+		}
+		evidence := len(uniqueNonEmpty(input.Values))
+		roll := NewRNGService(seed).Roll("minigame.courtroom", 21).Raw - 11
+		total := 45 + evidence*12 + roll - definition.Difficulty
+		if move == "present evidence" || move == "cross examine" {
+			total += 7
+		}
+		degree := degreeForScore(total)
+		result = miniGameResult(degree, definition.Difficulty, total, 0, fmt.Sprintf("Courtroom: %s with %d evidence items", move, evidence))
+		result.Roll, result.Outcome.Roll, result.Outcome.Seed = roll, roll, seed
+	case MiniGameComedy:
+		move := normalizeRiddleAnswer(input.Value)
+		if move == "" {
+			return payload, nil, errors.New("comedy move is required")
+		}
+		callbacks := len(uniqueNonEmpty(input.Values))
+		roll := NewRNGService(seed).Roll("minigame.comedy", 21).Raw - 11
+		total := 50 + callbacks*8 + roll - definition.Difficulty
+		if move == "callback" || move == "self deprecation" {
+			total += 5
+		} else if move == "escalation" {
+			total -= 5
+		}
+		degree := degreeForScore(total)
+		result = miniGameResult(degree, definition.Difficulty, total, 0, fmt.Sprintf("Social comedy: %s with %d established callbacks", move, callbacks))
+		result.Roll, result.Outcome.Roll, result.Outcome.Seed = roll, roll, seed
 	default:
 		return payload, nil, fmt.Errorf("genre-neutral reducer cannot resolve %q", definition.Kind)
 	}

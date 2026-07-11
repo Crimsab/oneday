@@ -265,19 +265,19 @@ function App() {
 	const renameBranch = (branchId:string,name:string) => mutateTimeline({action:"rename",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId,name});
   const checkoutBranch = (branchId:string) => mutateTimeline({action:"checkout",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId});
 
-  const launchMiniGame = useCallback(async (kind: MiniGameKind) => {
+  const launchMiniGame = useCallback(async (kind: MiniGameKind | null) => {
     if (!storyId) return;
     setMiniGameBusy(true);
     setMiniGameError("");
     try {
-      const response = await startMiniGame(storyId, kind);
+      const response = await startMiniGame(storyId, kind, [snapshot?.story.genre ?? "", snapshot?.story.tone ?? ""]);
       setActiveMiniGame(response.instance ?? null);
     } catch (error) {
       setMiniGameError(errorMessage(error));
     } finally {
       setMiniGameBusy(false);
     }
-  }, [storyId]);
+  }, [snapshot?.story.genre, snapshot?.story.tone, storyId]);
 
   const sendMiniGameInput = useCallback(async (input: MiniGameInput) => {
     if (!storyId || !activeMiniGame) return;

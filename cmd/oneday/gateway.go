@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +17,7 @@ import (
 	"github.com/crimsab/oneday/internal/game/contracts"
 	gameservice "github.com/crimsab/oneday/internal/game/service"
 	"github.com/crimsab/oneday/internal/storage"
+	"github.com/google/uuid"
 )
 
 type gatewayTurnResponse struct {
@@ -119,6 +123,128 @@ type gatewayModelSettingsResponse struct {
 
 type gatewaySchemaPreflightResponse struct {
 	Status string `json:"status"`
+}
+
+type gatewayMiniGameRequest struct {
+	StoryID    string                          `json:"story_id"`
+	InstanceID string                          `json:"instance_id,omitempty"`
+	Kind       engine.MiniGameType             `json:"kind,omitempty"`
+	Definition engine.MiniGameDefinition       `json:"definition,omitempty"`
+	Input      engine.MiniGameInput            `json:"input,omitempty"`
+	Selection  engine.MiniGameSelectionContext `json:"selection,omitempty"`
+}
+
+type gatewayMiniGameResponse struct {
+	Instance *engine.MiniGameInstance `json:"instance,omitempty"`
+	Error    string                   `json:"error,omitempty"`
+}
+
+func runGatewayMiniGame(db *storage.DB, operation string, in io.Reader, out io.Writer) error {
+	var req gatewayMiniGameRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{Error: fmt.Sprintf("invalid minigame request: %v", err)})
+	}
+	req.StoryID = strings.TrimSpace(req.StoryID)
+	if req.StoryID == "" {
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{Error: "story id is required"})
+	}
+	host := engine.NewMiniGameHost()
+	var instance *engine.MiniGameInstance
+	var err error
+	switch operation {
+	case "start":
+		head, headErr := db.GetActiveTimeline(req.StoryID)
+		if headErr != nil {
+			err = headErr
+			break
+		}
+		definition := req.Definition
+		if definition.ID == "" {
+			kind := definition.Kind
+			if kind == "" {
+				kind = req.Kind
+			}
+			if kind == "" {
+				recent, recentErr := db.ListRecentMiniGameInstances(req.StoryID, 20)
+				if recentErr != nil {
+					err = recentErr
+					break
+				}
+				req.Selection.CurrentTurn = head.Commit.CanonicalTurn
+				req.Selection.Recent = make([]engine.MiniGameUsage, 0, len(recent))
+				for _, record := range recent {
+					req.Selection.Recent = append(req.Selection.Recent, engine.MiniGameUsage{Kind: engine.MiniGameType(record.Kind), Turn: record.Turn})
+				}
+				selected, selectErr := engine.SelectMiniGame(engine.DefaultMiniGameCandidates(), req.Selection)
+				if selectErr != nil {
+					err = selectErr
+					break
+				}
+				definition = selected.Definition
+			} else {
+				definition = engine.DefaultMiniGameDefinition(kind)
+				if definition.Rules == nil {
+					definition.Rules = map[string]string{}
+				}
+				definition.Rules["selection_reason"] = "player selected; timing-free"
+			}
+		}
+		id := "mini-" + uuid.NewString()
+		digest := sha256.Sum256([]byte(id + "\x00" + req.StoryID + "\x00" + head.Branch.ID))
+		seed := int64(binary.BigEndian.Uint64(digest[:8]) & uint64(contracts.MaxPortableChallengeSeed))
+		value := engine.NewMiniGameInstance(id, req.StoryID, head.Branch.ID, head.Commit.CanonicalTurn, seed, definition)
+		if err = host.Start(&value); err == nil {
+			instance, err = saveGatewayMiniGame(db, host, value)
+		}
+	case "get":
+		var record *storage.MiniGameInstanceRecord
+		record, err = db.GetActiveMiniGameInstance(req.StoryID)
+		if errors.Is(err, sql.ErrNoRows) {
+			err = nil
+			break
+		}
+		if err == nil {
+			instance, err = host.Restore(record.Instance)
+		}
+	case "input":
+		var record *storage.MiniGameInstanceRecord
+		record, err = db.GetMiniGameInstance(req.StoryID, strings.TrimSpace(req.InstanceID))
+		if err == nil {
+			instance, err = host.Restore(record.Instance)
+		}
+		if err == nil {
+			err = host.Apply(instance, req.Input)
+		}
+		if err == nil {
+			instance, err = saveGatewayMiniGame(db, host, *instance)
+		}
+	default:
+		err = fmt.Errorf("unknown minigame operation %q", operation)
+	}
+	if err != nil {
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{Error: err.Error()})
+	}
+	if instance == nil {
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{})
+	}
+	view := engine.PlayerMiniGameView(*instance)
+	return json.NewEncoder(out).Encode(gatewayMiniGameResponse{Instance: &view})
+}
+
+func saveGatewayMiniGame(db *storage.DB, host *engine.MiniGameHost, instance engine.MiniGameInstance) (*engine.MiniGameInstance, error) {
+	payload, err := host.Serialize(instance)
+	if err != nil {
+		return nil, err
+	}
+	_, err = db.SaveMiniGameInstance(storage.MiniGameInstanceRecord{
+		ID: instance.ID, StoryID: instance.StoryID, Turn: instance.Turn,
+		ProtocolVersion: instance.ProtocolVersion, Kind: string(instance.Definition.Kind),
+		Phase: string(instance.Runtime.Phase), Instance: payload,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &instance, nil
 }
 
 func runGatewaySchemaPreflight(out io.Writer) error {

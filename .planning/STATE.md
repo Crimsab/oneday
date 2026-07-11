@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
 current_phase: 36
 status: in_progress
-stopped_at: Phase 36.2 complete; proceeding to courtroom, comedy, selection policy, and accessibility
-last_updated: "2026-07-11T16:30:00+02:00"
-last_activity: 2026-07-11 -- Four genre-neutral shared-host minigames deployed across browser and TUI
+stopped_at: Phase 36.3 complete; proceeding to story-pack challenge authoring and fairness eval corpus
+last_updated: "2026-07-11T16:36:00+02:00"
+last_activity: 2026-07-11 -- Timing-free courtroom/comedy and accessibility-aware anti-repeat selection deployed
 progress:
   total_phases: 39
   completed_phases: 35
   total_plans: 89
-  completed_plans: 107
+  completed_plans: 108
   percent: 90
 ---
 

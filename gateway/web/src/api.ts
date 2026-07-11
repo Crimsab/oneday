@@ -148,11 +148,14 @@ export function getActiveMiniGame(storyId: string): Promise<MiniGameResponse> {
   return request<MiniGameResponse>(`/api/stories/${encodeURIComponent(storyId)}/minigames`);
 }
 
-export function startMiniGame(storyId: string, kind: MiniGameKind): Promise<MiniGameResponse> {
+export function startMiniGame(storyId: string, kind: MiniGameKind | null, narrativeTags: string[] = []): Promise<MiniGameResponse> {
   return request<MiniGameResponse>(`/api/stories/${encodeURIComponent(storyId)}/minigames`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ definition: { kind } }),
+    body: JSON.stringify({
+      definition: { kind: kind ?? "" },
+      selection: { narrative_tags: narrativeTags, difficulty: 50, timing_free_only: true },
+    }),
   });
 }
 
