@@ -16,6 +16,7 @@ services:
       - /opt/lab/data/secrets/oneday/app.env
     environment:
       TZ: Europe/Rome
+      ONEDAY_IMAGEGEN_OPENCLAW_URL: http://homelab.local:8099/generate
     volumes:
       - type: bind
         source: /opt/lab/docker/oneday
