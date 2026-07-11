@@ -14,7 +14,7 @@ import (
 
 // RiddleResultMsg is emitted when riddle resolves.
 type RiddleResultMsg struct {
-	Passed bool
+	Result *engine.ChallengeResult
 }
 
 // RiddleModel handles the riddle challenge.
@@ -75,9 +75,9 @@ func (r RiddleModel) Update(msg tea.Msg) (RiddleModel, tea.Cmd) {
 				return r, cmd
 			}
 		case "result":
-			passed := r.result != nil && r.result.Passed
+			result := r.result
 			return r, func() tea.Msg {
-				return RiddleResultMsg{Passed: passed}
+				return RiddleResultMsg{Result: result}
 			}
 		}
 

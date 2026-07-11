@@ -14,7 +14,7 @@ import (
 
 // MemoryResultMsg is emitted when memory challenge resolves.
 type MemoryResultMsg struct {
-	Passed bool
+	Result *engine.ChallengeResult
 }
 
 // memoryShowTickMsg advances the show phase.
@@ -94,14 +94,10 @@ func (m MemoryModel) Update(msg tea.Msg) (MemoryModel, tea.Cmd) {
 			idx := len(m.playerInput)
 			expected := m.challenge.Sequence[idx]
 			if !strings.EqualFold(direction, expected) {
-				// Wrong key — fail immediately.
-				m.failed = true
-				m.wrongAt = idx
-				m.playerInput = append(m.playerInput, direction)
-				result := m.challenge.CheckMemory(m.playerInput)
-				m.result = result
-				m.phase = "result"
-				return m, nil
+				if !m.failed {
+					m.failed = true
+					m.wrongAt = idx
+				}
 			}
 			m.playerInput = append(m.playerInput, direction)
 			if len(m.playerInput) >= len(m.challenge.Sequence) {
@@ -111,9 +107,9 @@ func (m MemoryModel) Update(msg tea.Msg) (MemoryModel, tea.Cmd) {
 				return m, nil
 			}
 		} else if m.phase == "result" {
-			passed := m.result != nil && m.result.Passed
+			result := m.result
 			return m, func() tea.Msg {
-				return MemoryResultMsg{Passed: passed}
+				return MemoryResultMsg{Result: result}
 			}
 		}
 	}

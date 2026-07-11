@@ -4,14 +4,14 @@ milestone: v2.0
 milestone_name: Universal Canon & Multimodal Story Engine
 current_phase: 36
 status: in_progress
-stopped_at: Phase 35 complete; proceeding to extensible minigames, fairness, and story evals
-last_updated: "2026-07-11T16:04:00+02:00"
-last_activity: 2026-07-11 -- Branch-safe visual version selection, undo/redo, and canon UX completed
+stopped_at: Phase 36.1 complete; proceeding to shared-host deduction, negotiation, pattern, and bidding
+last_updated: "2026-07-11T16:20:00+02:00"
+last_activity: 2026-07-11 -- Legacy minigames repaired and serializable reducer host implemented
 progress:
   total_phases: 39
   completed_phases: 35
   total_plans: 89
-  completed_plans: 105
+  completed_plans: 106
   percent: 90
 ---
 
