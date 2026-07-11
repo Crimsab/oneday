@@ -9,9 +9,10 @@ interface VoiceAssignmentEditorProps {
   revision: number;
   protagonist: RecordView;
   npcs: RecordView[];
+  heading?: string;
 }
 
-export function VoiceAssignmentEditor({ storyId, language, revision, protagonist, npcs }: VoiceAssignmentEditorProps) {
+export function VoiceAssignmentEditor({ storyId, language, revision, protagonist, npcs, heading = "Spoken audio" }: VoiceAssignmentEditorProps) {
   const [settings, setSettings] = useState<StoryTTSSettings | null>(null);
   const [voices, setVoices] = useState<VoiceProfile[]>([]);
   const [providers, setProviders] = useState<{ id: string; available: boolean; reason?: string }[]>([]);
@@ -66,11 +67,11 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
     finally { setBusy(false); }
   };
 
-  if (!settings) return <section className="voice-settings"><h3>Spoken audio</h3><p className="empty-copy">{error || "Loading voice registry…"}</p></section>;
+  if (!settings) return <section className="voice-settings"><h3>{heading}</h3><p className="empty-copy">{error || "Loading voice registry…"}</p></section>;
 
   return (
     <section className="voice-settings" aria-labelledby="voice-settings-title">
-      <div className="settings-section-head"><div><h3 id="voice-settings-title">Spoken audio</h3><p>Committed narration and dialogue only. Autoplay is controlled separately.</p></div><button type="button" disabled={busy} onClick={saveSettings}>Save audio settings</button></div>
+      <div className="settings-section-head"><div><h3 id="voice-settings-title">{heading}</h3><p>Committed narration and dialogue only. Autoplay is controlled separately.</p></div><button type="button" disabled={busy} onClick={saveSettings}>Save audio settings</button></div>
       <div className="settings-grid voice-global-settings">
         <label><span>Speech mode</span><select value={settings.mode} onChange={(event) => setSettings({ ...settings, mode: event.target.value as StoryTTSSettings["mode"] })}><option value="off">Off</option><option value="narrator">Narrator only</option><option value="dialogue">Dialogue only</option><option value="all">Narration and dialogue</option></select></label>
         <label><span>Default language</span><input value={settings.default_language_tag} onChange={(event) => setSettings({ ...settings, default_language_tag: event.target.value })} placeholder="en-US" /></label>

@@ -40,6 +40,7 @@ import type {
 import type { VisualCatalog } from "../visualAssets";
 import { readyAssetUrl } from "../visualAssets";
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
+import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -319,132 +320,50 @@ function OptionsContent({
     onPreferencesChange({ ...preferences, [key]: value });
   };
 
-  return (
-    <div className="overlay-content options-content">
-      <div className="option-grid">
-        <div>
-		  <span>Live updates</span>
-          <strong>
-            {snapshot ? "SSE snapshots + turn events" : "No story selected"}
-          </strong>
-        </div>
-        <div>
-          <span>Action transport</span>
-          <strong>gateway-turn</strong>
-        </div>
-        <div>
-          <span>Capabilities</span>
-          <strong>images, ascii, roll log</strong>
-        </div>
-        <div>
-          <span>Theme</span>
-          <strong>Reference Amber Noir</strong>
-        </div>
-      </div>
-      <div className="settings-grid">
-        <label>
-          <span>Density</span>
-          <select
-            value={preferences.density}
-            onChange={(event) =>
-              update("density", event.target.value as AppPreferences["density"])
-            }
-          >
-            <option value="compact">Compact</option>
-            <option value="balanced">Balanced</option>
-            <option value="comfortable">Comfortable</option>
-          </select>
-        </label>
-        <label>
-          <span>Font size</span>
-          <select
-            value={preferences.fontSize}
-            onChange={(event) =>
-              update(
-                "fontSize",
-                event.target.value as AppPreferences["fontSize"],
-              )
-            }
-          >
-            <option value="small">Small</option>
-            <option value="base">Base</option>
-            <option value="large">Large</option>
-          </select>
-        </label>
-        <label>
-          <span>Accent</span>
-          <select
-            value={preferences.accent}
-            onChange={(event) =>
-              update("accent", event.target.value as AppPreferences["accent"])
-            }
-          >
-            <option value="amber">Amber</option>
-            <option value="green">Green</option>
-            <option value="blue">Blue</option>
-            <option value="rose">Rose</option>
-          </select>
-        </label>
-        <label className="toggle-row">
-          <span>Stories sidebar</span>
-          <input
-            type="checkbox"
-            checked={preferences.showLeftRail}
-            onChange={(event) => update("showLeftRail", event.target.checked)}
-          />
-        </label>
-        <label className="toggle-row">
-          <span>Inspector panel</span>
-          <input
-            type="checkbox"
-            checked={preferences.showInspector}
-            onChange={(event) => update("showInspector", event.target.checked)}
-          />
-        </label>
-        <label className="toggle-row">
-          <span>Transcript wrap</span>
-          <input
-            type="checkbox"
-            checked={preferences.wrapTranscript}
-            onChange={(event) => update("wrapTranscript", event.target.checked)}
-          />
-        </label>
-      </div>
-      <ModelRoutingSettings
-        modelSettings={modelSettings}
-        modelError={modelError}
-        busy={modelBusy}
-        onSave={onModelSettingsSave}
-        onReload={onModelSettingsReload}
-      />
-      {snapshot && (
-        <VoiceAssignmentEditor
-          storyId={snapshot.story.id}
-          language={snapshot.story.language}
-          revision={snapshot.version.revision}
-          protagonist={snapshot.character}
-          npcs={snapshot.panels.npcs}
-        />
-      )}
-      <VisualDirectionSettings
-        profile={visualProfile}
-        assets={visualAssets}
-        jobs={visualJobs}
-        focusedAssetId={visualAssetFocusId}
-        error={visualProfileError}
-        busy={visualProfileBusy}
-        onSave={onVisualProfileSave}
-        onGenerate={onVisualAssetsGenerate}
-        onReload={onVisualAssetsReload}
-        onJobCancel={onVisualJobCancel}
-        onCleanup={onVisualAssetsCleanup}
-        onVersionsLoad={onVisualAssetVersionsLoad}
-        onAssetPromptSave={onVisualAssetPromptSave}
-        onVersionSelect={onVisualAssetVersionSelect}
-        onSelectionStep={onVisualAssetSelectionStep}
-      />
-    </div>
-  );
+  const sections: SettingsSection[] = [
+    {
+      id: "general",
+      content: <div className="settings-grid general-settings">
+        <label data-setting-id="density"><span>Density</span><select value={preferences.density} onChange={(event) => update("density", event.target.value as AppPreferences["density"])}><option value="compact">Compact</option><option value="balanced">Balanced</option><option value="comfortable">Comfortable</option></select></label>
+        <label data-setting-id="font-size"><span>Font size</span><select value={preferences.fontSize} onChange={(event) => update("fontSize", event.target.value as AppPreferences["fontSize"])}><option value="small">Small</option><option value="base">Base</option><option value="large">Large</option></select></label>
+        <label data-setting-id="accent"><span>Accent</span><select value={preferences.accent} onChange={(event) => update("accent", event.target.value as AppPreferences["accent"])}><option value="amber">Amber</option><option value="green">Green</option><option value="blue">Blue</option><option value="rose">Rose</option></select></label>
+        <label className="toggle-row" data-setting-id="stories-sidebar"><span>Stories sidebar</span><input type="checkbox" checked={preferences.showLeftRail} onChange={(event) => update("showLeftRail", event.target.checked)} /></label>
+        <label className="toggle-row" data-setting-id="inspector"><span>Inspector panel</span><input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} /></label>
+        <label className="toggle-row" data-setting-id="transcript-wrap"><span>Transcript wrap</span><input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} /></label>
+      </div>,
+    },
+    {
+      id: "gameplay",
+      content: <div className="settings-policy-list">
+        <article data-setting-id="automatic-challenges"><strong>Automatic challenges</strong><p>NPC situations can open an interactive challenge. OneDay selects the family automatically, so the player never chooses the easiest mechanic.</p><span className="settings-status">Enabled</span></article>
+        <article data-setting-id="timing-free"><strong>Timing-free selection</strong><p>The selector excludes reflex-only challenges when a timing-free mechanic can represent the same scene.</p><span className="settings-status">Required</span></article>
+        <article data-setting-id="challenge-cooldown"><strong>Challenge cooldown</strong><p>Recent branch history reduces repetition and blocks a family during its cooldown window.</p><span className="settings-status">Active branch</span></article>
+      </div>,
+    },
+    {
+      id: "audio",
+      content: snapshot ? <div data-setting-id="speech-mode"><VoiceAssignmentEditor storyId={snapshot.story.id} language={snapshot.story.language} revision={snapshot.version.revision} protagonist={snapshot.character} npcs={snapshot.panels.npcs} heading="Story speech policy" /></div> : <p className="empty-copy">Select a story to configure spoken audio and character voices.</p>,
+    },
+    {
+      id: "visuals",
+      content: <div data-setting-id="visual-profile"><VisualDirectionSettings profile={visualProfile} assets={visualAssets} jobs={visualJobs} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} /></div>,
+    },
+    {
+      id: "models",
+      content: <div data-setting-id="provider-order"><ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} /></div>,
+    },
+    {
+      id: "advanced",
+      content: <div className="option-grid" data-setting-id="runtime-status">
+        <div><span>Live updates</span><strong>{snapshot ? "SSE snapshots + turn events" : "No story selected"}</strong></div>
+        <div><span>Action transport</span><strong>gateway-turn</strong></div>
+        <div><span>Capabilities</span><strong>images, ascii, roll log</strong></div>
+        <div><span>Theme</span><strong>Reference Amber Noir</strong></div>
+      </div>,
+    },
+  ];
+
+  return <div className="overlay-content options-content"><SettingsWorkspace sections={sections} /></div>;
 }
 
 function VisualDirectionSettings({
