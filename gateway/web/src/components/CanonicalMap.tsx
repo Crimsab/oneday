@@ -4,19 +4,23 @@ import { normalizeKey, readyAssetUrl, type VisualCatalog } from "../visualAssets
 interface MapLocation { id: string; name: string; region_id?: string; description?: string; discovery_state?: string }
 interface MapEdge { id: string; from_location_id: string; to_location_id: string; direction?: string; travel_minutes?: number }
 
-export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, visuals }: { locationsValue: JsonValue; edgesValue: JsonValue; currentLocationId: string; visuals?: VisualCatalog }) {
+export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, visuals, expanded = false }: { locationsValue: JsonValue; edgesValue: JsonValue; currentLocationId: string; visuals?: VisualCatalog; expanded?: boolean }) {
   const locations = mapLocations(locationsValue);
   const locationIDs = new Set(locations.map((location) => location.id));
   const edges = mapEdges(edgesValue).filter((edge) => locationIDs.has(edge.from_location_id) && locationIDs.has(edge.to_location_id));
   if (locations.length === 0) return <p className="empty-copy">No canonical known locations are available for the map.</p>;
-  const columns = Math.min(3, Math.max(1, locations.length));
+  const columns = Math.min(expanded ? 4 : 3, Math.max(1, locations.length));
   const rows = Math.ceil(locations.length / columns);
-  const width = 660;
-  const height = Math.max(170, rows * 125);
-  const positions = new Map(locations.map((location, index) => [location.id, { x: 90 + (index % columns) * (480 / Math.max(1, columns - 1)), y: 65 + Math.floor(index / columns) * 120 }]));
+  const width = expanded ? 960 : 660;
+  const height = Math.max(expanded ? 420 : 190, 110 + rows * (expanded ? 150 : 125));
+  const horizontalSpan = width - (expanded ? 220 : 180);
+  const positions = new Map(locations.map((location, index) => [location.id, {
+    x: columns === 1 ? width / 2 : (expanded ? 110 : 90) + (index % columns) * (horizontalSpan / (columns - 1)),
+    y: (expanded ? 100 : 72) + Math.floor(index / columns) * (expanded ? 150 : 125),
+  }]));
   const backgroundUrl = readyAssetUrl(visuals?.mapBackground);
   return (
-    <div className={`canonical-map ${backgroundUrl ? "illustrated" : "graph-only"}`}>
+    <div className={`canonical-map ${backgroundUrl ? "illustrated" : "graph-only"} ${expanded ? "expanded" : ""}`}>
       {backgroundUrl && <img className="canonical-map-art" src={backgroundUrl} alt="" aria-hidden="true" />}
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Canonical map with ${locations.length} known locations and ${edges.length} known routes`}>
         {edges.map((edge) => { const from = positions.get(edge.from_location_id)!; const to = positions.get(edge.to_location_id)!; return <g key={edge.id}><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} /><text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 6}>{edge.direction || (edge.travel_minutes ? `${edge.travel_minutes} min` : "route")}</text></g>; })}

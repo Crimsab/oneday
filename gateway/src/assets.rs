@@ -1174,14 +1174,29 @@ pub async fn cleanup_visual_asset_files(
 }
 
 pub fn spawn_visual_generation_worker(state: Arc<AppState>) {
-    tokio::spawn(async move {
-        let Ok(_guard) = state.visual_worker.clone().try_lock_owned() else {
-            return;
-        };
-        if let Err(err) = run_visual_generation_worker(state).await {
-            tracing::warn!(error = %err, "visual generation worker stopped");
-        }
-    });
+    let concurrency = visual_generation_concurrency();
+    for worker in 0..concurrency {
+        let state = state.clone();
+        tokio::spawn(async move {
+            let Ok(_permit) = state.visual_workers.clone().try_acquire_owned() else {
+                return;
+            };
+            if let Err(err) = run_visual_generation_worker(state).await {
+                tracing::warn!(worker, error = %err, "visual generation worker stopped");
+            }
+        });
+    }
+}
+
+fn visual_generation_concurrency() -> usize {
+    parse_visual_generation_concurrency(std::env::var("ONEDAY_IMAGEGEN_CONCURRENCY").ok().as_deref())
+}
+
+fn parse_visual_generation_concurrency(value: Option<&str>) -> usize {
+    value
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .unwrap_or(2)
+        .clamp(1, 4)
 }
 
 pub fn spawn_visual_generation_maintenance(state: Arc<AppState>) {
@@ -3602,6 +3617,15 @@ mod tests {
             auto_generate: true,
             append_negative_prompt: true,
         }
+    }
+
+    #[test]
+    fn image_generation_concurrency_defaults_and_stays_bounded() {
+        assert_eq!(parse_visual_generation_concurrency(None), 2);
+        assert_eq!(parse_visual_generation_concurrency(Some("3")), 3);
+        assert_eq!(parse_visual_generation_concurrency(Some("0")), 1);
+        assert_eq!(parse_visual_generation_concurrency(Some("99")), 4);
+        assert_eq!(parse_visual_generation_concurrency(Some("invalid")), 2);
     }
 
     #[test]

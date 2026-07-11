@@ -39,6 +39,7 @@ import { MiniGameHost } from "./components/MiniGameHost";
 import { LeftRail } from "./components/LeftRail";
 import { PanelDrawer } from "./components/PanelDrawer";
 import { StoryPath } from "./components/StoryPath";
+import { StoryBranchControls } from "./components/StoryBranchControls";
 import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
@@ -263,6 +264,41 @@ function App() {
 	const forkBranch = (name:string) => timeline?.head ? mutateTimeline({action:"fork",client_revision:snapshot?.version.revision ?? timeline.revision,from_commit_id:timeline.head.id,name}) : Promise.resolve();
 	const renameBranch = (branchId:string,name:string) => mutateTimeline({action:"rename",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId,name});
   const checkoutBranch = (branchId:string) => mutateTimeline({action:"checkout",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId});
+
+  const revisitPreviousChoice = async () => {
+    if (!storyId || !snapshot || !timeline?.head?.parent_commit_id || storyMutatingId) return;
+    const fromCommitId = timeline.head.parent_commit_id;
+    const siblingCount = timeline.branches.filter((branch) => branch.fork_commit_id === fromCommitId).length;
+    const name = `Turn ${Math.max(0, timeline.head.canonical_turn - 1)} alternative ${siblingCount + 1}`;
+    setStoryMutatingId(storyId);
+    try {
+      const forked = await updateTimeline(storyId, {
+        action: "fork",
+        client_revision: snapshot.version.revision,
+        from_commit_id: fromCommitId,
+        name,
+      });
+      const branch = forked.timeline.branches.find((item) => item.fork_commit_id === fromCommitId && item.name === name);
+      if (!branch) throw new Error("The alternative branch was created but could not be selected.");
+      const checkedOut = await updateTimeline(storyId, {
+        action: "checkout",
+        client_revision: forked.timeline.revision,
+        branch_id: branch.id,
+      });
+      setTimeline(checkedOut.timeline);
+      setSnapshot(checkedOut.snapshot);
+      setLiveTurnEvents([]);
+      setPendingTurn(null);
+      pendingActionIdentity.current = null;
+      setNotice(`Back at the previous decision on ${name}.`);
+    } catch (error) {
+      setNotice(actionErrorMessage(error));
+      await loadSnapshot().catch(() => undefined);
+      void getTimeline(storyId).then(setTimeline).catch(() => undefined);
+    } finally {
+      setStoryMutatingId("");
+    }
+  };
 
   useEffect(() => {
     if (!storyId || paused) {
@@ -1218,9 +1254,17 @@ function App() {
             />
           </section>
 
-          {snapshot && snapshot.choices.length > 0 && (
+          {snapshot && (
             <section className="inline-choice-panel" aria-label="Suggested actions">
-              <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} onChoice={sendChoice} onDraft={setDraft} />
+              {snapshot.choices.length > 0 && (
+                <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} onChoice={sendChoice} onDraft={setDraft} />
+              )}
+              <StoryBranchControls
+                timeline={timeline}
+                busy={sending || Boolean(storyMutatingId)}
+                onCheckout={checkoutBranch}
+                onRevisitChoice={revisitPreviousChoice}
+              />
             </section>
           )}
 
@@ -1262,7 +1306,7 @@ function App() {
         modelError={modelSettingsError}
         modelBusy={modelSaving}
         visualProfile={visualAssets?.profile ?? null}
-        visualAssets={visualAssets?.assets ?? []}
+        visualAssets={visuals.assets}
         visualJobs={visualAssets?.jobs ?? []}
         visuals={visuals}
         visualAssetFocusId={visualAssetFocusId}

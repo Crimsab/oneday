@@ -431,7 +431,10 @@ function VisualDirectionSettings({
   const activeJobs = jobs.filter(
     (job) => job.status === "queued" || job.status === "running",
   );
-  const visibleJobs = jobs.slice(0, 6);
+  const visibleJobs = [
+    ...activeJobs,
+    ...jobs.filter((job) => job.status !== "queued" && job.status !== "running"),
+  ].filter((job, index, list) => list.findIndex((item) => item.id === job.id) === index).slice(0, 4);
   const selectedAsset = useMemo(
     () =>
       assets.find((asset) => asset.id === selectedAssetId) ??
@@ -688,16 +691,11 @@ function VisualDirectionSettings({
                     attempt {job.attempts}/{job.max_attempts || 1}
                     {job.provider ? ` - ${job.provider}` : ""}
                   </small>
-                  <button
-                    type="button"
-                    onClick={() => void cancelJob(job.id)}
-                    disabled={
-                      busy ||
-                      !(job.status === "queued" || job.status === "running")
-                    }
-                  >
-                    Cancel
-                  </button>
+                  {(job.status === "queued" || job.status === "running") && (
+                    <button type="button" onClick={() => void cancelJob(job.id)} disabled={busy}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
               ))}
             </div>

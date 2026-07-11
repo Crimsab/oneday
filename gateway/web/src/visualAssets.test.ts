@@ -21,6 +21,16 @@ describe("visual canon selection", () => {
     expect(readyAssetUrl(selected)).toBe("");
   });
 
+  it("uses a ready legacy image while a non-invalidating canonical replacement is still gated", () => {
+    const legacyReady = asset({ id: "legacy", canonical_entity_id: "", entity_id: "", gate_state: "legacy", status: "ready", url: "/legacy.png" });
+    const observing = asset({ id: "observing", gate_state: "insufficient_observation", generation_eligible: false, status: "pending", url: "" });
+    const catalog = visualCatalog(response([legacyReady, observing]), snapshot());
+
+    expect(characterAsset(catalog, npc())?.id).toBe("legacy");
+    expect(readyAssetUrl(characterAsset(catalog, npc()))).toBe("/legacy.png");
+    expect(catalog.assets).toHaveLength(1);
+  });
+
   it("catalogs the generated map art by canonical location", () => {
     const background = asset({ id: "map", kind: "map_background", entity_id: "", canonical_entity_id: "", status: "ready", url: "/map.png" });
     const icon = asset({ id: "harbor-icon", kind: "map_icon", subject: "Harbor", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-harbor", status: "ready", url: "/harbor.png" });

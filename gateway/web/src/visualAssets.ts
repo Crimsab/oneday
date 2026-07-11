@@ -59,7 +59,7 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
 
   return {
     profile: response.profile,
-    assets: response.assets,
+    assets: dedupeVisualAssets(response.assets),
     location,
     characters,
     mapBackground,
@@ -68,7 +68,10 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
 }
 
 export function characterAsset(catalog: VisualCatalog, npc: RecordView): VisualAsset | null {
-  return catalog.characters.get(normalizeKey(npc.id)) ?? catalog.characters.get(normalizeKey(npc.name)) ?? null;
+  return bestCanonicalAsset([
+    catalog.characters.get(normalizeKey(npc.id)),
+    catalog.characters.get(normalizeKey(npc.name)),
+  ].filter((asset): asset is VisualAsset => Boolean(asset)));
 }
 
 export function readyAssetUrl(asset: VisualAsset | null | undefined): string {
@@ -87,6 +90,19 @@ function bestCanonicalAsset(assets: VisualAsset[]): VisualAsset | null {
   );
 }
 
+function dedupeVisualAssets(assets: VisualAsset[]): VisualAsset[] {
+  const selected = new Map<string, VisualAsset>();
+  for (const asset of assets) {
+    const identity = normalizeKey(
+      asset.subject || asset.canonical_entity_id || asset.canonical_location_id || asset.entity_id,
+    );
+    const key = `${asset.kind}:${identity || asset.id}`;
+    const current = selected.get(key);
+    if (!current || canonicalAssetScore(asset) > canonicalAssetScore(current)) selected.set(key, asset);
+  }
+  return [...selected.values()];
+}
+
 function canonicalAssetScore(asset: VisualAsset): number {
   const gatePriority: Record<string, number> = {
     identity_contradiction: 120,
@@ -101,5 +117,9 @@ function canonicalAssetScore(asset: VisualAsset): number {
     insufficient_canon: 50,
     insufficient_observation: 40,
   };
-  return (gatePriority[asset.gate_state] ?? 0) * 100 + (asset.generation_eligible ? 10 : 0) + (asset.status === "ready" ? 1 : 0);
+  const invalidatesEarlierArt = asset.status !== "ready" && ["identity_contradiction", "form_changed"].includes(asset.gate_state);
+  const ready = asset.status === "ready" && Boolean(asset.url);
+  return (invalidatesEarlierArt ? 200_000 : ready ? 100_000 : 0)
+    + (gatePriority[asset.gate_state] ?? 0) * 100
+    + (asset.generation_eligible ? 10 : 0);
 }

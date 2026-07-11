@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { getMessageDiagnostics } from "../api";
 import type { GenerationDiagnostics, JsonValue, MessageView } from "../types";
 
@@ -11,6 +12,10 @@ export function MessageDiagnostics({ message }: { message: MessageView }) {
   const [error, setError] = useState("");
 
   if (message.role !== "assistant" || (!summary && !hasRun)) return null;
+
+  if (!hasRun) {
+    return <div className="generation-diagnostics-inline" aria-label="Generation debug summary">{summary}</div>;
+  }
 
   const load = async () => {
     if (!hasRun || loading || diagnostics) return;
@@ -30,24 +35,12 @@ export function MessageDiagnostics({ message }: { message: MessageView }) {
       if (event.currentTarget.open) void load();
     }}>
       <summary>
-        <span>Technical details</span>
-        <small>{hasRun ? "Full run" : "Summary"}</small>
+        <span>{summary || "Generation trace"}</span>
+        <ChevronDown size={13} aria-hidden="true" />
       </summary>
       {loading && <p className="diagnostics-state">Loading diagnostics…</p>}
       {error && <p className="inline-error" role="alert">Diagnostics unavailable: {error}</p>}
       {diagnostics && <DiagnosticsBody diagnostics={diagnostics} />}
-      {!diagnostics && !loading && summary && (
-        <div className="diagnostics-body">
-          <div className="diagnostics-run diagnostics-summary">
-            <span>{summary}</span>
-          </div>
-          {!hasRun && (
-            <p className="diagnostics-state">
-              Extended provider attempts were not recorded for this message.
-            </p>
-          )}
-        </div>
-      )}
     </details>
   );
 }
@@ -58,7 +51,10 @@ function DiagnosticsBody({ diagnostics }: { diagnostics: GenerationDiagnostics }
       <div className="diagnostics-run">
         <span><strong>{diagnostics.stage}</strong> · {diagnostics.status}</span>
         <span>{diagnostics.prompt_profile || "unprofiled"} rev {diagnostics.prompt_revision}</span>
-        <span>{formatDuration(diagnostics.duration_ms)} · {formatTokens(diagnostics.usage.total_tokens)}</span>
+        <span>Total {formatDuration(diagnostics.duration_ms)}</span>
+        <span>TTFT {formatDuration(diagnostics.ttft_ms)}</span>
+        <span>{formatTokens(diagnostics.usage.total_tokens)}</span>
+        <span>{diagnostics.observed_streaming ? "streamed" : "not streamed"}</span>
       </div>
       <ol className="diagnostics-attempts" aria-label="Provider attempts">
         {diagnostics.attempts.map((attempt) => (
