@@ -55,6 +55,7 @@ func (db *DB) migrate() error {
 		{32, migrationV32},
 		{33, migrationV33},
 		{34, migrationV34},
+		{35, migrationV35},
 	}
 
 	for _, m := range migrations {
@@ -1241,6 +1242,169 @@ CREATE TRIGGER IF NOT EXISTS trg_minigame_instance_lineage_immutable
 BEFORE UPDATE ON minigame_instances
 WHEN OLD.story_id!=NEW.story_id OR OLD.branch_id!=NEW.branch_id OR OLD.source_commit_id!=NEW.source_commit_id OR OLD.kind!=NEW.kind OR OLD.protocol_version!=NEW.protocol_version
 BEGIN SELECT RAISE(ABORT,'minigame lineage is immutable'); END;
+`
+
+const migrationV35 = `
+CREATE TABLE IF NOT EXISTS story_tts_settings (
+	story_id TEXT PRIMARY KEY REFERENCES stories(id) ON DELETE CASCADE,
+	mode TEXT NOT NULL DEFAULT 'off' CHECK(mode IN ('off','narrator','dialogue','all')),
+	autoplay INTEGER NOT NULL DEFAULT 0 CHECK(autoplay IN (0,1)),
+	default_language_tag TEXT NOT NULL DEFAULT '',
+	provider_policy_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(provider_policy_json)),
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS voice_profiles (
+	id TEXT PRIMARY KEY,
+	provider TEXT NOT NULL,
+	model TEXT NOT NULL,
+	provider_voice_id TEXT NOT NULL,
+	display_name TEXT NOT NULL,
+	language_tags_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(language_tags_json)),
+	traits_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(traits_json)),
+	rights_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(rights_json)),
+	version TEXT NOT NULL DEFAULT '',
+	style_family TEXT NOT NULL DEFAULT 'neutral',
+	enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(provider,model,provider_voice_id,version,style_family)
+);
+
+CREATE TABLE IF NOT EXISTS character_voice_assignments (
+	id TEXT PRIMARY KEY,
+	assignment_key TEXT NOT NULL,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	entity_id TEXT,
+	identity_id TEXT,
+	form_id TEXT,
+	role TEXT NOT NULL CHECK(role IN ('narrator','protagonist','npc')),
+	voice_profile_id TEXT NOT NULL REFERENCES voice_profiles(id),
+	enabled_mode TEXT NOT NULL DEFAULT 'inherit' CHECK(enabled_mode IN ('inherit','on','off')),
+	language_tag TEXT NOT NULL DEFAULT '',
+	style_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(style_json)),
+	locked INTEGER NOT NULL DEFAULT 0 CHECK(locked IN (0,1)),
+	importance TEXT NOT NULL DEFAULT 'supporting' CHECK(importance IN ('major','supporting','minor')),
+	allow_duplicate INTEGER NOT NULL DEFAULT 0 CHECK(allow_duplicate IN (0,1)),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id,assignment_key)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_major_voice_unique
+	ON character_voice_assignments(story_id,voice_profile_id)
+	WHERE importance='major' AND allow_duplicate=0 AND enabled_mode!='off';
+CREATE INDEX IF NOT EXISTS idx_voice_assignments_story
+	ON character_voice_assignments(story_id,role,entity_id,form_id);
+
+CREATE TABLE IF NOT EXISTS pronunciation_lexicon (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	language_tag TEXT NOT NULL,
+	source_text TEXT NOT NULL,
+	pronunciation TEXT NOT NULL,
+	alphabet TEXT NOT NULL DEFAULT 'ipa' CHECK(alphabet IN ('ipa','x-sampa','provider')),
+	case_sensitive INTEGER NOT NULL DEFAULT 0 CHECK(case_sensitive IN (0,1)),
+	revision INTEGER NOT NULL DEFAULT 1 CHECK(revision > 0),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id,language_tag,source_text,case_sensitive)
+);
+
+CREATE TABLE IF NOT EXISTS tts_cache_entries (
+	cache_key TEXT PRIMARY KEY,
+	provider TEXT NOT NULL,
+	model TEXT NOT NULL,
+	provider_voice_id TEXT NOT NULL,
+	voice_version TEXT NOT NULL DEFAULT '',
+	language_tag TEXT NOT NULL,
+	text_hash TEXT NOT NULL,
+	style_hash TEXT NOT NULL,
+	style_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(style_json)),
+	speed REAL NOT NULL DEFAULT 1.0 CHECK(speed BETWEEN 0.25 AND 4.0),
+	output_format TEXT NOT NULL CHECK(output_format IN ('mp3','opus','wav','aac','flac','pcm')),
+	status TEXT NOT NULL CHECK(status IN ('pending','ready','failed','invalidated')),
+	file_path TEXT NOT NULL DEFAULT '',
+	duration_ms INTEGER NOT NULL DEFAULT 0 CHECK(duration_ms >= 0),
+	timings_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(timings_json)),
+	error TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tts_cache_identity
+	ON tts_cache_entries(provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,speed,output_format);
+
+CREATE TABLE IF NOT EXISTS audio_assets (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	branch_id TEXT NOT NULL REFERENCES story_branches(id) ON DELETE CASCADE,
+	source_commit_id TEXT NOT NULL REFERENCES turn_commits(id),
+	source_message_id INTEGER NOT NULL REFERENCES chat_messages(id) ON DELETE CASCADE,
+	segment_index INTEGER NOT NULL CHECK(segment_index >= 0),
+	segment_kind TEXT NOT NULL CHECK(segment_kind IN ('narrator','dialogue')),
+	speaker_entity_id TEXT,
+	identity_id TEXT,
+	form_id TEXT,
+	voice_profile_id TEXT NOT NULL REFERENCES voice_profiles(id),
+	provider TEXT NOT NULL,
+	model TEXT NOT NULL,
+	provider_voice_id TEXT NOT NULL,
+	voice_version TEXT NOT NULL DEFAULT '',
+	language_tag TEXT NOT NULL,
+	pronunciation_revision INTEGER NOT NULL DEFAULT 0 CHECK(pronunciation_revision >= 0),
+	text TEXT NOT NULL,
+	text_hash TEXT NOT NULL,
+	cache_key TEXT NOT NULL,
+	style_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(style_json)),
+	speed REAL NOT NULL DEFAULT 1.0 CHECK(speed BETWEEN 0.25 AND 4.0),
+	output_format TEXT NOT NULL CHECK(output_format IN ('mp3','opus','wav','aac','flac','pcm')),
+	status TEXT NOT NULL CHECK(status IN ('pending','queued','running','ready','failed','cancelled','invalidated')),
+	url TEXT NOT NULL DEFAULT '',
+	file_path TEXT NOT NULL DEFAULT '',
+	duration_ms INTEGER NOT NULL DEFAULT 0 CHECK(duration_ms >= 0),
+	timings_json TEXT NOT NULL DEFAULT '[]' CHECK(json_valid(timings_json)),
+	generation_run_id TEXT REFERENCES generation_runs(id),
+	error TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id,branch_id,source_message_id,segment_index,voice_profile_id,cache_key)
+);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_lineage_v35
+	ON audio_assets(story_id,branch_id,source_commit_id,source_message_id,segment_index);
+CREATE INDEX IF NOT EXISTS idx_audio_assets_cache
+	ON audio_assets(cache_key,status);
+
+CREATE TABLE IF NOT EXISTS tts_jobs (
+	id TEXT PRIMARY KEY,
+	audio_asset_id TEXT NOT NULL UNIQUE REFERENCES audio_assets(id) ON DELETE CASCADE,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	branch_id TEXT NOT NULL REFERENCES story_branches(id) ON DELETE CASCADE,
+	source_commit_id TEXT NOT NULL REFERENCES turn_commits(id),
+	status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
+	provider TEXT NOT NULL,
+	attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts >= 0),
+	max_attempts INTEGER NOT NULL DEFAULT 3 CHECK(max_attempts BETWEEN 1 AND 10),
+	next_attempt_at DATETIME,
+	trace_id TEXT NOT NULL DEFAULT '',
+	parent_run_id TEXT,
+	generation_run_id TEXT REFERENCES generation_runs(id),
+	error_class TEXT NOT NULL DEFAULT '',
+	error TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tts_jobs_queue
+	ON tts_jobs(status,next_attempt_at,created_at);
+CREATE INDEX IF NOT EXISTS idx_tts_jobs_lineage
+	ON tts_jobs(story_id,branch_id,source_commit_id,created_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_audio_asset_lineage_immutable
+BEFORE UPDATE ON audio_assets
+WHEN OLD.story_id!=NEW.story_id OR OLD.branch_id!=NEW.branch_id OR OLD.source_commit_id!=NEW.source_commit_id OR OLD.source_message_id!=NEW.source_message_id OR OLD.segment_index!=NEW.segment_index
+BEGIN SELECT RAISE(ABORT,'audio asset lineage is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS trg_tts_job_lineage_immutable
+BEFORE UPDATE ON tts_jobs
+WHEN OLD.story_id!=NEW.story_id OR OLD.branch_id!=NEW.branch_id OR OLD.source_commit_id!=NEW.source_commit_id OR OLD.audio_asset_id!=NEW.audio_asset_id
+BEGIN SELECT RAISE(ABORT,'tts job lineage is immutable'); END;
 `
 
 const migrationV32 = `
