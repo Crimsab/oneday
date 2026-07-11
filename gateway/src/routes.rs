@@ -63,6 +63,10 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(select_visual_asset_version),
         )
         .route(
+            "/api/stories/:story_id/visual-assets/:asset_id/selection/:action",
+            post(step_visual_asset_selection),
+        )
+        .route(
             "/api/stories/:story_id/visual-assets/generate",
             post(generate_visual_assets),
         )
@@ -360,6 +364,15 @@ async fn select_visual_asset_version(
 ) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
     Ok(Json(
         assets::select_asset_version(&state.pool, &story_id, &asset_id, version_id).await?,
+    ))
+}
+
+async fn step_visual_asset_selection(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, asset_id, action)): Path<(String, String, String)>,
+) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
+    Ok(Json(
+        assets::step_asset_selection(&state.pool, &story_id, &asset_id, &action).await?,
     ))
 }
 
@@ -690,6 +703,9 @@ impl From<anyhow::Error> for ApiError {
             || message.contains("image generation provider is not configured")
             || message.contains("story brief is required")
             || message.contains("character name is required")
+            || message.contains("no earlier visual selection")
+            || message.contains("no later visual selection")
+            || message.contains("visual selection action")
             || message.contains("invalid gateway-model-settings-update JSON");
         let is_conflict = message.contains("stale client_turn")
             || message.contains("stale client_revision")

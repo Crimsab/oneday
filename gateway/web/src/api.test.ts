@@ -14,6 +14,7 @@ import {
   getTelemetryExport,
   getStoryDeletePlan,
   getTimeline,
+  stepVisualAssetSelection,
   updateTimeline,
   updateStory,
 } from "./api";
@@ -205,6 +206,15 @@ describe("api request handling", () => {
     mockFetch(new Response(JSON.stringify({ format: "jsonl", filename: "telemetry.jsonl", content: "", count: 0, truncated: false }), { status: 200 }));
     await expect(getTelemetryExport("story/one", 250)).resolves.toMatchObject({ format: "jsonl", count: 0 });
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/telemetry/export?limit=250", {});
+  });
+
+  it("steps branch-local visual selection history", async () => {
+    mockFetch(new Response(JSON.stringify({ profile: {}, assets: [], jobs: [] }), { status: 200 }));
+    await stepVisualAssetSelection("story/one", "asset one", "undo");
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story%2Fone/visual-assets/asset%20one/selection/undo",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("rejects successful non-JSON responses before they crash React state", async () => {

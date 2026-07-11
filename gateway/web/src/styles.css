@@ -3351,6 +3351,28 @@ input:disabled {
   white-space: nowrap;
 }
 
+.visual-lineage-note {
+  display: grid;
+  gap: 4px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 58%, var(--line));
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.visual-lineage-note strong {
+  color: var(--text);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.visual-lineage-note small {
+  color: var(--faint);
+}
+
 .visual-asset-editor label {
   min-width: 0;
   display: grid;

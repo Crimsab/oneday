@@ -22,6 +22,7 @@ import {
   loadSave,
   runStoryWizard,
   selectVisualAssetVersion,
+  stepVisualAssetSelection,
   submitAction,
   submitMeta,
   updateStory,
@@ -1021,6 +1022,24 @@ function App() {
     }
   }, [storyId]);
 
+  const stepVisualSelection = useCallback(async (assetId: string, action: "undo" | "redo") => {
+    if (!storyId) return;
+    setVisualProfileSaving(true);
+    setNotice("");
+    try {
+      const nextAssets = await stepVisualAssetSelection(storyId, assetId, action);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+      setNotice(`Visual selection ${action === "undo" ? "undone" : "restored"}.`);
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualProfileSaving(false);
+    }
+  }, [storyId]);
+
   const openVisualAssetEditor = useCallback((assetId: string) => {
     setVisualAssetFocusId(assetId);
     setOverlay("options");
@@ -1181,6 +1200,7 @@ function App() {
         onVisualAssetVersionsLoad={loadVisualAssetVersions}
         onVisualAssetPromptSave={saveVisualAssetPrompt}
         onVisualAssetVersionSelect={chooseVisualAssetVersion}
+        onVisualAssetSelectionStep={stepVisualSelection}
         onRunStoryWizard={(payload) => runBrowserStoryWizard(payload)}
         onEnhanceStoryText={(payload) => runBrowserStoryEnhance(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}

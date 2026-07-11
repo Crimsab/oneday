@@ -415,7 +415,12 @@ export type VisualAssetStatus =
 export type VisualAssetKind = "location" | "character" | "world" | string;
 
 export interface VisualProfile {
+  id: string;
   story_id: string;
+  revision: number;
+  fingerprint: string;
+  branch_id: string;
+  source_commit_id: string;
   world_style_prompt: string;
   character_style_prompt: string;
   negative_prompt: string;
@@ -429,6 +434,16 @@ export interface VisualAsset {
   kind: VisualAssetKind;
   subject: string;
   entity_id: string;
+  canonical_entity_id: string;
+  canonical_location_id: string;
+  form_id: string;
+  lineage_key: string;
+  appearance_fingerprint: string;
+  profile_revision_id: string;
+  canon_status: string;
+  gate_state: string;
+  gate_reason: string;
+  generation_eligible: boolean;
   prompt: string;
   negative_prompt: string;
   status: VisualAssetStatus | string;
@@ -437,6 +452,12 @@ export interface VisualAsset {
   source: string;
   error: string;
   turn: number;
+  branch_id: string;
+  source_commit_id: string;
+  selected_version_id?: number | null;
+  can_undo_selection: boolean;
+  can_redo_selection: boolean;
+  inherited: boolean;
   updated_at: string;
 }
 
@@ -446,12 +467,20 @@ export interface VisualAssetVersion {
   story_id: string;
   kind: VisualAssetKind;
   subject: string;
+  canonical_entity_id: string;
+  canonical_location_id: string;
+  form_id: string;
+  appearance_fingerprint: string;
+  profile_revision_id: string;
+  canon_status: string;
   url: string;
   prompt: string;
   revised_prompt: string;
   negative_prompt: string;
   provider: string;
   turn: number;
+  branch_id: string;
+  source_commit_id: string;
   created_at: string;
 }
 
@@ -459,6 +488,11 @@ export interface VisualGenerationJobView {
   id: number;
   asset_id: string;
   story_id: string;
+  canonical_entity_id: string;
+  canonical_location_id: string;
+  form_id: string;
+  appearance_fingerprint: string;
+  profile_revision_id: string;
   status: string;
   attempts: number;
   max_attempts: number;
@@ -469,6 +503,8 @@ export interface VisualGenerationJobView {
   finished_at: string;
   created_at: string;
   updated_at: string;
+  branch_id: string;
+  source_commit_id: string;
 }
 
 export interface VisualAssetsResponse {
@@ -491,6 +527,7 @@ export interface VisualAssetCleanupResponse {
 export interface GenerateVisualAssetsRequest {
   asset_ids?: string[];
   force?: boolean;
+  allow_silhouette?: boolean;
   limit?: number;
 }
 

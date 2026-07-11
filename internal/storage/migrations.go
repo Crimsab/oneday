@@ -1435,6 +1435,9 @@ CREATE TABLE IF NOT EXISTS visual_asset_branch_overrides (
 	gate_state TEXT NOT NULL DEFAULT '',
 	gate_reason TEXT NOT NULL DEFAULT '',
 	generation_eligible INTEGER CHECK(generation_eligible IN (0,1)),
+	status_override TEXT NOT NULL DEFAULT '',
+	error_override TEXT NOT NULL DEFAULT '',
+	provider_override TEXT NOT NULL DEFAULT '',
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 	PRIMARY KEY(asset_id,branch_id)
