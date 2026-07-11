@@ -34,7 +34,11 @@ const timeline = {
 function visualResponse(canUndo = true, canRedo = false) {
   return {
     profile: { id: "profile-1", story_id: story.id, revision: 3, fingerprint: "profile-fingerprint", branch_id: "branch-main", source_commit_id: "commit-4", world_style_prompt: "Glass and brass", character_style_prompt: "Grounded portrait", negative_prompt: "", palette: "amber", updated_at: now },
-    assets: [{ id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", entity_id: "npc-mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", lineage_key: "npc-mira:form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "form_changed", gate_reason: "Mira's restored form has not been rendered on this branch.", generation_eligible: true, prompt: "Mira restored portrait", negative_prompt: "", status: "pending", url: "", provider: "", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: 21, can_undo_selection: canUndo, can_redo_selection: canRedo, inherited: false, updated_at: now }],
+    assets: [
+      { id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", entity_id: "npc-mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", lineage_key: "npc-mira:form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "form_changed", gate_reason: "Mira's restored form has not been rendered on this branch.", generation_eligible: true, prompt: "Mira restored portrait", negative_prompt: "", status: "pending", url: "", provider: "", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: 21, can_undo_selection: canUndo, can_redo_selection: canRedo, inherited: false, updated_at: now },
+      { id: "map-background", story_id: story.id, kind: "map_background", subject: "Known world", entity_id: "", canonical_entity_id: "", canonical_location_id: "", form_id: "", lineage_key: "map:branch-main", appearance_fingerprint: "map-v1", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "established_canonical", gate_reason: "Known map topology", generation_eligible: true, prompt: "Decorative map", negative_prompt: "", status: "ready", url: "/assets/map.png", provider: "mock", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: null, can_undo_selection: false, can_redo_selection: false, inherited: false, updated_at: now },
+      { id: "archive-icon", story_id: story.id, kind: "map_icon", subject: "Glass Archive", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-archive", form_id: "", lineage_key: "map-icon:loc-archive", appearance_fingerprint: "archive-v1", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "established_canonical", gate_reason: "Known location", generation_eligible: true, prompt: "Archive icon", negative_prompt: "", status: "ready", url: "/assets/archive.png", provider: "mock", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: null, can_undo_selection: false, can_redo_selection: false, inherited: false, updated_at: now },
+    ],
     jobs: [],
   };
 }
@@ -286,6 +290,9 @@ test("renders only canonical known map topology and bounded agency events", asyn
   await expect(map).toBeVisible();
   await expect(map.getByText("Glass Archive", { exact: true })).toBeVisible();
   await expect(map.getByText("Outer Court", { exact: true })).toBeVisible();
+  await expect(page.locator(".canonical-map:visible")).toHaveClass(/illustrated/);
+  await expect(page.locator('.canonical-map:visible > img.canonical-map-art')).toHaveAttribute("src", "/assets/map.png");
+  await expect(map.locator('image[href="/assets/archive.png"]')).toHaveCount(1);
 });
 
 test("generates committed audio and exposes per-story and per-character voice controls", async ({ page }) => {

@@ -5,6 +5,8 @@ export interface VisualCatalog {
   assets: VisualAsset[];
   location: VisualAsset | null;
   characters: Map<string, VisualAsset>;
+  mapBackground: VisualAsset | null;
+  mapIcons: Map<string, VisualAsset>;
 }
 
 export const emptyVisualCatalog: VisualCatalog = {
@@ -12,6 +14,8 @@ export const emptyVisualCatalog: VisualCatalog = {
   assets: [],
   location: null,
   characters: new Map(),
+  mapBackground: null,
+  mapIcons: new Map(),
 };
 
 export function visualCatalog(response: VisualAssetsResponse | null, snapshot: StorySnapshot | null): VisualCatalog {
@@ -27,6 +31,7 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
   const location = bestCanonicalAsset(exactLocations.length ? exactLocations : locationCandidates);
 
   const characters = new Map<string, VisualAsset>();
+  const mapIcons = new Map<string, VisualAsset>();
   for (const asset of response.assets) {
     if (asset.kind !== "character") continue;
     const key = normalizeKey(asset.canonical_entity_id || asset.entity_id || asset.subject);
@@ -36,6 +41,15 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
       characters.set(key, asset);
     }
   }
+
+  for (const asset of response.assets) {
+    if (asset.kind !== "map_icon" || asset.status !== "ready") continue;
+    const key = normalizeKey(asset.canonical_location_id || asset.subject);
+    if (!key) continue;
+    const existing = mapIcons.get(key);
+    if (!existing || canonicalAssetScore(asset) > canonicalAssetScore(existing)) mapIcons.set(key, asset);
+  }
+  const mapBackground = bestCanonicalAsset(response.assets.filter((asset) => asset.kind === "map_background"));
 
   for (const npc of snapshot?.panels.npcs ?? []) {
     const byId = characters.get(normalizeKey(npc.id));
@@ -48,6 +62,8 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
     assets: response.assets,
     location,
     characters,
+    mapBackground,
+    mapIcons,
   };
 }
 

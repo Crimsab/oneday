@@ -66,10 +66,20 @@ game state.
 - Shared model/provider editor for Options, including provider priority,
   provider enablement, narrative/provider models, utility, repair, image/ascii,
   embedding, Codex reasoning, and planned TTS status.
+- Large searchable Options workspace with category sidebar for interface,
+  gameplay policy, spoken audio, visual/map generation, models, and runtime.
+- Automatic browser challenge host: the narrator signals a situation, the Go
+  engine selects a timing-free mechanic from narrative semantics and recent
+  branch history, and the resolved result returns through the canonical turn
+  bridge. The player never chooses the challenge family.
+- Canonical known-location map with an optional generated background and
+  generated location symbols. SVG topology, labels, current location, and
+  accessibility remain authoritative when art is missing or pending.
 
 ## Non-Goals
 
 - The Rust gateway does not reimplement narrator prompts, combat math, crafting,
   or persistence logic already owned by the Go engine.
-- The browser UI does not fake terminal-only subgames. It shows their canonical
-  state and routes gameplay inputs through the shared turn bridge.
+- The browser UI does not invent or manually launch challenge state. It renders
+  branch-scoped minigames selected by the Go engine and routes their result
+  through the shared turn bridge.
