@@ -177,11 +177,13 @@ func (db *DB) GetLatestAssistantMessageByStory(storyID string) (*ChatMessage, er
 		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at, branch_id, source_commit_id
          FROM chat_messages
          WHERE story_id = ?
+           AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
+           AND source_commit_id!=''
            AND role = 'assistant'
            AND message_type NOT IN ('narrator', 'combat_summary')
          ORDER BY turn DESC, id DESC
          LIMIT 1`,
-		storyID,
+		storyID, storyID,
 	)
 	var m ChatMessage
 	if err := row.Scan(
@@ -195,6 +197,21 @@ func (db *DB) GetLatestAssistantMessageByStory(storyID string) (*ChatMessage, er
 		return nil, fmt.Errorf("getting latest assistant message for story %s: %w", storyID, err)
 	}
 	return &m, nil
+}
+
+func (db *DB) GetCommittedAssistantMessage(storyID string, messageID int64) (*ChatMessage, error) {
+	row := db.conn.QueryRow(
+		`SELECT id, session_id, story_id, turn, role, content, message_type, metadata_json, created_at, branch_id, source_commit_id
+		 FROM chat_messages
+		 WHERE story_id=? AND id=? AND role='assistant' AND source_commit_id!=''
+		   AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)`,
+		storyID, messageID, storyID,
+	)
+	var message ChatMessage
+	if err := row.Scan(&message.ID, &message.SessionID, &message.StoryID, &message.Turn, &message.Role, &message.Content, &message.MessageType, &message.MetadataJSON, &message.CreatedAt, &message.BranchID, &message.SourceCommitID); err != nil {
+		return nil, err
+	}
+	return &message, nil
 }
 
 // GetStoryMessagesByTurnRange returns all messages for a story within a turn range [turnStart, turnEnd],

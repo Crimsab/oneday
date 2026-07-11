@@ -16,6 +16,7 @@ import (
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/providers"
 	"github.com/crimsab/oneday/internal/aifactory"
+	audioservice "github.com/crimsab/oneday/internal/audio"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/game/contracts"
@@ -725,6 +726,12 @@ func (s *InProcessTurnService) newNarrator(storyID string) (*engine.Narrator, *e
 		s.cfg.Game.AutosaveEvery,
 	)
 	narrator.SetRAG(s.buildRAG(storyID))
+	audio := audioservice.NewService(s.db, s.cfg.AI.TTS)
+	_, _ = audio.EnsureConfiguredVoiceProfiles()
+	narrator.SetCommittedAudioQueue(func(ctx context.Context, storyID string, messageID int64) error {
+		_, err := audio.QueueCommittedMessage(ctx, storyID, messageID)
+		return err
+	})
 	return narrator, session, nil
 }
 

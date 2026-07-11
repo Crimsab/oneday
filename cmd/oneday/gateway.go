@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/crimsab/oneday/internal/ai"
+	audioservice "github.com/crimsab/oneday/internal/audio"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/game/contracts"
@@ -518,6 +519,12 @@ func startCreatedStory(ctx context.Context, cfg config.Config, db *storage.DB, r
 		cfg.DataDir,
 		cfg.Game.AutosaveEvery,
 	)
+	audio := audioservice.NewService(db, cfg.AI.TTS)
+	_, _ = audio.EnsureConfiguredVoiceProfiles()
+	narrator.SetCommittedAudioQueue(func(ctx context.Context, storyID string, messageID int64) error {
+		_, err := audio.QueueCommittedMessage(ctx, storyID, messageID)
+		return err
+	})
 	stream, err := narrator.StartNarrationStream(ctx)
 	if err != nil {
 		return "", err

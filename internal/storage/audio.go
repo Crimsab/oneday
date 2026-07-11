@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -371,6 +372,220 @@ func (db *DB) GetPronunciation(storyID, languageTag, sourceText string, caseSens
 		Scan(&entry.ID, &entry.StoryID, &entry.LanguageTag, &entry.SourceText, &entry.Pronunciation, &entry.Alphabet, &sensitive, &entry.Revision, &entry.CreatedAt, &entry.UpdatedAt)
 	entry.CaseSensitive = sensitive == 1
 	return &entry, err
+}
+
+func (db *DB) ListPronunciations(storyID, languageTag string) ([]PronunciationEntry, error) {
+	query := `SELECT id,story_id,language_tag,source_text,pronunciation,alphabet,case_sensitive,revision,created_at,updated_at FROM pronunciation_lexicon WHERE story_id=?`
+	args := []any{storyID}
+	if normalized := normalizeLanguageTag(languageTag); normalized != "" {
+		query += ` AND language_tag=?`
+		args = append(args, normalized)
+	}
+	query += ` ORDER BY length(source_text) DESC,source_text`
+	rows, err := db.conn.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []PronunciationEntry{}
+	for rows.Next() {
+		var entry PronunciationEntry
+		var sensitive int
+		if err := rows.Scan(&entry.ID, &entry.StoryID, &entry.LanguageTag, &entry.SourceText, &entry.Pronunciation, &entry.Alphabet, &sensitive, &entry.Revision, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+			return nil, err
+		}
+		entry.CaseSensitive = sensitive == 1
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (db *DB) GetActiveEntityFormID(storyID, entityID string) string {
+	var id string
+	_ = db.conn.QueryRow(`SELECT f.id FROM entity_forms f JOIN stories s ON s.id=f.story_id WHERE f.story_id=? AND f.entity_id=? AND f.branch_id=s.active_branch_id AND f.valid_to_turn IS NULL ORDER BY f.valid_from_turn DESC,f.created_at DESC LIMIT 1`, storyID, entityID).Scan(&id)
+	return id
+}
+
+func (db *DB) GetTTSCacheEntry(cacheKey string) (*TTSCacheEntry, error) {
+	var entry TTSCacheEntry
+	err := db.conn.QueryRow(`SELECT cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,style_json,speed,output_format,status,file_path,duration_ms,timings_json,error,created_at,updated_at FROM tts_cache_entries WHERE cache_key=?`, cacheKey).
+		Scan(&entry.CacheKey, &entry.Provider, &entry.Model, &entry.ProviderVoiceID, &entry.VoiceVersion, &entry.LanguageTag, &entry.TextHash, &entry.StyleHash, &entry.Style, &entry.Speed, &entry.OutputFormat, &entry.Status, &entry.FilePath, &entry.DurationMS, &entry.Timings, &entry.Error, &entry.CreatedAt, &entry.UpdatedAt)
+	return &entry, err
+}
+
+func (db *DB) QueueAudioAsset(asset AudioAsset, job TTSJob) (*AudioAsset, *TTSJob, error) {
+	if asset.ID == "" {
+		asset.ID = uuid.NewString()
+	}
+	if job.ID == "" {
+		job.ID = uuid.NewString()
+	}
+	if strings.TrimSpace(asset.StoryID) == "" || asset.SourceMessageID <= 0 || asset.SegmentIndex < 0 || strings.TrimSpace(asset.Text) == "" || strings.TrimSpace(asset.CacheKey) == "" {
+		return nil, nil, errors.New("canonical audio asset needs story, source message, segment, text, and cache identity")
+	}
+	asset.Style = validJSONOr(asset.Style, `{}`)
+	asset.Timings = validJSONOr(asset.Timings, `[]`)
+	if asset.Style == nil || asset.Timings == nil {
+		return nil, nil, errors.New("audio style and timings must be valid JSON")
+	}
+	if asset.Speed == 0 {
+		asset.Speed = 1
+	}
+	if asset.Status == "" {
+		asset.Status = "queued"
+	}
+	var queuedJob *TTSJob
+	err := db.WithTx(func(tx *sql.Tx) error {
+		var branchID, commitID string
+		if err := tx.QueryRow(`SELECT m.branch_id,m.source_commit_id FROM chat_messages m JOIN stories s ON s.id=m.story_id WHERE m.id=? AND m.story_id=? AND m.role='assistant' AND m.branch_id=s.active_branch_id AND m.source_commit_id!=''`, asset.SourceMessageID, asset.StoryID).Scan(&branchID, &commitID); err != nil {
+			if err == sql.ErrNoRows {
+				return errors.New("audio source must be a committed assistant message on the active branch")
+			}
+			return err
+		}
+		asset.BranchID, asset.SourceCommitID = branchID, commitID
+		result, err := tx.Exec(`INSERT OR IGNORE INTO audio_assets(id,story_id,branch_id,source_commit_id,source_message_id,segment_index,segment_kind,speaker_entity_id,identity_id,form_id,voice_profile_id,provider,model,provider_voice_id,voice_version,language_tag,pronunciation_revision,text,text_hash,cache_key,style_json,speed,output_format,status,url,file_path,duration_ms,timings_json,generation_run_id,error)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			asset.ID, asset.StoryID, asset.BranchID, asset.SourceCommitID, asset.SourceMessageID, asset.SegmentIndex, asset.SegmentKind, nullableString(asset.SpeakerEntityID), nullableString(asset.IdentityID), nullableString(asset.FormID), asset.VoiceProfileID, asset.Provider, asset.Model, asset.ProviderVoiceID, asset.VoiceVersion, asset.LanguageTag, asset.PronunciationRevision, asset.Text, asset.TextHash, asset.CacheKey, asset.Style, asset.Speed, asset.OutputFormat, asset.Status, asset.URL, asset.FilePath, asset.DurationMS, asset.Timings, nullableString(asset.GenerationRunID), asset.Error)
+		if err != nil {
+			return fmt.Errorf("inserting audio asset: %w", err)
+		}
+		if affected, _ := result.RowsAffected(); affected == 0 {
+			if err := tx.QueryRow(`SELECT id FROM audio_assets WHERE story_id=? AND branch_id=? AND source_message_id=? AND segment_index=? AND voice_profile_id=? AND cache_key=?`, asset.StoryID, asset.BranchID, asset.SourceMessageID, asset.SegmentIndex, asset.VoiceProfileID, asset.CacheKey).Scan(&asset.ID); err != nil {
+				return err
+			}
+			return nil
+		}
+		if asset.Status == "ready" {
+			return nil
+		}
+		job.AudioAssetID, job.StoryID, job.BranchID, job.SourceCommitID = asset.ID, asset.StoryID, asset.BranchID, asset.SourceCommitID
+		if job.Status == "" {
+			job.Status = "queued"
+		}
+		if job.MaxAttempts == 0 {
+			job.MaxAttempts = 3
+		}
+		_, err = tx.Exec(`INSERT OR IGNORE INTO tts_jobs(id,audio_asset_id,story_id,branch_id,source_commit_id,status,provider,attempts,max_attempts,trace_id,parent_run_id,generation_run_id,error_class,error)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, job.ID, job.AudioAssetID, job.StoryID, job.BranchID, job.SourceCommitID, job.Status, job.Provider, job.Attempts, job.MaxAttempts, job.TraceID, nullableString(job.ParentRunID), nullableString(job.GenerationRunID), job.ErrorClass, job.Error)
+		if err != nil {
+			return fmt.Errorf("inserting TTS job: %w", err)
+		}
+		queuedJob = &job
+		return nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	stored, err := db.GetAudioAsset(asset.StoryID, asset.ID)
+	if err != nil {
+		// A deduplicated insert may have retained an earlier id.
+		stored, err = db.GetAudioAssetByIdentity(asset.StoryID, asset.SourceMessageID, asset.SegmentIndex, asset.VoiceProfileID, asset.CacheKey)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if stored.ID != asset.ID && queuedJob != nil {
+		queuedJob = nil
+	}
+	return stored, queuedJob, nil
+}
+
+func (db *DB) GetAudioAsset(storyID, id string) (*AudioAsset, error) {
+	return scanAudioAsset(db.conn.QueryRow(audioAssetSelect+` WHERE a.story_id=? AND a.id=? AND a.branch_id=(SELECT active_branch_id FROM stories WHERE id=?)`, storyID, id, storyID))
+}
+
+func (db *DB) GetAudioAssetByIdentity(storyID string, messageID int64, segmentIndex int, voiceProfileID, cacheKey string) (*AudioAsset, error) {
+	return scanAudioAsset(db.conn.QueryRow(audioAssetSelect+` WHERE a.story_id=? AND a.source_message_id=? AND a.segment_index=? AND a.voice_profile_id=? AND a.cache_key=? AND a.branch_id=(SELECT active_branch_id FROM stories WHERE id=?)`, storyID, messageID, segmentIndex, voiceProfileID, cacheKey, storyID))
+}
+
+func (db *DB) ListMessageAudio(storyID string, messageID int64) ([]AudioAsset, error) {
+	rows, err := db.conn.Query(audioAssetSelect+` WHERE a.story_id=? AND a.source_message_id=? AND a.branch_id=(SELECT active_branch_id FROM stories WHERE id=?) ORDER BY a.segment_index,a.created_at`, storyID, messageID, storyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	assets := []AudioAsset{}
+	for rows.Next() {
+		asset, err := scanAudioAsset(rows)
+		if err != nil {
+			return nil, err
+		}
+		assets = append(assets, *asset)
+	}
+	return assets, rows.Err()
+}
+
+const audioAssetSelect = `SELECT a.id,a.story_id,a.branch_id,a.source_commit_id,a.source_message_id,a.segment_index,a.segment_kind,COALESCE(a.speaker_entity_id,''),COALESCE(a.identity_id,''),COALESCE(a.form_id,''),a.voice_profile_id,a.provider,a.model,a.provider_voice_id,a.voice_version,a.language_tag,a.pronunciation_revision,a.text,a.text_hash,a.cache_key,a.style_json,a.speed,a.output_format,a.status,a.url,a.file_path,a.duration_ms,a.timings_json,COALESCE(a.generation_run_id,''),a.error,a.created_at,a.updated_at FROM audio_assets a`
+
+func scanAudioAsset(row rowScanner) (*AudioAsset, error) {
+	var asset AudioAsset
+	err := row.Scan(&asset.ID, &asset.StoryID, &asset.BranchID, &asset.SourceCommitID, &asset.SourceMessageID, &asset.SegmentIndex, &asset.SegmentKind, &asset.SpeakerEntityID, &asset.IdentityID, &asset.FormID, &asset.VoiceProfileID, &asset.Provider, &asset.Model, &asset.ProviderVoiceID, &asset.VoiceVersion, &asset.LanguageTag, &asset.PronunciationRevision, &asset.Text, &asset.TextHash, &asset.CacheKey, &asset.Style, &asset.Speed, &asset.OutputFormat, &asset.Status, &asset.URL, &asset.FilePath, &asset.DurationMS, &asset.Timings, &asset.GenerationRunID, &asset.Error, &asset.CreatedAt, &asset.UpdatedAt)
+	return &asset, err
+}
+
+func (db *DB) ClaimTTSJob(jobID string) (*TTSJob, error) {
+	result, err := db.conn.Exec(`UPDATE tts_jobs SET status='running',attempts=attempts+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('queued','failed') AND attempts<max_attempts`, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if affected, _ := result.RowsAffected(); affected != 1 {
+		return nil, errors.New("TTS job is not claimable")
+	}
+	if _, err := db.conn.Exec(`UPDATE audio_assets SET status='running',updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT audio_asset_id FROM tts_jobs WHERE id=?)`, jobID); err != nil {
+		return nil, err
+	}
+	return db.GetTTSJob(jobID)
+}
+
+func (db *DB) GetTTSJob(jobID string) (*TTSJob, error) {
+	var job TTSJob
+	var next sql.NullString
+	err := db.conn.QueryRow(`SELECT id,audio_asset_id,story_id,branch_id,source_commit_id,status,provider,attempts,max_attempts,next_attempt_at,trace_id,COALESCE(parent_run_id,''),COALESCE(generation_run_id,''),error_class,error,created_at,updated_at FROM tts_jobs WHERE id=?`, jobID).
+		Scan(&job.ID, &job.AudioAssetID, &job.StoryID, &job.BranchID, &job.SourceCommitID, &job.Status, &job.Provider, &job.Attempts, &job.MaxAttempts, &next, &job.TraceID, &job.ParentRunID, &job.GenerationRunID, &job.ErrorClass, &job.Error, &job.CreatedAt, &job.UpdatedAt)
+	if next.Valid {
+		job.NextAttemptAt = next.String
+	}
+	return &job, err
+}
+
+func (db *DB) CompleteTTSJob(jobID string, cache TTSCacheEntry, filePath string, durationMS int64, timings json.RawMessage, generationRunID string) error {
+	cache.Style = validJSONOr(cache.Style, `{}`)
+	timings = validJSONOr(timings, `[]`)
+	if cache.Style == nil || timings == nil {
+		return errors.New("cache style and timings must be valid JSON")
+	}
+	return db.WithTx(func(tx *sql.Tx) error {
+		_, err := tx.Exec(`INSERT INTO tts_cache_entries(cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,style_json,speed,output_format,status,file_path,duration_ms,timings_json,error)
+			VALUES(?,?,?,?,?,?,?,?,?,?,?,'ready',?,?,?,'') ON CONFLICT(cache_key) DO UPDATE SET status='ready',file_path=excluded.file_path,duration_ms=excluded.duration_ms,timings_json=excluded.timings_json,error='',updated_at=CURRENT_TIMESTAMP`, cache.CacheKey, cache.Provider, cache.Model, cache.ProviderVoiceID, cache.VoiceVersion, cache.LanguageTag, cache.TextHash, cache.StyleHash, cache.Style, cache.Speed, cache.OutputFormat, filePath, durationMS, timings)
+		if err != nil {
+			return err
+		}
+		result, err := tx.Exec(`UPDATE audio_assets SET status='ready',file_path=?,duration_ms=?,timings_json=?,generation_run_id=?,error='',updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT audio_asset_id FROM tts_jobs WHERE id=?)`, filePath, durationMS, timings, nullableString(generationRunID), jobID)
+		if err != nil {
+			return err
+		}
+		if affected, _ := result.RowsAffected(); affected != 1 {
+			return errors.New("TTS job audio asset not found")
+		}
+		_, err = tx.Exec(`UPDATE tts_jobs SET status='succeeded',generation_run_id=?,error_class='',error='',updated_at=CURRENT_TIMESTAMP WHERE id=?`, nullableString(generationRunID), jobID)
+		return err
+	})
+}
+
+func (db *DB) FailTTSJob(jobID, errorClass, detail, generationRunID string, retry bool) error {
+	status := "failed"
+	next := any(nil)
+	if retry {
+		next = time.Now().UTC().Add(30 * time.Second)
+	}
+	return db.WithTx(func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`UPDATE tts_jobs SET status=?,next_attempt_at=?,generation_run_id=?,error_class=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?`, status, next, nullableString(generationRunID), errorClass, detail, jobID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`UPDATE audio_assets SET status='failed',generation_run_id=?,error=?,updated_at=CURRENT_TIMESTAMP WHERE id=(SELECT audio_asset_id FROM tts_jobs WHERE id=?)`, nullableString(generationRunID), detail, jobID)
+		return err
+	})
 }
 
 func normalizeLanguageTag(tag string) string {

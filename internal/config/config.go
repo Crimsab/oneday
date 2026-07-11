@@ -27,7 +27,26 @@ type AIConfig struct {
 	Embedding        EmbeddingConfig       `yaml:"embedding"`
 	ASCIIArt         ASCIIArtConfig        `yaml:"ascii_art"`
 	ImageGeneration  ImageGenerationConfig `yaml:"image_generation"`
+	TTS              TTSConfig             `yaml:"tts"`
 	Generation       GenerationConfig      `yaml:"generation"`
+}
+
+type TTSConfig struct {
+	OutputDir      string      `yaml:"output_dir"`
+	TimeoutSeconds int         `yaml:"timeout_seconds"`
+	ProviderOrder  []string    `yaml:"provider_order"`
+	Cloud          TTSEndpoint `yaml:"cloud"`
+	Local          TTSEndpoint `yaml:"local"`
+}
+
+type TTSEndpoint struct {
+	Enabled   bool     `yaml:"enabled"`
+	BaseURL   string   `yaml:"base_url"`
+	APIKey    string   `yaml:"api_key"`
+	Model     string   `yaml:"model"`
+	Voice     string   `yaml:"voice"`
+	Version   string   `yaml:"version"`
+	Languages []string `yaml:"languages"`
 }
 
 // CodexConfig for the OpenAI Codex CLI provider.
@@ -197,6 +216,13 @@ func Default() Config {
 				AutoGenerate:         false,
 				AppendNegativePrompt: true,
 			},
+			TTS: TTSConfig{
+				OutputDir:      "./oneday_data/audio",
+				TimeoutSeconds: 45,
+				ProviderOrder:  []string{"local", "cloud"},
+				Cloud:          TTSEndpoint{BaseURL: "http://ai-proxy:4000/v1", Model: "gpt-4o-mini-tts", Voice: "alloy", Version: "1"},
+				Local:          TTSEndpoint{BaseURL: "http://piper-tts:5000", Model: "piper", Voice: "", Version: "1"},
+			},
 			Generation: GenerationConfig{
 				Temperature:    0.8,
 				MaxTokens:      2048,
@@ -293,6 +319,14 @@ func (c *Config) Validate() error {
 	}
 	if c.AI.Generation.TimeoutSeconds <= 0 {
 		return fmt.Errorf("ai.generation.timeout_seconds must be positive")
+	}
+	if c.AI.TTS.TimeoutSeconds <= 0 {
+		return fmt.Errorf("ai.tts.timeout_seconds must be positive")
+	}
+	for _, provider := range c.AI.TTS.ProviderOrder {
+		if provider != "cloud" && provider != "local" {
+			return fmt.Errorf("ai.tts.provider_order contains unknown provider %q", provider)
+		}
 	}
 	if c.AI.Codex.Enabled && strings.TrimSpace(c.AI.Codex.Model) == "" {
 		return fmt.Errorf("ai.codex.model must not be empty when Codex is enabled")

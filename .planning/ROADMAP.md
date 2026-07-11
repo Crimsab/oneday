@@ -869,7 +869,7 @@ Plans:
 ### Plans
 
 - [x] Plan 37.1: Add TTS settings, voice registry/assignments, audio assets/jobs, lexicon, and cache schema
-- [ ] Plan 37.2: Implement canonical segmentation/queue plus cloud and persistent local adapters
+- [x] Plan 37.2: Implement canonical segmentation/queue plus cloud and persistent local adapters
 - [ ] Plan 37.3: Add browser playback and per-story/per-character voice settings
 - [ ] Plan 37.4: Add multilingual pronunciation, retry/cleanup/export, and full audio test coverage
 
