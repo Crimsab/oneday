@@ -95,6 +95,62 @@ pub struct DeleteSaveEnvelope {
 }
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct TimelineEnvelope {
+    pub action: String,
+    pub client_revision: i64,
+    #[serde(default)]
+    pub branch_id: String,
+    #[serde(default)]
+    pub from_commit_id: String,
+    #[serde(default)]
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct GatewayTimelineRequest<'a> {
+    story_id: &'a str,
+    action: &'a str,
+    client_revision: i64,
+    branch_id: &'a str,
+    from_commit_id: &'a str,
+    name: &'a str,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TimelineBranchView {
+    pub id: String,
+    pub story_id: String,
+    pub name: String,
+    #[serde(default)]
+    pub fork_commit_id: String,
+    pub head_commit_id: String,
+    pub head_turn: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TimelineCommitView {
+    pub id: String,
+    pub branch_id: String,
+    #[serde(default)]
+    pub parent_commit_id: String,
+    pub canonical_turn: i64,
+    pub kind: String,
+    #[serde(default)]
+    pub message: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TimelineResponse {
+    pub active_branch_id: String,
+    pub revision: i64,
+    pub branches: Vec<TimelineBranchView>,
+    pub head: Option<TimelineCommitView>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct StoryCreateEnvelope {
     pub brief: String,
     pub character_name: String,
@@ -638,6 +694,30 @@ pub async fn submit_action(
     }
     if !status_ok {
         return Err(anyhow!("gateway-turn failed: {}", compact_stderr(&stderr)));
+    }
+    Ok(parsed)
+}
+
+pub async fn timeline(
+    state: Arc<AppState>,
+    story_id: &str,
+    envelope: TimelineEnvelope,
+) -> anyhow::Result<TimelineResponse> {
+    let request = GatewayTimelineRequest {
+        story_id,
+        action: &envelope.action,
+        client_revision: envelope.client_revision,
+        branch_id: &envelope.branch_id,
+        from_commit_id: &envelope.from_commit_id,
+        name: &envelope.name,
+    };
+    let (parsed, status_ok, stderr) =
+        call_gateway::<_, TimelineResponse>(state, "gateway-timeline", &request).await?;
+    if !status_ok {
+        return Err(anyhow!(
+            "gateway-timeline failed: {}",
+            compact_stderr(&stderr)
+        ));
     }
     Ok(parsed)
 }

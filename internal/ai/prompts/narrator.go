@@ -201,7 +201,7 @@ You MAY include extra renderer metadata when it improves clarity, but gameplay m
 - "scene_type": short classifier such as "dialogue", "travel", "investigation", "combat_aftermath", "downtime"
 - "dialogue_blocks": structured dialogue entries for speaker-aware rendering
   Example:
-  [{"speaker":"Lyanna","role":"npc","text":"Keep your voice down."}]
+  [{"speaker_id":"canonical-entity-id-when-known","speaker":"Lyanna","role":"npc","text":"Keep your voice down."}]
 - Whenever a named speaker says something directly, prefer putting that speech in dialogue_blocks as well as or instead of burying it inside narrative prose.
 - Keep direct speech as speaker-attributed dialogue, ideally in quoted form, so the UI can render it distinctly.
 - "entities_mentioned": important known entities explicitly referenced in this turn

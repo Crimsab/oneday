@@ -298,6 +298,78 @@ type BrowserDeleteSaveResponse struct {
 	Save BrowserSaveView `json:"save"`
 }
 
+type TimelineAction string
+
+const (
+	TimelineList     TimelineAction = "list"
+	TimelineFork     TimelineAction = "fork"
+	TimelineRename   TimelineAction = "rename"
+	TimelineCheckout TimelineAction = "checkout"
+)
+
+type BrowserTimelineRequest struct {
+	StoryID        string         `json:"story_id"`
+	Action         TimelineAction `json:"action"`
+	ClientRevision int64          `json:"client_revision"`
+	BranchID       string         `json:"branch_id,omitempty"`
+	FromCommitID   string         `json:"from_commit_id,omitempty"`
+	Name           string         `json:"name,omitempty"`
+}
+
+func (r BrowserTimelineRequest) Validate() error {
+	if strings.TrimSpace(r.StoryID) == "" {
+		return errors.New("story_id is required")
+	}
+	switch r.Action {
+	case TimelineList:
+		return nil
+	case TimelineFork:
+		if strings.TrimSpace(r.FromCommitID) == "" || strings.TrimSpace(r.Name) == "" {
+			return errors.New("fork requires from_commit_id and name")
+		}
+	case TimelineRename:
+		if strings.TrimSpace(r.BranchID) == "" || strings.TrimSpace(r.Name) == "" {
+			return errors.New("rename requires branch_id and name")
+		}
+	case TimelineCheckout:
+		if strings.TrimSpace(r.BranchID) == "" {
+			return errors.New("checkout requires branch_id")
+		}
+	default:
+		return fmt.Errorf("unsupported timeline action %q", r.Action)
+	}
+	return nil
+}
+
+type BrowserTimelineResponse struct {
+	ActiveBranchID string               `json:"active_branch_id"`
+	Revision       int64                `json:"revision"`
+	Branches       []TimelineBranchView `json:"branches"`
+	Head           *TimelineCommitView  `json:"head,omitempty"`
+}
+
+// Wire views keep the public contract independent of storage implementation.
+type TimelineBranchView struct {
+	ID           string    `json:"id"`
+	StoryID      string    `json:"story_id"`
+	Name         string    `json:"name"`
+	ForkCommitID string    `json:"fork_commit_id,omitempty"`
+	HeadCommitID string    `json:"head_commit_id"`
+	HeadTurn     int       `json:"head_turn"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type TimelineCommitView struct {
+	ID             string    `json:"id"`
+	BranchID       string    `json:"branch_id"`
+	ParentCommitID string    `json:"parent_commit_id,omitempty"`
+	CanonicalTurn  int       `json:"canonical_turn"`
+	Kind           string    `json:"kind"`
+	Message        string    `json:"message,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
 func validateStorySessionTurn(storyID, sessionID string, clientTurn, currentTurn int) error {
 	return validateStorySessionTurnRevision(storyID, sessionID, clientTurn, 0, currentTurn, -1)
 }

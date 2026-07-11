@@ -23,6 +23,11 @@ func TestParseCommandRecognizesCraftAliases(t *testing.T) {
 		{input: "/project", want: "projects"},
 		{input: "/characters", want: "characters"},
 		{input: "/saves", want: "load"},
+		{input: "/branches", want: "branches"},
+		{input: "/branch", want: "branches"},
+		{input: "/fork alternate", want: "fork"},
+		{input: "/rename-branch main", want: "branch-rename"},
+		{input: "/checkout main", want: "checkout"},
 	}
 
 	for _, tc := range tests {

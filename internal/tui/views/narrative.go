@@ -953,6 +953,14 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.showThoughts()
 	case "history":
 		return m.showHistory(cmd.Args)
+	case "branches":
+		return m.showBranches()
+	case "fork":
+		return m.forkBranch(cmd.Args)
+	case "branch-rename":
+		return m.renameActiveBranch(cmd.Args)
+	case "checkout":
+		return m.checkoutBranch(cmd.Args)
 	case "hooks":
 		return m.showHooks()
 	case "map":

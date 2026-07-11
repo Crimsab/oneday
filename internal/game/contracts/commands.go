@@ -31,6 +31,7 @@ const (
 	CommandBehaviorSaveDelete     CommandBehavior = "save_delete"
 	CommandBehaviorInsertTemplate CommandBehavior = "insert_template"
 	CommandBehaviorLocalOnly      CommandBehavior = "local_only"
+	CommandBehaviorTimeline       CommandBehavior = "timeline"
 )
 
 type CommandArgDescriptor struct {
@@ -200,6 +201,10 @@ func CommandDescriptors() []CommandDescriptor {
 			Behavior:    CommandBehaviorOpenPanel,
 			Examples:    []string{"/history"},
 		},
+		{ID: "branches", Canonical: "branches", Aliases: []string{"branch"}, Title: "Branches", Description: "List and navigate alternate story branches.", Group: CommandGroupState, Parity: CommandParityShared, Behavior: CommandBehaviorTimeline, Examples: []string{"/branches"}},
+		{ID: "fork", Canonical: "fork", Title: "Fork branch", Description: "Fork the current story head into a named alternate.", Group: CommandGroupState, Parity: CommandParityShared, Behavior: CommandBehaviorTimeline, TrailingSpace: true, Args: []CommandArgDescriptor{{Name: "name", Label: "Name", Required: true, Variadic: true}}, Examples: []string{"/fork What if we stayed"}},
+		{ID: "branch-rename", Canonical: "branch-rename", Aliases: []string{"rename-branch"}, Title: "Rename branch", Description: "Rename the active story branch.", Group: CommandGroupState, Parity: CommandParityShared, Behavior: CommandBehaviorTimeline, TrailingSpace: true, Args: []CommandArgDescriptor{{Name: "name", Label: "Name", Required: true, Variadic: true}}, Examples: []string{"/branch-rename Harbor route"}},
+		{ID: "checkout", Canonical: "checkout", Title: "Checkout branch", Description: "Switch to a named branch without deleting the current one.", Group: CommandGroupState, Parity: CommandParityShared, Behavior: CommandBehaviorTimeline, TrailingSpace: true, Args: []CommandArgDescriptor{{Name: "branch", Label: "Branch", Required: true, Variadic: true}}, Examples: []string{"/checkout main"}},
 		{
 			ID:                 "talk",
 			Canonical:          "talk",

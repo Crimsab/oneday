@@ -45,14 +45,14 @@ export function readableStructuredText(value: string, fallback = ""): string {
   }
 }
 
-export function displayClock(turn = 0) {
-  const day = Math.max(1, Math.floor(turn / 24) + 1);
-  const hour = (8 + Math.floor(turn / 2)) % 24;
-  const minute = (turn * 7) % 60;
-  const cycle = hour < 6 ? "Night" : hour < 12 ? "Morning" : hour < 18 ? "Afternoon" : "Evening";
+export function displayClock(snapshot: StorySnapshot | null) {
+  const clock = asObject(snapshot?.world.world_time);
+  const day = typeof clock.day === "number" ? clock.day : null;
+  const minuteOfDay = typeof clock.minute_of_day === "number" ? clock.minute_of_day : null;
+  const cycle = minuteOfDay === null ? "Not tracked" : minuteOfDay < 360 ? "Night" : minuteOfDay < 720 ? "Morning" : minuteOfDay < 1080 ? "Afternoon" : "Evening";
   return {
     day,
-    time: `Day ${day}, ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+	time: typeof clock.display_text === "string" && clock.display_text.trim() ? clock.display_text : "Not tracked",
     cycle,
   };
 }
@@ -68,20 +68,12 @@ export function displayTimestamp(value: string | undefined, fallback = "-"): str
 }
 
 export function messageClock(message: MessageView): string {
-  const hour = (8 + Math.floor(message.turn / 2)) % 24;
-  const minute = (message.turn * 7 + message.id) % 60;
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return `T${message.turn}`;
 }
 
 export function deriveCondition(snapshot: StorySnapshot | null): string {
-  const stats = asObject(snapshot?.character.fields.stats);
-  const health = numericStat(stats.health ?? stats.Health);
-  const stamina = numericStat(stats.stamina ?? stats.Stamina);
-  const focus = numericStat(stats.focus ?? stats.Focus);
-  if (health !== null && health < 35) return "Injured";
-  if (stamina !== null && stamina < 30) return "Exhausted";
-  if (focus !== null && focus >= 65) return "Focused";
-  return snapshot ? "Stable" : "Idle";
+	if (!snapshot) return "Not tracked";
+	return findString(snapshot.character.fields, ["condition", "status"]) ?? "Not tracked";
 }
 
 export function numericStat(value: JsonValue | undefined): number | null {
@@ -115,11 +107,8 @@ export function findString(value: JsonValue | undefined, keys: string[]): string
 }
 
 export function weatherLabel(snapshot: StorySnapshot | null): string {
-  return (
-    findString(snapshot?.world.scene_contract, ["weather", "forecast", "sky"]) ??
-    findString(snapshot?.world.known_locations, ["weather", "forecast", "sky"]) ??
-    "Untracked"
-  );
+	const weather = asObject(snapshot?.world.weather);
+	return typeof weather.label === "string" && weather.label.trim() ? weather.label : "Not tracked";
 }
 
 export function recentFromMessages(messages: MessageView[]): RecentCommand[] {

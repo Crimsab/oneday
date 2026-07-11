@@ -128,6 +128,13 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayTimeline(os.Args[1:]) {
+		if err := runGatewayTimeline(db, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway timeline failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Create AI router
 	router, err := aifactory.NewRouterFromConfig(cfg)
@@ -361,6 +368,10 @@ func wantsGatewayLoad(args []string) bool {
 
 func wantsGatewayDeleteSave(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-delete-save"
+}
+
+func wantsGatewayTimeline(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-timeline"
 }
 
 func runSetup(args []string) error {

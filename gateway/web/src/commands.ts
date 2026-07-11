@@ -11,6 +11,7 @@ export interface CommandResult {
   saveName?: string;
   saveFilter?: string;
   saveDeleteFilter?: string;
+	timeline?: { action: "list" | "fork" | "rename" | "checkout"; value?: string };
 }
 
 export interface CommandContext {
@@ -90,6 +91,10 @@ export const fallbackCommandDescriptors: CommandDescriptor[] = [
   descriptor("achievements", "achievements", "Achievements", "Show earned achievements.", "state", "shared", "open_panel", ["a"]),
   descriptor("craft", "craft", "Craft", "Open the crafting station.", "play", "shared", "open_panel", ["crafting"]),
   descriptor("history", "history", "History", "Open transcript and session history.", "state", "shared", "open_panel"),
+	descriptor("branches", "branches", "Branches", "List and navigate alternate story branches.", "state", "shared", "timeline", ["branch"]),
+	descriptor("fork", "fork", "Fork branch", "Fork the current story head into a named alternate.", "state", "shared", "timeline", [], true),
+	descriptor("branch-rename", "branch-rename", "Rename branch", "Rename the active story branch.", "state", "shared", "timeline", ["rename-branch"], true),
+	descriptor("checkout", "checkout", "Checkout branch", "Switch to a named branch without deleting the current one.", "state", "shared", "timeline", [], true),
   descriptor("talk", "talk", "Talk", "Talk to a nearby NPC with an optional intent and message.", "talk", "shared", "submit_action", [], true, "nearby_npcs"),
   descriptor("btw", "btw", "BTW", "Ask a contextual side question without advancing the turn.", "meta", "shared", "submit_meta", [], true),
   descriptor("guide", "guide", "Guide", "Store soft future-facing story guidance.", "meta", "shared", "submit_meta", [], true),
@@ -187,6 +192,8 @@ export function commandToAction(rawText: string, context: CommandContext = {}): 
       return localCommandToAction(canonical, command.id);
     case "insert_template":
       return { handled: true, text: command.examples?.[0] ?? "" };
+	case "timeline":
+		return { handled: true, timeline: { action: canonical === "branches" ? "list" : canonical === "branch-rename" ? "rename" : canonical as "fork" | "checkout", value: parsed.argsText } };
     default:
       return {};
   }

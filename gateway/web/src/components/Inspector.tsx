@@ -19,6 +19,8 @@ import {
 import type { JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
 import type { VisualCatalog } from "../visualAssets";
 import { characterAsset, readyAssetUrl } from "../visualAssets";
+import { HistoryReader } from "./HistoryReader";
+import { MarkdownText } from "./MarkdownText";
 
 interface InspectorProps {
   snapshot: StorySnapshot | null;
@@ -118,6 +120,7 @@ function renderModule(
   if (tab === "investigations") return <InvestigationsModule snapshot={snapshot} />;
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
+	if (tab === "history") return <HistoryReader snapshot={snapshot} />;
   return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
 }
 
@@ -205,10 +208,6 @@ function rawStateForModule(tab: ModuleTab, snapshot: StorySnapshot): Record<stri
   };
 }
 
-function HistoryModule({ snapshot, visuals }: { snapshot: StorySnapshot; visuals?: VisualCatalog }) {
-  return <WorldStateModule snapshot={snapshot} visuals={visuals} />;
-}
-
 function WorldStateModule({
   snapshot,
   visuals,
@@ -220,7 +219,7 @@ function WorldStateModule({
   onOpenNpcCodex?: (npcId: string) => void;
   onOpenVisualAsset?: (assetId: string) => void;
 }) {
-  const clock = displayClock(snapshot.world.current_turn);
+  const clock = displayClock(snapshot);
   const condition = deriveCondition(snapshot);
   const conditionNote = conditionDetail(snapshot);
   const conditionTone = conditionToneFor(condition);
@@ -297,7 +296,7 @@ function WorldStateModule({
         <section className="ws-block">
           <header className="ws-block-head ws-block-head-split">
             <Users size={14} />
-            <span>Factions & NPCs</span>
+			<span>People present</span>
             <small>{npcs.length}</small>
           </header>
           <NpcList npcs={npcs} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />
@@ -570,23 +569,21 @@ export function npcRelationSummary(npc: RecordView): NpcRelationSummary {
   const relationshipValue = npc.fields.relationship;
   const relationship = asObject(relationshipValue);
   const directLabel = relationshipLabelFromValue(relationshipValue);
-  const score =
-    numericStat(npc.fields.disposition) ??
-    numericStat(relationship.disposition) ??
-    numericStat(relationship.trust) ??
-    numericStat(relationship.affinity) ??
-    numericStat(relationship.score) ??
-    numericStat(relationship.value) ??
-    50;
+	const score = relationshipScore(npc.fields.disposition) ?? relationshipScore(relationship.disposition) ?? relationshipScore(relationship.trust) ?? relationshipScore(relationship.affinity) ?? relationshipScore(relationship.score) ?? relationshipScore(relationship.value) ?? 0;
   const label = directLabel || labelForRelationScore(score);
   const tone = toneForRelation(label, score);
   return {
     label,
     score,
     tone,
-    filledSegments: Math.max(0, Math.min(10, Math.round(score / 10))),
-    filledBands: Math.max(0, Math.min(4, Math.round(score / 25))),
+	filledSegments: Math.max(0, Math.min(10, Math.round((score + 100) / 20))),
+	filledBands: Math.max(0, Math.min(4, Math.round((score + 100) / 50))),
   };
+}
+
+function relationshipScore(value: JsonValue | undefined): number | null {
+	const parsed = typeof value === "number" ? value : typeof value === "string" ? Number.parseFloat(value) : Number.NaN;
+	return Number.isFinite(parsed) ? Math.max(-100, Math.min(100, Math.round(parsed))) : null;
 }
 
 function npcRole(npc: RecordView): string {
@@ -631,12 +628,11 @@ function relationshipLabelFromValue(value: JsonValue | undefined): string {
 }
 
 function labelForRelationScore(score: number): string {
-  if (score <= 15) return "Enemy";
-  if (score <= 30) return "Hostile";
-  if (score <= 45) return "Wary";
-  if (score <= 60) return "Neutral";
-  if (score <= 80) return "Friendly";
-  return "Ally";
+	if (score >= 50) return "Allied";
+	if (score >= 15) return "Friendly";
+	if (score >= -14) return "Neutral";
+	if (score >= -49) return "Unfriendly";
+	return "Hostile";
 }
 
 function toneForRelation(label: string, score: number): RelationTone {
@@ -645,10 +641,10 @@ function toneForRelation(label: string, score: number): RelationTone {
   if (/\b(friend|friendly|warm|trusted|amico|amica|fiducia)/.test(normalized)) return "friendly";
   if (/\b(enemy|hostile|nemic|ostil|rival|foe|threat)/.test(normalized)) return "hostile";
   if (/\b(wary|cautious|suspicious|tense|diffident|guarded|cauto|sospett)/.test(normalized)) return "wary";
-  if (score <= 30) return "hostile";
-  if (score <= 45) return "wary";
-  if (score >= 81) return "ally";
-  if (score >= 61) return "friendly";
+	if (score <= -50) return "hostile";
+	if (score <= -15) return "wary";
+	if (score >= 50) return "ally";
+	if (score >= 15) return "friendly";
   return "neutral";
 }
 
@@ -949,10 +945,7 @@ export function meterRows(snapshot: StorySnapshot): Array<{ label: string; value
 
 function conditionDetail(snapshot: StorySnapshot): string {
   const condition = deriveCondition(snapshot);
-  if (condition === "Focused") return "No active penalties.";
-  if (condition === "Injured") return "Health needs attention.";
-  if (condition === "Exhausted") return "Stamina is under pressure.";
-  return "Stable operating state.";
+	return condition === "Not tracked" ? "No canonical condition is currently recorded." : "Canonical character condition.";
 }
 
 function flagRows(snapshot: StorySnapshot): Array<[string, string]> {

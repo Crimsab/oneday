@@ -94,6 +94,13 @@ func (db *DB) EnsureStoryTimelineTx(tx *sql.Tx, storyID string) (*TimelineHead, 
 	if _, err := tx.Exec(`UPDATE stories SET active_branch_id = ? WHERE id = ?`, branch.ID, storyID); err != nil {
 		return nil, fmt.Errorf("activating main story branch: %w", err)
 	}
+	// A story can accumulate compatibility rows before its timeline is first
+	// opened (for example, an imported story or a pre-timeline save). Attach
+	// those pending rows to the immutable root so branch-scoped readers do not
+	// make valid history disappear at bootstrap.
+	if err := db.BindPendingLineageTx(tx, storyID, branch.ID, commit.ID); err != nil {
+		return nil, fmt.Errorf("binding root timeline lineage: %w", err)
+	}
 	branch.HeadCommitID = commit.ID
 	return &TimelineHead{Branch: branch, Commit: commit}, nil
 }

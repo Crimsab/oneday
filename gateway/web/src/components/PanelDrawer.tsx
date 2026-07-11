@@ -311,7 +311,7 @@ function OptionsContent({
     <div className="overlay-content options-content">
       <div className="option-grid">
         <div>
-          <span>Realtime bridge</span>
+		  <span>Live updates</span>
           <strong>
             {snapshot ? "SSE snapshots + turn events" : "No story selected"}
           </strong>

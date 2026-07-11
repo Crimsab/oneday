@@ -14,6 +14,7 @@ import {
   getHealth,
   getModelSettings,
   getSnapshot,
+	getTimeline,
   getStoryDeletePlan,
   getStories,
   getVisualAssets,
@@ -24,6 +25,7 @@ import {
   submitAction,
   submitMeta,
   updateStory,
+	updateTimeline,
   updateModelSettings,
   updateVisualAssetPrompt,
   updateVisualProfile,
@@ -38,6 +40,7 @@ import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
 import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
+import { restoreFailedDraft } from "./draftLifecycle";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import {
@@ -70,6 +73,7 @@ import type {
   StoryUpdatePayload,
   StoryWizardEnvelope,
   StoryWizardResponse,
+	TimelineResponse,
   SyncState,
   TurnStreamEvent,
   VisualAssetsResponse,
@@ -123,7 +127,9 @@ function App() {
   const [visualGenerationBusy, setVisualGenerationBusy] = useState(false);
   const [visualAssetFocusId, setVisualAssetFocusId] = useState<string | null>(null);
   const [storyMutatingId, setStoryMutatingId] = useState("");
+	const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
   const pendingActionIdentity = useRef<PendingActionIdentity | null>(null);
+  const actionSubmitInFlight = useRef(false);
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -204,10 +210,33 @@ function App() {
 
   useEffect(() => {
     if (!storyId) return;
+	setTimeline(null);
     setHiddenBeforeMessageId(0);
     setLiveTurnEvents([]);
     void loadSnapshot(storyId);
+	void getTimeline(storyId).then(setTimeline).catch((error) => setNotice(errorMessage(error)));
   }, [loadSnapshot, storyId]);
+
+	const mutateTimeline = async (payload: Parameters<typeof updateTimeline>[1]) => {
+		if (!storyId || !snapshot || storyMutatingId) return;
+		setStoryMutatingId(storyId);
+		try {
+			const response = await updateTimeline(storyId, payload);
+			setTimeline(response.timeline);
+			setSnapshot(response.snapshot);
+			setLiveTurnEvents([]);
+			setPendingTurn(null);
+			pendingActionIdentity.current = null;
+			setNotice(`Active branch: ${response.timeline.branches.find((branch) => branch.id === response.timeline.active_branch_id)?.name ?? "updated"}.`);
+		} catch (error) {
+			setNotice(actionErrorMessage(error));
+			await loadSnapshot().catch(() => undefined);
+		} finally { setStoryMutatingId(""); }
+	};
+
+	const forkBranch = (name:string) => timeline?.head ? mutateTimeline({action:"fork",client_revision:snapshot?.version.revision ?? timeline.revision,from_commit_id:timeline.head.id,name}) : Promise.resolve();
+	const renameBranch = (branchId:string,name:string) => mutateTimeline({action:"rename",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId,name});
+	const checkoutBranch = (branchId:string) => mutateTimeline({action:"checkout",client_revision:snapshot?.version.revision ?? timeline?.revision ?? 0,branch_id:branchId});
 
   useEffect(() => {
     if (!storyId || paused) {
@@ -248,7 +277,7 @@ function App() {
         if (pending.streamingSuppressed || shouldSuppressStreamingDelta(pending.streamingText, delta)) {
           return {
             ...pending,
-            detail: "Assistant is drafting the canonical response...",
+			detail: "Preparing the final story response...",
             streamingText: undefined,
             streamingSuppressed: true,
           };
@@ -461,7 +490,7 @@ function App() {
 
   const executeDraft = async (draftOverride?: string) => {
     const currentDraft = draftOverride ?? draft;
-    if (!currentDraft.trim() || !snapshot || !storyId || sending) return;
+    if (!currentDraft.trim() || !snapshot || !storyId || sending || actionSubmitInFlight.current) return;
     setNotice("");
     const sourceText = currentDraft.trim();
     const commandResult = commandToAction(currentDraft, {
@@ -470,11 +499,30 @@ function App() {
       saveNames: saveNamesFromSnapshot(snapshot),
       visiblePrivateThoughts: false,
     });
-    if (commandResult.tab) selectModuleTab(commandResult.tab);
+    if (commandResult.tab) {
+      selectModuleTab(commandResult.tab);
+      if (window.matchMedia("(max-width: 1240px)").matches) {
+        setModuleOverlayTab(commandResult.tab);
+        setOverlay("module");
+      }
+    }
     if (commandResult.overlay) setOverlay(commandResult.overlay);
     if (commandResult.saveFilter !== undefined) setSaveFilter(commandResult.saveFilter);
     if (commandResult.saveDeleteFilter !== undefined) setSaveFilter(commandResult.saveDeleteFilter);
     if (commandResult.notice) setNotice(commandResult.notice);
+	if (commandResult.timeline) {
+		const details = document.querySelector<HTMLDetailsElement>(".branch-navigator");
+		if (details) { details.open = true; details.querySelector<HTMLElement>("summary")?.focus(); }
+		const value = commandResult.timeline.value?.trim() ?? "";
+		if (commandResult.timeline.action === "list") setNotice("Story branch navigator opened in the sidebar.");
+		if (commandResult.timeline.action === "fork") value ? await forkBranch(value) : setNotice("Usage: /fork <branch name>");
+		if (commandResult.timeline.action === "rename") value ? await renameBranch(timeline?.active_branch_id ?? "", value) : setNotice("Usage: /branch-rename <name>");
+		if (commandResult.timeline.action === "checkout") {
+			const target = timeline?.branches.find((branch) => branch.id === value || branch.name.toLowerCase() === value.toLowerCase());
+			target ? await checkoutBranch(target.id) : setNotice(`Branch not found: ${value || "(missing name)"}`);
+		}
+		setDraft(""); setHistoryIndex(-1); return;
+	}
     if (commandResult.meta) {
       await sendMetaCommand(commandResult.meta, currentDraft);
       setDraft("");
@@ -496,9 +544,10 @@ function App() {
 
     const text = commandResult.text ?? actionModeToText(mode, currentDraft);
     if (!text.trim()) return;
-    await sendAction({ kind: "free_text", text }, currentDraft);
-    setDraft("");
+	setDraft("");
     setHistoryIndex(-1);
+	const sent = await sendAction({ kind: "free_text", text }, currentDraft);
+	if (!sent) setDraft((current) => restoreFailedDraft(current, currentDraft));
   };
 
   const sendChoice = async (choice: ChoiceView) => {
@@ -535,7 +584,7 @@ function App() {
     const baseSnapshot = snapshot;
     try {
       const readySnapshot = await snapshotForSubmit(baseSnapshot);
-      if (!readySnapshot) return;
+	  if (!readySnapshot) return false;
       setSync("Sending");
       const response = await submitMeta(storyId, {
         session_id: readySnapshot.active_session.id,
@@ -572,7 +621,7 @@ function App() {
     const baseSnapshot = snapshot;
     try {
       const readySnapshot = await snapshotForSubmit(baseSnapshot);
-      if (!readySnapshot) return;
+      if (!readySnapshot) return false;
       setSync("Sending");
       const saveName = name.trim() || `Browser Save T${readySnapshot.world.current_turn}`;
       const response = await createSave(storyId, {
@@ -725,20 +774,21 @@ function App() {
     }
   };
 
-  const sendAction = async (action: PlayerAction, sourceText: string) => {
-    if (!snapshot || !storyId || sending) return;
+  const sendAction = async (action: PlayerAction, sourceText: string): Promise<boolean> => {
+    if (!snapshot || !storyId || sending || actionSubmitInFlight.current) return false;
+	actionSubmitInFlight.current = true;
     setSending(true);
     const baseSnapshot = snapshot;
     try {
       const readySnapshot = await snapshotForSubmit(baseSnapshot);
-      if (!readySnapshot) return;
+      if (!readySnapshot) return false;
       setSync("Sending");
       const currentTurn = readySnapshot.world.current_turn;
       setPendingTurn({
         id: clientId("pending"),
         turn: currentTurn,
         source: action.kind === "choice" ? action.text ?? sourceText.trim() : sourceText.trim(),
-        detail: action.kind === "choice" ? "Resolving selected choice through the live engine..." : "Waiting for final bridge response from OneDay...",
+		detail: action.kind === "choice" ? "Resolving your selected choice..." : "Resolving your action...",
         kind: action.kind,
       });
       const fingerprint = actionFingerprint(storyId, readySnapshot, action);
@@ -766,11 +816,14 @@ function App() {
       ].slice(0, 10));
       setSync(paused ? "Paused" : "Live");
       pendingActionIdentity.current = null;
+	  return true;
     } catch (error) {
       setSync("Error");
       setNotice(actionErrorMessage(error));
       await loadSnapshot().catch(() => undefined);
+	  return false;
     } finally {
+	  actionSubmitInFlight.current = false;
       setSending(false);
       setPendingTurn(null);
     }
@@ -1032,6 +1085,10 @@ function App() {
             onDeleteStory={handleDeleteStory}
             onOpen={openOverlay}
             busyStoryId={storyMutatingId}
+			timeline={timeline}
+			onForkBranch={forkBranch}
+			onRenameBranch={renameBranch}
+			onCheckoutBranch={checkoutBranch}
           />
         ) : (
           <CollapsedLeftRail

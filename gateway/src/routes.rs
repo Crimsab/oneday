@@ -1,5 +1,5 @@
 use crate::{assets, db, engine, events::TurnStreamEvent, AppState};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -34,6 +34,13 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/api/stories/:story_id/delete-plan", get(story_delete_plan))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
+        .route(
+            "/api/stories/:story_id/timeline",
+            get(timeline).post(update_timeline),
+        )
+        .route("/api/stories/:story_id/history", get(history))
+        .route("/api/stories/:story_id/chapters", get(chapters))
+        .route("/api/stories/:story_id/export", get(export_story))
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
         .route(
             "/api/stories/:story_id/visual-assets/:asset_id",
@@ -207,6 +214,90 @@ async fn snapshot(
     Path(story_id): Path<String>,
 ) -> Result<Json<db::StorySnapshot>, ApiError> {
     Ok(Json(db::snapshot(&state.pool, &story_id).await?))
+}
+
+async fn timeline(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<engine::TimelineResponse>, ApiError> {
+    Ok(Json(
+        engine::timeline(
+            state,
+            &story_id,
+            engine::TimelineEnvelope {
+                action: "list".into(),
+                client_revision: 0,
+                branch_id: String::new(),
+                from_commit_id: String::new(),
+                name: String::new(),
+            },
+        )
+        .await?,
+    ))
+}
+
+async fn update_timeline(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<engine::TimelineEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let timeline = engine::timeline(state.clone(), &story_id, payload).await?;
+    let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    Ok(Json(json!({"timeline":timeline,"snapshot":snapshot})))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct PageQuery {
+    cursor: Option<i64>,
+    limit: Option<i64>,
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    format: String,
+}
+
+async fn history(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Query(query): Query<PageQuery>,
+) -> Result<Json<db::HistoryPage>, ApiError> {
+    Ok(Json(
+        db::history_page(
+            &state.pool,
+            &story_id,
+            query.cursor,
+            query.limit.unwrap_or(40),
+            &query.q,
+        )
+        .await?,
+    ))
+}
+
+async fn chapters(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Query(query): Query<PageQuery>,
+) -> Result<Json<db::ChapterPage>, ApiError> {
+    Ok(Json(
+        db::chapter_page(
+            &state.pool,
+            &story_id,
+            query.cursor,
+            query.limit.unwrap_or(30),
+            &query.q,
+        )
+        .await?,
+    ))
+}
+
+async fn export_story(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Query(query): Query<PageQuery>,
+) -> Result<Json<db::StoryExport>, ApiError> {
+    Ok(Json(
+        db::export_story(&state.pool, &story_id, &query.format).await?,
+    ))
 }
 
 async fn visual_assets(

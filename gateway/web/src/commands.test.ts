@@ -67,6 +67,13 @@ describe("commandToAction", () => {
     expect(commandToAction("/n keep it short")).toMatchObject({ meta: { kind: "narrator", text: "keep it short" } });
   });
 
+	it("maps shared branch commands to timeline operations",()=>{
+		expect(commandToAction("/branches")).toMatchObject({handled:true,timeline:{action:"list"}});
+		expect(commandToAction("/fork Harbor route")).toMatchObject({handled:true,timeline:{action:"fork",value:"Harbor route"}});
+		expect(commandToAction("/branch-rename Main line")).toMatchObject({handled:true,timeline:{action:"rename",value:"Main line"}});
+		expect(commandToAction("/checkout alternate")).toMatchObject({handled:true,timeline:{action:"checkout",value:"alternate"}});
+	});
+
   it("maps advance, timeskip, downtime, and talk commands into actions", () => {
     expect(commandToAction("/advance docks")).toMatchObject({ text: expect.stringContaining("[Advance Scene]") });
     expect(commandToAction("/timeskip tomorrow")).toMatchObject({ text: expect.stringContaining("[Time Skip]") });

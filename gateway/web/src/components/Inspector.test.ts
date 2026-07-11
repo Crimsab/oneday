@@ -91,22 +91,28 @@ describe("npcRelationSummary", () => {
       label: "Trusted Ally",
       score: 92,
       tone: "ally",
-      filledSegments: 9,
+	  filledSegments: 10,
     });
   });
 
   it("falls back to score thresholds when no label exists", () => {
-    expect(npcRelationSummary(npcRecord({ disposition: 22 }))).toMatchObject({
-      label: "Hostile",
+	expect(npcRelationSummary(npcRecord({ disposition: -22 }))).toMatchObject({
+	  label: "Unfriendly",
+	  score: -22,
+	  tone: "wary",
+	  filledSegments: 4,
+	});
+	expect(npcRelationSummary(npcRecord({ disposition: 22 }))).toMatchObject({
+	  label: "Friendly",
       score: 22,
-      tone: "hostile",
-      filledSegments: 2,
+	  tone: "friendly",
+	  filledSegments: 6,
     });
     expect(npcRelationSummary(npcRecord({ relationship: { trust: 54 } }))).toMatchObject({
-      label: "Neutral",
+	  label: "Allied",
       score: 54,
-      tone: "neutral",
-      filledSegments: 5,
+	  tone: "ally",
+	  filledSegments: 8,
     });
   });
 });
@@ -179,6 +185,11 @@ function snapshotWithStats(stats: JsonValue): StorySnapshot {
       current_location: "Dock",
       current_chapter: 1,
       current_turn: 1,
+	  current_location_id: "location-dock",
+	  spatial_locations: [],
+	  spatial_edges: [],
+	  world_time: { day: 1, minute_of_day: 0, display_text: "Day 1, 00:00" },
+	  weather: { tracked: false, label: "Not tracked" },
       known_locations: {},
       global_events: {},
       faction_standings: {},

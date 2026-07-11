@@ -60,6 +60,9 @@ func TestWantsOperatorCommands(t *testing.T) {
 	if !wantsGatewayStoryEnhance([]string{"gateway-story-enhance"}) {
 		t.Fatal("expected gateway-story-enhance")
 	}
+	if !wantsGatewayTimeline([]string{"gateway-timeline"}) {
+		t.Fatal("expected gateway-timeline")
+	}
 }
 
 func TestGatewayTurnEventPhase(t *testing.T) {

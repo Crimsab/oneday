@@ -192,6 +192,11 @@ export interface WorldView {
   current_location: string;
   current_chapter: number;
   current_turn: number;
+	current_location_id: string;
+	spatial_locations: JsonValue;
+	spatial_edges: JsonValue;
+	world_time: JsonValue;
+	weather: JsonValue;
   known_locations: JsonValue;
   global_events: JsonValue;
   faction_standings: JsonValue;
@@ -224,6 +229,8 @@ export interface MessageView {
   message_type: string;
   metadata: JsonValue;
   created_at: string;
+	branch_id: string;
+	source_commit_id: string;
 }
 
 export interface PendingTurnView {
@@ -273,7 +280,18 @@ export interface ChapterView {
   start_turn: number;
   end_turn?: number | null;
   created_at: string;
+	branch_id: string;
+	source_commit_id: string;
 }
+
+export interface TimelineBranchView { id:string; story_id:string; name:string; fork_commit_id?:string; head_commit_id:string; head_turn:number; created_at:string; updated_at:string }
+export interface TimelineCommitView { id:string; branch_id:string; parent_commit_id?:string; canonical_turn:number; kind:string; message?:string; created_at:string }
+export interface TimelineResponse { active_branch_id:string; revision:number; branches:TimelineBranchView[]; head?:TimelineCommitView }
+export interface TimelineEnvelope { action:"fork"|"rename"|"checkout"; client_revision:number; branch_id?:string; from_commit_id?:string; name?:string }
+export interface TimelineMutationResponse { timeline:TimelineResponse; snapshot:StorySnapshot }
+export interface HistoryPage { items:MessageView[]; next_cursor?:number|null }
+export interface ChapterPage { items:ChapterView[]; next_cursor?:number|null }
+export interface StoryExport { format:"markdown"|"json"; filename:string; content:string }
 
 export interface AchievementView {
   id: number;
@@ -516,7 +534,8 @@ export type CommandBehavior =
   | "save_load"
   | "save_delete"
   | "insert_template"
-  | "local_only";
+  | "local_only"
+	| "timeline";
 
 export interface CommandArgDescriptor {
   name: string;

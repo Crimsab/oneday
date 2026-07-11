@@ -37,6 +37,35 @@ func TestCreateStoryBootstrapsMainBranchAndRootCommit(t *testing.T) {
 	}
 }
 
+func TestChatRowsDefaultToActiveBranchAndBindToCommit(t *testing.T) {
+	db, s := newTimelineStory(t)
+	defer db.Close()
+	head, err := db.GetActiveTimeline(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err := db.CreateSession(&Session{ID: "legacy-session", StoryID: s.ID, StartedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	message := &ChatMessage{SessionID: "legacy-session", StoryID: s.ID, Turn: 1, Role: "assistant", Content: "before timeline", MessageType: "narrative", MetadataJSON: "{}", CreatedAt: now}
+	if err := db.AppendChatMessage(message); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		return db.BindPendingLineageTx(tx, s.ID, head.Branch.ID, head.Commit.ID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var branchID, commitID string
+	if err := db.Conn().QueryRow(`SELECT branch_id,source_commit_id FROM chat_messages WHERE id=?`, message.ID).Scan(&branchID, &commitID); err != nil {
+		t.Fatal(err)
+	}
+	if branchID != head.Branch.ID || commitID != head.Commit.ID {
+		t.Fatalf("bootstrap lineage=(%q,%q), want (%q,%q)", branchID, commitID, head.Branch.ID, head.Commit.ID)
+	}
+}
+
 func TestAppendTurnCommitUsesExpectedHeadAndImmutableSnapshot(t *testing.T) {
 	db, s := newTimelineStory(t)
 	defer db.Close()

@@ -73,7 +73,7 @@ func (db *DB) CloseSession(id string) error {
 func (db *DB) ListSessions(storyID string) ([]Session, error) {
 	rows, err := db.conn.Query(
 		`SELECT id, story_id, started_at, ended_at, summary, branch_id, source_commit_id
-         FROM sessions WHERE story_id = ? ORDER BY started_at DESC`, storyID,
+		 FROM sessions WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) ORDER BY started_at DESC`, storyID, storyID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("listing sessions for story %s: %w", storyID, err)

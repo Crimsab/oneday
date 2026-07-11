@@ -549,6 +549,53 @@ func runGatewayDeleteSave(ctx context.Context, cfg config.Config, db *storage.DB
 	return nil
 }
 
+func runGatewayTimeline(db *storage.DB, in io.Reader, out io.Writer) error {
+	var req contracts.BrowserTimelineRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return fmt.Errorf("invalid gateway-timeline JSON: %w", err)
+	}
+	if err := req.Validate(); err != nil {
+		return err
+	}
+	story, err := db.GetStory(req.StoryID)
+	if err != nil {
+		return err
+	}
+	switch req.Action {
+	case contracts.TimelineFork:
+		_, err = db.ForkStoryBranch(req.StoryID, req.FromCommitID, req.Name, req.ClientRevision)
+	case contracts.TimelineRename:
+		err = db.RenameStoryBranch(req.StoryID, req.BranchID, req.Name, req.ClientRevision)
+	case contracts.TimelineCheckout:
+		_, err = db.CheckoutStoryBranch(req.StoryID, req.BranchID, req.ClientRevision)
+	}
+	if err != nil {
+		return err
+	}
+	story, err = db.GetStory(req.StoryID)
+	if err != nil {
+		return err
+	}
+	branches, err := db.ListStoryBranches(req.StoryID)
+	if err != nil {
+		return err
+	}
+	head, err := db.GetActiveTimeline(req.StoryID)
+	if err != nil {
+		return err
+	}
+	views := make([]contracts.TimelineBranchView, 0, len(branches))
+	for _, branch := range branches {
+		var headTurn int
+		if err := db.Conn().QueryRow(`SELECT canonical_turn FROM turn_commits WHERE id=? AND story_id=?`, branch.HeadCommitID, req.StoryID).Scan(&headTurn); err != nil {
+			return fmt.Errorf("loading branch head %s: %w", branch.ID, err)
+		}
+		views = append(views, contracts.TimelineBranchView{ID: branch.ID, StoryID: branch.StoryID, Name: branch.Name, ForkCommitID: branch.ForkCommitID, HeadCommitID: branch.HeadCommitID, HeadTurn: headTurn, CreatedAt: branch.CreatedAt, UpdatedAt: branch.UpdatedAt})
+	}
+	resp := contracts.BrowserTimelineResponse{ActiveBranchID: story.ActiveBranchID, Revision: story.Revision, Branches: views, Head: &contracts.TimelineCommitView{ID: head.Commit.ID, BranchID: head.Commit.BranchID, ParentCommitID: head.Commit.ParentCommitID, CanonicalTurn: head.Commit.CanonicalTurn, Kind: head.Commit.Kind, Message: head.Commit.Message, CreatedAt: head.Commit.CreatedAt}}
+	return json.NewEncoder(out).Encode(resp)
+}
+
 func writeGatewayTurnError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{Error: err.Error()})
 	return err
