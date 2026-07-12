@@ -233,6 +233,8 @@ test("keeps story actions above the rail and closes them on outside click", asyn
   await mockGateway(page);
   await page.goto("/");
   await page.getByRole("button", { name: /library/i }).click();
+  const navigationBorderWidths = await page.locator(".module-nav button").evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).borderTopWidth));
+  expect(new Set(navigationBorderWidths)).toEqual(new Set(["1px"]));
   const createBox = await page.getByRole("button", { name: "New Story" }).boundingBox();
   const searchBox = await page.getByPlaceholder("Filter stories").boundingBox();
   expect(createBox).not.toBeNull();
