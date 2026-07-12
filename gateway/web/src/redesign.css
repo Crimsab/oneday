@@ -423,17 +423,76 @@ summary:focus-visible {
 .history-export button { border: 1px solid var(--line-soft); border-radius: 6px; background: rgba(255,255,255,.035); color: var(--muted); font-size: 11px; }
 .history-technical-export { grid-column: 1 / -1; }
 .history-technical-export > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 0 8px 8px; }
-.history-entries .history-message { padding: 12px; border-color: var(--line-soft); border-radius: 7px; background: #141a1e; }
-.history-entries .history-message > header { min-height: 24px; align-items: center; margin-block-end: 8px; }
-.history-entries .history-message > header strong { display: inline-flex; align-items: center; min-height: 22px; border-radius: 4px; background: rgba(255,255,255,.055); padding: 0 7px; color: var(--text); font-size: 10px; letter-spacing: .09em; }
-.history-entries .history-message.user-entry > header strong { background: color-mix(in srgb, var(--accent) 13%, transparent); color: color-mix(in srgb, var(--accent) 78%, white); }
-.history-entries .history-message > header span { color: var(--faint); font-family: var(--mono); font-size: 9px; }
-.history-message-preview { position: relative; max-height: 9.2em; overflow: hidden; }
-.history-message-preview::after { content: ""; position: absolute; inset: auto 0 0; height: 3.2em; background: linear-gradient(transparent, #141a1e); pointer-events: none; }
-.history-message-toggle { min-height: 28px; display: inline-flex; align-items: center; gap: 5px; margin-top: 7px; border: 0; border-radius: 5px; background: transparent; padding: 0 5px; color: var(--muted); cursor: pointer; font-size: 10px; }
+.history-entries { gap: 14px; }
+.history-entries .history-message {
+  --history-role: #71808b;
+  --history-role-dark: #253039;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--history-role) 42%, #273039);
+  border-radius: 14px;
+  background: #11171b;
+}
+.history-entries .history-message.user-entry {
+  --history-role: #e3a738;
+  --history-role-dark: #765000;
+}
+.history-entries .history-message.assistant-entry {
+  --history-role: #4d9ceb;
+  --history-role-dark: #164a7f;
+}
+.history-entries .history-message.system-entry {
+  --history-role: #93a0aa;
+  --history-role-dark: #39444c;
+}
+.history-entries .history-message > .history-message-header {
+  min-height: 58px;
+  align-items: center;
+  margin: 0;
+  background:
+    linear-gradient(105deg, color-mix(in srgb, var(--history-role) 18%, var(--history-role-dark)), var(--history-role-dark));
+  padding: 10px 16px 10px 20px;
+  color: #f7f8f8;
+}
+.history-entries .history-message > .history-message-header strong {
+  color: #f7f8f8;
+  font-size: 15px;
+  font-weight: 750;
+  letter-spacing: .12em;
+  line-height: 1;
+}
+.history-entries .history-message > .history-message-header .history-message-turn {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--history-role) 46%, transparent);
+  border-radius: 9px;
+  background: rgba(5, 9, 12, .26);
+  padding: 0 11px;
+  color: #f3f5f6;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: .04em;
+}
+.history-message-body { padding: 18px 20px 17px; }
+.history-message-body .markdown-body { color: color-mix(in srgb, var(--text) 96%, white); font-size: 17px; line-height: 1.62; }
+.history-message-preview { position: relative; max-height: 10.1em; overflow: hidden; }
+.history-message-preview::after { content: ""; position: absolute; inset: auto 0 0; height: 3.8em; background: linear-gradient(transparent, #11171b 88%); pointer-events: none; }
+.history-message-toggle { min-height: 34px; display: inline-flex; align-items: center; gap: 7px; margin-top: 10px; border: 0; border-radius: 6px; background: transparent; padding: 0 7px; color: var(--muted); cursor: pointer; font-size: 12px; }
 .history-message-toggle:hover { background: rgba(255,255,255,.045); color: var(--text); }
+.history-message-toggle:focus-visible { outline: 2px solid var(--history-role); outline-offset: 2px; }
 .history-message-toggle svg { transition: transform .15s ease; }
 .history-message-toggle[aria-expanded="true"] svg { transform: rotate(180deg); }
+
+@media (max-width: 640px) {
+  .history-entries { gap: 11px; }
+  .history-entries .history-message { border-radius: 11px; }
+  .history-entries .history-message > .history-message-header { min-height: 50px; padding: 8px 11px 8px 14px; }
+  .history-entries .history-message > .history-message-header strong { font-size: 13px; }
+  .history-entries .history-message > .history-message-header .history-message-turn { min-height: 30px; border-radius: 7px; padding-inline: 9px; font-size: 10px; }
+  .history-message-body { padding: 15px 14px 14px; }
+  .history-message-body .markdown-body { font-size: 16px; line-height: 1.58; }
+}
 
 /* Carbon surface cleanup for the settings and utility layers. */
 *::-webkit-scrollbar-track { background: var(--bg-2); }

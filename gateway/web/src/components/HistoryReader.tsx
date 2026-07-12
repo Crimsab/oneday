@@ -165,17 +165,22 @@ function HistoryMessage({ message }: { message: MessageView }) {
   const role = message.role === "user" ? "You" : message.role === "system" ? "System" : "Narrator";
 
   return (
-    <article className={`history-message ${message.role}-entry`}>
-      <header><strong>{role}</strong><span>Turn {message.turn}</span></header>
-      <div className={!expanded && collapsible ? "history-message-preview" : undefined}>
-        <MarkdownText>{preview}</MarkdownText>
+    <article className={`history-message ${message.role}-entry`} data-message-role={message.role}>
+      <header className="history-message-header">
+        <strong>{role}</strong>
+        <span className="history-message-turn">Turn {message.turn}</span>
+      </header>
+      <div className="history-message-body">
+        <div className={!expanded && collapsible ? "history-message-preview" : undefined}>
+          <MarkdownText>{preview}</MarkdownText>
+        </div>
+        {collapsible && (
+          <button type="button" className="history-message-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+            {expanded ? "Show less" : `Show full message · ${words.length} words`}
+            <ChevronDown size={16} aria-hidden="true" />
+          </button>
+        )}
       </div>
-      {collapsible && (
-        <button type="button" className="history-message-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
-          {expanded ? "Show less" : `Show full message · ${words.length} words`}
-          <ChevronDown size={14} aria-hidden="true" />
-        </button>
-      )}
     </article>
   );
 }
