@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cancelAudioJob, cleanupAudio, createMessageAudio, deletePronunciation, getAudioExport, getMessageAudio, getPronunciations, getTTSCatalog, retryAudioJob, updatePronunciation, updateTTSSettings } from "./api";
-import { assetUrl } from "./components/AudioControls";
+import { assetUrl, firstReadyAudioAsset } from "./components/AudioControls";
 import type { AudioAsset, PronunciationEntry, StoryTTSSettings } from "./types";
 
 const originalFetch = globalThis.fetch;
@@ -23,6 +23,15 @@ describe("canonical audio client", () => {
 
   it("serves an immutable asset by opaque encoded id", () => {
     expect(assetUrl({ id: "audio/id", status: "ready" } as AudioAsset)).toBe("/api/audio/audio%2Fid");
+  });
+
+  it("selects one stable ready asset for autoplay", () => {
+    const assets = [
+      { id: "queued", status: "queued" },
+      { id: "ready-first", status: "ready" },
+      { id: "ready-second", status: "ready" },
+    ] as AudioAsset[];
+    expect(firstReadyAudioAsset(assets)?.id).toBe("ready-first");
   });
 
   it("encodes retry, cancel, lexicon, cleanup, and export operations", async () => {

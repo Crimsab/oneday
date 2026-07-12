@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, Volume2 } from "lucide-react";
 import { cancelAudioJob, createMessageAudio, getMessageAudio, getTTSSettings, retryAudioJob } from "../api";
 import type { AudioAsset, MessageAudioResponse, StoryTTSSettings } from "../types";
 
 const settingsRequests = new Map<string, Promise<StoryTTSSettings>>();
+const autoplayedMessages = new Set<string>();
 
 function settingsForStory(storyId: string): Promise<StoryTTSSettings> {
   const existing = settingsRequests.get(storyId);
@@ -15,33 +16,40 @@ function settingsForStory(storyId: string): Promise<StoryTTSSettings> {
   return request;
 }
 
-export function AudioControls({ storyId, messageId }: { storyId: string; messageId: number }) {
+export function AudioControls({ storyId, messageId, autoplay = false }: { storyId: string; messageId: number; autoplay?: boolean }) {
   const [response, setResponse] = useState<MessageAudioResponse>({ assets: [], jobs: [] });
   const [settings, setSettings] = useState<StoryTTSSettings | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const played = useRef(new Set<string>());
+  const requestVersion = useRef(0);
 
-  const load = async () => {
+  const load = useCallback(async () => {
+    const version = ++requestVersion.current;
     try {
-      const [audio, settings] = await Promise.all([
+      const [audio, nextSettings] = await Promise.all([
         getMessageAudio(storyId, messageId),
         settingsForStory(storyId),
       ]);
+      if (version !== requestVersion.current) return;
       setResponse(audio);
-      setSettings(settings);
+      setSettings(nextSettings);
       setError("");
     } catch (cause) {
+      if (version !== requestVersion.current) return;
       setError(cause instanceof Error ? cause.message : "Audio status unavailable");
     }
-  };
+  }, [messageId, storyId]);
 
-  useEffect(() => { void load(); }, [storyId, messageId]);
+  useEffect(() => {
+    void load();
+    return () => { requestVersion.current += 1; };
+  }, [load]);
 
   useEffect(() => {
     const update = (event: Event) => {
       const detail = (event as CustomEvent<{ storyId: string; settings: StoryTTSSettings }>).detail;
       if (detail?.storyId === storyId) {
+        requestVersion.current += 1;
         settingsRequests.set(storyId, Promise.resolve(detail.settings));
         setSettings(detail.settings);
       }
@@ -50,41 +58,56 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
     return () => window.removeEventListener("oneday:tts-settings", update);
   }, [storyId]);
 
+  const autoplayAsset = useMemo(() => firstReadyAudioAsset(response.assets), [response.assets]);
   useEffect(() => {
-    if (!settings?.autoplay || settings.mode === "off") return;
-    const first = response.assets.find((asset) => asset.status === "ready" && !played.current.has(asset.id));
-    if (!first) return;
-    const audio = new Audio(assetUrl(first));
-    played.current.add(first.id);
+    if (!autoplay || !settings?.autoplay || settings.mode === "off" || !autoplayAsset) return;
+    const claim = `${storyId}:${messageId}`;
+    if (autoplayedMessages.has(claim)) return;
+    autoplayedMessages.add(claim);
+    const audio = new Audio(assetUrl(autoplayAsset));
     void audio.play().catch(() => setError("Autoplay was blocked. Use the playback control below."));
-  }, [settings, response.assets]);
+    return () => {
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
+    };
+  }, [autoplay, autoplayAsset?.id, messageId, settings?.autoplay, settings?.mode, storyId]);
 
   useEffect(() => {
     if (!response.jobs.some((job) => job.status === "queued" || job.status === "running")) return;
     const timer = window.setTimeout(() => { void load(); }, 1500);
     return () => window.clearTimeout(timer);
-  }, [response.jobs, storyId, messageId]);
+  }, [load, response.jobs]);
 
   const generate = async () => {
+    const version = ++requestVersion.current;
     setBusy(true);
     setError("");
     try {
       const retryable = response.jobs.find((job) => job.status === "failed" || job.status === "cancelled" || job.status === "canceled");
-      setResponse(retryable ? await retryAudioJob(storyId, retryable.id) : await createMessageAudio(storyId, messageId));
+      const nextResponse = retryable ? await retryAudioJob(storyId, retryable.id) : await createMessageAudio(storyId, messageId);
+      if (version === requestVersion.current) setResponse(nextResponse);
     } catch (cause) {
+      if (version !== requestVersion.current) return;
       setError(cause instanceof Error ? cause.message : "Audio generation failed");
     } finally {
-      setBusy(false);
+      if (version === requestVersion.current) setBusy(false);
     }
   };
 
   const cancel = async () => {
     const job = response.jobs.find((item) => item.status === "queued" || item.status === "running");
     if (!job) return;
+    const version = ++requestVersion.current;
     setBusy(true); setError("");
-    try { setResponse(await cancelAudioJob(storyId, job.id)); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not cancel audio generation"); }
-    finally { setBusy(false); }
+    try {
+      const nextResponse = await cancelAudioJob(storyId, job.id);
+      if (version === requestVersion.current) setResponse(nextResponse);
+    }
+    catch (cause) {
+      if (version === requestVersion.current) setError(cause instanceof Error ? cause.message : "Could not cancel audio generation");
+    }
+    finally { if (version === requestVersion.current) setBusy(false); }
   };
 
   const ready = response.assets.filter((asset) => asset.status === "ready");
@@ -117,4 +140,8 @@ export function AudioControls({ storyId, messageId }: { storyId: string; message
 
 export function assetUrl(asset: AudioAsset): string {
   return `/api/audio/${encodeURIComponent(asset.id)}`;
+}
+
+export function firstReadyAudioAsset(assets: AudioAsset[]): AudioAsset | undefined {
+  return assets.find((asset) => asset.status === "ready");
 }
