@@ -210,6 +210,15 @@ test("keeps story actions above the rail and closes them on outside click", asyn
   await mockGateway(page);
   await page.goto("/");
   await page.getByRole("button", { name: /library/i }).click();
+  const createBox = await page.getByRole("button", { name: "New Story" }).boundingBox();
+  const searchBox = await page.getByPlaceholder("Filter stories").boundingBox();
+  expect(createBox).not.toBeNull();
+  expect(searchBox).not.toBeNull();
+  expect(searchBox!.y - (createBox!.y + createBox!.height)).toBeGreaterThanOrEqual(6);
+  const storyRows = page.locator(".story-row");
+  await expect(storyRows).toHaveCount(1);
+  const storyBox = await storyRows.first().boundingBox();
+  expect(storyBox?.height).toBeGreaterThanOrEqual(80);
   await page.getByRole("button", { name: "Manage The Glass Archive" }).click();
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();

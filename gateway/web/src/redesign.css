@@ -121,24 +121,27 @@ summary:focus-visible {
 .rail-brand-compact img { width: 31px; height: 31px; object-fit: contain; }
 
 .rail-block { border-color: rgba(255,255,255,.07); }
+.stories-block { grid-template-rows: 38px auto auto minmax(0,1fr); }
 .rail-title { min-height: 38px; border: 0; padding: 0 18px; color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: .12em; }
-.new-story-row { margin: 0 14px 9px; border: 0; gap: 7px; }
+.new-story-row { min-height: 42px; margin: 0 14px 8px; border: 0; gap: 7px; }
 .new-story-button,
 .new-story-row .square-button {
-  min-height: 38px;
+  min-height: 42px;
   border: 1px solid var(--line-soft);
   border-radius: 7px;
   background: var(--panel-2);
 }
 .new-story-button { justify-content: flex-start; padding: 0 12px; }
-.new-story-row .square-button { width: 38px; }
-.search-wrap { min-height: 38px; margin: 0 14px 10px; border: 1px solid var(--line-soft); border-radius: 7px; padding: 0 10px; background: rgba(255,255,255,.02); }
+.new-story-row .square-button { width: 42px; }
+.search-wrap { min-height: 40px; margin: 0 14px 10px; border: 1px solid var(--line-soft); border-radius: 7px; padding: 0 11px; background: #101518; }
+.search-wrap:focus-within { border-color: color-mix(in srgb, var(--accent) 42%, var(--line)); background: #13191d; }
 .search-wrap input { font-size: 13px; }
 
-.story-list { padding: 0 10px 12px; }
-.story-row { margin: 0 0 7px; border: 1px solid transparent; border-radius: 8px; }
-.story-row.active { border-color: color-mix(in srgb, var(--accent) 32%, var(--line)); background: #171c20; }
-.story-select { gap: 5px; padding: 12px 8px 12px 12px; }
+.story-list { display: grid; align-content: start; gap: 6px; padding: 0 10px 12px; }
+.story-row { min-height: 82px; margin: 0; border: 1px solid transparent; border-radius: 8px; background: #101518; transition: border-color .15s ease, background-color .15s ease; }
+.story-row:hover { border-color: var(--line-soft); background: #141a1e; }
+.story-row.active { border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: #171c20; }
+.story-select { align-content: center; gap: 5px; padding: 10px 8px 10px 12px; }
 .story-row strong { color: var(--text); font-size: 14px; }
 .story-row.active strong { color: var(--text); }
 .story-row span { font-size: 11px; }
