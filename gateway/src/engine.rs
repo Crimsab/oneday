@@ -126,52 +126,6 @@ pub struct TimelineEnvelope {
     pub name: String,
 }
 
-#[derive(Debug, Serialize)]
-struct GatewayTimelineRequest<'a> {
-    story_id: &'a str,
-    action: &'a str,
-    client_revision: i64,
-    branch_id: &'a str,
-    from_commit_id: &'a str,
-    name: &'a str,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct TimelineBranchView {
-    pub id: String,
-    pub story_id: String,
-    pub name: String,
-    #[serde(default)]
-    pub fork_commit_id: String,
-    pub head_commit_id: String,
-    pub head_turn: i64,
-    pub created_at: String,
-    pub updated_at: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct TimelineCommitView {
-    pub id: String,
-    pub branch_id: String,
-    #[serde(default)]
-    pub parent_commit_id: String,
-    pub canonical_turn: i64,
-    pub kind: String,
-    #[serde(default)]
-    pub message: String,
-    pub created_at: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct TimelineResponse {
-    pub active_branch_id: String,
-    pub revision: i64,
-    pub branches: Vec<TimelineBranchView>,
-    pub head: Option<TimelineCommitView>,
-    #[serde(default)]
-    pub commits: Vec<TimelineCommitView>,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct StoryCreateEnvelope {
     pub brief: String,
@@ -710,19 +664,20 @@ pub async fn timeline(
     state: Arc<AppState>,
     story_id: &str,
     envelope: TimelineEnvelope,
-) -> anyhow::Result<TimelineResponse> {
-    let request = GatewayTimelineRequest {
-        story_id,
-        action: &envelope.action,
+) -> anyhow::Result<protocol::BrowserTimelineResponse> {
+    let action = envelope.action;
+    let request = protocol::BrowserTimelineRequest {
+        story_id: story_id.to_string(),
+        action: action.clone(),
         client_revision: envelope.client_revision,
-        branch_id: &envelope.branch_id,
-        from_commit_id: &envelope.from_commit_id,
-        name: &envelope.name,
+        branch_id: (!envelope.branch_id.is_empty()).then_some(envelope.branch_id),
+        from_commit_id: (!envelope.from_commit_id.is_empty()).then_some(envelope.from_commit_id),
+        name: (!envelope.name.is_empty()).then_some(envelope.name),
     };
     let first = call_timeline_gateway(state.clone(), &request).await;
     match first {
         Ok(response) => Ok(response),
-        Err(first_error) if envelope.action == "list" => {
+        Err(first_error) if action == "list" => {
             tokio::time::sleep(Duration::from_millis(75)).await;
             call_timeline_gateway(state, &request)
                 .await
@@ -740,10 +695,11 @@ pub async fn timeline(
 
 async fn call_timeline_gateway(
     state: Arc<AppState>,
-    request: &GatewayTimelineRequest<'_>,
-) -> anyhow::Result<TimelineResponse> {
+    request: &protocol::BrowserTimelineRequest,
+) -> anyhow::Result<protocol::BrowserTimelineResponse> {
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, TimelineResponse>(state, "gateway-timeline", request).await?;
+        call_gateway::<_, protocol::BrowserTimelineResponse>(state, "gateway-timeline", request)
+            .await?;
     if !status_ok {
         return Err(anyhow!(
             "gateway-timeline failed: {}",

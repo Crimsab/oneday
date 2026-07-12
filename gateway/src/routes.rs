@@ -532,7 +532,7 @@ async fn snapshot(
 async fn timeline(
     State(state): State<Arc<AppState>>,
     Path(story_id): Path<String>,
-) -> Result<Json<engine::TimelineResponse>, ApiError> {
+) -> Result<Json<crate::gateway_protocol::BrowserTimelineResponse>, ApiError> {
     Ok(Json(
         engine::timeline(
             state,
