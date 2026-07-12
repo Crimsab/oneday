@@ -56,6 +56,17 @@ printf 'codex response\n' > "$out"
 	}
 }
 
+func TestBoundedBufferCapsDiagnostics(t *testing.T) {
+	buffer := newBoundedBuffer(4)
+	written, err := buffer.Write([]byte("123456"))
+	if err != nil || written != 6 {
+		t.Fatalf("write = %d, %v", written, err)
+	}
+	if got := buffer.String(); got != "1234\n[output truncated]" {
+		t.Fatalf("buffer = %q", got)
+	}
+}
+
 func TestCodexCompleteMissingBinaryIsActionable(t *testing.T) {
 	provider := NewCodex(config.CodexConfig{
 		Binary: "oneday-test-codex-missing-binary",
