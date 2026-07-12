@@ -12,6 +12,12 @@ services:
     working_dir: /opt/oneday
     ports:
       - "8788:8788"
+    healthcheck:
+      test: ["CMD-SHELL", "ss -ltn | grep -q ':8788 '"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     env_file:
       - /opt/lab/data/secrets/oneday/app.env
     environment:
