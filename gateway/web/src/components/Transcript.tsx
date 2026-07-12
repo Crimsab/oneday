@@ -20,6 +20,8 @@ interface TranscriptProps {
 
 export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const followLatest = useRef(true);
+  const activeStoryId = useRef(storyId);
   const visibleMessages = useMemo(
     () => messages.filter((message) => message.id > hiddenBeforeId),
     [messages, hiddenBeforeId],
@@ -31,11 +33,23 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
 
   useEffect(() => {
     const node = ref.current;
-    if (node) node.scrollTop = node.scrollHeight;
-  }, [pendingTurn?.id, pendingTurn?.streamingText?.length, visibleMessages.length]);
+    if (!node) return;
+    if (activeStoryId.current !== storyId) {
+      activeStoryId.current = storyId;
+      followLatest.current = true;
+    }
+    if (followLatest.current) node.scrollTop = node.scrollHeight;
+  }, [pendingTurn?.id, pendingTurn?.streamingText?.length, storyId, visibleMessages.length]);
 
   return (
-    <div ref={ref} className="transcript" aria-live="polite">
+    <div
+      ref={ref}
+      className="transcript"
+      aria-live="polite"
+      onScroll={(event) => {
+        followLatest.current = isTranscriptNearBottom(event.currentTarget);
+      }}
+    >
       {visibleMessages.length === 0 ? (
         <div className="empty-copy transcript-empty">
           {messages.length ? "Transcript cleared locally. New canonical messages will appear here." : "Choose a story to load the canonical transcript."}
@@ -46,6 +60,13 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
     </div>
   );
+}
+
+export function isTranscriptNearBottom(
+  viewport: Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">,
+  threshold = 96,
+): boolean {
+  return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= threshold;
 }
 
 function TranscriptMessage({ storyId, message, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
