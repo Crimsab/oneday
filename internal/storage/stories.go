@@ -433,7 +433,16 @@ func (db *DB) DeleteStory(storyID string) error {
 
 // InsertCombatLog records a combat encounter outcome.
 func (db *DB) InsertCombatLog(log *CombatLog) error {
-	_, err := db.conn.Exec(
+	return db.insertCombatLogExec(db.conn, log)
+}
+
+// InsertCombatLogTx records a combat encounter inside the caller's transaction.
+func (db *DB) InsertCombatLogTx(tx *sql.Tx, log *CombatLog) error {
+	return db.insertCombatLogExec(tx, log)
+}
+
+func (db *DB) insertCombatLogExec(exec sqlExecer, log *CombatLog) error {
+	_, err := exec.Exec(
 		`INSERT INTO combat_log
 			(story_id, session_id, enemy_name, enemy_hp, turns, victory, defeat_outcome, player_hp_start, player_hp_end, created_at, branch_id, source_commit_id)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,

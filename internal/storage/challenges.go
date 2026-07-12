@@ -86,7 +86,7 @@ func (db *DB) GetChallengeRun(id string) (*ChallengeRun, error) {
 // current immutable head (combat/crafting/social do not advance a story turn).
 func (db *DB) RecordChallengeResolutionAtHead(storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution) error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		return db.recordChallengeResolutionAtHeadTx(tx, storyID, sessionID, turn, instance, resolution)
+		return db.RecordChallengeResolutionAtHeadTx(tx, storyID, sessionID, turn, instance, resolution)
 	})
 }
 
@@ -96,7 +96,7 @@ func (db *DB) RecordChallengeResolutionAtHead(storyID, sessionID string, turn in
 func (db *DB) RecordChallengeResolutionAndCharacterAtHead(storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution, character *Character) (int64, error) {
 	var revision int64
 	err := db.WithTx(func(tx *sql.Tx) error {
-		if err := db.recordChallengeResolutionAtHeadTx(tx, storyID, sessionID, turn, instance, resolution); err != nil {
+		if err := db.RecordChallengeResolutionAtHeadTx(tx, storyID, sessionID, turn, instance, resolution); err != nil {
 			return err
 		}
 		if err := db.UpdateCharacterFullTx(tx, character); err != nil {
@@ -109,7 +109,9 @@ func (db *DB) RecordChallengeResolutionAndCharacterAtHead(storyID, sessionID str
 	return revision, err
 }
 
-func (db *DB) recordChallengeResolutionAtHeadTx(tx *sql.Tx, storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution) error {
+// RecordChallengeResolutionAtHeadTx persists a challenge on the active immutable
+// timeline using the caller's transaction.
+func (db *DB) RecordChallengeResolutionAtHeadTx(tx *sql.Tx, storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution) error {
 	head, err := getActiveTimelineExec(tx, storyID)
 	if err != nil {
 		return err

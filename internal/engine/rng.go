@@ -31,6 +31,41 @@ type RNGService struct {
 	log      []RollRecord
 }
 
+type rngSnapshot struct {
+	seed     int64
+	sequence int
+	log      []RollRecord
+}
+
+func (r *RNGService) snapshot() rngSnapshot {
+	if r == nil {
+		return rngSnapshot{}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	logCopy := append([]RollRecord(nil), r.log...)
+	return rngSnapshot{seed: r.seed, sequence: r.sequence, log: logCopy}
+}
+
+func (r *RNGService) restore(snapshot rngSnapshot) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.seed = snapshot.seed
+	r.rng = rand.New(rand.NewSource(snapshot.seed))
+	for _, record := range snapshot.log {
+		sides := record.Sides
+		if sides <= 0 {
+			sides = 1
+		}
+		r.rng.Intn(sides)
+	}
+	r.sequence = snapshot.sequence
+	r.log = append([]RollRecord(nil), snapshot.log...)
+}
+
 func NewRNGService(seed int64) *RNGService {
 	return &RNGService{
 		seed: seed,
