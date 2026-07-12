@@ -59,6 +59,7 @@ function automaticPatternMiniGame() {
 async function mockGateway(page: Page, options: { failAction?: boolean; activeMiniGame?: boolean; ttsOff?: boolean } = {}) {
   let failAction = Boolean(options.failAction);
   let actionRequests = 0;
+  let wizardRequests = 0;
   let activeMiniGame: any = options.activeMiniGame ? automaticPatternMiniGame() : null;
   let visualCanUndo = true;
   let visualCanRedo = false;
@@ -116,6 +117,14 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       active: { provider: "codex", narrative_model: "gpt-5.5", utility_model: "gpt-5.5", repair_model: "gpt-5.5", repair_fallback_models: [], image_model: "gpt-image-1", ascii_model: "gpt-5.5", embedding_provider: "auto", embedding_model: "text-embedding-3-small", codex_reasoning: "off" },
       tts_status: "planned",
     });
+    if (path === "/api/story-wizard") {
+      wizardRequests += 1;
+      const body = request.postDataJSON() as { action?: string; input?: string };
+      if (body.action === "preset_dark_fantasy" || body.input?.includes("Italian dark fantasy")) {
+        return json(route, { wizard: { state: { stage: "review_world" }, phase: "conversation", stage: "review_world", stage_label: "Review world draft", placeholder: "Type how to change the world draft...", message: "World Draft\n\nStory: Bells Under Salt\nGenre: Dark fantasy", actions: [{ key: "accept_world", label: "Accept world" }], definition: { name: "Bells Under Salt", description: "A dangerous pilgrimage through melancholy ruins.", genre: "dark fantasy", tone: "melancholy", language: "Italian", setting: { world_name: "The Salt Marches" }, stats_schema: { has_combat: true } }, last_model: "gpt-5.4-mini", last_latency_ms: 2100 } });
+      }
+      return json(route, { wizard: { state: { stage: "brief" }, phase: "conversation", stage: "brief", stage_label: "Choose the story brief", placeholder: "Describe the story you want...", message: "Story setup starts with one short brief.", actions: [{ key: "preset_dark_fantasy", label: "Dark fantasy", seed: "Italian dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue." }, { key: "preset_cyberpunk", label: "Cyberpunk noir", seed: "Italian cyberpunk noir with sharp dialogue." }, { key: "focus_input", label: "Write my own" }] } });
+    }
     if (path.endsWith("/snapshot")) return json(route, snapshot());
     if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }]);
     if (path.endsWith("/visual-assets/asset-mira-new/selection/undo")) {
@@ -177,7 +186,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     }
     return json(route, {});
   });
-  return { actionRequests: () => actionRequests };
+  return { actionRequests: () => actionRequests, wizardRequests: () => wizardRequests };
 }
 
 test("submits once, clears optimistically, and renders stream/challenge lifecycle", async ({ page }) => {
@@ -225,6 +234,23 @@ test("keeps story actions above the rail and closes them on outside click", asyn
   await expect(menu.getByRole("menuitem", { name: "Edit" })).toBeInViewport();
   await page.getByRole("button", { name: "New Story" }).click({ position: { x: 4, y: 4 } });
   await expect(menu).toHaveCount(0);
+});
+
+test("reviews a story preset before starting structured generation", async ({ page }) => {
+  const requests = await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /library/i }).click();
+  await page.getByRole("button", { name: "New Story" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("button", { name: "Dark fantasy" })).toBeVisible();
+  expect(requests.wizardRequests()).toBe(1);
+  await dialog.getByRole("button", { name: "Dark fantasy" }).click();
+  await expect(dialog.getByRole("region", { name: "Confirm story preset" })).toContainText("Nothing has been generated or created yet");
+  await expect(dialog.getByLabel("Story brief")).toHaveValue(/Italian dark fantasy/);
+  expect(requests.wizardRequests()).toBe(1);
+  await dialog.getByRole("button", { name: "Generate draft" }).click();
+  await expect(dialog.getByText("Review world draft", { exact: true }).first()).toBeVisible();
+  expect(requests.wizardRequests()).toBe(2);
 });
 
 test("restores a failed draft, checks out a branch, and exposes searchable history/export", async ({ page, browserName }) => {

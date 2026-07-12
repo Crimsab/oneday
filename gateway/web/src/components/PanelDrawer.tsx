@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { X } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
@@ -27,6 +27,7 @@ import type {
   StoryEnhanceResponse,
   StorySnapshot,
   StoryWizardEnvelope,
+  StoryWizardAction,
   StoryWizardResponse,
   StoryWizardResult,
   GenerateVisualAssetsRequest,
@@ -1569,7 +1570,23 @@ function NewStoryContent({
   const [start, setStart] = useState(true);
   const [error, setError] = useState("");
   const [enhancing, setEnhancing] = useState(false);
+  const [pendingPreset, setPendingPreset] = useState<StoryWizardAction | null>(null);
+  const [operation, setOperation] = useState("");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [log, setLog] = useState<Array<{ stage: string; message: string }>>([]);
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!operation) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const update = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    update();
+    const timer = window.setInterval(update, 1000);
+    return () => window.clearInterval(timer);
+  }, [operation]);
 
   const applyResponse = (response: StoryWizardResponse) => {
     const next = response.wizard;
@@ -1583,13 +1600,15 @@ function NewStoryContent({
             message: next.message,
           },
           ...items,
-        ].slice(0, 8),
+        ].slice(0, 4),
       );
     }
+    setPendingPreset(null);
   };
 
   const runStep = async (payload: Omit<StoryWizardEnvelope, "start">) => {
     setError("");
+    setOperation(wizardOperationLabel(wizard?.stage ?? "brief", payload));
     try {
       const response = await onRunStoryWizard({
         state: wizard?.state,
@@ -1599,24 +1618,27 @@ function NewStoryContent({
       applyResponse(response);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setOperation("");
     }
   };
 
   useEffect(() => {
-    let cancelled = false;
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+    setOperation("Opening guided setup");
     onRunStoryWizard({ start })
       .then((response) => {
-        if (!cancelled) applyResponse(response);
+        applyResponse(response);
       })
       .catch((failure) => {
-        if (!cancelled)
-          setError(
-            failure instanceof Error ? failure.message : String(failure),
-          );
+        setError(
+          failure instanceof Error ? failure.message : String(failure),
+        );
+      })
+      .finally(() => {
+        setOperation("");
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1629,13 +1651,20 @@ function NewStoryContent({
     await runStep({ input: text });
   };
 
-  const runAction = async (action: string) => {
-    await runStep({ action });
+  const runAction = async (action: StoryWizardAction) => {
+    if ((wizard?.stage ?? "brief") === "brief" && action.key.startsWith("preset_")) {
+      setPendingPreset(action);
+      setInput(action.seed || "");
+      setError("");
+      return;
+    }
+    await runStep({ action: action.key });
   };
 
   const stage = wizard?.stage ?? "brief";
   const phase = wizard?.phase ?? "conversation";
   const definition = storyDefinitionSummary(wizard?.definition);
+  const step = wizardStep(stage);
 
   const enhanceInput = async () => {
     if (stage === "done" || enhancing) return;
@@ -1683,7 +1712,7 @@ function NewStoryContent({
               ? "Complete"
               : phase === "character"
                 ? "Character setup"
-                : "Story setup"}
+                : `Story setup - Step ${step.current} of ${step.total}`}
           </span>
           <strong>{wizard?.stage_label || "Loading wizard"}</strong>
         </div>
@@ -1700,6 +1729,15 @@ function NewStoryContent({
 
       <div className="story-wizard-grid">
         <div className="story-wizard-main">
+          {operation && (
+            <div className="story-wizard-generation" role="status" aria-live="polite">
+              <span className="story-wizard-generation-pulse" aria-hidden="true" />
+              <div>
+                <strong>{generationProgressLabel(operation, elapsedSeconds)}</strong>
+                <small>{elapsedSeconds}s elapsed. The structured draft appears after schema validation.</small>
+              </div>
+            </div>
+          )}
           <div className="story-wizard-message">
             <pre>
               {wizard?.message ||
@@ -1717,7 +1755,8 @@ function NewStoryContent({
                   type="button"
                   key={action.key}
                   title={action.key}
-                  onClick={() => void runAction(action.key)}
+                  aria-pressed={pendingPreset?.key === action.key}
+                  onClick={() => void runAction(action)}
                   disabled={busy}
                 >
                   <span>{index + 1}</span>
@@ -1726,6 +1765,20 @@ function NewStoryContent({
               ))}
             </div>
           ) : null}
+
+          {pendingPreset && (
+            <section className="story-wizard-confirmation" aria-label="Confirm story preset">
+              <div>
+                <span>Review before generation</span>
+                <strong>{pendingPreset.label}</strong>
+                <p>The preset has only filled the brief. Nothing has been generated or created yet. Edit it below, then confirm when it reads correctly.</p>
+              </div>
+              <div>
+                <button type="button" onClick={() => { setPendingPreset(null); setInput(""); }} disabled={busy}>Cancel</button>
+                <button type="button" className="primary" onClick={() => void runStep({ input: input.trim() })} disabled={busy || !input.trim()}>Generate draft</button>
+              </div>
+            </section>
+          )}
 
           {stage !== "done" && (
             <label className="story-wizard-input">
@@ -1756,13 +1809,11 @@ function NewStoryContent({
             >
               {enhancing ? "Enhancing..." : "Enhance text"}
             </button>
-            <button
-              type="submit"
-              className="primary"
-              disabled={busy || stage === "done"}
-            >
-              {busy ? "Working..." : submitLabelForStage(stage)}
-            </button>
+            {!pendingPreset && (
+              <button type="submit" className="primary" disabled={busy || stage === "done"}>
+                {busy ? "Working..." : submitLabelForStage(stage)}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1812,6 +1863,25 @@ function NewStoryContent({
       </div>
     </form>
   );
+}
+
+function wizardStep(stage: string): { current: number; total: number } {
+  const stages = ["brief", "review_world", "review_rules", "review_stats", "confirm", "character_name", "character_background", "done"];
+  return { current: Math.max(1, stages.indexOf(stage) + 1), total: stages.length - 1 };
+}
+
+function wizardOperationLabel(stage: string, payload: Omit<StoryWizardEnvelope, "start">): string {
+  if (stage === "brief") return "Generating structured story draft";
+  if (payload.action === "create_story") return "Locking reviewed story";
+  if (stage.startsWith("review_") || stage === "confirm") return "Revising structured story draft";
+  if (stage === "character_background") return "Creating story and protagonist";
+  return "Updating guided setup";
+}
+
+function generationProgressLabel(operation: string, elapsedSeconds: number): string {
+  if (elapsedSeconds < 2) return operation;
+  if (elapsedSeconds < 8) return "Generating world, rules, and playable stats";
+  return "Validating the structured draft";
 }
 
 function currentInputRequiredMessage(wizard: StoryWizardResult | null): string {
