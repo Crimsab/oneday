@@ -58,11 +58,16 @@ export function messageAlternativesForCommit(
   };
 }
 
-export function timelineControlAnchorMessageIds(
+export interface TimelineControlPlacement {
+  restore: boolean;
+  switcher: boolean;
+}
+
+export function timelineControlPlacements(
   messages: MessageView[],
   timeline: TimelineResponse | null,
-): Set<number> {
-  if (!timeline) return new Set();
+): Map<number, TimelineControlPlacement> {
+  if (!timeline) return new Map();
 
   const messagesByCommit = new Map<string, MessageView[]>();
   for (const message of messages) {
@@ -72,19 +77,23 @@ export function timelineControlAnchorMessageIds(
     messagesByCommit.set(message.source_commit_id, group);
   }
 
-  const anchors = new Set<number>();
+  const placements = new Map<number, TimelineControlPlacement>();
+  const place = (message: MessageView | undefined, kind: keyof TimelineControlPlacement) => {
+    if (!message) return;
+    const current = placements.get(message.id) ?? { restore: false, switcher: false };
+    placements.set(message.id, { ...current, [kind]: true });
+  };
   for (const [sourceCommitId, group] of messagesByCommit) {
     const alternatives = messageAlternativesForCommit(sourceCommitId, timeline);
     const commit = timeline.commits.find((item) => item.id === sourceCommitId);
     const canRestore = Boolean(commit?.parent_commit_id);
-    const canSwitch = alternatives.branches.length > 1 && (alternatives.currentIndex >= 0 || alternatives.atDecision);
-    if (!canRestore && !canSwitch) continue;
+    const canSwitch = alternatives.atDecision
+      ? alternatives.branches.length > 0
+      : alternatives.branches.length > 1 && alternatives.currentIndex >= 0;
 
     const latest = (role: MessageView["role"]) => [...group].reverse().find((message) => message.role === role);
-    const anchor = alternatives.atDecision
-      ? latest("assistant") ?? latest("user")
-      : latest("user") ?? latest("assistant");
-    if (anchor) anchors.add(anchor.id);
+    if (canRestore) place(latest("user") ?? latest("assistant"), "restore");
+    if (canSwitch) place(latest("assistant") ?? latest("user"), "switcher");
   }
-  return anchors;
+  return placements;
 }
