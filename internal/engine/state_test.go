@@ -775,5 +775,23 @@ func TestApplyStateChangesUsesDeterministicDependencyOrder(t *testing.T) {
 	}
 }
 
+func TestOrderedStateChangesProduceTypedOperations(t *testing.T) {
+	operations := orderedStateChangeOperations(map[string]interface{}{
+		"skill_xp":    map[string]interface{}{"skill": "Lore", "xp": 5},
+		"skill_learn": "Lore",
+		"future_key":  true,
+	}, standardStateChangeOrder)
+
+	if len(operations) != 3 {
+		t.Fatalf("operations len = %d, want 3", len(operations))
+	}
+	if operations[0].Key != StateChangeSkillLearn || operations[1].Key != StateChangeSkillXP {
+		t.Fatalf("typed dependency order = %v, %v", operations[0].Key, operations[1].Key)
+	}
+	if operations[2].Key != StateChangeKey("future_key") || operations[2].Value != true {
+		t.Fatalf("unknown operation = %+v", operations[2])
+	}
+}
+
 // TODO: NPC-related tests (new_npc, disposition) require a live DB.
 // Integration tests to be added in a future phase once a test DB helper is available.

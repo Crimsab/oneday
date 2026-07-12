@@ -25,42 +25,102 @@ type StateChange struct {
 	Description string
 }
 
-var standardStateChangeOrder = []string{
-	"vitals", "attributes", "secondary", "location", "currency",
-	"inventory_remove", "inventory_add", "trait_add", "title_add",
-	"skill_learn", "skill_xp", "new_npc", "npc_reference",
-	"npc_discovery_update", "npc_disposition", "npc_thoughts", "npc_notes",
-	"npc_desire_update", "npc_desires", "npc_relationship", "nemesis_resolution",
-	"investigation_update", "project_update", "hook_add", "hook_update",
-	"hook_resolve", "guide_update", "timeline_update", "world_reaction_add",
-	"fail_forward", "combat_start", "crafting_start",
+type StateChangeKey string
+
+const (
+	StateChangeVitals               StateChangeKey = "vitals"
+	StateChangeAttributes           StateChangeKey = "attributes"
+	StateChangeSecondary            StateChangeKey = "secondary"
+	StateChangeLocation             StateChangeKey = "location"
+	StateChangeCurrency             StateChangeKey = "currency"
+	StateChangeInventoryRemove      StateChangeKey = "inventory_remove"
+	StateChangeInventoryAdd         StateChangeKey = "inventory_add"
+	StateChangeTraitAdd             StateChangeKey = "trait_add"
+	StateChangeTitleAdd             StateChangeKey = "title_add"
+	StateChangeSkillLearn           StateChangeKey = "skill_learn"
+	StateChangeSkillXP              StateChangeKey = "skill_xp"
+	StateChangeNewNPC               StateChangeKey = "new_npc"
+	StateChangeNPCReference         StateChangeKey = "npc_reference"
+	StateChangeNPCDiscoveryUpdate   StateChangeKey = "npc_discovery_update"
+	StateChangeNPCDisposition       StateChangeKey = "npc_disposition"
+	StateChangeNPCThoughts          StateChangeKey = "npc_thoughts"
+	StateChangeNPCNotes             StateChangeKey = "npc_notes"
+	StateChangeNPCDesireUpdate      StateChangeKey = "npc_desire_update"
+	StateChangeNPCDesires           StateChangeKey = "npc_desires"
+	StateChangeNPCRelationship      StateChangeKey = "npc_relationship"
+	StateChangeNemesisResolution    StateChangeKey = "nemesis_resolution"
+	StateChangeInvestigationUpdate  StateChangeKey = "investigation_update"
+	StateChangeProjectUpdate        StateChangeKey = "project_update"
+	StateChangeHookAdd              StateChangeKey = "hook_add"
+	StateChangeHookUpdate           StateChangeKey = "hook_update"
+	StateChangeHookResolve          StateChangeKey = "hook_resolve"
+	StateChangeGuideUpdate          StateChangeKey = "guide_update"
+	StateChangeTimelineUpdate       StateChangeKey = "timeline_update"
+	StateChangeWorldReactionAdd     StateChangeKey = "world_reaction_add"
+	StateChangeFailForward          StateChangeKey = "fail_forward"
+	StateChangeCombatStart          StateChangeKey = "combat_start"
+	StateChangeCraftingStart        StateChangeKey = "crafting_start"
+	StateChangeSettingFactionsAdd   StateChangeKey = "setting_factions_add"
+	StateChangeSettingCulturesAdd   StateChangeKey = "setting_cultures_add"
+	StateChangeSettingDangersAdd    StateChangeKey = "setting_dangers_add"
+	StateChangeSettingRulesAdd      StateChangeKey = "setting_rules_add"
+	StateChangeSettingToneAdd       StateChangeKey = "setting_tone_add"
+	StateChangeWorldLocationAdd     StateChangeKey = "world_location_add"
+	StateChangeWorldEventAdd        StateChangeKey = "world_event_add"
+	StateChangeWorldFactionStanding StateChangeKey = "world_faction_standing"
+	StateChangeFrontAdd             StateChangeKey = "front_add"
+	StateChangeFrontAdvance         StateChangeKey = "front_advance"
+	StateChangeFrontReveal          StateChangeKey = "front_reveal"
+	StateChangeFrontStall           StateChangeKey = "front_stall"
+	StateChangeFrontResolve         StateChangeKey = "front_resolve"
+	StateChangeFrontPressure        StateChangeKey = "front_pressure"
+)
+
+type stateChangeOperation struct {
+	Key   StateChangeKey
+	Value interface{}
 }
 
-var narratorStateChangeOrder = []string{
-	"setting_factions_add", "setting_cultures_add", "setting_dangers_add",
-	"setting_rules_add", "setting_tone_add", "world_location_add",
-	"world_event_add", "world_faction_standing", "front_add", "front_advance",
-	"front_reveal", "front_stall", "front_resolve", "front_pressure", "npc_desires",
+var standardStateChangeOrder = []StateChangeKey{
+	StateChangeVitals, StateChangeAttributes, StateChangeSecondary, StateChangeLocation, StateChangeCurrency,
+	StateChangeInventoryRemove, StateChangeInventoryAdd, StateChangeTraitAdd, StateChangeTitleAdd,
+	StateChangeSkillLearn, StateChangeSkillXP, StateChangeNewNPC, StateChangeNPCReference,
+	StateChangeNPCDiscoveryUpdate, StateChangeNPCDisposition, StateChangeNPCThoughts, StateChangeNPCNotes,
+	StateChangeNPCDesireUpdate, StateChangeNPCDesires, StateChangeNPCRelationship, StateChangeNemesisResolution,
+	StateChangeInvestigationUpdate, StateChangeProjectUpdate, StateChangeHookAdd, StateChangeHookUpdate,
+	StateChangeHookResolve, StateChangeGuideUpdate, StateChangeTimelineUpdate, StateChangeWorldReactionAdd,
+	StateChangeFailForward, StateChangeCombatStart, StateChangeCraftingStart,
 }
 
-func orderedStateChangeKeys(changes map[string]interface{}, priority []string) []string {
-	keys := make([]string, 0, len(changes))
+var narratorStateChangeOrder = []StateChangeKey{
+	StateChangeSettingFactionsAdd, StateChangeSettingCulturesAdd, StateChangeSettingDangersAdd,
+	StateChangeSettingRulesAdd, StateChangeSettingToneAdd, StateChangeWorldLocationAdd,
+	StateChangeWorldEventAdd, StateChangeWorldFactionStanding, StateChangeFrontAdd, StateChangeFrontAdvance,
+	StateChangeFrontReveal, StateChangeFrontStall, StateChangeFrontResolve, StateChangeFrontPressure, StateChangeNPCDesires,
+}
+
+func orderedStateChangeOperations(changes map[string]interface{}, priority []StateChangeKey) []stateChangeOperation {
+	operations := make([]stateChangeOperation, 0, len(changes))
 	seen := make(map[string]struct{}, len(changes))
 	for _, key := range priority {
-		if _, ok := changes[key]; !ok {
+		value, ok := changes[string(key)]
+		if !ok {
 			continue
 		}
-		keys = append(keys, key)
-		seen[key] = struct{}{}
+		operations = append(operations, stateChangeOperation{Key: key, Value: value})
+		seen[string(key)] = struct{}{}
 	}
-	unknown := make([]string, 0, len(changes)-len(keys))
+	unknown := make([]string, 0, len(changes)-len(operations))
 	for key := range changes {
 		if _, ok := seen[key]; !ok {
 			unknown = append(unknown, key)
 		}
 	}
 	sort.Strings(unknown)
-	return append(keys, unknown...)
+	for _, key := range unknown {
+		operations = append(operations, stateChangeOperation{Key: StateChangeKey(key), Value: changes[key]})
+	}
+	return operations
 }
 
 // ApplyStateChanges takes the state_changes map from an AI response
@@ -118,8 +178,8 @@ func applyStateChangesWithNPCStore(
 
 	var applied []StateChange
 
-	for _, key := range orderedStateChangeKeys(changes, standardStateChangeOrder) {
-		val := changes[key]
+	for _, operation := range orderedStateChangeOperations(changes, standardStateChangeOrder) {
+		key, val := operation.Key, operation.Value
 		switch key {
 		case "vitals":
 			vitalsMap, ok := toStringMap(val)
@@ -1038,7 +1098,7 @@ func applyStateChangesWithNPCStore(
 			applied = append(applied, StateChange{
 				Target:      "system",
 				Field:       "unknown_state_change",
-				New:         key,
+				New:         string(key),
 				Description: fmt.Sprintf("Unknown state change ignored: %s", key),
 			})
 		}
@@ -1070,7 +1130,7 @@ func applyStateChangesWithNPCStore(
 	return applied, nil
 }
 
-func isNarratorManagedStateChangeKey(key string) bool {
+func isNarratorManagedStateChangeKey(key StateChangeKey) bool {
 	switch key {
 	case "setting_factions_add",
 		"setting_cultures_add",
@@ -1425,8 +1485,8 @@ func ApplyNarratorStateChanges(
 		currentTurn = world.CurrentTurn
 	}
 
-	for _, key := range orderedStateChangeKeys(changes, narratorStateChangeOrder) {
-		val := changes[key]
+	for _, operation := range orderedStateChangeOperations(changes, narratorStateChangeOrder) {
+		key, val := operation.Key, operation.Value
 		switch key {
 
 		// --- Story setting mutations ---
