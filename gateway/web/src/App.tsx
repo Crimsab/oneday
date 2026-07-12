@@ -89,6 +89,7 @@ import type {
 } from "./types";
 import { visualCatalog } from "./visualAssets";
 import { visualPollingDelayMs } from "./visualJobs";
+import type { SpatialEdge } from "./spatialMap";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
 
@@ -968,6 +969,15 @@ function App() {
     setModuleOverlayTab(null);
   };
 
+  const handleMapTravel = (locationName: string, route: SpatialEdge | null) => {
+    const routeDetail = route
+      ? [route.travel_mode, route.direction, route.travel_minutes ? `${route.travel_minutes} minutes` : ""].filter(Boolean).join(", ")
+      : "an unexplored route";
+    const text = route ? `Travel to ${locationName} via ${routeDetail}.` : `Find a safe route to ${locationName} and travel there.`;
+    closeOverlay();
+    void sendAction({ kind: "free_text", text }, text);
+  };
+
   const updatePreferences = (nextPreferences: AppPreferences) => {
     setPreferences({ ...defaultPreferences, ...nextPreferences });
   };
@@ -1266,6 +1276,7 @@ function App() {
             onOpenModule={openModuleOverlay}
             onOpenNpcCodex={openNpcCodex}
             onOpenVisualAsset={openVisualAssetEditor}
+            onMapTravel={handleMapTravel}
           />
         )}
       </div>
@@ -1303,6 +1314,7 @@ function App() {
         onVisualAssetVersionSelect={chooseVisualAssetVersion}
         onVisualAssetSelectionStep={stepVisualSelection}
         onOpenVisualAsset={openVisualAssetEditor}
+        onMapTravel={handleMapTravel}
         onRunStoryWizard={(payload) => runBrowserStoryWizard(payload)}
         onEnhanceStoryText={(payload) => runBrowserStoryEnhance(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}

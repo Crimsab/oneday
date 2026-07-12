@@ -54,6 +54,7 @@ pub struct WorldView {
     pub id: String,
     pub current_location: String,
     pub current_location_id: String,
+    pub spatial_regions: Value,
     pub spatial_locations: Value,
     pub spatial_edges: Value,
     pub world_time: Value,
@@ -537,14 +538,16 @@ async fn load_world(pool: &SqlitePool, story_id: &str) -> anyhow::Result<WorldVi
     .bind(story_id)
     .fetch_one(pool)
     .await?;
-    let spatial_locations: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'name',canonical_name,'region_id',region_id,'parent_location_id',parent_location_id,'description',description,'discovery_state',discovery_state)),'[]') FROM locations WHERE story_id=? AND visibility IN ('public','player') AND discovery_state!='unknown'"#).bind(story_id).fetch_one(pool).await?;
-    let spatial_edges: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'from_location_id',from_location_id,'to_location_id',to_location_id,'direction',direction,'travel_minutes',travel_minutes,'conditions',json(conditions_json))),'[]') FROM location_edges WHERE story_id=? AND visibility IN ('public','player')"#).bind(story_id).fetch_one(pool).await?;
-    let world_time: String=sqlx::query_scalar(r#"SELECT json_object('day',day,'minute_of_day',minute_of_day,'display_text',display_text) FROM world_clocks WHERE story_id=?"#).bind(story_id).fetch_one(pool).await?;
-    let weather: Option<String>=sqlx::query_scalar(r#"SELECT json_object('tracked',json('true'),'label',weather_kind,'intensity',intensity,'description',description) FROM weather_states WHERE story_id=? AND (location_id=? OR location_id IS NULL) AND visibility IN ('public','player') ORDER BY valid_from_day DESC,valid_from_minute DESC LIMIT 1"#).bind(story_id).bind(row_string(&row,"current_location_id")).fetch_optional(pool).await?;
+    let spatial_regions: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'name',name,'kind',region_kind,'parent_region_id',parent_region_id,'visibility',visibility)),'[]') FROM (SELECT id,name,region_kind,parent_region_id,visibility FROM regions WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND visibility IN ('public','player') ORDER BY lower(name),id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
+    let spatial_locations: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'name',canonical_name,'kind',location_kind,'region_id',region_id,'parent_location_id',parent_location_id,'description',description,'discovery_state',discovery_state)),'[]') FROM (SELECT id,canonical_name,location_kind,region_id,parent_location_id,description,discovery_state FROM locations WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND visibility IN ('public','player') AND discovery_state!='unknown' ORDER BY lower(canonical_name),id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
+    let spatial_edges: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'from_location_id',from_location_id,'to_location_id',to_location_id,'direction',direction,'travel_minutes',travel_minutes,'travel_mode',travel_mode,'bidirectional',json(CASE WHEN bidirectional=1 THEN 'true' ELSE 'false' END),'conditions',json(conditions_json))),'[]') FROM (SELECT id,from_location_id,to_location_id,direction,travel_minutes,travel_mode,bidirectional,conditions_json FROM location_edges WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND visibility IN ('public','player') ORDER BY from_location_id,to_location_id,direction,travel_mode,id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
+    let world_time: String=sqlx::query_scalar(r#"SELECT json_object('day',day,'minute_of_day',minute_of_day,'display_text',display_text) FROM world_clocks WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
+    let weather: Option<String>=sqlx::query_scalar(r#"SELECT json_object('tracked',json('true'),'label',weather_kind,'intensity',intensity,'description',description) FROM weather_states WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND (location_id=? OR location_id IS NULL) AND visibility IN ('public','player') ORDER BY valid_from_day DESC,valid_from_minute DESC LIMIT 1"#).bind(story_id).bind(story_id).bind(row_string(&row,"current_location_id")).fetch_optional(pool).await?;
     Ok(WorldView {
         id: row.try_get("id")?,
         current_location: row.try_get("current_location")?,
         current_location_id: row_string(&row, "current_location_id"),
+        spatial_regions: serde_json::from_str(&spatial_regions).unwrap_or_else(|_| json!([])),
         spatial_locations: serde_json::from_str(&spatial_locations).unwrap_or_else(|_| json!([])),
         spatial_edges: serde_json::from_str(&spatial_edges).unwrap_or_else(|_| json!([])),
         world_time: serde_json::from_str(&world_time)

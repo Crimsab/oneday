@@ -39,7 +39,7 @@ func TestMigrationV35CreatesCanonicalAudioSchema(t *testing.T) {
 		}
 	}
 	var version int
-	if err := db.Conn().QueryRow(`SELECT MAX(version) FROM schema_version`).Scan(&version); err != nil || version != 35 {
+	if err := db.Conn().QueryRow(`SELECT MAX(version) FROM schema_version`).Scan(&version); err != nil || version < 35 {
 		t.Fatalf("schema version=%d err=%v", version, err)
 	}
 }

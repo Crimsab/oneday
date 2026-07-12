@@ -68,6 +68,8 @@ pub struct VisualAsset {
     pub entity_id: String,
     pub canonical_entity_id: String,
     pub canonical_location_id: String,
+    pub map_scope_kind: String,
+    pub map_scope_id: String,
     pub form_id: String,
     pub lineage_key: String,
     pub appearance_fingerprint: String,
@@ -262,6 +264,8 @@ struct VisualSpec {
     entity_id: String,
     canonical_entity_id: String,
     canonical_location_id: String,
+    map_scope_kind: String,
+    map_scope_id: String,
     form_id: String,
     lineage_key: String,
     appearance_fingerprint: String,
@@ -429,6 +433,8 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
     for (column, definition) in [
         ("canonical_entity_id", "TEXT NOT NULL DEFAULT ''"),
         ("canonical_location_id", "TEXT NOT NULL DEFAULT ''"),
+        ("map_scope_kind", "TEXT NOT NULL DEFAULT ''"),
+        ("map_scope_id", "TEXT NOT NULL DEFAULT ''"),
         ("form_id", "TEXT NOT NULL DEFAULT ''"),
         ("lineage_key", "TEXT NOT NULL DEFAULT ''"),
         ("appearance_fingerprint", "TEXT NOT NULL DEFAULT ''"),
@@ -1026,7 +1032,7 @@ pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
             asset_ids: Vec::new(),
             force: false,
             allow_silhouette: false,
-            limit: Some(3),
+            limit: Some(6),
         };
         if let Err(err) = generate_visual_assets(state.clone(), &story_id, request).await {
             tracing::warn!(story_id = %story_id, error = %err, "visual asset auto-generation failed");
@@ -1034,7 +1040,7 @@ pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
     });
 }
 
-const AUTOMATIC_VISUAL_CATCHUP_LIMIT: usize = 3;
+const AUTOMATIC_VISUAL_CATCHUP_LIMIT: usize = 12;
 
 pub fn spawn_automatic_visual_catchup(state: Arc<AppState>) {
     if !image_generation_config(&state)
@@ -1123,8 +1129,8 @@ fn automatic_catchup_candidates(
 
 fn automatic_visual_priority(asset: &VisualAsset) -> u8 {
     match asset.kind.as_str() {
-        "map_icon" => 0,
-        "map_background" => 1,
+        "map_background" => 0,
+        "map_icon" => 1,
         "location" => 2,
         "character" => 3,
         _ => 4,
@@ -2666,8 +2672,9 @@ async fn visual_specs(
         )
         .unwrap_or_else(|| value_to_text(&snapshot.world.known_locations));
         let location_row = sqlx::query(
-            "SELECT description,discovery_state,discovered_turn FROM locations WHERE story_id=? AND id=? LIMIT 1",
+            "SELECT description,discovery_state,discovered_turn FROM locations WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND id=? LIMIT 1",
         )
+        .bind(&snapshot.story.id)
         .bind(&snapshot.story.id)
         .bind(&snapshot.world.current_location_id)
         .fetch_optional(pool)
@@ -2681,8 +2688,9 @@ async fn visual_specs(
             .and_then(|row| row.try_get::<i64, _>("discovered_turn").ok())
             .unwrap_or(snapshot.world.current_turn);
         let significant: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM canonical_world_events WHERE story_id=? AND location_id=? AND visibility IN ('public','player')",
+            "SELECT COUNT(*) FROM canonical_world_events WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND location_id=? AND visibility IN ('public','player')",
         )
+        .bind(&snapshot.story.id)
         .bind(&snapshot.story.id)
         .bind(&snapshot.world.current_location_id)
         .fetch_one(pool)
@@ -2722,6 +2730,8 @@ async fn visual_specs(
             entity_id: String::new(),
             canonical_entity_id: String::new(),
             canonical_location_id: snapshot.world.current_location_id.clone(),
+            map_scope_kind: String::new(),
+            map_scope_id: String::new(),
             form_id: String::new(),
             lineage_key: format!("location:{}", snapshot.world.current_location_id),
             appearance_fingerprint,
@@ -2737,6 +2747,7 @@ async fn visual_specs(
     }
 
     specs.extend(known_map_specs(
+        &snapshot.world.spatial_regions,
         &snapshot.world.spatial_locations,
         &snapshot.world.spatial_edges,
         profile,
@@ -2754,10 +2765,11 @@ async fn visual_specs(
         let relationship = value_to_text(npc.fields.get("relationship").unwrap_or(&Value::Null));
         let form = sqlx::query(
             r#"SELECT id,appearance_json FROM entity_forms
-               WHERE story_id=? AND entity_id=? AND valid_from_turn<=?
+               WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND entity_id=? AND valid_from_turn<=?
                  AND (valid_to_turn IS NULL OR valid_to_turn>=?)
                ORDER BY valid_from_turn DESC,created_at DESC LIMIT 1"#,
         )
+        .bind(&snapshot.story.id)
         .bind(&snapshot.story.id)
         .bind(&npc.id)
         .bind(snapshot.world.current_turn)
@@ -2827,6 +2839,8 @@ async fn visual_specs(
             entity_id: npc.id.clone(),
             canonical_entity_id: npc.id.clone(),
             canonical_location_id: String::new(),
+            map_scope_kind: String::new(),
+            map_scope_id: String::new(),
             form_id: form_id.clone(),
             lineage_key: format!("character:{}:{form_id}:{appearance_fingerprint}", npc.id),
             appearance_fingerprint,
@@ -2844,12 +2858,26 @@ async fn visual_specs(
 }
 
 fn known_map_specs(
+    regions_value: &Value,
     locations_value: &Value,
     edges_value: &Value,
     profile: &VisualProfile,
     turn: i64,
 ) -> Vec<VisualSpec> {
-    let locations = locations_value.as_array().cloned().unwrap_or_default();
+    let mut regions = regions_value.as_array().cloned().unwrap_or_default();
+    let mut locations = locations_value.as_array().cloned().unwrap_or_default();
+    let mut edges = edges_value.as_array().cloned().unwrap_or_default();
+    regions.sort_by_key(|value| value_at(value, "id"));
+    locations.sort_by_key(|value| value_at(value, "id"));
+    edges.sort_by_key(|value| {
+        format!(
+            "{}:{}:{}:{}",
+            value_at(value, "from_location_id"),
+            value_at(value, "to_location_id"),
+            value_at(value, "direction"),
+            value_at(value, "travel_mode")
+        )
+    });
     let known = locations
         .iter()
         .filter_map(|location| {
@@ -2870,70 +2898,147 @@ fn known_map_specs(
             ))
         })
         .collect::<Vec<_>>();
-    if known.is_empty() {
+    if known.is_empty() && regions.is_empty() {
         return Vec::new();
     }
-    let graph_payload = serde_json::json!({
-        "locations": known,
-        "edges": edges_value,
-    });
-    let graph_json = serde_json::to_string(&graph_payload).unwrap_or_default();
-    let graph_fingerprint = visual_fingerprint(&["known-map", &graph_json, &profile.fingerprint]);
-    let place_summary = known
+
+    let mut scopes = Vec::<(String, String, String, Vec<Value>)>::new();
+    let mut world_nodes = regions
         .iter()
-        .map(|(_, name, description)| {
-            if description.is_empty() {
-                name.clone()
-            } else {
-                format!("{name}: {description}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("; ");
-    let edge_summary = edges_value
-        .as_array()
-        .into_iter()
-        .flatten()
-        .filter_map(|edge| {
-            let from = edge.get("from_location_id")?.as_str()?;
-            let to = edge.get("to_location_id")?.as_str()?;
-            Some(format!("{from} to {to}"))
-        })
-        .collect::<Vec<_>>()
-        .join("; ");
-    let eligible = known.len() >= 2;
-    let mut specs = vec![VisualSpec {
-        kind: "map_background".to_string(),
-        subject: "Known world map".to_string(),
-        entity_id: String::new(),
-        canonical_entity_id: String::new(),
-        canonical_location_id: String::new(),
-        form_id: String::new(),
-        lineage_key: format!("known-map:{graph_fingerprint}"),
-        appearance_fingerprint: graph_fingerprint,
-        profile_revision_id: profile.id.clone(),
-        canon_status: "canonical".to_string(),
-        gate_state: if eligible { "known_map_ready" } else { "known_map_waiting" }.to_string(),
-        gate_reason: if eligible {
-            "At least two player-known canonical locations are available for map art."
-        } else {
-            "Map art waits until at least two canonical locations are known."
+        .filter(|region| value_at(region, "parent_region_id").is_empty())
+        .map(|region| map_scope_node("region", region))
+        .collect::<Vec<_>>();
+    world_nodes.extend(
+        locations
+            .iter()
+            .filter(|location| {
+                value_at(location, "region_id").is_empty()
+                    && value_at(location, "parent_location_id").is_empty()
+            })
+            .map(|location| map_scope_node("location", location)),
+    );
+    if world_nodes.is_empty() {
+        world_nodes.extend(
+            locations
+                .iter()
+                .map(|location| map_scope_node("location", location)),
+        );
+    }
+    scopes.push((
+        "world".into(),
+        "root".into(),
+        "Known world".into(),
+        world_nodes,
+    ));
+    for region in &regions {
+        let region_id = value_at(region, "id");
+        if region_id.is_empty() {
+            continue;
         }
-        .to_string(),
-        generation_eligible: eligible,
-        prompt: format!(
-            "{} Create an atmospheric illustrated cartographic background for the player-known world. Known places: {}. Known connections: {}. Use terrain, districts, water, roads only as restrained visual context. Do not render labels, text, UI, pins, icons, borders, or invented named landmarks. The interactive canonical overlay will supply all authoritative locations and routes. Palette: {}. Composition: wide landscape map, readable under a dark translucent overlay.",
-            profile.world_style_prompt,
-            place_summary,
-            clean_or(&edge_summary, "no confirmed route yet"),
-            clean_or(&profile.palette, "restrained story palette")
-        ),
-        negative_prompt: format!(
-            "{}, text, labels, lettering, compass text, UI, location pins, invented named places, watermark",
-            profile.negative_prompt
-        ),
-        turn,
-    }];
+        let mut nodes = regions
+            .iter()
+            .filter(|candidate| value_at(candidate, "parent_region_id") == region_id)
+            .map(|candidate| map_scope_node("region", candidate))
+            .collect::<Vec<_>>();
+        nodes.extend(
+            locations
+                .iter()
+                .filter(|location| {
+                    value_at(location, "region_id") == region_id
+                        && value_at(location, "parent_location_id").is_empty()
+                })
+                .map(|location| map_scope_node("location", location)),
+        );
+        if !nodes.is_empty() {
+            scopes.push((
+                "region".into(),
+                region_id,
+                clean_or(&value_at(region, "name"), "Known region"),
+                nodes,
+            ));
+        }
+    }
+    for location in &locations {
+        let location_id = value_at(location, "id");
+        let nodes = locations
+            .iter()
+            .filter(|candidate| value_at(candidate, "parent_location_id") == location_id)
+            .map(|candidate| map_scope_node("location", candidate))
+            .collect::<Vec<_>>();
+        if !nodes.is_empty() {
+            scopes.push((
+                "location".into(),
+                location_id,
+                clean_or(&value_at(location, "name"), "Known location"),
+                nodes,
+            ));
+        }
+    }
+
+    let mut specs = Vec::new();
+    for (scope_kind, scope_id, scope_name, mut nodes) in scopes {
+        nodes.sort_by_key(|node| {
+            format!("{}:{}", value_at(node, "node_kind"), value_at(node, "id"))
+        });
+        let visible_location_ids = nodes
+            .iter()
+            .filter(|node| value_at(node, "node_kind") == "location")
+            .map(|node| value_at(node, "id"))
+            .collect::<HashSet<_>>();
+        let scoped_edges = edges
+            .iter()
+            .filter(|edge| {
+                visible_location_ids.contains(&value_at(edge, "from_location_id"))
+                    && visible_location_ids.contains(&value_at(edge, "to_location_id"))
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        let graph_payload = serde_json::json!({"scope_kind":scope_kind,"scope_id":scope_id,"nodes":nodes,"edges":scoped_edges});
+        let graph_json = serde_json::to_string(&graph_payload).unwrap_or_default();
+        let graph_fingerprint =
+            visual_fingerprint(&["known-map", &graph_json, &profile.fingerprint]);
+        let place_summary = nodes
+            .iter()
+            .take(24)
+            .map(map_node_prompt_summary)
+            .collect::<Vec<_>>()
+            .join("; ");
+        let edge_summary = scoped_edges
+            .iter()
+            .take(32)
+            .filter_map(|edge| {
+                let from = edge.get("from_location_id")?.as_str()?;
+                let to = edge.get("to_location_id")?.as_str()?;
+                Some(format!("{from} to {to}"))
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        let eligible = nodes.len() >= 2;
+        specs.push(VisualSpec {
+            kind: "map_background".to_string(),
+            subject: format!("Map of {scope_name}"),
+            entity_id: String::new(),
+            canonical_entity_id: String::new(),
+            canonical_location_id: String::new(),
+            map_scope_kind: scope_kind.clone(),
+            map_scope_id: scope_id.clone(),
+            form_id: String::new(),
+            lineage_key: format!("known-map:{scope_kind}:{scope_id}:{graph_fingerprint}"),
+            appearance_fingerprint: graph_fingerprint,
+            profile_revision_id: profile.id.clone(),
+            canon_status: "canonical".to_string(),
+            gate_state: if eligible { "known_map_ready" } else { "known_map_waiting" }.to_string(),
+            gate_reason: if eligible { "At least two direct player-known children are available in this map scope." } else { "Map art waits until at least two direct children are known in this scope." }.to_string(),
+            generation_eligible: eligible,
+            prompt: format!(
+                "{} Create an atmospheric illustrated cartographic background for the player-known {} scope '{}'. Direct known children: {}. Confirmed connections: {}. Use terrain, architecture, water and paths only as restrained visual context appropriate to this exact scale. Do not render labels, text, UI, pins, icons, borders, or invented named landmarks. Do not depict a whole city when the scope is an interior or sub-location. The interactive canonical overlay supplies all authoritative locations and routes. Palette: {}. Composition: wide landscape map, readable under a dark translucent overlay.",
+                profile.world_style_prompt, scope_kind, scope_name, clean_or(&place_summary, "no described child places"), clean_or(&edge_summary, "no confirmed route yet"), clean_or(&profile.palette, "restrained story palette")
+            ),
+            negative_prompt: format!("{}, text, labels, lettering, compass text, UI, location pins, invented named places, white background, watermark", profile.negative_prompt),
+            turn,
+        });
+    }
+
     for (id, name, description) in known {
         let icon_fingerprint =
             visual_fingerprint(&["map-icon", &id, &name, &description, &profile.fingerprint]);
@@ -2943,6 +3048,8 @@ fn known_map_specs(
             entity_id: String::new(),
             canonical_entity_id: String::new(),
             canonical_location_id: id.clone(),
+            map_scope_kind: String::new(),
+            map_scope_id: String::new(),
             form_id: String::new(),
             lineage_key: format!("map-icon:{id}"),
             appearance_fingerprint: icon_fingerprint,
@@ -2967,6 +3074,32 @@ fn known_map_specs(
         });
     }
     specs
+}
+
+fn map_scope_node(kind: &str, value: &Value) -> Value {
+    serde_json::json!({
+        "node_kind": kind,
+        "id": value_at(value, "id"),
+        "name": value_at(value, "name"),
+        "kind": value_at(value, "kind"),
+        "description": value.get("description").and_then(Value::as_str).unwrap_or("").trim(),
+    })
+}
+
+fn map_node_prompt_summary(node: &Value) -> String {
+    let name = clean_or(&value_at(node, "name"), "unnamed place");
+    let kind = clean_or(&value_at(node, "kind"), &value_at(node, "node_kind"));
+    let description = node
+        .get("description")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim();
+    let short_description = description.chars().take(220).collect::<String>();
+    if short_description.is_empty() {
+        format!("{name} [{kind}]")
+    } else {
+        format!("{name} [{kind}]: {short_description}")
+    }
 }
 
 fn silhouette_prompt_details(discovery: &Value) -> String {
@@ -3305,11 +3438,11 @@ async fn ensure_asset_rows(
         sqlx::query(
             r#"INSERT INTO visual_assets (
                   id,story_id,kind,subject,entity_id,canonical_entity_id,canonical_location_id,
-                  form_id,lineage_key,appearance_fingerprint,profile_revision_id,canon_status,
+                  map_scope_kind,map_scope_id,form_id,lineage_key,appearance_fingerprint,profile_revision_id,canon_status,
                   gate_state,gate_reason,generation_eligible,prompt,negative_prompt,
                   status,provider,source,turn,branch_id,source_commit_id
                )
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','codex-imagegen','auto-profile',?,?,?)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','codex-imagegen','auto-profile',?,?,?)
                ON CONFLICT(story_id,branch_id,lineage_key) DO UPDATE SET
                   gate_state=excluded.gate_state,gate_reason=excluded.gate_reason,
                   generation_eligible=excluded.generation_eligible,turn=excluded.turn,
@@ -3322,6 +3455,8 @@ async fn ensure_asset_rows(
         .bind(&spec.entity_id)
         .bind(&spec.canonical_entity_id)
         .bind(&spec.canonical_location_id)
+        .bind(&spec.map_scope_kind)
+        .bind(&spec.map_scope_id)
         .bind(&spec.form_id)
         .bind(&spec.lineage_key)
         .bind(&spec.appearance_fingerprint)
@@ -3420,7 +3555,7 @@ async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Vi
                AND (s2.branch_id=x.branch_id OR s2.source_commit_id!=COALESCE(x.fork_commit_id,'') OR s2.updated_at<=x.branch_created)
            )
            SELECT v.id,v.story_id,v.kind,v.subject,v.entity_id,v.canonical_entity_id,
-                  v.canonical_location_id,v.form_id,v.lineage_key,v.appearance_fingerprint,
+                  v.canonical_location_id,v.map_scope_kind,v.map_scope_id,v.form_id,v.lineage_key,v.appearance_fingerprint,
                   COALESCE(v.profile_revision_id,'') AS profile_revision_id,v.canon_status,
                   COALESCE(NULLIF(o.gate_state,''),v.gate_state) AS gate_state,
                   COALESCE(NULLIF(o.gate_reason,''),v.gate_reason) AS gate_reason,
@@ -3520,7 +3655,7 @@ async fn load_asset(
 ) -> anyhow::Result<Option<VisualAsset>> {
     let row = sqlx::query(
         r#"SELECT id, story_id, kind, subject, entity_id, canonical_entity_id,
-                  canonical_location_id, form_id, lineage_key, appearance_fingerprint,
+                  canonical_location_id, map_scope_kind, map_scope_id, form_id, lineage_key, appearance_fingerprint,
                   COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
                   gate_state, gate_reason, generation_eligible, prompt, negative_prompt,
                   status, url, provider, source, error, turn, branch_id, source_commit_id,
@@ -3544,6 +3679,8 @@ fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
         entity_id: row_string(&row, "entity_id"),
         canonical_entity_id: row_string(&row, "canonical_entity_id"),
         canonical_location_id: row_string(&row, "canonical_location_id"),
+        map_scope_kind: row_string(&row, "map_scope_kind"),
+        map_scope_id: row_string(&row, "map_scope_id"),
         form_id: row_string(&row, "form_id"),
         lineage_key: row_string(&row, "lineage_key"),
         appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
@@ -3762,6 +3899,7 @@ mod tests {
             updated_at: String::new(),
         };
         let specs = known_map_specs(
+            &json!([]),
             &json!([
                 {"id":"loc-archive","name":"Glass Archive","description":"A fractured observatory"},
                 {"id":"loc-court","name":"Outer Court","description":"A rain-dark courtyard"}
@@ -3788,6 +3926,7 @@ mod tests {
                 && spec.prompt.contains("transparent background")));
 
         let waiting = known_map_specs(
+            &json!([]),
             &json!([{"id":"loc-only","name":"Only Place"}]),
             &json!([]),
             &profile,
@@ -3800,6 +3939,68 @@ mod tests {
                 .unwrap()
                 .generation_eligible
         );
+    }
+
+    #[test]
+    fn known_map_specs_are_stable_and_scoped_by_region_and_parent_location() {
+        let profile = VisualProfile {
+            id: "profile-1".into(),
+            story_id: "story".into(),
+            revision: 1,
+            fingerprint: "profile-fingerprint".into(),
+            branch_id: "branch-main".into(),
+            source_commit_id: "commit-1".into(),
+            world_style_prompt: "Noir maps".into(),
+            character_style_prompt: "Portraits".into(),
+            negative_prompt: "watermark".into(),
+            palette: "amber".into(),
+            updated_at: String::new(),
+        };
+        let regions = json!([
+            {"id":"region-port","name":"Port District","kind":"district","parent_region_id":"region-vharrow"},
+            {"id":"region-vharrow","name":"Vharrow","kind":"macroregion","parent_region_id":""}
+        ]);
+        let locations = json!([
+            {"id":"lane","name":"Access Lane","kind":"subzone","region_id":"region-port","parent_location_id":"dock"},
+            {"id":"pump","name":"Pump House","kind":"landmark","region_id":"region-port","parent_location_id":""},
+            {"id":"dock","name":"Dock 7","kind":"site","region_id":"region-port","parent_location_id":""}
+        ]);
+        let edges = json!([{"id":"edge","from_location_id":"dock","to_location_id":"pump","travel_mode":"walk"}]);
+        let first = known_map_specs(&regions, &locations, &edges, &profile, 4);
+        let reversed = known_map_specs(
+            &json!([regions[1].clone(), regions[0].clone()]),
+            &json!([
+                locations[2].clone(),
+                locations[1].clone(),
+                locations[0].clone()
+            ]),
+            &edges,
+            &profile,
+            4,
+        );
+        let backgrounds = first
+            .iter()
+            .filter(|spec| spec.kind == "map_background")
+            .collect::<Vec<_>>();
+        assert_eq!(backgrounds.len(), 4);
+        assert!(backgrounds
+            .iter()
+            .any(|spec| spec.map_scope_kind == "world" && spec.map_scope_id == "root"));
+        assert!(backgrounds
+            .iter()
+            .any(|spec| spec.map_scope_kind == "region" && spec.map_scope_id == "region-port"));
+        assert!(backgrounds
+            .iter()
+            .any(|spec| spec.map_scope_kind == "location" && spec.map_scope_id == "dock"));
+        let first_keys = first
+            .iter()
+            .map(|spec| (&spec.lineage_key, &spec.appearance_fingerprint))
+            .collect::<Vec<_>>();
+        let reversed_keys = reversed
+            .iter()
+            .map(|spec| (&spec.lineage_key, &spec.appearance_fingerprint))
+            .collect::<Vec<_>>();
+        assert_eq!(first_keys, reversed_keys);
     }
 
     #[test]
@@ -3862,11 +4063,11 @@ mod tests {
 
         assert_eq!(
             automatic_catchup_candidates(&assets, &[], 2),
-            vec!["map-symbol", "map-layer"]
+            vec!["map-layer", "map-symbol"]
         );
         assert_eq!(
             automatic_catchup_candidates(&assets, &[], 3),
-            vec!["map-symbol", "map-layer", "character-new"]
+            vec!["map-layer", "map-symbol", "character-new"]
         );
     }
 
@@ -3928,10 +4129,11 @@ mod tests {
                 current_turn INTEGER NOT NULL DEFAULT 3,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
-            r#"CREATE TABLE locations (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,canonical_name TEXT NOT NULL,region_id TEXT,parent_location_id TEXT,description TEXT NOT NULL DEFAULT '',discovery_state TEXT NOT NULL DEFAULT 'unknown',discovered_turn INTEGER NOT NULL DEFAULT 0,visibility TEXT NOT NULL DEFAULT 'player')"#,
-            r#"CREATE TABLE location_edges (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,from_location_id TEXT NOT NULL,to_location_id TEXT NOT NULL,direction TEXT NOT NULL DEFAULT '',travel_minutes INTEGER NOT NULL DEFAULT 0,conditions_json TEXT NOT NULL DEFAULT '{}',visibility TEXT NOT NULL DEFAULT 'player')"#,
-            r#"CREATE TABLE world_clocks (story_id TEXT PRIMARY KEY,day INTEGER NOT NULL DEFAULT 0,minute_of_day INTEGER NOT NULL DEFAULT 0,display_text TEXT NOT NULL DEFAULT 'Day 0, 00:00')"#,
-            r#"CREATE TABLE weather_states (story_id TEXT NOT NULL,location_id TEXT,weather_kind TEXT NOT NULL,intensity TEXT NOT NULL DEFAULT '',description TEXT NOT NULL DEFAULT '',valid_from_day INTEGER NOT NULL DEFAULT 0,valid_from_minute INTEGER NOT NULL DEFAULT 0,visibility TEXT NOT NULL DEFAULT 'player')"#,
+            r#"CREATE TABLE regions (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,name TEXT NOT NULL,region_kind TEXT NOT NULL DEFAULT 'region',parent_region_id TEXT,visibility TEXT NOT NULL DEFAULT 'player',branch_id TEXT NOT NULL DEFAULT 'branch-main')"#,
+            r#"CREATE TABLE locations (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,canonical_name TEXT NOT NULL,location_kind TEXT NOT NULL DEFAULT 'place',region_id TEXT,parent_location_id TEXT,description TEXT NOT NULL DEFAULT '',discovery_state TEXT NOT NULL DEFAULT 'unknown',discovered_turn INTEGER NOT NULL DEFAULT 0,visibility TEXT NOT NULL DEFAULT 'player',branch_id TEXT NOT NULL DEFAULT 'branch-main')"#,
+            r#"CREATE TABLE location_edges (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,from_location_id TEXT NOT NULL,to_location_id TEXT NOT NULL,direction TEXT NOT NULL DEFAULT '',travel_minutes INTEGER NOT NULL DEFAULT 0,travel_mode TEXT NOT NULL DEFAULT 'travel',bidirectional INTEGER NOT NULL DEFAULT 0,conditions_json TEXT NOT NULL DEFAULT '{}',visibility TEXT NOT NULL DEFAULT 'player',branch_id TEXT NOT NULL DEFAULT 'branch-main')"#,
+            r#"CREATE TABLE world_clocks (story_id TEXT PRIMARY KEY,day INTEGER NOT NULL DEFAULT 0,minute_of_day INTEGER NOT NULL DEFAULT 0,display_text TEXT NOT NULL DEFAULT 'Day 0, 00:00',branch_id TEXT NOT NULL DEFAULT 'branch-main')"#,
+            r#"CREATE TABLE weather_states (story_id TEXT NOT NULL,location_id TEXT,weather_kind TEXT NOT NULL,intensity TEXT NOT NULL DEFAULT '',description TEXT NOT NULL DEFAULT '',valid_from_day INTEGER NOT NULL DEFAULT 0,valid_from_minute INTEGER NOT NULL DEFAULT 0,visibility TEXT NOT NULL DEFAULT 'player',branch_id TEXT NOT NULL DEFAULT 'branch-main')"#,
             r#"CREATE TABLE sessions (
                 id TEXT PRIMARY KEY,
                 story_id TEXT NOT NULL,
@@ -4003,9 +4205,9 @@ mod tests {
 				supersedes_fact_id TEXT,
 				retracts_fact_id TEXT
 			)"#,
-            r#"CREATE TABLE entity_forms (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,entity_id TEXT NOT NULL,appearance_json TEXT NOT NULL DEFAULT '{}',valid_from_turn INTEGER NOT NULL DEFAULT 0,valid_to_turn INTEGER,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"#,
+            r#"CREATE TABLE entity_forms (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,entity_id TEXT NOT NULL,appearance_json TEXT NOT NULL DEFAULT '{}',valid_from_turn INTEGER NOT NULL DEFAULT 0,valid_to_turn INTEGER,branch_id TEXT NOT NULL DEFAULT 'branch-main',created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"#,
             r#"CREATE TABLE identity_claims (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,subject_entity_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'confirmed',contradicts_claim_id TEXT,supersedes_claim_id TEXT,retracts_claim_id TEXT)"#,
-            r#"CREATE TABLE canonical_world_events (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,location_id TEXT,visibility TEXT NOT NULL DEFAULT 'private')"#,
+            r#"CREATE TABLE canonical_world_events (id TEXT PRIMARY KEY,story_id TEXT NOT NULL,location_id TEXT,visibility TEXT NOT NULL DEFAULT 'private',branch_id TEXT NOT NULL DEFAULT 'branch-main')"#,
             r#"CREATE TABLE saves (
                 id TEXT PRIMARY KEY,
                 story_id TEXT NOT NULL,

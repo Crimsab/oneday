@@ -69,20 +69,21 @@ type VisualEntity struct {
 // Fields mirror the game engine's NarrativeResponse in internal/engine/types.go
 // but are redeclared here so the ai package stays self-contained.
 type NarrativeResponse struct {
-	Narrative         string                 `json:"narrative"`
-	Choices           []NarrativeChoice      `json:"choices,omitempty"`
-	StateChanges      map[string]interface{} `json:"state_changes,omitempty"`
-	Mood              string                 `json:"mood,omitempty"`
-	Location          string                 `json:"location,omitempty"`
-	SceneType         string                 `json:"scene_type,omitempty"`
-	DialogueBlocks    []DialogueBlock        `json:"dialogue_blocks,omitempty"`
-	EntitiesMentioned []EntityMention        `json:"entities_mentioned,omitempty"`
-	EventCallouts     []EventCallout         `json:"event_callouts,omitempty"`
-	ASCIICue          *ASCIIArtCue           `json:"ascii_cue,omitempty"`
-	VisualCue         *VisualCue             `json:"visual_cue,omitempty"`
-	ASCIIArt          string                 `json:"ascii_art,omitempty"`
-	AchievementEarned *AchievementPayload    `json:"achievement_earned,omitempty"`
-	Challenge         string                 `json:"challenge,omitempty"`
+	Narrative          string                 `json:"narrative"`
+	Choices            []NarrativeChoice      `json:"choices,omitempty"`
+	StateChanges       map[string]interface{} `json:"state_changes,omitempty"`
+	Mood               string                 `json:"mood,omitempty"`
+	Location           string                 `json:"location,omitempty"`
+	LocationTransition map[string]interface{} `json:"location_transition,omitempty"`
+	SceneType          string                 `json:"scene_type,omitempty"`
+	DialogueBlocks     []DialogueBlock        `json:"dialogue_blocks,omitempty"`
+	EntitiesMentioned  []EntityMention        `json:"entities_mentioned,omitempty"`
+	EventCallouts      []EventCallout         `json:"event_callouts,omitempty"`
+	ASCIICue           *ASCIIArtCue           `json:"ascii_cue,omitempty"`
+	VisualCue          *VisualCue             `json:"visual_cue,omitempty"`
+	ASCIIArt           string                 `json:"ascii_art,omitempty"`
+	AchievementEarned  *AchievementPayload    `json:"achievement_earned,omitempty"`
+	Challenge          string                 `json:"challenge,omitempty"`
 }
 
 // ASCIIArtGenerationResponse is the structured payload returned by the

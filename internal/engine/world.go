@@ -156,6 +156,89 @@ func FormatCanonicalMapView(world *storage.PlayerWorldProjection) string {
 	return sb.String()
 }
 
+const (
+	spatialContextRegionLimit   = 40
+	spatialContextLocationLimit = 48
+	spatialContextRouteLimit    = 64
+)
+
+// TravelPolicyFromSettingJSON keeps imported/story-pack travel rules useful
+// without making older stories depend on a new setting shape.
+func TravelPolicyFromSettingJSON(raw string) string {
+	var setting struct {
+		WorldRules struct {
+			TravelMode string `json:"travel_mode"`
+		} `json:"world_rules"`
+	}
+	if json.Unmarshal([]byte(raw), &setting) == nil && setting.WorldRules.TravelMode == "graph" {
+		return "graph"
+	}
+	return "narrative"
+}
+
+func FormatSpatialNarratorContext(world *storage.PlayerWorldProjection, travelPolicy string) string {
+	if world == nil {
+		return ""
+	}
+	regionNames := make(map[string]string, len(world.Regions))
+	for _, region := range world.Regions {
+		regionNames[region.ID] = region.Name
+	}
+	locationNames := make(map[string]string, len(world.Locations))
+	for _, location := range world.Locations {
+		locationNames[location.ID] = location.Name
+	}
+	var lines []string
+	lines = append(lines, "## Canonical spatial model")
+	lines = append(lines, fmt.Sprintf("Current location: %s (id=%s)", world.CurrentLocation, world.CurrentLocationID))
+	if travelPolicy == "graph" {
+		lines = append(lines, "Travel policy: graph. Movement must use a known direct route, or location_transition must explicitly discover a justified new route.")
+	} else {
+		lines = append(lines, "Travel policy: narrative. New justified routes may be declared in location_transition when movement reveals them.")
+	}
+	if len(world.Regions) > 0 {
+		lines = append(lines, "Known regions:")
+		for _, region := range world.Regions[:min(len(world.Regions), spatialContextRegionLimit)] {
+			parent := regionNames[region.ParentRegionID]
+			if parent == "" {
+				parent = "world"
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s], parent: %s", region.Name, region.Kind, parent))
+		}
+		if omitted := len(world.Regions) - spatialContextRegionLimit; omitted > 0 {
+			lines = append(lines, fmt.Sprintf("- ... %d additional regions omitted", omitted))
+		}
+	}
+	if len(world.Locations) > 0 {
+		lines = append(lines, "Known locations:")
+		for _, location := range world.Locations[:min(len(world.Locations), spatialContextLocationLimit)] {
+			region := regionNames[location.RegionID]
+			if region == "" {
+				region = "world"
+			}
+			parent := locationNames[location.ParentLocationID]
+			if parent == "" {
+				parent = "none"
+			}
+			lines = append(lines, fmt.Sprintf("- %s [%s], region: %s, parent location: %s", location.Name, location.Kind, region, parent))
+		}
+		if omitted := len(world.Locations) - spatialContextLocationLimit; omitted > 0 {
+			lines = append(lines, fmt.Sprintf("- ... %d additional locations omitted", omitted))
+		}
+	}
+	if len(world.Edges) > 0 {
+		lines = append(lines, "Known routes:")
+		for _, edge := range world.Edges[:min(len(world.Edges), spatialContextRouteLimit)] {
+			lines = append(lines, fmt.Sprintf("- %s -> %s, direction: %s, mode: %s, minutes: %d", locationNames[edge.FromLocationID], locationNames[edge.ToLocationID], edge.Direction, edge.TravelMode, edge.TravelMinutes))
+		}
+		if omitted := len(world.Edges) - spatialContextRouteLimit; omitted > 0 {
+			lines = append(lines, fmt.Sprintf("- ... %d additional routes omitted", omitted))
+		}
+	}
+	lines = append(lines, "Preserve these canonical names and relationships. Use location_transition for any spatial change or discovery.")
+	return strings.Join(lines, "\n")
+}
+
 // AddLocationToWorldState adds a location to world.KnownLocationsJSON if not already present.
 // Handles both string-array and object-array formats transparently.
 func AddLocationToWorldState(world *storage.WorldState, locationName string, currentTurn int) bool {

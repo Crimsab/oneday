@@ -568,7 +568,7 @@ test("renders only canonical known map topology and bounded agency events", asyn
   const mapWorkspace = page.getByRole("dialog");
   const mapShell = mapWorkspace.locator(".canonical-map");
   const map = mapShell.locator('svg[role="img"]');
-  await expect(map).toHaveAttribute("aria-label", "Interactive canonical map with 4 known locations and 4 known routes");
+  await expect(map).toHaveAttribute("aria-label", "Interactive World map with 4 known places and 4 known routes");
   await expect(map).toBeVisible();
   await expect(map.getByText("Glass Archive", { exact: true })).toBeVisible();
   await expect(map.getByText("Outer Court", { exact: true })).toBeVisible();
@@ -596,6 +596,40 @@ test("renders only canonical known map topology and bounded agency events", asyn
   await page.mouse.move(box!.x + box!.width * 0.68, box!.y + box!.height * 0.64, { steps: 4 });
   await page.mouse.up();
   await expect.poll(() => map.locator(".canonical-map-viewport").getAttribute("transform")).not.toBe(beforeDrag);
+});
+
+test("drills through canonical region and sub-location map scopes", async ({ page }) => {
+  await mockGateway(page);
+  const hierarchical = snapshot() as any;
+  hierarchical.world.current_location = "Dock 7";
+  hierarchical.world.current_location_id = "dock";
+  hierarchical.world.spatial_regions = [
+    { id: "vharrow", name: "Vharrow", kind: "macroregion", parent_region_id: "" },
+    { id: "port", name: "Port District", kind: "district", parent_region_id: "vharrow" },
+  ];
+  hierarchical.world.spatial_locations = [
+    { id: "dock", name: "Dock 7", kind: "site", region_id: "port", parent_location_id: "", description: "Cargo piers and warehouses" },
+    { id: "pump", name: "Pump House", kind: "landmark", region_id: "port", parent_location_id: "", description: "An old pumping station" },
+    { id: "lane", name: "Access Lane", kind: "subzone", region_id: "port", parent_location_id: "dock", description: "A narrow service lane" },
+  ];
+  hierarchical.world.spatial_edges = [
+    { id: "dock-pump", from_location_id: "dock", to_location_id: "pump", direction: "east", travel_minutes: 8, travel_mode: "walk", bidirectional: true },
+  ];
+  await page.route("**/api/stories/story-1/snapshot", (route) => json(route, hierarchical));
+  await page.goto("/");
+  await page.getByPlaceholder("What do you want to try?").fill("/map");
+  await page.getByRole("button", { name: "Send action" }).click();
+  await page.getByRole("button", { name: "Open Map in a larger view" }).click();
+  const mapShell = page.getByRole("dialog").locator(".canonical-map");
+  await expect(mapShell.locator(".canonical-map-breadcrumbs")).toContainText("WorldVharrowPort District");
+  const map = mapShell.locator('svg[role="img"]');
+  await expect(map).toHaveAttribute("aria-label", "Interactive Port District map with 2 known places and 1 known routes");
+  await map.getByRole("button", { name: /Dock 7/ }).dblclick();
+  await expect(mapShell.locator(".canonical-map-breadcrumbs")).toContainText("WorldVharrowPort DistrictDock 7");
+  await expect(mapShell.locator('svg[role="img"]')).toHaveAttribute("aria-label", "Interactive Dock 7 map with 1 known places and 0 known routes");
+  await expect(mapShell.getByRole("button", { name: "Access Lane, subzone" })).toBeVisible();
+  await mapShell.getByRole("button", { name: "Port District", exact: true }).click();
+  await expect(mapShell.locator('svg[role="img"]')).toHaveAttribute("aria-label", "Interactive Port District map with 2 known places and 1 known routes");
 });
 
 test("generates committed audio and exposes per-story and per-character voice controls", async ({ page }) => {

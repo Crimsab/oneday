@@ -59,6 +59,7 @@ Do NOT add prose before or after the JSON object. Markdown code fences are optio
   ],
   "mood": "tense|peaceful|dark|epic|mysterious|lighthearted|dramatic",
   "location": "Current location name",
+  "location_transition": null,
   "scene_type": "",
   "dialogue_blocks": [],
   "entities_mentioned": [],
@@ -83,7 +84,29 @@ Use state_changes to trigger game engine updates. All keys are optional — only
 - "attributes": {"str": N, "dex": N} — set attribute values (use sparingly, +1 at natural moments)
 - "secondary": {"reputation": N} — update secondary stats
 - "currency": N — set currency amount
-- "location": "Location Name" — update current location
+- "location": "Location Name" — legacy compatibility label for the current location
+
+### Canonical location transitions
+Whenever the protagonist changes place, discovers a place, enters a child area, or establishes a route, include "location_transition". This is the canonical spatial update; do not encode hierarchy only inside a compound location string.
+
+Example: entering a service lane inside Dock 7:
+`+"```json"+`
+"location_transition": {
+  "from": {"name":"Dock 7","kind":"site","region_path":["Vharrow","Port District"]},
+  "to": {"name":"Access Lane","kind":"subzone","region_path":["Vharrow","Port District"],"parent_location":"Dock 7","description":"A narrow service lane behind the cargo sheds."},
+  "discovered": [],
+  "routes": [{"from":"Dock 7","to":"Access Lane","direction":"inside","travel_minutes":3,"travel_mode":"walk","bidirectional":true,"conditions":{}}]
+}
+`+"```"+`
+
+Rules:
+- "region_path" is ordered from macroregion to the most specific region, for example ["Vharrow", "Port District"].
+- "parent_location" is for a place physically contained in another place, for example a room inside a building.
+- Use stable short names. Put hierarchy in the structured fields, not in names such as "Dock 7, access lane".
+- "kind" is one of region, district, site, building, interior, room, subzone, landmark, or place.
+- Include a route when movement establishes how two places connect. Use "bidirectional":false for drops, locked portals, or one-way passages.
+- "travel_minutes" must be plausible and non-negative. Use 0 when the transition is instantaneous or time is intentionally abstract.
+- If the location did not change and no spatial fact was discovered, omit "location_transition".
 
 ### Inventory
 - "inventory_add": array of item objects. Each object MUST have "name" and "type". Optional fields: "rarity" (common|uncommon|rare|epic|legendary), "description", "effects" (array of strings).
@@ -172,7 +195,7 @@ Never invent hidden visual identity from weak clues. If only a name is known, us
 ### Dynamic World Updates
 As the story progresses, update the living world through state_changes:
 
-- "world_location_add": "Location Name" — record when the protagonist enters a new area for the first time.
+- "world_location_add": "Location Name" — legacy compatibility only; prefer "location_transition.discovered".
 - "world_event_add": "Event description" — record a significant world event (war declared, plague spreads, faction falls).
 - "world_faction_standing": {"faction": "Faction Name", "standing": N} — set protagonist's standing with a faction (-100 to +100).
 - "setting_factions_add": "New Faction — brief description" — add a faction discovered during gameplay.

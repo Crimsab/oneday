@@ -6,6 +6,7 @@ export interface VisualCatalog {
   location: VisualAsset | null;
   characters: Map<string, VisualAsset>;
   mapBackground: VisualAsset | null;
+  mapBackgrounds: Map<string, VisualAsset>;
   mapIcons: Map<string, VisualAsset>;
 }
 
@@ -15,6 +16,7 @@ export const emptyVisualCatalog: VisualCatalog = {
   location: null,
   characters: new Map(),
   mapBackground: null,
+  mapBackgrounds: new Map(),
   mapIcons: new Map(),
 };
 
@@ -31,6 +33,7 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
   const location = bestCanonicalAsset(exactLocations.length ? exactLocations : locationCandidates);
 
   const characters = new Map<string, VisualAsset>();
+  const mapBackgrounds = new Map<string, VisualAsset>();
   const mapIcons = new Map<string, VisualAsset>();
   for (const asset of response.assets) {
     if (asset.kind !== "character") continue;
@@ -49,7 +52,14 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
     const existing = mapIcons.get(key);
     if (!existing || canonicalAssetScore(asset) > canonicalAssetScore(existing)) mapIcons.set(key, asset);
   }
-  const mapBackground = bestCanonicalAsset(response.assets.filter((asset) => asset.kind === "map_background"));
+  for (const asset of response.assets) {
+    if (asset.kind !== "map_background") continue;
+    const key = mapScopeKey(asset.map_scope_kind || "world", asset.map_scope_id || "root");
+    const existing = mapBackgrounds.get(key);
+    if (!existing || canonicalAssetScore(asset) > canonicalAssetScore(existing)) mapBackgrounds.set(key, asset);
+  }
+  const mapBackground = mapBackgrounds.get(mapScopeKey("world", "root"))
+    ?? bestCanonicalAsset(response.assets.filter((asset) => asset.kind === "map_background"));
 
   for (const npc of snapshot?.panels.npcs ?? []) {
     const byId = characters.get(normalizeKey(npc.id));
@@ -63,8 +73,20 @@ export function visualCatalog(response: VisualAssetsResponse | null, snapshot: S
     location,
     characters,
     mapBackground,
+    mapBackgrounds,
     mapIcons,
   };
+}
+
+export function mapBackgroundForScope(catalog: VisualCatalog | undefined, kind: string, id: string): VisualAsset | null {
+  if (!catalog) return null;
+  const exact = catalog.mapBackgrounds.get(mapScopeKey(kind, id));
+  if (exact) return exact;
+  return kind === "world" ? catalog.mapBackground : null;
+}
+
+export function mapScopeKey(kind: string, id: string): string {
+  return `${normalizeKey(kind || "world")}:${normalizeKey(id || "root")}`;
 }
 
 export function characterAsset(catalog: VisualCatalog, npc: RecordView): VisualAsset | null {

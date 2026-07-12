@@ -1126,6 +1126,7 @@ mod tests {
                 id: "world-1".to_string(),
                 current_location: "Dock".to_string(),
                 current_location_id: "dock".to_string(),
+                spatial_regions: json!([]),
                 spatial_locations: json!([]),
                 spatial_edges: json!([]),
                 world_time: json!({"day":0,"minute_of_day":0,"display_text":"Day 0, 00:00"}),

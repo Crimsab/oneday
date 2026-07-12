@@ -39,6 +39,7 @@ import type {
   VisualProfileUpdate,
 } from "../types";
 import type { VisualCatalog } from "../visualAssets";
+import type { SpatialEdge } from "../spatialMap";
 import { readyAssetUrl } from "../visualAssets";
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
@@ -89,6 +90,7 @@ interface PanelDrawerProps {
     action: "undo" | "redo",
   ) => Promise<void>;
   onOpenVisualAsset: (assetId: string) => void;
+  onMapTravel: (locationName: string, route: SpatialEdge | null) => void;
   onRunStoryWizard: (
     payload: StoryWizardEnvelope,
   ) => Promise<StoryWizardResponse>;
@@ -136,6 +138,7 @@ export function PanelDrawer({
   onVisualAssetVersionSelect,
   onVisualAssetSelectionStep,
   onOpenVisualAsset,
+  onMapTravel,
   onRunStoryWizard,
   onEnhanceStoryText,
   onCreateSave,
@@ -221,6 +224,7 @@ export function PanelDrawer({
             visuals={visuals}
             focusCardId={moduleFocusId}
             onOpenVisualAsset={onOpenVisualAsset}
+            onMapTravel={onMapTravel}
           />
         )}
       </section>
@@ -1551,12 +1555,14 @@ function ModuleOverlayContent({
   visuals,
   focusCardId,
   onOpenVisualAsset,
+  onMapTravel,
 }: {
   snapshot: StorySnapshot | null;
   selectedTab: ModuleTab;
   visuals: VisualCatalog;
   focusCardId?: string | null;
   onOpenVisualAsset?: (assetId: string) => void;
+  onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
 }) {
   if (!snapshot) {
     return (
@@ -1576,6 +1582,7 @@ function ModuleOverlayContent({
         expanded
         focusCardId={focusCardId}
         onOpenVisualAsset={onOpenVisualAsset}
+        onMapTravel={onMapTravel}
       />
     </div>
   );

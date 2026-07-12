@@ -284,10 +284,11 @@ func narrativeSchema() map[string]any {
 		"additionalProperties": false,
 		"required":             []string{"narrative", "choices"},
 		"properties": map[string]any{
-			"narrative": stringSchema(),
-			"choices":   choiceArraySchema(),
-			"mood":      stringSchema(),
-			"location":  stringSchema(),
+			"narrative":           stringSchema(),
+			"choices":             choiceArraySchema(),
+			"mood":                stringSchema(),
+			"location":            stringSchema(),
+			"location_transition": nullableObjectSchema(locationTransitionSchema()),
 			"scene_type": map[string]any{
 				"type": "string",
 			},
@@ -344,6 +345,61 @@ func narrativeSchema() map[string]any {
 				},
 			}),
 			"ascii_art": stringSchema(),
+		},
+	}
+}
+
+func locationTransitionSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"to"},
+		"properties": map[string]any{
+			"from": nullableObjectSchema(spatialLocationRefSchema()),
+			"to":   spatialLocationRefSchema(),
+			"discovered": map[string]any{
+				"type":  "array",
+				"items": spatialLocationRefSchema(),
+			},
+			"routes": map[string]any{
+				"type":  "array",
+				"items": spatialRouteRefSchema(),
+			},
+		},
+	}
+}
+
+func spatialLocationRefSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"name"},
+		"properties": map[string]any{
+			"name":            nonEmptyStringSchema(),
+			"kind":            stringSchema(),
+			"region_path":     stringArraySchema(),
+			"parent_location": stringSchema(),
+			"description":     stringSchema(),
+		},
+	}
+}
+
+func spatialRouteRefSchema() map[string]any {
+	return map[string]any{
+		"type":                 "object",
+		"additionalProperties": false,
+		"required":             []string{"from", "to"},
+		"properties": map[string]any{
+			"from":           nonEmptyStringSchema(),
+			"to":             nonEmptyStringSchema(),
+			"direction":      stringSchema(),
+			"travel_minutes": integerSchema(),
+			"travel_mode":    stringSchema(),
+			"bidirectional":  boolSchema(),
+			"conditions": map[string]any{
+				"type":                 "object",
+				"additionalProperties": true,
+			},
 		},
 	}
 }

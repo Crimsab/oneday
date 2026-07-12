@@ -19,6 +19,7 @@ import {
 } from "../format";
 import type { AgencyEventView, CraftConversationMessage, CraftingResponseView, JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
 import type { VisualCatalog } from "../visualAssets";
+import type { SpatialEdge } from "../spatialMap";
 import { characterAsset, normalizeKey, readyAssetUrl } from "../visualAssets";
 import { HistoryReader } from "./HistoryReader";
 import { MarkdownText } from "./MarkdownText";
@@ -32,6 +33,7 @@ interface InspectorProps {
   onOpenModule: () => void;
   onOpenNpcCodex: (npcId: string) => void;
   onOpenVisualAsset?: (assetId: string) => void;
+  onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
 }
 
 interface CardView {
@@ -54,7 +56,7 @@ const stackedRowLabels = new Set([
   "value",
 ]);
 
-export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule, onOpenNpcCodex, onOpenVisualAsset }: InspectorProps) {
+export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule, onOpenNpcCodex, onOpenVisualAsset, onMapTravel }: InspectorProps) {
   const title = moduleTitle(selectedTab);
 
   return (
@@ -74,7 +76,7 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
         <div className="empty-copy inspector-empty">Select a story to inspect canonical state.</div>
       ) : (
         <div className="inspector-body">
-          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} onExpandMap={onOpenModule} />
+          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} onExpandMap={onOpenModule} onMapTravel={onMapTravel} />
         </div>
       )}
     </aside>
@@ -90,6 +92,7 @@ export function ModuleContent({
   onOpenNpcCodex,
   onOpenVisualAsset,
   onExpandMap,
+  onMapTravel,
 }: {
   tab: ModuleTab;
   snapshot: StorySnapshot;
@@ -99,10 +102,11 @@ export function ModuleContent({
   onOpenNpcCodex?: (npcId: string) => void;
   onOpenVisualAsset?: (assetId: string) => void;
   onExpandMap?: () => void;
+  onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
 }) {
   return (
     <>
-      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex, onOpenVisualAsset, expanded, onExpandMap)}
+      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex, onOpenVisualAsset, expanded, onExpandMap, onMapTravel)}
       {expanded && <RawStateSection tab={tab} snapshot={snapshot} />}
     </>
   );
@@ -117,6 +121,7 @@ function renderModule(
   onOpenVisualAsset?: (assetId: string) => void,
   expanded = false,
   onExpandMap?: () => void,
+  onMapTravel?: (locationName: string, route: SpatialEdge | null) => void,
 ) {
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
   if (tab === "craft") return <CraftModule snapshot={snapshot} />;
@@ -128,7 +133,7 @@ function renderModule(
   if (tab === "achievements") return <AchievementsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
 	if (tab === "history") return <HistoryReader snapshot={snapshot} />;
-  if (tab === "map") return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} expanded={expanded} onExpandMap={onExpandMap} />;
+  if (tab === "map") return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} expanded={expanded} onExpandMap={onExpandMap} onMapTravel={onMapTravel} />;
   return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
 }
 
@@ -225,6 +230,7 @@ function WorldStateModule({
   onOpenVisualAsset,
   expanded = false,
   onExpandMap,
+  onMapTravel,
 }: {
   snapshot: StorySnapshot;
   visuals?: VisualCatalog;
@@ -232,6 +238,7 @@ function WorldStateModule({
   onOpenVisualAsset?: (assetId: string) => void;
   expanded?: boolean;
   onExpandMap?: () => void;
+  onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
 }) {
   const clock = displayClock(snapshot);
   const condition = deriveCondition(snapshot);
@@ -329,7 +336,7 @@ function WorldStateModule({
             </button>
           )}
         </header>
-        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} visuals={visuals} expanded={expanded} onOpenVisualAsset={onOpenVisualAsset} />
+        <CanonicalMap regionsValue={snapshot.world.spatial_regions} locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} visuals={visuals} expanded={expanded} onOpenVisualAsset={onOpenVisualAsset} onTravel={onMapTravel} />
       </section>
 
       {threads.length > 0 && (

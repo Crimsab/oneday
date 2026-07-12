@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { characterAsset, readyAssetUrl, visualCatalog } from "./visualAssets";
+import { characterAsset, mapBackgroundForScope, readyAssetUrl, visualCatalog } from "./visualAssets";
 import type { RecordView, StorySnapshot, VisualAsset, VisualAssetsResponse } from "./types";
 
 describe("visual canon selection", () => {
@@ -40,6 +40,18 @@ describe("visual canon selection", () => {
     expect(catalog.mapBackground?.id).toBe("map");
     expect(catalog.mapIcons.get("loc harbor")?.id).toBe("harbor-icon");
     expect(catalog.mapIcons.has("loc court")).toBe(false);
+  });
+
+  it("selects only the background generated for the active spatial scope", () => {
+    const world = asset({ id: "world-map", kind: "map_background", entity_id: "", canonical_entity_id: "", map_scope_kind: "world", map_scope_id: "root", status: "ready", url: "/world.png" });
+    const region = asset({ id: "region-map", kind: "map_background", entity_id: "", canonical_entity_id: "", map_scope_kind: "region", map_scope_id: "region-port", status: "ready", url: "/region.png" });
+    const location = asset({ id: "dock-map", kind: "map_background", entity_id: "", canonical_entity_id: "", map_scope_kind: "location", map_scope_id: "loc-dock", status: "ready", url: "/dock.png" });
+    const catalog = visualCatalog(response([world, region, location]), snapshot());
+
+    expect(mapBackgroundForScope(catalog, "world", "root")?.id).toBe("world-map");
+    expect(mapBackgroundForScope(catalog, "region", "region-port")?.id).toBe("region-map");
+    expect(mapBackgroundForScope(catalog, "location", "loc-dock")?.id).toBe("dock-map");
+    expect(mapBackgroundForScope(catalog, "region", "region-unknown")).toBeNull();
   });
 });
 

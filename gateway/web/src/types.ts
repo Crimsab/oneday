@@ -224,6 +224,7 @@ export interface WorldView {
   current_chapter: number;
   current_turn: number;
 	current_location_id: string;
+	spatial_regions?: JsonValue;
 	spatial_locations: JsonValue;
 	spatial_edges: JsonValue;
 	world_time: JsonValue;
@@ -592,6 +593,8 @@ export interface VisualAsset {
   entity_id: string;
   canonical_entity_id: string;
   canonical_location_id: string;
+  map_scope_kind?: string;
+  map_scope_id?: string;
   form_id: string;
   lineage_key: string;
   appearance_fingerprint: string;
