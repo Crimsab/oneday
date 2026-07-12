@@ -1,0 +1,2355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://oneday.local/contracts/gateway-v1.schema.json",
+  "$ref": "#/$defs/SchemaRoot",
+  "$defs": {
+    "AudioAsset": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "source_commit_id": {
+          "type": "string"
+        },
+        "source_message_id": {
+          "type": "integer"
+        },
+        "segment_index": {
+          "type": "integer"
+        },
+        "segment_kind": {
+          "type": "string"
+        },
+        "speaker_entity_id": {
+          "type": "string"
+        },
+        "identity_id": {
+          "type": "string"
+        },
+        "form_id": {
+          "type": "string"
+        },
+        "voice_profile_id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider_voice_id": {
+          "type": "string"
+        },
+        "voice_version": {
+          "type": "string"
+        },
+        "language_tag": {
+          "type": "string"
+        },
+        "pronunciation_revision": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "text_hash": {
+          "type": "string"
+        },
+        "cache_key": {
+          "type": "string"
+        },
+        "style": true,
+        "speed": {
+          "type": "number"
+        },
+        "output_format": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "file_path": {
+          "type": "string"
+        },
+        "duration_ms": {
+          "type": "integer"
+        },
+        "timings": true,
+        "generation_run_id": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "story_id",
+        "branch_id",
+        "source_commit_id",
+        "source_message_id",
+        "segment_index",
+        "segment_kind",
+        "voice_profile_id",
+        "provider",
+        "model",
+        "provider_voice_id",
+        "voice_version",
+        "language_tag",
+        "pronunciation_revision",
+        "text",
+        "text_hash",
+        "cache_key",
+        "style",
+        "speed",
+        "output_format",
+        "status",
+        "duration_ms",
+        "timings"
+      ]
+    },
+    "AudioExport": {
+      "properties": {
+        "format": {
+          "type": "string"
+        },
+        "filename": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "settings": {
+          "$ref": "#/$defs/StoryTTSSettings"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/ProviderStatus"
+          },
+          "type": "array"
+        },
+        "voices": {
+          "items": {
+            "$ref": "#/$defs/VoiceProfile"
+          },
+          "type": "array"
+        },
+        "assignments": {
+          "items": {
+            "$ref": "#/$defs/VoiceAssignment"
+          },
+          "type": "array"
+        },
+        "pronunciations": {
+          "items": {
+            "$ref": "#/$defs/PronunciationEntry"
+          },
+          "type": "array"
+        },
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/AudioAsset"
+          },
+          "type": "array"
+        },
+        "jobs": {
+          "items": {
+            "$ref": "#/$defs/TTSJob"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "format",
+        "filename",
+        "generated_at",
+        "story_id",
+        "settings",
+        "providers",
+        "voices",
+        "assignments",
+        "pronunciations",
+        "assets",
+        "jobs"
+      ]
+    },
+    "AudioRequest": {
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "message_id": {
+          "type": "integer"
+        },
+        "asset_id": {
+          "type": "string"
+        },
+        "assignment_id": {
+          "type": "string"
+        },
+        "pronunciation_id": {
+          "type": "string"
+        },
+        "job_id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "client_revision": {
+          "type": "integer"
+        },
+        "settings": {
+          "$ref": "#/$defs/StoryTTSSettings"
+        },
+        "assignment": {
+          "$ref": "#/$defs/VoiceAssignment"
+        },
+        "pronunciation": {
+          "$ref": "#/$defs/PronunciationEntry"
+        },
+        "dry_run": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "operation"
+      ]
+    },
+    "AudioResponse": {
+      "properties": {
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/ProviderStatus"
+          },
+          "type": "array"
+        },
+        "voices": {
+          "items": {
+            "$ref": "#/$defs/VoiceProfile"
+          },
+          "type": "array"
+        },
+        "settings": {
+          "$ref": "#/$defs/StoryTTSSettings"
+        },
+        "assignments": {
+          "items": {
+            "$ref": "#/$defs/VoiceAssignment"
+          },
+          "type": "array"
+        },
+        "assignment": {
+          "$ref": "#/$defs/VoiceAssignment"
+        },
+        "pronunciations": {
+          "items": {
+            "$ref": "#/$defs/PronunciationEntry"
+          },
+          "type": "array"
+        },
+        "pronunciation": {
+          "$ref": "#/$defs/PronunciationEntry"
+        },
+        "assets": {
+          "items": {
+            "$ref": "#/$defs/AudioAsset"
+          },
+          "type": "array"
+        },
+        "jobs": {
+          "items": {
+            "$ref": "#/$defs/TTSJob"
+          },
+          "type": "array"
+        },
+        "asset": {
+          "$ref": "#/$defs/AudioAsset"
+        },
+        "file_path": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        },
+        "cleanup": {
+          "$ref": "#/$defs/CleanupResult"
+        },
+        "export": {
+          "$ref": "#/$defs/AudioExport"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "BrowserMetaResponse": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind",
+        "title",
+        "message"
+      ]
+    },
+    "BrowserSaveView": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "chapter": {
+          "type": "integer"
+        },
+        "location": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "metadata": true,
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "name",
+        "turn",
+        "chapter",
+        "created_at"
+      ]
+    },
+    "ChallengeModifier": {
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "source",
+        "value"
+      ]
+    },
+    "ChallengeResult": {
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "roll": {
+          "type": "integer"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "difficulty": {
+          "type": "integer"
+        },
+        "modifiers": {
+          "items": {
+            "$ref": "#/$defs/Modifier"
+          },
+          "type": "array"
+        },
+        "detail": {
+          "type": "string"
+        },
+        "roll_log": {
+          "items": {
+            "$ref": "#/$defs/RollRecord"
+          },
+          "type": "array"
+        },
+        "outcome": {
+          "$ref": "#/$defs/OutcomeEnvelope"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "passed",
+        "detail"
+      ]
+    },
+    "Choice": {
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "text": {
+          "type": "string"
+        },
+        "mood": {
+          "type": "string"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "risk": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "certainty": {
+          "type": "string"
+        },
+        "related_stats": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "text"
+      ]
+    },
+    "CleanupResult": {
+      "properties": {
+        "dry_run": {
+          "type": "boolean"
+        },
+        "files_scanned": {
+          "type": "integer"
+        },
+        "orphan_files": {
+          "type": "integer"
+        },
+        "files_removed": {
+          "type": "integer"
+        },
+        "invalid_cache_rows": {
+          "type": "integer"
+        },
+        "errors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "dry_run",
+        "files_scanned",
+        "orphan_files",
+        "files_removed",
+        "invalid_cache_rows"
+      ]
+    },
+    "CommandArgDescriptor": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "variadic": {
+          "type": "boolean"
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name"
+      ]
+    },
+    "CommandDescriptor": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "canonical": {
+          "type": "string"
+        },
+        "aliases": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "parity": {
+          "type": "string"
+        },
+        "behavior": {
+          "type": "string"
+        },
+        "args": {
+          "items": {
+            "$ref": "#/$defs/CommandArgDescriptor"
+          },
+          "type": "array"
+        },
+        "completion_provider": {
+          "type": "string"
+        },
+        "trailing_space": {
+          "type": "boolean"
+        },
+        "examples": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabled_when": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "canonical",
+        "title",
+        "description",
+        "group",
+        "parity",
+        "behavior"
+      ]
+    },
+    "CommandDescriptorsResponse": {
+      "properties": {
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/CommandDescriptor"
+          },
+          "type": "array"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CraftRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "history": {
+          "items": {
+            "$ref": "#/$defs/Message"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "message"
+      ]
+    },
+    "CraftResponse": {
+      "properties": {
+        "crafting": {
+          "$ref": "#/$defs/CraftingResponse"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "CraftedItem": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "effect": {
+          "type": "string"
+        },
+        "materials": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "crafted_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "effect",
+        "materials",
+        "crafted_at"
+      ]
+    },
+    "CraftingResponse": {
+      "properties": {
+        "feasible": {
+          "type": "boolean"
+        },
+        "narrative": {
+          "type": "string"
+        },
+        "item": {
+          "$ref": "#/$defs/CraftedItem"
+        },
+        "missing": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "alternatives": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "choices": {
+          "items": {
+            "$ref": "#/$defs/Choice"
+          },
+          "type": "array"
+        },
+        "resolved_outcome": {
+          "$ref": "#/$defs/OutcomeEnvelope"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "feasible",
+        "narrative"
+      ]
+    },
+    "CreationAction": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "seed": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "key",
+        "label"
+      ]
+    },
+    "CurrencyDef": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "starting": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "starting"
+      ]
+    },
+    "DeleteSaveResponse": {
+      "properties": {
+        "save": {
+          "$ref": "#/$defs/BrowserSaveView"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Error": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "details": true
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "retryable"
+      ]
+    },
+    "ImageGenerationSetting": {
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "api_key_configured": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        },
+        "openclaw_bridge_url": {
+          "type": "string"
+        },
+        "default_size": {
+          "type": "string"
+        },
+        "location_size": {
+          "type": "string"
+        },
+        "character_size": {
+          "type": "string"
+        },
+        "default_resolution": {
+          "type": "string"
+        },
+        "location_resolution": {
+          "type": "string"
+        },
+        "character_resolution": {
+          "type": "string"
+        },
+        "default_aspect_ratio": {
+          "type": "string"
+        },
+        "location_aspect_ratio": {
+          "type": "string"
+        },
+        "character_aspect_ratio": {
+          "type": "string"
+        },
+        "quality": {
+          "type": "string"
+        },
+        "output_format": {
+          "type": "string"
+        },
+        "background": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer"
+        },
+        "auto_generate": {
+          "type": "boolean"
+        },
+        "append_negative_prompt": {
+          "type": "boolean"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "provider",
+        "base_url",
+        "api_key_configured",
+        "model",
+        "openclaw_bridge_url",
+        "default_size",
+        "location_size",
+        "character_size",
+        "default_resolution",
+        "location_resolution",
+        "character_resolution",
+        "default_aspect_ratio",
+        "location_aspect_ratio",
+        "character_aspect_ratio",
+        "quality",
+        "output_format",
+        "background",
+        "timeout_seconds",
+        "auto_generate",
+        "append_negative_prompt",
+        "available",
+        "status"
+      ]
+    },
+    "LoadResponse": {
+      "properties": {
+        "save": {
+          "$ref": "#/$defs/BrowserSaveView"
+        },
+        "legacy": {
+          "type": "boolean"
+        },
+        "snapshot_state": {
+          "type": "string"
+        },
+        "snapshot_detail": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "snapshot_state"
+      ]
+    },
+    "Message": {
+      "properties": {
+        "role": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "role",
+        "content"
+      ]
+    },
+    "MetaResponse": {
+      "properties": {
+        "meta": {
+          "$ref": "#/$defs/BrowserMetaResponse"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MiniGameDefinition": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "difficulty": {
+          "type": "integer"
+        },
+        "options": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sequence": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "answers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "time_limit_ms": {
+          "type": "integer"
+        },
+        "rules": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "difficulty"
+      ]
+    },
+    "MiniGameInput": {
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "elapsed_ms": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "action"
+      ]
+    },
+    "MiniGameInstance": {
+      "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "id": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "definition": {
+          "$ref": "#/$defs/MiniGameDefinition"
+        },
+        "runtime": {
+          "$ref": "#/$defs/MiniGameRuntime"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "protocol_version",
+        "id",
+        "turn",
+        "seed",
+        "definition",
+        "runtime"
+      ]
+    },
+    "MiniGameRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "instance_id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "definition": {
+          "$ref": "#/$defs/MiniGameDefinition"
+        },
+        "input": {
+          "$ref": "#/$defs/MiniGameInput"
+        },
+        "selection": {
+          "$ref": "#/$defs/MiniGameSelectionContext"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id"
+      ]
+    },
+    "MiniGameResponse": {
+      "properties": {
+        "instance": {
+          "$ref": "#/$defs/MiniGameInstance"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "MiniGameRuntime": {
+      "properties": {
+        "phase": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "state": true,
+        "history": {
+          "items": {
+            "$ref": "#/$defs/MiniGameInput"
+          },
+          "type": "array"
+        },
+        "result": {
+          "$ref": "#/$defs/ChallengeResult"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "phase",
+        "revision"
+      ]
+    },
+    "MiniGameSelectionContext": {
+      "properties": {
+        "narrative_tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "current_turn": {
+          "type": "integer"
+        },
+        "difficulty": {
+          "type": "integer"
+        },
+        "timing_free_only": {
+          "type": "boolean"
+        },
+        "preferred_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "excluded_kinds": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "recent": {
+          "items": {
+            "$ref": "#/$defs/MiniGameUsage"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "current_turn"
+      ]
+    },
+    "MiniGameUsage": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "turn": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind",
+        "turn"
+      ]
+    },
+    "ModelProviderSetting": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "string"
+        },
+        "supports_model": {
+          "type": "boolean"
+        },
+        "supports_reasoning": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "label",
+        "enabled",
+        "supports_model",
+        "supports_reasoning"
+      ]
+    },
+    "ModelRoutingActive": {
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "narrative_model": {
+          "type": "string"
+        },
+        "utility_model": {
+          "type": "string"
+        },
+        "repair_model": {
+          "type": "string"
+        },
+        "repair_fallback_models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "image_model": {
+          "type": "string"
+        },
+        "ascii_model": {
+          "type": "string"
+        },
+        "embedding_provider": {
+          "type": "string"
+        },
+        "embedding_model": {
+          "type": "string"
+        },
+        "codex_reasoning": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "provider",
+        "narrative_model",
+        "utility_model",
+        "repair_model",
+        "repair_fallback_models",
+        "image_model",
+        "ascii_model",
+        "embedding_provider",
+        "embedding_model",
+        "codex_reasoning"
+      ]
+    },
+    "ModelRoutingSettings": {
+      "properties": {
+        "config_path": {
+          "type": "string"
+        },
+        "config_revision": {
+          "type": "string"
+        },
+        "provider_priority": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/ModelProviderSetting"
+          },
+          "type": "array"
+        },
+        "narrative_models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "utility_models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "repair_models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "image_models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "ascii_models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "embedding_providers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "image_generation": {
+          "$ref": "#/$defs/ImageGenerationSetting"
+        },
+        "active": {
+          "$ref": "#/$defs/ModelRoutingActive"
+        },
+        "tts_status": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "config_path",
+        "config_revision",
+        "provider_priority",
+        "providers",
+        "narrative_models",
+        "utility_models",
+        "repair_models",
+        "image_models",
+        "ascii_models",
+        "embedding_providers",
+        "image_generation",
+        "active",
+        "tts_status"
+      ]
+    },
+    "ModelSettingsResponse": {
+      "properties": {
+        "settings": {
+          "$ref": "#/$defs/ModelRoutingSettings"
+        },
+        "error": {
+          "type": "string"
+        },
+        "error_code": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "Modifier": {
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "value": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "source",
+        "value"
+      ]
+    },
+    "OutcomeEffect": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        },
+        "field": {
+          "type": "string"
+        },
+        "amount": {
+          "type": "integer"
+        },
+        "detail": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
+      ]
+    },
+    "OutcomeEnvelope": {
+      "properties": {
+        "version": {
+          "type": "integer"
+        },
+        "degree": {
+          "type": "string"
+        },
+        "difficulty": {
+          "type": "integer"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "roll": {
+          "type": "integer"
+        },
+        "modifiers": {
+          "items": {
+            "$ref": "#/$defs/ChallengeModifier"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "margin": {
+          "type": "integer"
+        },
+        "costs": {
+          "items": {
+            "$ref": "#/$defs/OutcomeEffect"
+          },
+          "type": "array"
+        },
+        "consequences": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "state_deltas": {
+          "items": {
+            "$ref": "#/$defs/OutcomeEffect"
+          },
+          "type": "array"
+        },
+        "revealed_facts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "follow_up_pressure": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "version",
+        "degree",
+        "difficulty",
+        "seed",
+        "roll",
+        "total",
+        "margin"
+      ]
+    },
+    "PronunciationEntry": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "language_tag": {
+          "type": "string"
+        },
+        "source_text": {
+          "type": "string"
+        },
+        "pronunciation": {
+          "type": "string"
+        },
+        "alphabet": {
+          "type": "string"
+        },
+        "case_sensitive": {
+          "type": "boolean"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "story_id",
+        "language_tag",
+        "source_text",
+        "pronunciation",
+        "alphabet",
+        "case_sensitive",
+        "revision"
+      ]
+    },
+    "ProviderStatus": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "available": {
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "available"
+      ]
+    },
+    "RollRecord": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "die": {
+          "type": "string"
+        },
+        "sides": {
+          "type": "integer"
+        },
+        "raw": {
+          "type": "integer"
+        },
+        "modifiers": {
+          "items": {
+            "$ref": "#/$defs/Modifier"
+          },
+          "type": "array"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "target": {
+          "type": "integer"
+        },
+        "outcome": {
+          "type": "string"
+        },
+        "sequence": {
+          "type": "integer"
+        },
+        "seed": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "source",
+        "die",
+        "sides",
+        "raw",
+        "sequence",
+        "seed"
+      ]
+    },
+    "SaveResponse": {
+      "properties": {
+        "save": {
+          "$ref": "#/$defs/BrowserSaveView"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "SchemaPreflightResponse": {
+      "properties": {
+        "status": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "status"
+      ]
+    },
+    "SchemaRoot": {
+      "properties": {
+        "turn_response": {
+          "$ref": "#/$defs/TurnResponse"
+        },
+        "craft_request": {
+          "$ref": "#/$defs/CraftRequest"
+        },
+        "craft_response": {
+          "$ref": "#/$defs/CraftResponse"
+        },
+        "turn_stream_line": {
+          "$ref": "#/$defs/TurnStreamLine"
+        },
+        "meta_response": {
+          "$ref": "#/$defs/MetaResponse"
+        },
+        "save_response": {
+          "$ref": "#/$defs/SaveResponse"
+        },
+        "load_response": {
+          "$ref": "#/$defs/LoadResponse"
+        },
+        "delete_save_response": {
+          "$ref": "#/$defs/DeleteSaveResponse"
+        },
+        "command_descriptors_response": {
+          "$ref": "#/$defs/CommandDescriptorsResponse"
+        },
+        "story_create_request": {
+          "$ref": "#/$defs/StoryCreateRequest"
+        },
+        "story_wizard_request": {
+          "$ref": "#/$defs/StoryWizardRequest"
+        },
+        "story_enhance_request": {
+          "$ref": "#/$defs/StoryEnhanceRequest"
+        },
+        "story_create_response": {
+          "$ref": "#/$defs/StoryCreateResponse"
+        },
+        "story_wizard_response": {
+          "$ref": "#/$defs/StoryWizardResponse"
+        },
+        "story_enhance_response": {
+          "$ref": "#/$defs/StoryEnhanceResponse"
+        },
+        "model_settings_response": {
+          "$ref": "#/$defs/ModelSettingsResponse"
+        },
+        "schema_preflight_response": {
+          "$ref": "#/$defs/SchemaPreflightResponse"
+        },
+        "minigame_request": {
+          "$ref": "#/$defs/MiniGameRequest"
+        },
+        "minigame_response": {
+          "$ref": "#/$defs/MiniGameResponse"
+        },
+        "audio_request": {
+          "$ref": "#/$defs/AudioRequest"
+        },
+        "audio_response": {
+          "$ref": "#/$defs/AudioResponse"
+        },
+        "error": {
+          "$ref": "#/$defs/Error"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "turn_response",
+        "craft_request",
+        "craft_response",
+        "turn_stream_line",
+        "meta_response",
+        "save_response",
+        "load_response",
+        "delete_save_response",
+        "command_descriptors_response",
+        "story_create_request",
+        "story_wizard_request",
+        "story_enhance_request",
+        "story_create_response",
+        "story_wizard_response",
+        "story_enhance_response",
+        "model_settings_response",
+        "schema_preflight_response",
+        "minigame_request",
+        "minigame_response",
+        "audio_request",
+        "audio_response",
+        "error"
+      ]
+    },
+    "Setting": {
+      "properties": {
+        "world_name": {
+          "type": "string"
+        },
+        "era": {
+          "type": "string"
+        },
+        "geography": {
+          "type": "string"
+        },
+        "magic_system": {
+          "type": "string"
+        },
+        "technology_level": {
+          "type": "string"
+        },
+        "society": {
+          "type": "string"
+        },
+        "rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "factions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "cultures": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "dangers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "tone_guidelines": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "world_name",
+        "era",
+        "geography",
+        "magic_system",
+        "technology_level",
+        "society",
+        "rules",
+        "factions",
+        "cultures",
+        "dangers"
+      ]
+    },
+    "StatDef": {
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "starting": {
+          "type": "integer"
+        },
+        "min": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        },
+        "formula": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "recovery_policy": {
+          "type": "string"
+        },
+        "progression": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "key",
+        "label"
+      ]
+    },
+    "StatsSchema": {
+      "properties": {
+        "vitals": {
+          "items": {
+            "$ref": "#/$defs/StatDef"
+          },
+          "type": "array"
+        },
+        "attributes": {
+          "items": {
+            "$ref": "#/$defs/StatDef"
+          },
+          "type": "array"
+        },
+        "secondary": {
+          "items": {
+            "$ref": "#/$defs/StatDef"
+          },
+          "type": "array"
+        },
+        "currency": {
+          "$ref": "#/$defs/CurrencyDef"
+        },
+        "has_combat": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "vitals",
+        "attributes",
+        "secondary",
+        "has_combat"
+      ]
+    },
+    "StoryCreateRequest": {
+      "properties": {
+        "brief": {
+          "type": "string"
+        },
+        "character_name": {
+          "type": "string"
+        },
+        "character_background": {
+          "type": "string"
+        },
+        "start": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "brief",
+        "character_name",
+        "character_background",
+        "start"
+      ]
+    },
+    "StoryCreateResponse": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "character_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "started": {
+          "type": "boolean"
+        },
+        "start_error": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "StoryCreatorState": {
+      "properties": {
+        "stage": {
+          "type": "string"
+        },
+        "initial_brief": {
+          "type": "string"
+        },
+        "character_name": {
+          "type": "string"
+        },
+        "definition": {
+          "$ref": "#/$defs/StoryDefinition"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "character_id": {
+          "type": "string"
+        },
+        "telemetry_trace_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "stage"
+      ]
+    },
+    "StoryDefinition": {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "genre": {
+          "type": "string"
+        },
+        "tone": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "writing_style": {
+          "type": "string"
+        },
+        "prompt_directives": {
+          "type": "string"
+        },
+        "setting": {
+          "$ref": "#/$defs/Setting"
+        },
+        "stats_schema": {
+          "$ref": "#/$defs/StatsSchema"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "genre",
+        "tone",
+        "language",
+        "writing_style",
+        "prompt_directives",
+        "setting",
+        "stats_schema"
+      ]
+    },
+    "StoryEnhanceRequest": {
+      "properties": {
+        "stage": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "context": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/StoryCreatorState"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "StoryEnhanceResponse": {
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "latency_ms": {
+          "type": "integer"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "StoryTTSSettings": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "mode": {
+          "type": "string"
+        },
+        "autoplay": {
+          "type": "boolean"
+        },
+        "default_language_tag": {
+          "type": "string"
+        },
+        "provider_policy": true,
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "mode",
+        "autoplay",
+        "default_language_tag",
+        "provider_policy"
+      ]
+    },
+    "StoryWizardRequest": {
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/StoryCreatorState"
+        },
+        "input": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "start": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "start"
+      ]
+    },
+    "StoryWizardResponse": {
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/StoryCreatorState"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        },
+        "stage_label": {
+          "type": "string"
+        },
+        "placeholder": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "actions": {
+          "items": {
+            "$ref": "#/$defs/CreationAction"
+          },
+          "type": "array"
+        },
+        "definition": {
+          "$ref": "#/$defs/StoryDefinition"
+        },
+        "last_model": {
+          "type": "string"
+        },
+        "last_latency_ms": {
+          "type": "integer"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "character_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "started": {
+          "type": "boolean"
+        },
+        "start_error": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "TTSJob": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "audio_asset_id": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "source_commit_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "attempts": {
+          "type": "integer"
+        },
+        "max_attempts": {
+          "type": "integer"
+        },
+        "next_attempt_at": {
+          "type": "string"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "parent_run_id": {
+          "type": "string"
+        },
+        "generation_run_id": {
+          "type": "string"
+        },
+        "error_class": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "audio_asset_id",
+        "story_id",
+        "branch_id",
+        "source_commit_id",
+        "status",
+        "provider",
+        "attempts",
+        "max_attempts"
+      ]
+    },
+    "TurnEvent": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "turn": {
+          "type": "integer"
+        },
+        "type": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "payload": true
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "story_id",
+        "session_id",
+        "turn",
+        "type",
+        "created_at"
+      ]
+    },
+    "TurnResponse": {
+      "properties": {
+        "events": {
+          "items": {
+            "$ref": "#/$defs/TurnEvent"
+          },
+          "type": "array"
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "TurnStreamLine": {
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/TurnEvent"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "done": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "VoiceAssignment": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "assignment_key": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "entity_id": {
+          "type": "string"
+        },
+        "identity_id": {
+          "type": "string"
+        },
+        "form_id": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "voice_profile_id": {
+          "type": "string"
+        },
+        "enabled_mode": {
+          "type": "string"
+        },
+        "language_tag": {
+          "type": "string"
+        },
+        "style": true,
+        "locked": {
+          "type": "boolean"
+        },
+        "importance": {
+          "type": "string"
+        },
+        "allow_duplicate": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "assignment_key",
+        "story_id",
+        "role",
+        "voice_profile_id",
+        "enabled_mode",
+        "language_tag",
+        "style",
+        "locked",
+        "importance",
+        "allow_duplicate"
+      ]
+    },
+    "VoiceProfile": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "provider_voice_id": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "language_tags": true,
+        "traits": true,
+        "rights": true,
+        "version": {
+          "type": "string"
+        },
+        "style_family": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "provider",
+        "model",
+        "provider_voice_id",
+        "display_name",
+        "language_tags",
+        "traits",
+        "rights",
+        "version",
+        "style_family",
+        "enabled"
+      ]
+    }
+  }
+}
