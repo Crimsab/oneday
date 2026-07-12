@@ -1,0 +1,175 @@
+package gatewayprotocol
+
+import (
+	"github.com/crimsab/oneday/internal/ai"
+	audioservice "github.com/crimsab/oneday/internal/audio"
+	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/engine"
+	"github.com/crimsab/oneday/internal/game/contracts"
+	"github.com/crimsab/oneday/internal/storage"
+)
+
+type TurnResponse struct {
+	Events []contracts.TurnEvent `json:"events,omitempty"`
+	Error  string                `json:"error,omitempty"`
+}
+type CraftRequest struct {
+	StoryID string       `json:"story_id"`
+	Message string       `json:"message"`
+	History []ai.Message `json:"history,omitempty"`
+}
+type CraftResponse struct {
+	Crafting *engine.CraftingResponse `json:"crafting,omitempty"`
+	Error    string                   `json:"error,omitempty"`
+}
+type TurnStreamLine struct {
+	Event *contracts.TurnEvent `json:"event,omitempty"`
+	Phase string               `json:"phase,omitempty"`
+	Error string               `json:"error,omitempty"`
+	Done  bool                 `json:"done,omitempty"`
+}
+type MetaResponse struct {
+	Meta  *contracts.BrowserMetaResponse `json:"meta,omitempty"`
+	Error string                         `json:"error,omitempty"`
+}
+type SaveResponse struct {
+	Save  *contracts.BrowserSaveView `json:"save,omitempty"`
+	Error string                     `json:"error,omitempty"`
+}
+type LoadResponse struct {
+	Save           *contracts.BrowserSaveView `json:"save,omitempty"`
+	Legacy         bool                       `json:"legacy,omitempty"`
+	SnapshotState  string                     `json:"snapshot_state"`
+	SnapshotDetail string                     `json:"snapshot_detail,omitempty"`
+	Error          string                     `json:"error,omitempty"`
+}
+
+func LoadResponseFromContract(resp *contracts.BrowserLoadResponse) LoadResponse {
+	return LoadResponse{Save: &resp.Save, Legacy: resp.Legacy, SnapshotState: resp.SnapshotState, SnapshotDetail: resp.SnapshotDetail}
+}
+
+type DeleteSaveResponse struct {
+	Save  *contracts.BrowserSaveView `json:"save,omitempty"`
+	Error string                     `json:"error,omitempty"`
+}
+type CommandDescriptorsResponse struct {
+	Commands []contracts.CommandDescriptor `json:"commands,omitempty"`
+	Error    string                        `json:"error,omitempty"`
+}
+type StoryCreateRequest struct {
+	Brief               string `json:"brief"`
+	CharacterName       string `json:"character_name"`
+	CharacterBackground string `json:"character_background"`
+	Start               bool   `json:"start"`
+}
+type StoryWizardRequest struct {
+	State  *engine.StoryCreatorState `json:"state,omitempty"`
+	Input  string                    `json:"input,omitempty"`
+	Action string                    `json:"action,omitempty"`
+	Start  bool                      `json:"start"`
+}
+type StoryEnhanceRequest struct {
+	Stage   string                    `json:"stage,omitempty"`
+	Text    string                    `json:"text,omitempty"`
+	Context string                    `json:"context,omitempty"`
+	State   *engine.StoryCreatorState `json:"state,omitempty"`
+}
+type StoryCreateResponse struct {
+	StoryID     string `json:"story_id,omitempty"`
+	CharacterID string `json:"character_id,omitempty"`
+	SessionID   string `json:"session_id,omitempty"`
+	Started     bool   `json:"started,omitempty"`
+	StartError  string `json:"start_error,omitempty"`
+	Error       string `json:"error,omitempty"`
+}
+type StoryWizardResponse struct {
+	State       engine.StoryCreatorState `json:"state,omitempty"`
+	Phase       string                   `json:"phase,omitempty"`
+	Stage       string                   `json:"stage,omitempty"`
+	StageLabel  string                   `json:"stage_label,omitempty"`
+	Placeholder string                   `json:"placeholder,omitempty"`
+	Message     string                   `json:"message,omitempty"`
+	Actions     []engine.CreationAction  `json:"actions,omitempty"`
+	Definition  *engine.StoryDefinition  `json:"definition,omitempty"`
+	LastModel   string                   `json:"last_model,omitempty"`
+	LastLatency int64                    `json:"last_latency_ms,omitempty"`
+	StoryID     string                   `json:"story_id,omitempty"`
+	CharacterID string                   `json:"character_id,omitempty"`
+	SessionID   string                   `json:"session_id,omitempty"`
+	Started     bool                     `json:"started,omitempty"`
+	StartError  string                   `json:"start_error,omitempty"`
+	Error       string                   `json:"error,omitempty"`
+}
+type StoryEnhanceResponse struct {
+	Text      string `json:"text,omitempty"`
+	Model     string `json:"model,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	LatencyMs int64  `json:"latency_ms,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
+type ModelSettingsResponse struct {
+	Settings  *config.ModelRoutingSettings `json:"settings,omitempty"`
+	Error     string                       `json:"error,omitempty"`
+	ErrorCode string                       `json:"error_code,omitempty"`
+}
+type SchemaPreflightResponse struct {
+	Status string `json:"status"`
+}
+type MiniGameRequest struct {
+	StoryID    string                          `json:"story_id"`
+	InstanceID string                          `json:"instance_id,omitempty"`
+	Kind       engine.MiniGameType             `json:"kind,omitempty"`
+	Definition engine.MiniGameDefinition       `json:"definition,omitempty"`
+	Input      engine.MiniGameInput            `json:"input,omitempty"`
+	Selection  engine.MiniGameSelectionContext `json:"selection,omitempty"`
+}
+type MiniGameResponse struct {
+	Instance *engine.MiniGameInstance `json:"instance,omitempty"`
+	Error    string                   `json:"error,omitempty"`
+}
+type AudioRequest struct {
+	Operation       string                      `json:"operation"`
+	StoryID         string                      `json:"story_id,omitempty"`
+	MessageID       int64                       `json:"message_id,omitempty"`
+	AssetID         string                      `json:"asset_id,omitempty"`
+	AssignmentID    string                      `json:"assignment_id,omitempty"`
+	PronunciationID string                      `json:"pronunciation_id,omitempty"`
+	JobID           string                      `json:"job_id,omitempty"`
+	Provider        string                      `json:"provider,omitempty"`
+	Language        string                      `json:"language,omitempty"`
+	ClientRevision  int64                       `json:"client_revision,omitempty"`
+	Settings        *storage.StoryTTSSettings   `json:"settings,omitempty"`
+	Assignment      *storage.VoiceAssignment    `json:"assignment,omitempty"`
+	Pronunciation   *storage.PronunciationEntry `json:"pronunciation,omitempty"`
+	DryRun          bool                        `json:"dry_run,omitempty"`
+}
+type AudioExport struct {
+	Format         string                        `json:"format"`
+	Filename       string                        `json:"filename"`
+	GeneratedAt    string                        `json:"generated_at"`
+	StoryID        string                        `json:"story_id"`
+	Settings       *storage.StoryTTSSettings     `json:"settings"`
+	Providers      []audioservice.ProviderStatus `json:"providers"`
+	Voices         []storage.VoiceProfile        `json:"voices"`
+	Assignments    []storage.VoiceAssignment     `json:"assignments"`
+	Pronunciations []storage.PronunciationEntry  `json:"pronunciations"`
+	Assets         []storage.AudioAsset          `json:"assets"`
+	Jobs           []storage.TTSJob              `json:"jobs"`
+}
+type AudioResponse struct {
+	Statuses       []audioservice.ProviderStatus `json:"providers,omitempty"`
+	Profiles       []storage.VoiceProfile        `json:"voices,omitempty"`
+	Settings       *storage.StoryTTSSettings     `json:"settings,omitempty"`
+	Assignments    []storage.VoiceAssignment     `json:"assignments,omitempty"`
+	Assignment     *storage.VoiceAssignment      `json:"assignment,omitempty"`
+	Pronunciations []storage.PronunciationEntry  `json:"pronunciations,omitempty"`
+	Pronunciation  *storage.PronunciationEntry   `json:"pronunciation,omitempty"`
+	Assets         []storage.AudioAsset          `json:"assets,omitempty"`
+	Jobs           []storage.TTSJob              `json:"jobs,omitempty"`
+	Asset          *storage.AudioAsset           `json:"asset,omitempty"`
+	FilePath       string                        `json:"file_path,omitempty"`
+	Format         string                        `json:"format,omitempty"`
+	Cleanup        *audioservice.CleanupResult   `json:"cleanup,omitempty"`
+	Export         *AudioExport                  `json:"export,omitempty"`
+	Error          string                        `json:"error,omitempty"`
+}
