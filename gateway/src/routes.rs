@@ -778,6 +778,7 @@ async fn submit_action(
     };
     if !stream_requested {
         for event in &events.events {
+            let event = serde_json::to_value(event).map_err(anyhow::Error::from)?;
             emit_turn_stream(
                 &state,
                 TurnStreamEvent::contract(
@@ -785,7 +786,7 @@ async fn submit_action(
                     client_turn,
                     &action_kind,
                     &action_text,
-                    event,
+                    &event,
                 ),
             );
         }
