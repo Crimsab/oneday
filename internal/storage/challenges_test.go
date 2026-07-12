@@ -70,7 +70,7 @@ func TestChallengeAndCharacterUpdateRollbackTogether(t *testing.T) {
 	instance := contracts.ChallengeInstance{ProtocolVersion: 1, ID: "craft-rollback", StoryID: "story-craft", BranchID: head.Branch.ID, Turn: 1, Definition: contracts.ChallengeDefinition{ID: "craft", Kind: "crafting", Difficulty: 10}, Seed: 7, Policy: contracts.OutcomePolicy{ID: "balanced"}}
 	resolution := contracts.ChallengeResolution{ProtocolVersion: 1, InstanceID: instance.ID, Outcome: contracts.OutcomeEnvelope{Version: 1, Degree: contracts.OutcomeFullSuccess}}
 
-	err = db.RecordChallengeResolutionAndCharacterAtHead("story-craft", "session-1", 1, instance, resolution, character)
+	_, err = db.RecordChallengeResolutionAndCharacterAtHead("story-craft", "session-1", 1, instance, resolution, character)
 	if err == nil {
 		t.Fatal("expected character update failure")
 	}

@@ -201,10 +201,12 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 	}
 
 	if characterChanged {
-		if err := ce.narrator.db.RecordChallengeResolutionAndCharacterAtHead(story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, *resolution, char); err != nil {
+		revision, err := ce.narrator.db.RecordChallengeResolutionAndCharacterAtHead(story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, *resolution, char)
+		if err != nil {
 			*char = originalCharacter
 			return nil, fmt.Errorf("persisting crafting outcome and character: %w", err)
 		}
+		story.Revision = revision
 	} else if err := ce.narrator.db.RecordChallengeResolutionAtHead(story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, *resolution); err != nil {
 		return nil, fmt.Errorf("persisting crafting outcome: %w", err)
 	}
