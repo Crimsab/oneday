@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compactText, readableStructuredText } from "../format";
 import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
@@ -22,6 +22,12 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
   const ref = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const activeStoryId = useRef(storyId);
+  const checkoutBranchRef = useRef(onCheckoutBranch);
+  const restoreDecisionRef = useRef(onRestoreDecision);
+  checkoutBranchRef.current = onCheckoutBranch;
+  restoreDecisionRef.current = onRestoreDecision;
+  const checkoutBranch = useCallback((branchId: string) => checkoutBranchRef.current(branchId), []);
+  const restoreDecision = useCallback((fromCommitId: string, turn: number) => restoreDecisionRef.current(fromCommitId, turn), []);
   const visibleMessages = useMemo(
     () => messages.filter((message) => message.id > hiddenBeforeId),
     [messages, hiddenBeforeId],
@@ -56,7 +62,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
           {messages.length ? "Transcript cleared locally. New canonical messages will appear here." : "Choose a story to load the canonical transcript."}
         </div>
       ) : (
-        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />)
+        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
     </div>
@@ -78,7 +84,8 @@ export function isTranscriptNearBottom(
   return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= threshold;
 }
 
-function TranscriptMessage({ storyId, message, autoplay, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
+const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, autoplay, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
+  const [audioOpen, setAudioOpen] = useState(false);
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
   const content = readableStructuredText(message.content) || compactText(message.content || "(empty)", 160);
@@ -94,14 +101,18 @@ function TranscriptMessage({ storyId, message, autoplay, timelineControls, timel
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={`Structured dialogue for turn ${message.turn}`}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || "Unknown speaker"}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
         <MessageDiagnostics message={message} />
-        {message.role === "assistant" && Boolean(message.source_commit_id) && <AudioControls storyId={storyId} messageId={message.id} autoplay={autoplay} />}
+        {message.role === "assistant" && Boolean(message.source_commit_id) && (
+          autoplay || audioOpen
+            ? <AudioControls storyId={storyId} messageId={message.id} autoplay={autoplay} />
+            : <section className="message-audio" aria-label="Spoken audio"><div className="message-audio-head"><button type="button" onClick={() => setAudioOpen(true)}>Load spoken audio</button></div></section>
+        )}
         {timelineControls && (
           <MessageBranchControls message={message} timeline={timeline} showRestore={timelineControls.restore} showSwitcher={timelineControls.switcher} busy={timelineBusy} onCheckout={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />
         )}
       </div>
     </article>
   );
-}
+});
 
 export interface DialogueView { speakerId:string; speaker:string; role:string; text:string }
 export function dialogueBlocksFromMessage(message:MessageView):DialogueView[] {
