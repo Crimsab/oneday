@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqliteConnection, SqlitePool};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -2107,13 +2107,7 @@ async fn complete_generated_asset(
             job.id
         ));
     }
-    ensure_asset_visible_on(
-        &mut *tx,
-        &job.asset.story_id,
-        &job.asset.id,
-        &job.branch_id,
-    )
-    .await?;
+    ensure_asset_visible_on(&mut *tx, &job.asset.story_id, &job.asset.id, &job.branch_id).await?;
     let version_id = record_asset_version(&mut *tx, job, generated, config).await?;
     select_generated_version_on(
         &mut *tx,
@@ -2752,8 +2746,7 @@ async fn ensure_profile(
     }
 
     let defaults = default_profile(snapshot);
-    let (branch_id, source_commit_id) =
-        active_timeline_lineage(pool, &snapshot.story.id).await?;
+    let (branch_id, source_commit_id) = active_timeline_lineage(pool, &snapshot.story.id).await?;
     let fingerprint = visual_fingerprint(&[
         &defaults.world_style_prompt,
         &defaults.character_style_prompt,
@@ -3106,20 +3099,51 @@ fn known_map_specs(
     if known.is_empty() && regions.is_empty() {
         return Vec::new();
     }
+    let mut root_regions = Vec::new();
+    let mut child_regions: HashMap<String, Vec<&Value>> = HashMap::new();
+    for region in &regions {
+        let parent_id = value_at(region, "parent_region_id");
+        if parent_id.is_empty() {
+            root_regions.push(region);
+        } else {
+            child_regions.entry(parent_id).or_default().push(region);
+        }
+    }
+    let mut root_locations = Vec::new();
+    let mut root_locations_by_region: HashMap<String, Vec<&Value>> = HashMap::new();
+    let mut child_locations: HashMap<String, Vec<&Value>> = HashMap::new();
+    for location in &locations {
+        let parent_id = value_at(location, "parent_location_id");
+        if !parent_id.is_empty() {
+            child_locations.entry(parent_id).or_default().push(location);
+            continue;
+        }
+        let region_id = value_at(location, "region_id");
+        if region_id.is_empty() {
+            root_locations.push(location);
+        } else {
+            root_locations_by_region
+                .entry(region_id)
+                .or_default()
+                .push(location);
+        }
+    }
+    let mut edges_by_source: HashMap<String, Vec<&Value>> = HashMap::new();
+    for edge in &edges {
+        edges_by_source
+            .entry(value_at(edge, "from_location_id"))
+            .or_default()
+            .push(edge);
+    }
 
     let mut scopes = Vec::<(String, String, String, Vec<Value>)>::new();
-    let mut world_nodes = regions
+    let mut world_nodes = root_regions
         .iter()
-        .filter(|region| value_at(region, "parent_region_id").is_empty())
         .map(|region| map_scope_node("region", region))
         .collect::<Vec<_>>();
     world_nodes.extend(
-        locations
+        root_locations
             .iter()
-            .filter(|location| {
-                value_at(location, "region_id").is_empty()
-                    && value_at(location, "parent_location_id").is_empty()
-            })
             .map(|location| map_scope_node("location", location)),
     );
     if world_nodes.is_empty() {
@@ -3140,18 +3164,17 @@ fn known_map_specs(
         if region_id.is_empty() {
             continue;
         }
-        let mut nodes = regions
-            .iter()
-            .filter(|candidate| value_at(candidate, "parent_region_id") == region_id)
+        let mut nodes = child_regions
+            .get(&region_id)
+            .into_iter()
+            .flatten()
             .map(|candidate| map_scope_node("region", candidate))
             .collect::<Vec<_>>();
         nodes.extend(
-            locations
-                .iter()
-                .filter(|location| {
-                    value_at(location, "region_id") == region_id
-                        && value_at(location, "parent_location_id").is_empty()
-                })
+            root_locations_by_region
+                .get(&region_id)
+                .into_iter()
+                .flatten()
                 .map(|location| map_scope_node("location", location)),
         );
         if !nodes.is_empty() {
@@ -3165,9 +3188,10 @@ fn known_map_specs(
     }
     for location in &locations {
         let location_id = value_at(location, "id");
-        let nodes = locations
-            .iter()
-            .filter(|candidate| value_at(candidate, "parent_location_id") == location_id)
+        let nodes = child_locations
+            .get(&location_id)
+            .into_iter()
+            .flatten()
             .map(|candidate| map_scope_node("location", candidate))
             .collect::<Vec<_>>();
         if !nodes.is_empty() {
@@ -3189,13 +3213,12 @@ fn known_map_specs(
             .iter()
             .filter(|node| value_at(node, "node_kind") == "location")
             .map(|node| value_at(node, "id"))
-            .collect::<HashSet<_>>();
-        let scoped_edges = edges
+            .collect::<Vec<_>>();
+        let visible_location_set = visible_location_ids.iter().cloned().collect::<HashSet<_>>();
+        let scoped_edges = visible_location_ids
             .iter()
-            .filter(|edge| {
-                visible_location_ids.contains(&value_at(edge, "from_location_id"))
-                    && visible_location_ids.contains(&value_at(edge, "to_location_id"))
-            })
+            .flat_map(|from| edges_by_source.get(from).into_iter().flatten())
+            .filter(|edge| visible_location_set.contains(&value_at(edge, "to_location_id")))
             .cloned()
             .collect::<Vec<_>>();
         let graph_payload = serde_json::json!({"scope_kind":scope_kind,"scope_id":scope_id,"nodes":nodes,"edges":scoped_edges});
@@ -5246,9 +5269,11 @@ mod tests {
         .await
         .unwrap();
 
-        assert!(select_asset_version(&pool, "story", "asset-location", version_id)
-            .await
-            .is_err());
+        assert!(
+            select_asset_version(&pool, "story", "asset-location", version_id)
+                .await
+                .is_err()
+        );
         let selections: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM visual_asset_selection_states WHERE asset_id='asset-location'",
         )
