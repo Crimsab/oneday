@@ -53,7 +53,8 @@ type gatewayAudioResponse = gatewayprotocol.AudioResponse
 func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in io.Reader, out io.Writer) error {
 	var req gatewayAudioRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return json.NewEncoder(out).Encode(gatewayAudioResponse{Error: fmt.Sprintf("invalid audio request: %v", err)})
+		message := fmt.Sprintf("invalid audio request: %v", err)
+		return json.NewEncoder(out).Encode(gatewayAudioResponse{ResponseMeta: gatewayprotocol.Failure("invalid_audio_request", message), Error: message})
 	}
 	req.Operation, req.StoryID = strings.TrimSpace(req.Operation), strings.TrimSpace(req.StoryID)
 	service := audioservice.NewService(db, cfg.AI.TTS)
@@ -219,6 +220,7 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 	}
 	if err != nil {
 		response.Error = err.Error()
+		response.ResponseMeta = gatewayprotocol.Failure("audio_operation_failed", err.Error())
 	}
 	return json.NewEncoder(out).Encode(response)
 }
@@ -239,11 +241,13 @@ func safeAudioFilename(value string) string {
 func runGatewayMiniGame(db *storage.DB, operation string, in io.Reader, out io.Writer) error {
 	var req gatewayMiniGameRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{Error: fmt.Sprintf("invalid minigame request: %v", err)})
+		message := fmt.Sprintf("invalid minigame request: %v", err)
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{ResponseMeta: gatewayprotocol.Failure("invalid_minigame_request", message), Error: message})
 	}
 	req.StoryID = strings.TrimSpace(req.StoryID)
 	if req.StoryID == "" {
-		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{Error: "story id is required"})
+		const message = "story id is required"
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{ResponseMeta: gatewayprotocol.Failure("invalid_minigame_request", message), Error: message})
 	}
 	host := engine.NewMiniGameHost()
 	var instance *engine.MiniGameInstance
@@ -319,7 +323,7 @@ func runGatewayMiniGame(db *storage.DB, operation string, in io.Reader, out io.W
 		err = fmt.Errorf("unknown minigame operation %q", operation)
 	}
 	if err != nil {
-		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{Error: err.Error()})
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{ResponseMeta: gatewayprotocol.Failure("minigame_operation_failed", err.Error()), Error: err.Error()})
 	}
 	if instance == nil {
 		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{})
@@ -897,17 +901,17 @@ func runGatewayTimeline(db *storage.DB, in io.Reader, out io.Writer) error {
 }
 
 func writeGatewayTurnError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{ResponseMeta: gatewayprotocol.Failure("turn_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewayCraftError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayCraftResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayCraftResponse{ResponseMeta: gatewayprotocol.Failure("craft_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewayTurnStreamError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{ResponseMeta: gatewayprotocol.Failure("turn_stream_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
@@ -919,37 +923,37 @@ func gatewayTurnEventPhase(event contracts.TurnEvent) string {
 }
 
 func writeGatewayStoryCreateError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayStoryCreateResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayStoryCreateResponse{ResponseMeta: gatewayprotocol.Failure("story_create_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewayStoryWizardError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayStoryWizardResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayStoryWizardResponse{ResponseMeta: gatewayprotocol.Failure("story_wizard_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewayStoryEnhanceError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayStoryEnhanceResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayStoryEnhanceResponse{ResponseMeta: gatewayprotocol.Failure("story_enhance_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewayMetaError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayMetaResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayMetaResponse{ResponseMeta: gatewayprotocol.Failure("meta_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewaySaveError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewaySaveResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewaySaveResponse{ResponseMeta: gatewayprotocol.Failure("save_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewayLoadError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayLoadResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayLoadResponse{ResponseMeta: gatewayprotocol.Failure("load_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
 func writeGatewayDeleteSaveError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayDeleteSaveResponse{Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayDeleteSaveResponse{ResponseMeta: gatewayprotocol.Failure("delete_save_failed", err.Error()), Error: err.Error()})
 	return err
 }
 
@@ -961,6 +965,6 @@ func writeGatewayModelSettingsError(out io.Writer, err error) error {
 	} else if err != nil && errors.Is(err, context.Canceled) {
 		code = "cancelled"
 	}
-	_ = json.NewEncoder(out).Encode(gatewayModelSettingsResponse{Error: err.Error(), ErrorCode: code})
+	_ = json.NewEncoder(out).Encode(gatewayModelSettingsResponse{ResponseMeta: gatewayprotocol.Failure(code, err.Error()), Error: err.Error(), ErrorCode: code})
 	return err
 }
