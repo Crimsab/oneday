@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync"
@@ -260,7 +259,7 @@ func (o *OpenAICompat) completeOnce(ctx context.Context, body openAIChatRequest)
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp.Body)
 	if err != nil {
 		return "", "", ai.Usage{}, fmt.Errorf("reading response from %s: %w", o.name, err)
 	}
@@ -424,7 +423,7 @@ func (o *OpenAICompat) completeResponsesOnce(ctx context.Context, body responses
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp.Body)
 	if err != nil {
 		return "", "", ai.Usage{}, fmt.Errorf("reading responses response from %s: %w", o.name, err)
 	}
@@ -509,7 +508,7 @@ func (o *OpenAICompat) Embed(ctx context.Context, req ai.EmbeddingRequest) (ai.E
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp.Body)
 	if err != nil {
 		return ai.EmbeddingResponse{}, fmt.Errorf("reading embedding response from %s: %w", o.name, err)
 	}
@@ -848,7 +847,7 @@ func (o *OpenAICompat) openStream(ctx context.Context, body openAIChatRequest) (
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := readResponseBody(resp.Body)
 		if readErr != nil {
 			return nil, fmt.Errorf("reading error response from %s: %w", o.name, readErr)
 		}
@@ -886,7 +885,7 @@ func (o *OpenAICompat) openResponsesStream(ctx context.Context, body responsesRe
 	}
 	if resp.StatusCode != http.StatusOK {
 		defer resp.Body.Close()
-		respBody, readErr := io.ReadAll(resp.Body)
+		respBody, readErr := readResponseBody(resp.Body)
 		if readErr != nil {
 			return nil, fmt.Errorf("reading error response from %s: %w", o.name, readErr)
 		}

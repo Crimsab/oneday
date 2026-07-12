@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -74,7 +73,7 @@ func (o *OllamaEmbedding) Embed(ctx context.Context, req ai.EmbeddingRequest) (a
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp.Body)
 	if err != nil {
 		return ai.EmbeddingResponse{}, fmt.Errorf("reading Ollama embedding response: %w", err)
 	}
