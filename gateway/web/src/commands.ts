@@ -1,4 +1,4 @@
-import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Hammer, MapPin, Search } from "lucide-react";
+import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Hammer, MapPin, Search, Trophy } from "lucide-react";
 import type { CommandDescriptor, MetaCommand, ModuleTab, OverlayKind } from "./types";
 
 export interface CommandResult {
@@ -63,6 +63,7 @@ export const moduleSpecs: Array<{
   { tab: "fronts", label: "Fronts", hotkey: "F", command: "/fronts", Icon: Flag },
   { tab: "investigations", label: "Investigations", hotkey: "G", command: "/investigations", Icon: Search },
   { tab: "projects", label: "Projects", hotkey: "P", command: "/projects", Icon: BriefcaseBusiness },
+  { tab: "achievements", label: "Achievements", hotkey: "A", command: "/achievements", Icon: Trophy },
   { tab: "saves", label: "Saves", hotkey: "V", command: "/load", Icon: FileText },
 ];
 
@@ -138,7 +139,7 @@ const panelByCanonical: Record<string, ModuleTab> = {
   projects: "projects",
   craft: "craft",
   history: "history",
-  achievements: "saves",
+  achievements: "achievements",
   map: "map",
 };
 

@@ -943,6 +943,7 @@ function App() {
       setSaveFilter("");
     }
     if (nextOverlay === "options") {
+      setVisualAssetFocusId(null);
       void refreshModelSettings();
     }
     setOverlay(nextOverlay);

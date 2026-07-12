@@ -122,6 +122,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/stories/:story_id/visual-profile",
             put(update_visual_profile),
         )
+        .route("/api/stories/:story_id/craft", post(craft))
         .route("/api/stories/:story_id/actions", post(submit_action))
         .route("/api/stories/:story_id/meta", post(submit_meta))
         .route("/api/stories/:story_id/saves", post(create_save))
@@ -806,6 +807,16 @@ async fn submit_action(
         "events": events.events,
         "snapshot": snapshot,
     })))
+}
+
+async fn craft(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<engine::CraftEnvelope>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let crafting = engine::craft(state.clone(), &story_id, payload).await?;
+    let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    Ok(Json(json!({ "crafting": crafting, "snapshot": snapshot })))
 }
 
 async fn submit_meta(

@@ -7,14 +7,19 @@ export interface SettingsSection {
   content: ReactNode;
 }
 
-export function SettingsWorkspace({ sections }: { sections: SettingsSection[] }) {
-  const [active, setActive] = useState<SettingsSectionId>("general");
+export function SettingsWorkspace({ sections, initialSection = "general" }: { sections: SettingsSection[]; initialSection?: SettingsSectionId }) {
+  const [active, setActive] = useState<SettingsSectionId>(initialSection);
   const [query, setQuery] = useState("");
   const [pendingFocus, setPendingFocus] = useState<SettingsSearchEntry | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const results = useMemo(() => searchSettings(query), [query]);
   const category = settingsCategories.find((item) => item.id === active) ?? settingsCategories[0];
   const section = sections.find((item) => item.id === active);
+
+  useEffect(() => {
+    setActive(initialSection);
+    setQuery("");
+  }, [initialSection]);
 
   useEffect(() => {
     if (!pendingFocus || query) return;

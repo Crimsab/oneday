@@ -31,6 +31,19 @@ describe("messageAlternativesForCommit", () => {
     expect(alternatives.branches.map((branch) => branch.id)).toEqual(["branch-main", "branch-c-alternate"]);
     expect(alternatives.currentIndex).toBe(1);
   });
+
+  it("exposes materialized forward paths on the exact restored decision message", () => {
+    const timeline = abcTimeline();
+    timeline.commits.push(commit("commit-c2", "branch-c-alternate", "commit-b", 3));
+    timeline.active_branch_id = "branch-c-empty";
+    timeline.head = commit("commit-b", "branch-main", "commit-a", 2);
+
+    const alternatives = messageAlternativesForCommit("commit-b", timeline);
+
+    expect(alternatives.atDecision).toBe(true);
+    expect(alternatives.branches.map((branch) => branch.id)).toEqual(["branch-main", "branch-c-alternate"]);
+    expect(alternatives.currentIndex).toBe(-1);
+  });
 });
 
 function abcTimeline(): TimelineResponse {

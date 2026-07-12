@@ -23,9 +23,13 @@ export function MessageBranchControls({
   const restoreFrom = commit?.parent_commit_id || "";
   const alternatives = messageAlternativesForCommit(message.source_commit_id, timeline);
   const index = alternatives.currentIndex;
-  const previous = alternatives.branches[index - 1];
-  const next = alternatives.branches[index + 1];
-  const showBranchSwitcher = alternatives.branches.length > 1 && index >= 0;
+  const previous = alternatives.atDecision
+    ? alternatives.branches.at(-1)
+    : alternatives.branches[index - 1];
+  const next = alternatives.atDecision
+    ? alternatives.branches[0]
+    : alternatives.branches[index + 1];
+  const showBranchSwitcher = alternatives.branches.length > 1 && (index >= 0 || alternatives.atDecision);
 
   if (!restoreFrom && !showBranchSwitcher) return null;
 
@@ -46,7 +50,9 @@ export function MessageBranchControls({
       {showBranchSwitcher && (
         <div className="message-branch-switcher" aria-label="Available story alternatives">
           <GitBranch size={13} aria-hidden="true" />
-          <span title={alternatives.branches[index]?.name || "Displayed branch"}>{index + 1}/{alternatives.branches.length}</span>
+          <span title={alternatives.atDecision ? "Choose a generated path from this decision" : alternatives.branches[index]?.name || "Displayed branch"}>
+            {alternatives.atDecision ? `${alternatives.branches.length} paths` : `${index + 1}/${alternatives.branches.length}`}
+          </span>
           <button
             type="button"
             aria-label="Previous alternative"

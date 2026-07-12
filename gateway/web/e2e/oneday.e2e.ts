@@ -33,6 +33,7 @@ const timeline = {
   commits: [
     { id: "commit-3", branch_id: "branch-main", parent_commit_id: "commit-2", canonical_turn: 3, kind: "turn", message: "Archive doors", created_at: now },
     { id: "commit-4", branch_id: "branch-main", parent_commit_id: "commit-3", canonical_turn: 4, kind: "turn", message: "Seal", created_at: now },
+    { id: "commit-alt", branch_id: "branch-alt", parent_commit_id: "commit-3", canonical_turn: 4, kind: "turn", message: "Quiet route", created_at: "2026-07-11T12:00:01Z" },
   ],
 };
 
@@ -67,7 +68,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let visualCanUndo = true;
   let visualCanRedo = false;
   let visualPrompt = "Mira restored portrait";
-  let visualStatus = "pending";
+  let visualStatus = "ready";
   let visualSelectedVersion = 21;
   let visualGenerationQueued = false;
   let visualVersions = [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }];
@@ -77,6 +78,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       ...response.assets[0],
       prompt: visualPrompt,
       status: visualStatus,
+      url: visualStatus === "ready" ? (visualSelectedVersion === 22 ? "/assets/mira-new.png" : "/assets/mira.png") : "",
       selected_version_id: visualSelectedVersion,
       updated_at: visualSelectedVersion === 22 ? "2026-07-11T12:01:00Z" : now,
     };
@@ -152,6 +154,20 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       return json(route, { wizard: { state: { stage: "brief" }, phase: "conversation", stage: "brief", stage_label: "Choose the story brief", placeholder: "Describe the story you want...", message: "Story setup starts with one short brief.", actions: [{ key: "preset_dark_fantasy", label: "Dark fantasy", seed: "Italian dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue." }, { key: "preset_cyberpunk", label: "Cyberpunk noir", seed: "Italian cyberpunk noir with sharp dialogue." }, { key: "focus_input", label: "Write my own" }] } });
     }
     if (path.endsWith("/snapshot")) return json(route, snapshot());
+    if (path.endsWith("/craft") && request.method() === "POST") {
+      const body = request.postDataJSON() as { message: string; history: Array<{ role: string; content: string }> };
+      return json(route, {
+        crafting: {
+          feasible: true,
+          narrative: `You assemble ${body.message} without advancing the story turn.`,
+          item: { name: "Prism key", description: "A keyed glass tool", effect: "Reveals sealed archive seams", materials: ["glass shard", "brass wire"] },
+          alternatives: ["Reinforce it with wax"],
+          choices: [{ id: 1, text: "Try a quieter version" }],
+          resolved_outcome: { degree: "success" },
+        },
+        snapshot: snapshot(),
+      });
+    }
     if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, visualVersions);
     if (path.endsWith("/visual-assets/asset-mira-new") && request.method() === "PUT") {
       visualPrompt = request.postDataJSON().prompt;
@@ -360,7 +376,26 @@ test("restores a message decision and only exposes branch navigation when altern
   await expect(page.getByRole("button", { name: "Next alternative" })).toBeEnabled();
   await page.getByRole("button", { name: "Try another path from here", description: "Create a new branch from before turn 4" }).click();
   await expect(page.getByText("Back at the previous decision on Turn 4 alternative 2.")).toBeVisible();
-  await expect(page.getByLabel("Available story alternatives")).toHaveCount(0);
+  await expect(page.getByLabel("Available story alternatives")).toContainText("2 paths");
+  await expect(page.getByRole("button", { name: "Next alternative" })).toBeEnabled();
+  const checkout = page.waitForResponse((response) => response.url().endsWith("/timeline") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Next alternative" }).click();
+  await checkout;
+  await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
+});
+
+test("keeps story branches inline and closes the menu outside or with escape", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  const toggle = page.getByRole("button", { name: /Story branches/ });
+  await toggle.click();
+  await expect(page.locator("#branch-menu")).toBeVisible();
+  await page.locator(".rail-brand").click();
+  await expect(page.locator("#branch-menu")).toHaveCount(0);
+  await toggle.click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#branch-menu")).toHaveCount(0);
 });
 
 test("does not render spoken audio controls while story speech is off", async ({ page }) => {
@@ -431,6 +466,41 @@ test("keeps asset prompt edits stable and reveals completed image versions", asy
   await expect(dialog.getByText("1 / 2 · preview")).toBeVisible();
   await dialog.getByRole("button", { name: "← Newer" }).click();
   await expect(dialog.getByText("2 / 2 · selected")).toBeVisible();
+});
+
+test("opens a codex image directly in its editable visual asset workspace", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Codex" }).click();
+  const inspector = page.locator(".right-inspector");
+  await inspector.getByRole("button", { name: "Open image for Mira" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByRole("heading", { name: "Options" })).toBeVisible();
+  await expect(dialog.getByLabel("Asset prompt")).toHaveValue("Mira restored portrait");
+  await expect(dialog.getByText("Mira", { exact: true }).first()).toBeVisible();
+});
+
+test("uses the dedicated inventory-aware crafting conversation and separates achievements", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Craft" }).click();
+  const inspector = page.locator(".right-inspector");
+  await expect(inspector.getByText("Dedicated AI workbench")).toBeVisible();
+  const craftRequest = page.waitForRequest((request) => request.url().endsWith("/craft"));
+  await inspector.getByPlaceholder("What do you want to craft or improvise?").fill("a prism key");
+  await inspector.getByRole("button", { name: "Evaluate" }).click();
+  const request = await craftRequest;
+  expect(request.postDataJSON()).toMatchObject({ message: "a prism key", history: [] });
+  await expect(inspector.getByText("You assemble a prism key without advancing the story turn.")).toBeVisible();
+  await expect(inspector.getByText("Prism key", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Library" }).click();
+  await page.getByRole("button", { name: "Achievements" }).click();
+  await expect(inspector.getByRole("heading", { name: "Achievements" })).toBeVisible();
+  await expect(inspector.getByText("Achievements are permanent milestones recorded by the engine.")).toBeVisible();
+  await expect(inspector.getByText("Saved snapshots", { exact: true })).toHaveCount(0);
 });
 
 test("plays a timing-free minigame through the shared browser host", async ({ page }) => {

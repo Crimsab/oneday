@@ -11,6 +11,7 @@ export type ModuleTab =
   | "fronts"
   | "investigations"
   | "projects"
+  | "achievements"
   | "saves";
 
 export type OverlayKind =
@@ -28,6 +29,34 @@ export interface AppPreferences {
   showInspector: boolean;
   wrapTranscript: boolean;
   showChoiceDetails: boolean;
+}
+
+export interface CraftConversationMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface CraftedItemView {
+  name: string;
+  description: string;
+  effect: string;
+  materials: string[];
+  crafted_at?: string;
+}
+
+export interface CraftingResponseView {
+  feasible: boolean;
+  narrative: string;
+  item?: CraftedItemView | null;
+  missing?: string[];
+  alternatives?: string[];
+  choices?: Array<{ id: number; text: string }>;
+  resolved_outcome?: JsonValue;
+}
+
+export interface CraftResponseEnvelope {
+  crafting: CraftingResponseView;
+  snapshot: StorySnapshot;
 }
 
 export interface ModelProviderSetting {

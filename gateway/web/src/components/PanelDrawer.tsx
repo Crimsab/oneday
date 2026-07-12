@@ -380,7 +380,7 @@ function OptionsContent({
     },
   ];
 
-  return <div className="overlay-content options-content"><SettingsWorkspace sections={sections} /></div>;
+  return <div className="overlay-content options-content"><SettingsWorkspace sections={sections} initialSection={visualAssetFocusId ? "visuals" : "general"} /></div>;
 }
 
 function VisualDirectionSettings({
