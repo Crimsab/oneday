@@ -316,6 +316,93 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "BrowserDeleteSaveRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "client_turn": {
+          "type": "integer"
+        },
+        "client_revision": {
+          "type": "integer"
+        },
+        "save_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "session_id",
+        "client_turn",
+        "client_revision",
+        "save_id"
+      ]
+    },
+    "BrowserLoadRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "client_turn": {
+          "type": "integer"
+        },
+        "client_revision": {
+          "type": "integer"
+        },
+        "save_id": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "session_id",
+        "client_turn",
+        "client_revision",
+        "save_id"
+      ]
+    },
+    "BrowserMetaRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "client_turn": {
+          "type": "integer"
+        },
+        "client_revision": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "session_id",
+        "client_turn",
+        "client_revision",
+        "kind"
+      ]
+    },
     "BrowserMetaResponse": {
       "properties": {
         "kind": {
@@ -334,6 +421,36 @@
         "kind",
         "title",
         "message"
+      ]
+    },
+    "BrowserSaveRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "client_turn": {
+          "type": "integer"
+        },
+        "client_revision": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "session_id",
+        "client_turn",
+        "client_revision"
       ]
     },
     "BrowserSaveView": {
@@ -370,6 +487,68 @@
         "turn",
         "chapter",
         "created_at"
+      ]
+    },
+    "BrowserTimelineRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "action": {
+          "type": "string"
+        },
+        "client_revision": {
+          "type": "integer"
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "from_commit_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "action",
+        "client_revision"
+      ]
+    },
+    "BrowserTimelineResponse": {
+      "properties": {
+        "active_branch_id": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/TimelineBranchView"
+          },
+          "type": "array"
+        },
+        "head": {
+          "$ref": "#/$defs/TimelineCommitView"
+        },
+        "commits": {
+          "items": {
+            "$ref": "#/$defs/TimelineCommitView"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "active_branch_id",
+        "revision",
+        "branches",
+        "commits"
       ]
     },
     "ChallengeModifier": {
@@ -498,6 +677,21 @@
         "files_removed",
         "invalid_cache_rows"
       ]
+    },
+    "ClientCapabilities": {
+      "properties": {
+        "images": {
+          "type": "boolean"
+        },
+        "ascii": {
+          "type": "boolean"
+        },
+        "roll_log": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
     },
     "CommandArgDescriptor": {
       "properties": {
@@ -873,6 +1067,69 @@
         "status"
       ]
     },
+    "ImageGenerationUpdate": {
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "openclaw_bridge_url": {
+          "type": "string"
+        },
+        "default_size": {
+          "type": "string"
+        },
+        "location_size": {
+          "type": "string"
+        },
+        "character_size": {
+          "type": "string"
+        },
+        "default_resolution": {
+          "type": "string"
+        },
+        "location_resolution": {
+          "type": "string"
+        },
+        "character_resolution": {
+          "type": "string"
+        },
+        "default_aspect_ratio": {
+          "type": "string"
+        },
+        "location_aspect_ratio": {
+          "type": "string"
+        },
+        "character_aspect_ratio": {
+          "type": "string"
+        },
+        "quality": {
+          "type": "string"
+        },
+        "output_format": {
+          "type": "string"
+        },
+        "background": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer"
+        },
+        "auto_generate": {
+          "type": "boolean"
+        },
+        "append_negative_prompt": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "LoadResponse": {
       "properties": {
         "save": {
@@ -1194,6 +1451,27 @@
         "supports_reasoning"
       ]
     },
+    "ModelProviderUpdate": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "model": {
+          "type": "string"
+        },
+        "reasoning": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id"
+      ]
+    },
     "ModelRoutingActive": {
       "properties": {
         "provider": {
@@ -1329,6 +1607,54 @@
         "tts_status"
       ]
     },
+    "ModelRoutingUpdate": {
+      "properties": {
+        "base_revision": {
+          "type": "string"
+        },
+        "provider_priority": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "providers": {
+          "items": {
+            "$ref": "#/$defs/ModelProviderUpdate"
+          },
+          "type": "array"
+        },
+        "utility_model": {
+          "type": "string"
+        },
+        "repair_model": {
+          "type": "string"
+        },
+        "repair_fallback_models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "image_model": {
+          "type": "string"
+        },
+        "image_generation": {
+          "$ref": "#/$defs/ImageGenerationUpdate"
+        },
+        "ascii_model": {
+          "type": "string"
+        },
+        "embedding_provider": {
+          "type": "string"
+        },
+        "embedding_model": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
     "ModelSettingsResponse": {
       "properties": {
         "settings": {
@@ -1451,6 +1777,24 @@
         "roll",
         "total",
         "margin"
+      ]
+    },
+    "PlayerAction": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "choice_id": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind"
       ]
     },
     "PronunciationEntry": {
@@ -1595,6 +1939,27 @@
     },
     "SchemaRoot": {
       "properties": {
+        "turn_request": {
+          "$ref": "#/$defs/SubmitActionRequest"
+        },
+        "meta_request": {
+          "$ref": "#/$defs/BrowserMetaRequest"
+        },
+        "save_request": {
+          "$ref": "#/$defs/BrowserSaveRequest"
+        },
+        "load_request": {
+          "$ref": "#/$defs/BrowserLoadRequest"
+        },
+        "delete_save_request": {
+          "$ref": "#/$defs/BrowserDeleteSaveRequest"
+        },
+        "timeline_request": {
+          "$ref": "#/$defs/BrowserTimelineRequest"
+        },
+        "timeline_response": {
+          "$ref": "#/$defs/BrowserTimelineResponse"
+        },
         "turn_response": {
           "$ref": "#/$defs/TurnResponse"
         },
@@ -1643,6 +2008,9 @@
         "model_settings_response": {
           "$ref": "#/$defs/ModelSettingsResponse"
         },
+        "model_settings_update": {
+          "$ref": "#/$defs/ModelRoutingUpdate"
+        },
         "schema_preflight_response": {
           "$ref": "#/$defs/SchemaPreflightResponse"
         },
@@ -1665,6 +2033,13 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
+        "turn_request",
+        "meta_request",
+        "save_request",
+        "load_request",
+        "delete_save_request",
+        "timeline_request",
+        "timeline_response",
         "turn_response",
         "craft_request",
         "craft_response",
@@ -1681,6 +2056,7 @@
         "story_wizard_response",
         "story_enhance_response",
         "model_settings_response",
+        "model_settings_update",
         "schema_preflight_response",
         "minigame_request",
         "minigame_response",
@@ -2099,6 +2475,44 @@
       "additionalProperties": false,
       "type": "object"
     },
+    "SubmitActionRequest": {
+      "properties": {
+        "story_id": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "client_turn": {
+          "type": "integer"
+        },
+        "client_revision": {
+          "type": "integer"
+        },
+        "idempotency_key": {
+          "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/PlayerAction"
+        },
+        "stream": {
+          "type": "boolean"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ClientCapabilities"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "story_id",
+        "session_id",
+        "client_turn",
+        "client_revision",
+        "idempotency_key",
+        "action"
+      ]
+    },
     "TTSJob": {
       "properties": {
         "id": {
@@ -2165,6 +2579,82 @@
         "provider",
         "attempts",
         "max_attempts"
+      ]
+    },
+    "TimelineBranchView": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "story_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "fork_commit_id": {
+          "type": "string"
+        },
+        "head_commit_id": {
+          "type": "string"
+        },
+        "head_turn": {
+          "type": "integer"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "story_id",
+        "name",
+        "head_commit_id",
+        "head_turn",
+        "created_at",
+        "updated_at"
+      ]
+    },
+    "TimelineCommitView": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "branch_id": {
+          "type": "string"
+        },
+        "parent_commit_id": {
+          "type": "string"
+        },
+        "canonical_turn": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "branch_id",
+        "canonical_turn",
+        "kind",
+        "created_at"
       ]
     },
     "TurnEvent": {
