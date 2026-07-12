@@ -56,9 +56,20 @@ type gatewaySaveResponse struct {
 }
 
 type gatewayLoadResponse struct {
-	Save   *contracts.BrowserSaveView `json:"save,omitempty"`
-	Legacy bool                       `json:"legacy,omitempty"`
-	Error  string                     `json:"error,omitempty"`
+	Save           *contracts.BrowserSaveView `json:"save,omitempty"`
+	Legacy         bool                       `json:"legacy,omitempty"`
+	SnapshotState  string                     `json:"snapshot_state"`
+	SnapshotDetail string                     `json:"snapshot_detail,omitempty"`
+	Error          string                     `json:"error,omitempty"`
+}
+
+func gatewayLoadResponseFromContract(resp *contracts.BrowserLoadResponse) gatewayLoadResponse {
+	return gatewayLoadResponse{
+		Save:           &resp.Save,
+		Legacy:         resp.Legacy,
+		SnapshotState:  resp.SnapshotState,
+		SnapshotDetail: resp.SnapshotDetail,
+	}
 }
 
 type gatewayDeleteSaveResponse struct {
@@ -950,7 +961,7 @@ func runGatewayLoad(ctx context.Context, cfg config.Config, db *storage.DB, rout
 	if err != nil {
 		return writeGatewayLoadError(out, err)
 	}
-	if err := json.NewEncoder(out).Encode(gatewayLoadResponse{Save: &resp.Save, Legacy: resp.Legacy}); err != nil {
+	if err := json.NewEncoder(out).Encode(gatewayLoadResponseFromContract(resp)); err != nil {
 		return fmt.Errorf("writing gateway-load response: %w", err)
 	}
 	return nil
