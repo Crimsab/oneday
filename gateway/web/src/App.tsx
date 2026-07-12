@@ -45,6 +45,7 @@ import { Transcript } from "./components/Transcript";
 import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { restoreFailedDraft } from "./draftLifecycle";
+import { isCurrentAsyncSelection } from "./asyncState";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import {
@@ -92,6 +93,7 @@ import { visualPollingDelayMs } from "./visualJobs";
 import type { SpatialEdge } from "./spatialMap";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
+let didBootstrap = false;
 
 function initialOverlayFromLocation(): OverlayKind {
   if (typeof window === "undefined") return null;
@@ -138,6 +140,14 @@ function App() {
 	const [timeline, setTimeline] = useState<TimelineResponse | null>(null);
   const pendingActionIdentity = useRef<PendingActionIdentity | null>(null);
   const actionSubmitInFlight = useRef(false);
+  const storyIdRef = useRef(storyId);
+  const pausedRef = useRef(paused);
+  const snapshotRequestVersion = useRef(0);
+  const timelineRequestVersion = useRef(0);
+  const visualAssetsRequestVersion = useRef(0);
+  const miniGameRequestVersion = useRef(0);
+  storyIdRef.current = storyId;
+  pausedRef.current = paused;
 
   const refreshHealth = useCallback(async () => {
     try {
@@ -153,15 +163,16 @@ function App() {
     try {
       const nextStories = await getStories();
       setStories(nextStories);
-      setSync(storyId ? "Live" : "Idle");
-      if (!storyId && nextStories[0]) setStoryId(nextStories[0].id);
+      const selectedStoryId = storyIdRef.current;
+      setSync(selectedStoryId ? (pausedRef.current ? "Paused" : "Live") : "Idle");
+      if (!selectedStoryId && nextStories[0]) setStoryId(nextStories[0].id);
       return nextStories;
     } catch (error) {
       setSync("Error");
       setNotice(errorMessage(error));
       return [] as StorySummary[];
     }
-  }, [storyId]);
+  }, []);
 
   const refreshCommandDescriptors = useCallback(async () => {
     try {
@@ -181,50 +192,75 @@ function App() {
     }
   }, []);
 
-  const refreshVisualAssets = useCallback(async (nextStoryId = storyId) => {
+  const refreshVisualAssets = useCallback(async (nextStoryId = storyIdRef.current) => {
+    const requestVersion = ++visualAssetsRequestVersion.current;
     if (!nextStoryId) {
       setVisualAssets(null);
       return;
     }
     try {
       const nextAssets = await getVisualAssets(nextStoryId);
+      if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, visualAssetsRequestVersion.current)) return;
       setVisualAssets(nextAssets);
       setVisualAssetsError("");
     } catch (error) {
+      if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, visualAssetsRequestVersion.current)) return;
       setVisualAssetsError(errorMessage(error));
     }
-  }, [storyId]);
+  }, []);
 
-  const refreshMiniGame = useCallback(async (nextStoryId = storyId) => {
+  const refreshMiniGame = useCallback(async (nextStoryId = storyIdRef.current) => {
+    const requestVersion = ++miniGameRequestVersion.current;
     if (!nextStoryId) {
       setActiveMiniGame(null);
       return;
     }
     try {
       const response = await getActiveMiniGame(nextStoryId);
+      if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, miniGameRequestVersion.current)) return;
       setActiveMiniGame(response.instance ?? null);
       setMiniGameError("");
     } catch (error) {
+      if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, miniGameRequestVersion.current)) return;
       setMiniGameError(errorMessage(error));
     }
-  }, [storyId]);
+  }, []);
 
-  const loadSnapshot = useCallback(async (nextStoryId = storyId) => {
+  const loadSnapshot = useCallback(async (nextStoryId = storyIdRef.current) => {
     if (!nextStoryId) return;
+    const requestVersion = ++snapshotRequestVersion.current;
     setSync("Loading");
     try {
       const nextSnapshot = await getSnapshot(nextStoryId);
+      if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, snapshotRequestVersion.current)) return;
       setSnapshot(nextSnapshot);
-      setSync(paused ? "Paused" : "Live");
+      setSync(pausedRef.current ? "Paused" : "Live");
       void refreshVisualAssets(nextStoryId);
       void refreshMiniGame(nextStoryId);
     } catch (error) {
+      if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, snapshotRequestVersion.current)) return;
       setSync("Error");
       setNotice(errorMessage(error));
     }
-  }, [paused, refreshMiniGame, refreshVisualAssets, storyId]);
+  }, [refreshMiniGame, refreshVisualAssets]);
+
+  const refreshTimeline = useCallback(async (nextStoryId = storyIdRef.current, reportError = false) => {
+    if (!nextStoryId) return;
+    const requestVersion = ++timelineRequestVersion.current;
+    try {
+      const nextTimeline = await getTimeline(nextStoryId);
+      if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, timelineRequestVersion.current)) return;
+      setTimeline(nextTimeline);
+    } catch (error) {
+      if (reportError && isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, timelineRequestVersion.current)) {
+        setNotice(errorMessage(error));
+      }
+    }
+  }, []);
 
   useEffect(() => {
+    if (didBootstrap) return;
+    didBootstrap = true;
     void refreshHealth();
     void refreshCommandDescriptors();
     void refreshModelSettings();
@@ -234,10 +270,13 @@ function App() {
   useEffect(() => {
     if (!storyId) return;
 	setTimeline(null);
+    setSnapshot(null);
+    setVisualAssets(null);
+    setActiveMiniGame(null);
     setHiddenBeforeMessageId(0);
     void loadSnapshot(storyId);
-	void getTimeline(storyId).then(setTimeline).catch((error) => setNotice(errorMessage(error)));
-  }, [loadSnapshot, storyId]);
+	void refreshTimeline(storyId, true);
+  }, [loadSnapshot, refreshTimeline, storyId]);
 
 	const mutateTimeline = async (payload: Parameters<typeof updateTimeline>[1]) => {
 		if (!storyId || !snapshot || storyMutatingId) return;
@@ -287,7 +326,7 @@ function App() {
     } catch (error) {
       setNotice(actionErrorMessage(error));
       await loadSnapshot().catch(() => undefined);
-      void getTimeline(storyId).then(setTimeline).catch(() => undefined);
+      void refreshTimeline(storyId);
     } finally {
       setStoryMutatingId("");
     }
@@ -307,9 +346,10 @@ function App() {
         setSync("Reconnecting");
         return;
       }
+      snapshotRequestVersion.current += 1;
       setSnapshot(nextSnapshot);
       void refreshVisualAssets(storyId);
-      void getTimeline(storyId).then(setTimeline).catch(() => undefined);
+      void refreshTimeline(storyId);
       setSync("Live");
     });
     source.addEventListener("turn", (event) => {
@@ -359,7 +399,7 @@ function App() {
     });
     source.addEventListener("error", () => setSync("Reconnecting"));
     return () => source.close();
-  }, [paused, refreshVisualAssets, storyId]);
+  }, [paused, refreshTimeline, refreshVisualAssets, storyId]);
 
   useEffect(() => {
     if (!storyId) return;
