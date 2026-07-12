@@ -28,12 +28,15 @@ func TestApplySocialDuelAftermathPersistsRelationshipAndRumor(t *testing.T) {
 		Outcome:      "objective_secured",
 	}
 
-	aftermath := ApplySocialDuelAftermath(db, world, npc, state, result, &SocialDuelCue{
+	aftermath, err := ApplySocialDuelAftermath(db, world, npc, state, result, &SocialDuelCue{
 		Mode:      SocialDuelCueOffer,
 		NPCName:   npc.Name,
 		Objective: state.Objective,
 		Stakes:    state.Stakes,
 	}, 12)
+	if err != nil {
+		t.Fatalf("ApplySocialDuelAftermath: %v", err)
+	}
 	if aftermath == nil {
 		t.Fatal("ApplySocialDuelAftermath = nil")
 	}
@@ -77,12 +80,15 @@ func TestApplySocialDuelAftermathPersistsFailForwardAndFrontPressure(t *testing.
 		},
 	}
 
-	aftermath := ApplySocialDuelAftermath(db, world, npc, state, result, &SocialDuelCue{
+	aftermath, err := ApplySocialDuelAftermath(db, world, npc, state, result, &SocialDuelCue{
 		Mode:      SocialDuelCueOffer,
 		NPCName:   npc.Name,
 		Objective: state.Objective,
 		Stakes:    state.Stakes,
 	}, 18)
+	if err != nil {
+		t.Fatalf("ApplySocialDuelAftermath: %v", err)
+	}
 	if aftermath == nil {
 		t.Fatal("ApplySocialDuelAftermath = nil")
 	}
@@ -94,6 +100,32 @@ func TestApplySocialDuelAftermathPersistsFailForwardAndFrontPressure(t *testing.
 	}
 	if !strings.Contains(world.FrontsJSON, `"kind":"heat"`) {
 		t.Fatalf("fronts json = %s, want heat pressure", world.FrontsJSON)
+	}
+}
+
+func TestApplySocialDuelAftermathDoesNotPublishFailedPersistence(t *testing.T) {
+	db, world, npc := openSocialDuelAftermathFixture(t)
+	originalWorld := world.WorldReactionsJSON
+	originalRelationship := npc.RelationshipJSON
+	if err := db.Close(); err != nil {
+		t.Fatalf("close fixture DB: %v", err)
+	}
+
+	aftermath, err := ApplySocialDuelAftermath(db, world, npc, &SocialDuelState{
+		NPCName: npc.Name,
+		Winner:  "Aria",
+		Status:  SocialDuelResolved,
+	}, &SocialRoundResult{
+		PlayerAction: SocialActionAppeal,
+		NPCDamage:    3,
+		Resolved:     true,
+		Winner:       "Aria",
+	}, nil, 20)
+	if err == nil || aftermath != nil {
+		t.Fatalf("result = %#v, %v; want persistence error", aftermath, err)
+	}
+	if npc.RelationshipJSON != originalRelationship || world.WorldReactionsJSON != originalWorld {
+		t.Fatal("failed persistence mutated published NPC or world state")
 	}
 }
 
