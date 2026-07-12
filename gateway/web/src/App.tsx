@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { actionFingerprint, resolvePendingActionIdentity, type PendingActionIdentity } from "./actionIdentity";
 import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
@@ -37,7 +37,6 @@ import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { MiniGameHost } from "./components/MiniGameHost";
 import { LeftRail } from "./components/LeftRail";
-import { PanelDrawer } from "./components/PanelDrawer";
 import { StoryPath } from "./components/StoryPath";
 import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
@@ -93,6 +92,7 @@ import type { SpatialEdge } from "./spatialMap";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
 let didBootstrap = false;
+const PanelDrawer = lazy(() => import("./components/PanelDrawer").then((module) => ({ default: module.PanelDrawer })));
 
 function initialOverlayFromLocation(): OverlayKind {
   if (typeof window === "undefined") return null;
@@ -1319,7 +1319,7 @@ function App() {
           />
         )}
       </div>
-      <PanelDrawer
+      {overlay && <Suspense fallback={null}><PanelDrawer
         overlay={overlay}
         snapshot={snapshot}
         preferences={preferences}
@@ -1361,7 +1361,7 @@ function App() {
         onDeleteSave={(save) => void deleteManualSave(save)}
         saveFilter={saveFilter}
         onSaveFilterChange={setSaveFilter}
-      />
+      /></Suspense>}
     </div>
   );
 }
