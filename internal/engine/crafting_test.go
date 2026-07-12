@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/crimsab/oneday/internal/ai"
+	"github.com/crimsab/oneday/internal/storage"
 )
 
 func TestCraftingRestoreConversationFiltersRolesAndBoundsContext(t *testing.T) {
@@ -30,5 +31,22 @@ func TestCraftingRestoreConversationFiltersRolesAndBoundsContext(t *testing.T) {
 		if message.Role != ai.RoleUser && message.Role != ai.RoleAssistant {
 			t.Fatalf("unsafe restored role %q", message.Role)
 		}
+	}
+}
+
+func TestAddKnownRecipeRejectsCorruptRecipeStateWithoutOverwritingIt(t *testing.T) {
+	character := &storage.Character{KnownRecipesJSON: "{not-json"}
+	original := character.KnownRecipesJSON
+
+	added, err := addKnownRecipe(character, &CraftedItem{Name: "Signal flare"})
+
+	if err == nil {
+		t.Fatal("expected corrupt known recipes to fail")
+	}
+	if added {
+		t.Fatal("corrupt recipe state must not report an addition")
+	}
+	if character.KnownRecipesJSON != original {
+		t.Fatalf("known recipes changed on failure: %q", character.KnownRecipesJSON)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 	"strings"
 	"time"
@@ -171,11 +172,9 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 		craftResp.Feasible = false
 		craftResp.Item = nil
 	}
-	if err := ce.narrator.db.RecordChallengeResolutionAtHead(story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, *resolution); err != nil {
-		return nil, fmt.Errorf("persisting crafting outcome: %w", err)
-	}
-
 	// If feasible and item was created, apply state changes.
+	originalCharacter := *char
+	characterChanged := false
 	if craftResp.Feasible && craftResp.Item != nil {
 		craftResp.Item.CraftedAt = time.Now().Format(time.RFC3339)
 
@@ -185,16 +184,29 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 				"inventory_remove": toInterfaceSliceFromStrings(craftResp.Item.Materials),
 				"inventory_add":    []interface{}{craftResp.Item.Name},
 			}
-			_, _ = ApplyStateChanges(changes, char, ce.narrator.world, ce.narrator.db, story.ID, ce.narrator.session.Turn())
-			// Persist updated character.
-			_ = ce.narrator.db.UpdateCharacterFull(char)
+			if _, err := ApplyStateChanges(changes, char, ce.narrator.world, nil, story.ID, ce.narrator.session.Turn()); err != nil {
+				*char = originalCharacter
+				return nil, fmt.Errorf("applying crafting inventory changes: %w", err)
+			}
+			characterChanged = true
 		}
 
 		// Save recipe to known_recipes.
-		if err := ce.SaveRecipe(craftResp.Item); err != nil {
-			// Non-fatal: recipe saving failure doesn't break crafting.
-			_ = err
+		added, err := addKnownRecipe(char, craftResp.Item)
+		if err != nil {
+			*char = originalCharacter
+			return nil, fmt.Errorf("adding crafted recipe: %w", err)
 		}
+		characterChanged = characterChanged || added
+	}
+
+	if characterChanged {
+		if err := ce.narrator.db.RecordChallengeResolutionAndCharacterAtHead(story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, *resolution, char); err != nil {
+			*char = originalCharacter
+			return nil, fmt.Errorf("persisting crafting outcome and character: %w", err)
+		}
+	} else if err := ce.narrator.db.RecordChallengeResolutionAtHead(story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, *resolution); err != nil {
+		return nil, fmt.Errorf("persisting crafting outcome: %w", err)
 	}
 
 	// Append AI response to chat history.
@@ -221,7 +233,9 @@ func (ce *CraftingEngine) SendMessage(ctx context.Context, message string) (*Cra
 		AIModel:   resp.Model,
 		AILatency: latency,
 	}
-	_ = ce.session.AppendSubTurn(ce.subSessionID, entry)
+	if err := ce.session.AppendSubTurn(ce.subSessionID, entry); err != nil {
+		log.Printf("oneday: crafting outcome persisted canonically but sub-session mirror failed: %v", err)
+	}
 
 	return craftResp, nil
 }
@@ -234,26 +248,29 @@ func (ce *CraftingEngine) Close() error {
 // SaveRecipe persists a discovered recipe to the character's known_recipes.
 func (ce *CraftingEngine) SaveRecipe(item *CraftedItem) error {
 	char := ce.narrator.character
+	if _, err := addKnownRecipe(char, item); err != nil {
+		return err
+	}
+	return ce.narrator.db.UpdateCharacterFull(char)
+}
+
+func addKnownRecipe(char *storage.Character, item *CraftedItem) (bool, error) {
 	recipes, err := GetKnownRecipes(char)
 	if err != nil {
-		recipes = []CraftedItem{}
+		return false, err
 	}
-
-	// Check for duplicate (same item name, case-insensitive).
-	for _, r := range recipes {
-		if strings.EqualFold(r.Name, item.Name) {
-			return nil // already known
+	for _, recipe := range recipes {
+		if strings.EqualFold(recipe.Name, item.Name) {
+			return false, nil
 		}
 	}
-
 	recipes = append(recipes, *item)
-
 	recipesBytes, err := json.Marshal(recipes)
 	if err != nil {
-		return fmt.Errorf("marshaling recipes: %w", err)
+		return false, fmt.Errorf("marshaling recipes: %w", err)
 	}
 	char.KnownRecipesJSON = string(recipesBytes)
-	return ce.narrator.db.UpdateCharacterFull(char)
+	return true, nil
 }
 
 // GetKnownRecipes returns the player's discovered recipes.
