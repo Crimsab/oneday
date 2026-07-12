@@ -287,6 +287,10 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   await history.getByPlaceholder("Search this branch").fill("seal");
   await expect(history.getByRole("heading", { name: "Transcript", exact: true })).toBeVisible();
   await expect(history.getByText("Arrival at the archive.")).toBeVisible();
+  const messageCard = history.locator(".history-message").first();
+  await expect(messageCard.locator(".history-message-header")).toContainText(/You|Narrator/);
+  await expect(messageCard.locator(".history-message-turn")).toContainText(/Turn \d+/);
+  await expect(messageCard.locator(".history-message-body")).toBeVisible();
   await history.getByText("Export this branch", { exact: true }).click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
