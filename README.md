@@ -1,6 +1,6 @@
 # OneDay
 
-An AI-driven text RPG played entirely in the terminal.
+An AI-driven text RPG with a terminal client and a full browser interface.
 
 Stories are infinite, AI-generated, and deeply personalized. Every NPC has personality, desires, and opinions about you. Every choice matters. Every story is unique.
 
@@ -23,6 +23,8 @@ Stories are infinite, AI-generated, and deeply personalized. Every NPC has perso
 ## Tech Stack
 
 - **Go** + Bubbletea/Bubbles/Lipgloss (TUI)
+- **Rust** + Axum/SQLx (browser gateway, typed Go bridge, SSE streaming)
+- **React** + TypeScript + Vite, built and tested with **Bun** (browser UI)
 - **SQLite** + embedding BLOBs + cosine similarity in Go (RAG, no `sqlite-vec`)
 - AI via **Codex OAuth** / **LiteLLM** / **OpenRouter** / **Claude Code** (configurable fallback chain)
 
@@ -68,6 +70,17 @@ go run ./cmd/oneday export
 # Run tests
 go test ./...
 
+# Test and build the browser UI
+cd gateway/web
+bun install --frozen-lockfile
+bun run test
+bun run build
+cd ../..
+
+# Build and run the complete browser gateway stack
+docker compose build oneday-gateway
+docker compose up -d oneday-gateway
+
 # Run the reusable verification sweep (tests + vet + QA matrix)
 make verify
 
@@ -98,6 +111,11 @@ GOOS=windows GOARCH=amd64 go build -o build/oneday-windows-amd64.exe ./cmd/oneda
 # Or use the Makefile helper
 make all
 ```
+
+The production container builds the Go engine, Rust gateway, and React UI into
+one image. It listens on port `8788`, exposes `/api/health`, returns an
+`X-Request-Id` response header, and emits structured request status/latency
+logs. The Compose service includes a runtime healthcheck.
 
 ## Configuration
 
