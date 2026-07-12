@@ -180,142 +180,6 @@ pub struct MiniGameInputEnvelope {
     pub input: serde_json::Value,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ModelProviderSetting {
-    pub id: String,
-    pub label: String,
-    pub enabled: bool,
-    #[serde(default)]
-    pub model: String,
-    #[serde(default)]
-    pub reasoning: String,
-    pub supports_model: bool,
-    pub supports_reasoning: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ModelRoutingActive {
-    pub provider: String,
-    pub narrative_model: String,
-    pub utility_model: String,
-    pub repair_model: String,
-    #[serde(default)]
-    pub repair_fallback_models: Vec<String>,
-    pub image_model: String,
-    #[serde(default)]
-    pub ascii_model: String,
-    pub embedding_provider: String,
-    pub embedding_model: String,
-    pub codex_reasoning: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ModelRoutingSettings {
-    pub config_path: String,
-    pub config_revision: String,
-    #[serde(default)]
-    pub provider_priority: Vec<String>,
-    #[serde(default)]
-    pub providers: Vec<ModelProviderSetting>,
-    #[serde(default)]
-    pub narrative_models: Vec<String>,
-    #[serde(default)]
-    pub utility_models: Vec<String>,
-    #[serde(default)]
-    pub repair_models: Vec<String>,
-    #[serde(default)]
-    pub image_models: Vec<String>,
-    #[serde(default)]
-    pub ascii_models: Vec<String>,
-    #[serde(default)]
-    pub embedding_providers: Vec<String>,
-    pub image_generation: ImageGenerationSetting,
-    pub active: ModelRoutingActive,
-    pub tts_status: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ImageGenerationSetting {
-    pub provider: String,
-    pub base_url: String,
-    pub api_key_configured: bool,
-    pub model: String,
-    pub openclaw_bridge_url: String,
-    pub default_size: String,
-    pub location_size: String,
-    pub character_size: String,
-    pub default_resolution: String,
-    pub location_resolution: String,
-    pub character_resolution: String,
-    pub default_aspect_ratio: String,
-    pub location_aspect_ratio: String,
-    pub character_aspect_ratio: String,
-    pub quality: String,
-    pub output_format: String,
-    pub background: String,
-    pub timeout_seconds: i64,
-    pub auto_generate: bool,
-    pub append_negative_prompt: bool,
-    pub available: bool,
-    pub status: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ModelProviderUpdate {
-    pub id: String,
-    pub enabled: Option<bool>,
-    pub model: Option<String>,
-    pub reasoning: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ModelRoutingUpdate {
-    pub base_revision: Option<String>,
-    pub provider_priority: Option<Vec<String>>,
-    #[serde(default)]
-    pub providers: Vec<ModelProviderUpdate>,
-    pub utility_model: Option<String>,
-    pub repair_model: Option<String>,
-    pub repair_fallback_models: Option<Vec<String>>,
-    pub image_model: Option<String>,
-    pub image_generation: Option<ImageGenerationUpdate>,
-    pub ascii_model: Option<String>,
-    pub embedding_provider: Option<String>,
-    pub embedding_model: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct ImageGenerationUpdate {
-    pub provider: Option<String>,
-    pub base_url: Option<String>,
-    pub model: Option<String>,
-    pub openclaw_bridge_url: Option<String>,
-    pub default_size: Option<String>,
-    pub location_size: Option<String>,
-    pub character_size: Option<String>,
-    pub default_resolution: Option<String>,
-    pub location_resolution: Option<String>,
-    pub character_resolution: Option<String>,
-    pub default_aspect_ratio: Option<String>,
-    pub location_aspect_ratio: Option<String>,
-    pub character_aspect_ratio: Option<String>,
-    pub quality: Option<String>,
-    pub output_format: Option<String>,
-    pub background: Option<String>,
-    pub timeout_seconds: Option<i64>,
-    pub auto_generate: Option<bool>,
-    pub append_negative_prompt: Option<bool>,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewayModelSettingsResponse {
-    pub settings: Option<ModelRoutingSettings>,
-    #[serde(default)]
-    pub error: String,
-    #[serde(default)]
-    pub error_code: String,
-}
-
 pub async fn command_descriptors(
     state: Arc<AppState>,
 ) -> anyhow::Result<GatewayCommandDescriptorsResponse> {
@@ -347,7 +211,7 @@ pub async fn command_descriptors(
     Ok(parsed)
 }
 
-pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<ModelRoutingSettings> {
+pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<protocol::ModelRoutingSettings> {
     let output = run_gateway_command(
         &state,
         "gateway-model-settings",
@@ -357,15 +221,18 @@ pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<ModelRouting
     .await?;
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let parsed = serde_json::from_slice::<GatewayModelSettingsResponse>(&output.stdout)
+    let parsed = serde_json::from_slice::<protocol::ModelSettingsResponse>(&output.stdout)
         .with_context(|| {
             format!(
                 "decoding gateway-model-settings stdout; stderr={}",
                 compact_stderr(&stderr)
             )
         })?;
-    if !parsed.error.trim().is_empty() {
-        return Err(bridge_error(parsed.error_code, parsed.error));
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(bridge_error(
+            parsed.error_code.as_deref().unwrap_or("model_settings_failed"),
+            error,
+        ));
     }
     if !output.status.success() {
         return Err(anyhow!(
@@ -380,16 +247,19 @@ pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<ModelRouting
 
 pub async fn update_model_settings(
     state: Arc<AppState>,
-    update: ModelRoutingUpdate,
-) -> anyhow::Result<ModelRoutingSettings> {
-    let (parsed, status_ok, stderr) = call_gateway::<_, GatewayModelSettingsResponse>(
+    update: protocol::ModelRoutingUpdate,
+) -> anyhow::Result<protocol::ModelRoutingSettings> {
+    let (parsed, status_ok, stderr) = call_gateway::<_, protocol::ModelSettingsResponse>(
         state,
         "gateway-model-settings-update",
         &update,
     )
     .await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(bridge_error(parsed.error_code, parsed.error));
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(bridge_error(
+            parsed.error_code.as_deref().unwrap_or("model_settings_update_failed"),
+            error,
+        ));
     }
     if !status_ok {
         return Err(anyhow!(

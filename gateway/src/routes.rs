@@ -141,14 +141,14 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 async fn model_settings(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<engine::ModelRoutingSettings>, ApiError> {
+) -> Result<Json<protocol::ModelRoutingSettings>, ApiError> {
     Ok(Json(engine::model_settings(state).await?))
 }
 
 async fn update_model_settings(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<engine::ModelRoutingUpdate>,
-) -> Result<Json<engine::ModelRoutingSettings>, ApiError> {
+    Json(payload): Json<protocol::ModelRoutingUpdate>,
+) -> Result<Json<protocol::ModelRoutingSettings>, ApiError> {
     Ok(Json(engine::update_model_settings(state, payload).await?))
 }
 
