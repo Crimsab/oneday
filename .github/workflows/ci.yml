@@ -19,7 +19,7 @@ concurrency:
 jobs:
   workflow-lint:
     name: Workflow lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, homelab-main, oneday]
 
     steps:
       - name: Check out repository
@@ -32,7 +32,7 @@ jobs:
 
   go-check:
     name: Go checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, homelab-main, oneday]
 
     steps:
       - name: Check out repository
@@ -42,6 +42,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Run verification gate
         run: make verify
@@ -73,7 +74,7 @@ jobs:
 
   gateway-rust-check:
     name: Gateway Rust checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, homelab-main, oneday]
 
     steps:
       - name: Check out repository
@@ -96,7 +97,7 @@ jobs:
 
   gateway-web-check:
     name: Gateway web checks
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, homelab-main, oneday]
 
     steps:
       - name: Check out repository
@@ -134,7 +135,7 @@ jobs:
 
   gateway-docker-build:
     name: Gateway Docker build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, homelab-main, oneday]
     needs:
       - gateway-rust-check
       - gateway-web-check

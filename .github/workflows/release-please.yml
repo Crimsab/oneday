@@ -18,7 +18,7 @@ concurrency:
 jobs:
   release:
     name: Release Please
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, homelab-main, oneday]
 
     steps:
       - name: Run release-please
@@ -38,6 +38,7 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+          cache: false
 
       - name: Set up Rust
         if: steps.release.outputs.release_created == 'true'
