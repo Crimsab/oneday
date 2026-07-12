@@ -21,10 +21,11 @@ import (
 )
 
 type Service struct {
-	db            *storage.DB
-	cfg           config.TTSConfig
-	providers     map[string]Provider
-	providerOrder []string
+	db                 *storage.DB
+	cfg                config.TTSConfig
+	providers          map[string]Provider
+	providerOrder      []string
+	loadPronunciations func(string, string) ([]storage.PronunciationEntry, error)
 }
 
 type CleanupResult struct {
@@ -289,6 +290,7 @@ func (service *Service) QueueCommittedMessage(ctx context.Context, storyID strin
 	for _, profile := range profiles {
 		profilesByID[profile.ID] = profile
 	}
+	lexiconsByLanguage := make(map[string][]storage.PronunciationEntry)
 	queued := []storage.AudioAsset{}
 	for _, segment := range segments {
 		if !modeAllows(settings.Mode, segment.Kind) {
@@ -314,9 +316,13 @@ func (service *Service) QueueCommittedMessage(ctx context.Context, storyID strin
 		if len(style) == 0 {
 			style = json.RawMessage(`{}`)
 		}
-		lexicon, err := service.db.ListPronunciations(storyID, language)
-		if err != nil {
-			return nil, err
+		lexicon, loaded := lexiconsByLanguage[language]
+		if !loaded {
+			lexicon, err = service.pronunciations(storyID, language)
+			if err != nil {
+				return nil, err
+			}
+			lexiconsByLanguage[language] = lexicon
 		}
 		pronunciationRevision := maxPronunciationRevision(lexicon)
 		textHash := hashText(normalizeSpeechText(segment.Text))
@@ -344,6 +350,13 @@ func (service *Service) QueueCommittedMessage(ctx context.Context, storyID strin
 		queued = append(queued, *stored)
 	}
 	return queued, nil
+}
+
+func (service *Service) pronunciations(storyID, language string) ([]storage.PronunciationEntry, error) {
+	if service.loadPronunciations != nil {
+		return service.loadPronunciations(storyID, language)
+	}
+	return service.db.ListPronunciations(storyID, language)
 }
 
 func CacheIdentity(profile storage.VoiceProfile, language, text string, style json.RawMessage, speed float64, format string, pronunciationRevision int) (cacheKey, styleHash string, canonicalStyle json.RawMessage, err error) {
