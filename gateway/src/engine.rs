@@ -1430,13 +1430,20 @@ mod tests {
 
     async fn wait_until_process_gone(pid: i32) {
         for _ in 0..50 {
-            let exists = unsafe { libc::kill(pid, 0) } == 0;
-            if !exists {
+            if !process_is_running(pid) {
                 return;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         panic!("process {pid} survived gateway timeout");
+    }
+
+    fn process_is_running(pid: i32) -> bool {
+        let stat = match fs::read_to_string(format!("/proc/{pid}/stat")) {
+            Ok(stat) => stat,
+            Err(_) => return false,
+        };
+        stat.split_whitespace().nth(2) != Some("Z")
     }
 
     #[tokio::test]
