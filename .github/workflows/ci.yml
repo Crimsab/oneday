@@ -82,6 +82,8 @@ jobs:
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Check gateway formatting
         run: cargo fmt --manifest-path gateway/Cargo.toml -- --check
@@ -116,6 +118,9 @@ jobs:
       - name: Install dependencies
         working-directory: gateway/web
         run: bun install --frozen-lockfile
+
+      - name: Warm Go command cache
+        run: go build ./cmd/oneday
 
       - name: Run web tests
         working-directory: gateway/web
