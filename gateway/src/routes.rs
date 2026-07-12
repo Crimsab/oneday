@@ -472,11 +472,16 @@ async fn create_story(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let visual_profile = story_create_visual_profile(&payload);
     let created = engine::create_story(state.clone(), payload).await?;
+    let story_id = created
+        .story_id
+        .clone()
+        .filter(|story_id| !story_id.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("created story is missing story_id"))?;
     if let Some(profile) = visual_profile {
-        assets::update_profile_with_defaults(&state.pool, &created.story_id, profile).await?;
+        assets::update_profile_with_defaults(&state.pool, &story_id, profile).await?;
     }
-    let snapshot = db::snapshot(&state.pool, &created.story_id).await?;
-    assets::spawn_auto_generation(state.clone(), created.story_id.clone());
+    let snapshot = db::snapshot(&state.pool, &story_id).await?;
+    assets::spawn_auto_generation(state.clone(), story_id);
     Ok(Json(json!({
         "story": created,
         "snapshot": snapshot,
@@ -488,10 +493,11 @@ async fn story_wizard(
     Json(payload): Json<engine::StoryWizardEnvelope>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let wizard = engine::story_wizard(state.clone(), payload).await?;
-    let snapshot = if wizard.story_id.trim().is_empty() {
+    let wizard_story_id = wizard.story_id.as_deref().unwrap_or("");
+    let snapshot = if wizard_story_id.trim().is_empty() {
         None
     } else {
-        Some(db::snapshot(&state.pool, &wizard.story_id).await?)
+        Some(db::snapshot(&state.pool, wizard_story_id).await?)
     };
     Ok(Json(json!({
         "wizard": wizard,
@@ -502,7 +508,7 @@ async fn story_wizard(
 async fn story_enhance(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<engine::StoryEnhanceEnvelope>,
-) -> Result<Json<engine::GatewayStoryEnhanceResponse>, ApiError> {
+) -> Result<Json<crate::gateway_protocol::StoryEnhanceResponse>, ApiError> {
     Ok(Json(engine::story_enhance(state, payload).await?))
 }
 
