@@ -12,7 +12,9 @@ use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::AsyncReadExt;
 use tokio::sync::broadcast::error::RecvError;
+use tokio_util::io::ReaderStream;
 use tower_http::services::{ServeDir, ServeFile};
 
 pub fn router(state: Arc<AppState>) -> Router {
@@ -422,13 +424,14 @@ async fn audio_asset(
     let path = response
         .file_path
         .ok_or_else(|| anyhow::anyhow!("gateway-audio returned no asset path"))?;
-    let bytes = tokio::task::spawn_blocking(move || std::fs::read(path))
+    let metadata = tokio::fs::metadata(&path)
         .await
-        .map_err(|err| anyhow::anyhow!(err))?
         .map_err(|err| anyhow::anyhow!(err))?;
-    if bytes.len() > 64 << 20 {
-        return Err(anyhow::anyhow!("audio asset exceeds the 64 MiB serving limit").into());
-    }
+    validate_audio_asset_size(metadata.len())?;
+    let file = tokio::fs::File::open(path)
+        .await
+        .map_err(|err| anyhow::anyhow!(err))?;
+    let stream = ReaderStream::new(file.take(metadata.len()));
     let content_type = match response.format.as_deref() {
         Some("wav") => "audio/wav",
         Some("opus") => "audio/ogg",
@@ -443,8 +446,18 @@ async fn audio_asset(
             "private, max-age=31536000, immutable",
         )
         .header(header::X_CONTENT_TYPE_OPTIONS, "nosniff")
-        .body(Body::from(bytes))
+        .header(header::CONTENT_LENGTH, metadata.len())
+        .body(Body::from_stream(stream))
         .map_err(|err| anyhow::anyhow!(err))?)
+}
+
+const MAX_AUDIO_ASSET_BYTES: u64 = 64 << 20;
+
+fn validate_audio_asset_size(size: u64) -> anyhow::Result<()> {
+    if size > MAX_AUDIO_ASSET_BYTES {
+        anyhow::bail!("audio asset exceeds the 64 MiB serving limit");
+    }
+    Ok(())
 }
 
 async fn update_story(
@@ -1100,6 +1113,12 @@ mod tests {
         assert!(turn_data.contains("\"snapshot_changed\""));
         assert!(turn_data.contains("\"revision\":2"));
         assert!(snapshot_data.contains("\"revision\":2"));
+    }
+
+    #[test]
+    fn rejects_audio_assets_before_allocating_oversized_files() {
+        assert!(validate_audio_asset_size(MAX_AUDIO_ASSET_BYTES).is_ok());
+        assert!(validate_audio_asset_size(MAX_AUDIO_ASSET_BYTES + 1).is_err());
     }
 
     fn story_snapshot() -> db::StorySnapshot {
