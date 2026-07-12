@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // mockProvider is a test double for ai.Provider.
@@ -14,6 +15,33 @@ type mockProvider struct {
 	name    string
 	err     error
 	content string
+}
+
+func TestObserveStreamClosesPromptlyWhenContextIsCancelled(t *testing.T) {
+	r, err := NewRouter([]Provider{&mockProvider{name: "unused"}})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	source := make(chan StreamChunk, 64)
+	for i := 0; i < cap(source); i++ {
+		source <- StreamChunk{Content: "delta"}
+	}
+	out := r.observeStream(ctx, source, TelemetryRef{}, "", time.Now(), time.Now())
+	time.Sleep(10 * time.Millisecond)
+	cancel()
+
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case _, ok := <-out:
+			if !ok {
+				return
+			}
+		case <-deadline:
+			t.Fatal("observed stream did not close after cancellation")
+		}
+	}
 }
 
 type telemetryStreamProvider struct {

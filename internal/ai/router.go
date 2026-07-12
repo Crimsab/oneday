@@ -119,9 +119,11 @@ func (r *Router) Stream(ctx context.Context, req Request) (<-chan StreamChunk, s
 		r.finishTelemetryRun(ctx, ref, completion, runStarted)
 		ch := make(chan StreamChunk, 2)
 		go func() {
-			ch <- StreamChunk{Content: resp.Content, Model: resp.Model, Usage: resp.Usage, Telemetry: ref}
-			ch <- StreamChunk{Model: resp.Model, Usage: resp.Usage, Done: true, Telemetry: ref}
-			close(ch)
+			defer close(ch)
+			if !sendRouterStreamChunk(ctx, ch, StreamChunk{Content: resp.Content, Model: resp.Model, Usage: resp.Usage, Telemetry: ref}) {
+				return
+			}
+			sendRouterStreamChunk(ctx, ch, StreamChunk{Model: resp.Model, Usage: resp.Usage, Done: true, Telemetry: ref})
 		}()
 		return ch, p.Name(), nil
 	}
@@ -186,7 +188,30 @@ func (r *Router) observeStream(ctx context.Context, source <-chan StreamChunk, r
 		var ttft int64
 		observed := false
 		finished := false
-		for chunk := range source {
+		for {
+			var chunk StreamChunk
+			var ok bool
+			select {
+			case <-ctx.Done():
+				completion := failedTelemetry(ctx.Err(), time.Since(attemptStarted).Milliseconds())
+				completion.ObservedStreaming = observed
+				completion.TTFTMs = ttft
+				r.finishTelemetryAttempt(ctx, attemptID, completion)
+				r.finishTelemetryRun(ctx, ref, completion, runStarted)
+				return
+			case chunk, ok = <-source:
+				if !ok {
+					if !finished {
+						err := fmt.Errorf("provider stream closed before completion")
+						completion := failedTelemetry(err, time.Since(attemptStarted).Milliseconds())
+						completion.ObservedStreaming = observed
+						completion.TTFTMs = ttft
+						r.finishTelemetryAttempt(ctx, attemptID, completion)
+						r.finishTelemetryRun(ctx, ref, completion, runStarted)
+					}
+					return
+				}
+			}
 			chunk.Telemetry = ref
 			if chunk.Model != "" {
 				model = chunk.Model
@@ -207,10 +232,17 @@ func (r *Router) observeStream(ctx context.Context, source <-chan StreamChunk, r
 				completion.TTFTMs = ttft
 				r.finishTelemetryAttempt(ctx, attemptID, completion)
 				r.finishTelemetryRun(ctx, ref, completion, runStarted)
-				out <- chunk
+				sendRouterStreamChunk(ctx, out, chunk)
 				return
 			}
-			out <- chunk
+			if !sendRouterStreamChunk(ctx, out, chunk) {
+				completion := failedTelemetry(ctx.Err(), time.Since(attemptStarted).Milliseconds())
+				completion.ObservedStreaming = observed
+				completion.TTFTMs = ttft
+				r.finishTelemetryAttempt(ctx, attemptID, completion)
+				r.finishTelemetryRun(ctx, ref, completion, runStarted)
+				return
+			}
 			if chunk.Done {
 				completion := successfulTelemetry(model, observed, ttft, time.Since(attemptStarted).Milliseconds(), usage)
 				r.finishTelemetryAttempt(ctx, attemptID, completion)
@@ -219,16 +251,17 @@ func (r *Router) observeStream(ctx context.Context, source <-chan StreamChunk, r
 				return
 			}
 		}
-		if !finished {
-			err := fmt.Errorf("provider stream closed before completion")
-			completion := failedTelemetry(err, time.Since(attemptStarted).Milliseconds())
-			completion.ObservedStreaming = observed
-			completion.TTFTMs = ttft
-			r.finishTelemetryAttempt(ctx, attemptID, completion)
-			r.finishTelemetryRun(ctx, ref, completion, runStarted)
-		}
 	}()
 	return out
+}
+
+func sendRouterStreamChunk(ctx context.Context, ch chan<- StreamChunk, chunk StreamChunk) bool {
+	select {
+	case ch <- chunk:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func successfulTelemetry(model string, streamed bool, ttft, duration int64, usage Usage) TelemetryCompletion {

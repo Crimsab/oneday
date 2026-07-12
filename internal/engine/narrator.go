@@ -479,24 +479,26 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 
 			resp, err := n.completeTurnResponse(ctx, prep)
 			if err != nil {
-				out <- NarrativeStreamChunk{Err: err}
+				sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Err: err})
 				return
 			}
 
 			if err := lock.Renew(3 * time.Minute); err != nil {
-				out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
+				sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)})
 				return
 			}
 			narrative, err := n.finalizeTurn(ctx, prep, input, resp, 0, false, hook)
 			if err != nil {
-				out <- NarrativeStreamChunk{Err: err}
+				sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Err: err})
 				return
 			}
 
 			if resp.Content != "" {
-				out <- NarrativeStreamChunk{Delta: resp.Content}
+				if !sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Delta: resp.Content}) {
+					return
+				}
 			}
-			out <- NarrativeStreamChunk{Done: true, Response: narrative}
+			sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Done: true, Response: narrative})
 		}()
 		return out, nil
 	}
@@ -520,9 +522,19 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 		var firstTokenMs int64
 		var telemetry ai.TelemetryRef
 
-		for chunk := range stream {
+		for {
+			var chunk ai.StreamChunk
+			var ok bool
+			select {
+			case <-ctx.Done():
+				return
+			case chunk, ok = <-stream:
+				if !ok {
+					return
+				}
+			}
 			if chunk.Error != nil {
-				out <- NarrativeStreamChunk{Err: chunk.Error}
+				sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Err: chunk.Error})
 				return
 			}
 			if chunk.Model != "" {
@@ -539,7 +551,9 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 					firstTokenMs = time.Since(start).Milliseconds()
 				}
 				builder.WriteString(chunk.Content)
-				out <- NarrativeStreamChunk{Delta: chunk.Content}
+				if !sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Delta: chunk.Content}) {
+					return
+				}
 			}
 			if chunk.Done {
 				resp := ai.Response{
@@ -551,24 +565,33 @@ func (n *Narrator) streamTurnWithLock(ctx context.Context, input string, lock *s
 					Telemetry: telemetry,
 				}
 				if err := lock.Renew(3 * time.Minute); err != nil {
-					out <- NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)}
+					sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Err: fmt.Errorf("renewing turn lock before commit: %w", err)})
 					return
 				}
 				narrative, err := n.finalizeTurn(ctx, prep, input, resp, firstTokenMs, true, hook)
 				if err != nil {
-					out <- NarrativeStreamChunk{Err: err}
+					sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{Err: err})
 					return
 				}
-				out <- NarrativeStreamChunk{
+				sendNarrativeStreamChunk(ctx, out, NarrativeStreamChunk{
 					Done:     true,
 					Response: narrative,
-				}
+				})
 				return
 			}
 		}
 	}()
 
 	return out, nil
+}
+
+func sendNarrativeStreamChunk(ctx context.Context, ch chan<- NarrativeStreamChunk, chunk NarrativeStreamChunk) bool {
+	select {
+	case ch <- chunk:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func (n *Narrator) acquireTurnLock(ctx context.Context) (*storage.StoryTurnLock, error) {
