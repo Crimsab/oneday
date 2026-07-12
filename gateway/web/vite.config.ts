@@ -6,5 +6,14 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          icons: ["lucide-react"],
+          markdown: ["react-markdown", "remark-gfm"],
+          react: ["react", "react-dom"],
+        },
+      },
+    },
   },
 });
