@@ -16,6 +16,12 @@ var (
 
 const turnIdempotencyTimeFormat = time.RFC3339Nano
 
+const (
+	turnIdempotencyRetention        = 30 * 24 * time.Hour
+	turnIdempotencyFailureRetention = 24 * time.Hour
+	turnIdempotencyMaxPerStory      = 256
+)
+
 type TurnIdempotencyClaim struct {
 	db          *DB
 	storyID     string
@@ -87,6 +93,9 @@ func (db *DB) ClaimTurnIdempotency(storyID, key, requestHash, owner string, ttl 
 	result := &TurnIdempotencyClaimResult{}
 
 	err := db.WithTx(func(tx *sql.Tx) error {
+		if _, err := pruneTurnIdempotencyTx(tx, storyID, now); err != nil {
+			return err
+		}
 		inserted, err := insertTurnIdempotencyClaim(tx, storyID, key, requestHash, owner, nowText, untilText)
 		if err != nil {
 			return err
@@ -133,6 +142,66 @@ func (db *DB) ClaimTurnIdempotency(storyID, key, requestHash, owner string, ttl 
 		return nil, err
 	}
 	return result, nil
+}
+
+// PruneTurnIdempotency removes expired terminal claims and retains only the
+// newest bounded replay window for a story. Active non-expired claims are kept.
+func (db *DB) PruneTurnIdempotency(storyID string) (int64, error) {
+	storyID = strings.TrimSpace(storyID)
+	if storyID == "" {
+		return 0, nil
+	}
+	var removed int64
+	err := db.WithTx(func(tx *sql.Tx) error {
+		var err error
+		removed, err = pruneTurnIdempotencyTx(tx, storyID, time.Now().UTC())
+		return err
+	})
+	return removed, err
+}
+
+func pruneTurnIdempotencyTx(tx *sql.Tx, storyID string, now time.Time) (int64, error) {
+	if tx == nil || storyID == "" {
+		return 0, nil
+	}
+	nowText := now.Format(turnIdempotencyTimeFormat)
+	committedCutoff := now.Add(-turnIdempotencyRetention).Format(turnIdempotencyTimeFormat)
+	failedCutoff := now.Add(-turnIdempotencyFailureRetention).Format(turnIdempotencyTimeFormat)
+	res, err := tx.Exec(
+		`DELETE FROM turn_idempotency
+		 WHERE story_id = ? AND (
+		   (status = 'committed' AND datetime(COALESCE(NULLIF(updated_at,''),created_at)) < datetime(?)) OR
+		   (status = 'failed' AND datetime(COALESCE(NULLIF(updated_at,''),created_at)) < datetime(?)) OR
+		   (status = 'running' AND locked_until != '' AND datetime(locked_until) <= datetime(?)
+		      AND datetime(COALESCE(NULLIF(updated_at,''),created_at)) < datetime(?))
+		 )`,
+		storyID, committedCutoff, failedCutoff, nowText, failedCutoff,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("pruning expired turn idempotency rows: %w", err)
+	}
+	removed, err := res.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("counting expired turn idempotency rows: %w", err)
+	}
+	res, err = tx.Exec(
+		`DELETE FROM turn_idempotency
+		 WHERE rowid IN (
+		   SELECT rowid FROM turn_idempotency
+		   WHERE story_id = ? AND status IN ('committed','failed')
+		   ORDER BY datetime(COALESCE(NULLIF(updated_at,''),created_at)) DESC, rowid DESC
+		   LIMIT -1 OFFSET ?
+		 )`,
+		storyID, turnIdempotencyMaxPerStory,
+	)
+	if err != nil {
+		return removed, fmt.Errorf("bounding turn idempotency rows: %w", err)
+	}
+	bounded, err := res.RowsAffected()
+	if err != nil {
+		return removed, fmt.Errorf("counting bounded turn idempotency rows: %w", err)
+	}
+	return removed + bounded, nil
 }
 
 func insertTurnIdempotencyClaim(tx *sql.Tx, storyID, key, requestHash, owner, nowText, untilText string) (bool, error) {
@@ -203,6 +272,9 @@ func (c *TurnIdempotencyClaim) CommitTx(tx *sql.Tx, eventsJSON string) error {
 	}
 	if rows == 0 {
 		return fmt.Errorf("%w: story %s key %s", ErrTurnIdempotencyLost, c.storyID, c.key)
+	}
+	if _, err := pruneTurnIdempotencyTx(tx, c.storyID, time.Now().UTC()); err != nil {
+		return err
 	}
 	return nil
 }
