@@ -4,6 +4,10 @@ mod config;
 mod db;
 mod engine;
 mod events;
+#[allow(dead_code)]
+mod gateway_protocol {
+    include!(concat!(env!("OUT_DIR"), "/gateway_protocol.rs"));
+}
 mod routes;
 mod telemetry;
 

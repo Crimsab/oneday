@@ -1608,6 +1608,29 @@ mod tests {
         assert!(fixture["instance"]["definition"].get("answers").is_none());
     }
 
+    #[test]
+    fn generated_gateway_contract_decodes_load_snapshot_metadata() {
+        let response: crate::gateway_protocol::LoadResponse = serde_json::from_value(
+            serde_json::json!({
+                "save": {
+                    "id": "save-1",
+                    "name": "Before the gate",
+                    "turn": 4,
+                    "chapter": 2,
+                    "created_at": "2026-01-01T00:00:00Z"
+                },
+                "legacy": true,
+                "snapshot_state": "complete",
+                "snapshot_detail": "canonical snapshot restored"
+            }),
+        )
+        .expect("generated load contract");
+
+        assert_eq!(response.snapshot_state, "complete");
+        assert_eq!(response.snapshot_detail.as_deref(), Some("canonical snapshot restored"));
+        assert_eq!(response.save.as_ref().map(|save| save.id.as_str()), Some("save-1"));
+    }
+
     #[tokio::test]
     async fn call_gateway_turn_stream_requires_done_line() {
         let script = fake_oneday_input_script(&[
