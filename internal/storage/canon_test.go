@@ -85,6 +85,24 @@ func TestFactsRetractionsLocksAndPlayerSafeProjection(t *testing.T) {
 	if err := db.AddCharacterFact(hidden); err != nil {
 		t.Fatal(err)
 	}
+	head, err := db.GetActiveTimeline(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision, err := db.GetStoryRevision(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	alternate, err := db.ForkStoryBranch(story.ID, head.Commit.ID, "alternate-facts", revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Conn().Exec(`INSERT INTO character_facts
+		(id,story_id,subject_entity_id,predicate,object_json,source_event_id,learned_turn,confidence,visibility,retracts_fact_id,evidence_json,branch_id,source_commit_id)
+		VALUES ('alternate-retraction',?,?, 'retraction','true','',3,1,'player',?,'[]',?,?)`,
+		story.ID, entity.ID, known.ID, alternate.ID, head.Commit.ID); err != nil {
+		t.Fatal(err)
+	}
 	view, err := db.GetPlayerSafeEntity(story.ID, entity.ID, "player", 3)
 	if err != nil {
 		t.Fatal(err)
