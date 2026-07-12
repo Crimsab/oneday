@@ -172,10 +172,10 @@ func (cm *ChapterManager) StoreChapterTransitionAsync(transition *ChapterTransit
 	}
 	current := transition.Current
 	chunkText := fmt.Sprintf("[Chapter %d: %s]\n%s", current.ChapterNumber, current.Title, transition.Summary)
-	go func() {
-		bgCtx := context.Background()
-		_ = cm.rag.StoreChunk(bgCtx, cm.storyID, chunkText, "chapter", current.StartTurn, transition.CurrentTurn)
-	}()
+	key := fmt.Sprintf("chapter:%d", current.ChapterNumber)
+	submitRAGTask(cm.storyID, key, func(taskCtx context.Context) error {
+		return cm.rag.StoreChunk(taskCtx, cm.storyID, chunkText, "chapter", current.StartTurn, transition.CurrentTurn)
+	})
 }
 
 // GetChapterSummaries returns all chapter summaries formatted for display (e.g., /journal).

@@ -1119,25 +1119,25 @@ func (n *Narrator) finalizeTurn(
 		n.rememberAchievement(narrative.PersistedAchievement)
 	}
 
-	// Async RAG summarization — fire-and-forget after turn is persisted.
-	// If summarization fails, the next trigger will pick up the gap.
+	// Queue RAG summarization after persistence. Only one RAG task runs per
+	// story, and repeated summary triggers coalesce to the newest turn.
 	if n.rag != nil {
 		storyID := n.story.ID
 		turn := n.world.CurrentTurn - 1
 		ragPipeline := n.rag
 		db := n.db
-		go func() {
-			bgCtx := context.Background()
-			startTurn, endTurn, should, err := ragPipeline.PendingSummaryWindow(bgCtx, turn)
+		submitRAGTask(storyID, "summary", func(taskCtx context.Context) error {
+			startTurn, endTurn, should, err := ragPipeline.PendingSummaryWindow(taskCtx, turn)
 			if err != nil || !should {
-				return
+				return err
 			}
 			msgs, err := db.GetStoryMessagesByTurnRange(storyID, startTurn, endTurn)
 			if err != nil {
-				return
+				return err
 			}
-			_, _ = ragPipeline.MaybeSummarize(bgCtx, msgs, endTurn)
-		}()
+			_, err = ragPipeline.MaybeSummarize(taskCtx, msgs, endTurn)
+			return err
+		})
 	}
 
 	return narrative, nil

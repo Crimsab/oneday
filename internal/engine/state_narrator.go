@@ -416,10 +416,11 @@ func ApplyNarratorStateChanges(
 	if ragPipeline != nil && (settingModified || worldModified) {
 		loreText := buildLoreChunk(changes)
 		if loreText != "" {
-			go func() {
-				bgCtx := context.Background()
-				_ = ragPipeline.StoreChunk(bgCtx, story.ID, loreText, "narrator", world.CurrentTurn, world.CurrentTurn)
-			}()
+			storyID := story.ID
+			turn := world.CurrentTurn
+			submitRAGTask(storyID, ragTaskKey("state-lore", loreText), func(taskCtx context.Context) error {
+				return ragPipeline.StoreChunk(taskCtx, storyID, loreText, "narrator", turn, turn)
+			})
 		}
 	}
 
