@@ -1,25 +1,23 @@
 import { useEffect, useMemo, useRef } from "react";
 import { compactText, readableStructuredText } from "../format";
-import { turnEventDetail, turnEventTitle } from "../turnEvents";
 import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
 import { AudioControls } from "./AudioControls";
 import { MessageBranchControls } from "./MessageBranchControls";
-import type { MessageView, PendingTurnView, TimelineResponse, TurnStreamEvent } from "../types";
+import type { MessageView, PendingTurnView, TimelineResponse } from "../types";
 
 interface TranscriptProps {
   storyId: string;
   messages: MessageView[];
   hiddenBeforeId: number;
   pendingTurn?: PendingTurnView | null;
-  liveEvents?: TurnStreamEvent[];
   timeline: TimelineResponse | null;
   timelineBusy: boolean;
   onCheckoutBranch: (branchId: string) => Promise<void>;
   onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void>;
 }
 
-export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liveEvents = [], timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
+export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
   const ref = useRef<HTMLDivElement>(null);
   const visibleMessages = useMemo(
     () => messages.filter((message) => message.id > hiddenBeforeId),
@@ -36,7 +34,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liv
   useEffect(() => {
     const node = ref.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [liveEvents.length, pendingTurn?.id, visibleMessages.length]);
+  }, [pendingTurn?.id, pendingTurn?.streamingText?.length, visibleMessages.length]);
 
   return (
     <div ref={ref} className="transcript" aria-live="polite">
@@ -48,7 +46,6 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, liv
         visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} showTimelineControls={latestMessageByCommit.get(message.source_commit_id) === message.id} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
-      {liveEvents.length > 0 && <TurnEventStream events={liveEvents} />}
     </div>
   );
 }
@@ -93,42 +90,38 @@ export function dialogueBlocksFromMessage(message:MessageView):DialogueView[] {
 
 function PendingTurnMessage({ pendingTurn }: { pendingTurn: PendingTurnView }) {
   return (
-    <article className="transcript-message user pending-turn">
-      <div className="message-stamp">
-        <span>You</span>
-        <small>Turn {pendingTurn.turn} · sending</small>
-      </div>
-      <div className="message-body">
-        <MarkdownText>{pendingTurn.source}</MarkdownText>
-        <div className="pending-assistant">
-          <span className="pending-pulse" aria-hidden="true" />
-          <span>{pendingTurn.detail}</span>
+    <>
+      <article className="transcript-message user pending-turn-user">
+        <div className="message-stamp">
+          <span>You</span>
+          <small>Turn {pendingTurn.turn}</small>
         </div>
-        {pendingTurn.streamingText && (
-          <div className="pending-streaming-draft">
-            <small>Provisional assistant draft</small>
-            <MarkdownText>{pendingTurn.streamingText}</MarkdownText>
-          </div>
-        )}
-      </div>
-    </article>
-  );
-}
-
-function TurnEventStream({ events }: { events: TurnStreamEvent[] }) {
-  return (
-    <aside className="turn-event-stream" aria-label="Live turn events">
-      <div className="turn-event-stream-head">
-        <span className="pending-pulse" aria-hidden="true" />
-		<strong>Turn progress</strong>
-      </div>
-      {events.map((event) => (
-        <div className={`turn-event-row ${event.status}`} key={`${event.created_at}-${event.event_type ?? event.status}`}>
-          <span>{turnEventTitle(event)}</span>
-          <small>{turnEventDetail(event)}</small>
+        <div className="message-body">
+          <MarkdownText>{pendingTurn.source}</MarkdownText>
         </div>
-      ))}
-    </aside>
+      </article>
+      <article className="transcript-message assistant pending-narrator" aria-busy="true" aria-label={pendingTurn.detail}>
+        <div className="message-stamp">
+          <span>Narrator</span>
+          <small>Writing</small>
+        </div>
+        <div className="message-body">
+          {pendingTurn.streamingText ? (
+            <div className="pending-streaming-text">
+              <MarkdownText>{pendingTurn.streamingText}</MarkdownText>
+            </div>
+          ) : (
+            <div className="narrative-skeleton" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+              <span />
+            </div>
+          )}
+          <span className="sr-only">{pendingTurn.detail}</span>
+        </div>
+      </article>
+    </>
   );
 }
 

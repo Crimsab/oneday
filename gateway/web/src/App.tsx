@@ -48,13 +48,11 @@ import { restoreFailedDraft } from "./draftLifecycle";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import {
-  appendTurnEvent,
   isVisualAssetTurnEvent,
   parseStorySnapshotEvent,
   shouldSuppressStreamingDelta,
   streamingDeltaText,
   turnEventDetail,
-  turnEventFromContract,
 } from "./turnEvents";
 import type {
   AppPreferences,
@@ -118,7 +116,6 @@ function App() {
   const [metaResult, setMetaResult] = useState<MetaResult | null>(null);
   const [sending, setSending] = useState(false);
   const [pendingTurn, setPendingTurn] = useState<PendingTurnView | null>(null);
-  const [liveTurnEvents, setLiveTurnEvents] = useState<TurnStreamEvent[]>([]);
   const [paused, setPaused] = useState(false);
   const [hiddenBeforeMessageId, setHiddenBeforeMessageId] = useState(0);
   const [localCommands, setLocalCommands] = useState<RecentCommand[]>([]);
@@ -237,7 +234,6 @@ function App() {
     if (!storyId) return;
 	setTimeline(null);
     setHiddenBeforeMessageId(0);
-    setLiveTurnEvents([]);
     void loadSnapshot(storyId);
 	void getTimeline(storyId).then(setTimeline).catch((error) => setNotice(errorMessage(error)));
   }, [loadSnapshot, storyId]);
@@ -249,7 +245,6 @@ function App() {
 			const response = await updateTimeline(storyId, payload);
 			setTimeline(response.timeline);
 			setSnapshot(response.snapshot);
-			setLiveTurnEvents([]);
 			setPendingTurn(null);
 			void refreshMiniGame(storyId);
 			pendingActionIdentity.current = null;
@@ -285,7 +280,6 @@ function App() {
       });
       setTimeline(checkedOut.timeline);
       setSnapshot(checkedOut.snapshot);
-      setLiveTurnEvents([]);
       setPendingTurn(null);
       pendingActionIdentity.current = null;
       setNotice(`Back at the previous decision on ${name}.`);
@@ -324,7 +318,6 @@ function App() {
         setNotice("Received an unreadable live turn event.");
         return;
       }
-      setLiveTurnEvents((items) => appendTurnEvent(items, liveEvent));
       if (isVisualAssetTurnEvent(liveEvent)) {
         void refreshVisualAssets(storyId);
         setSync(paused ? "Paused" : "Live");
@@ -476,7 +469,6 @@ function App() {
     setSnapshot(null);
     setVisualAssets(null);
     setVisualAssetsError("");
-    setLiveTurnEvents([]);
     pendingActionIdentity.current = null;
     setNotice("");
   };
@@ -540,7 +532,6 @@ function App() {
         setSnapshot(null);
         setVisualAssets(null);
         setVisualAssetsError("");
-        setLiveTurnEvents([]);
         pendingActionIdentity.current = null;
         if (nextActive) {
           await loadSnapshot(nextActive.id);
@@ -764,7 +755,6 @@ function App() {
         selectModuleTab("history");
         setOverlay(null);
         setHiddenBeforeMessageId(0);
-        setLiveTurnEvents([]);
         pendingActionIdentity.current = null;
         const startNotice = response.wizard.start_error
           ? ` created, but first turn did not start: ${response.wizard.start_error}`
@@ -902,12 +892,6 @@ function App() {
         stream: true,
         capabilities: { images: true, ascii: true, roll_log: true },
       });
-      setLiveTurnEvents((items) =>
-        response.events.reduce(
-          (nextEvents, event) => appendTurnEvent(nextEvents, turnEventFromContract(storyId, currentTurn, action, sourceText, event)),
-          items,
-        ),
-      );
       setSnapshot(response.snapshot);
       void refreshMiniGame(storyId);
       setLocalCommands((items) => [
@@ -1241,7 +1225,6 @@ function App() {
               messages={snapshot?.messages ?? []}
               hiddenBeforeId={hiddenBeforeMessageId}
               pendingTurn={pendingTurn}
-              liveEvents={liveTurnEvents}
               timeline={timeline}
               timelineBusy={sending || Boolean(storyMutatingId)}
               onCheckoutBranch={checkoutBranch}

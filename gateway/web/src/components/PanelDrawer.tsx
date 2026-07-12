@@ -345,9 +345,9 @@ function OptionsContent({
         <article data-setting-id="timing-free"><strong>Timing-free selection</strong><p>The selector excludes reflex-only challenges when a timing-free mechanic can represent the same scene.</p><span className="settings-status">Required</span></article>
         <article data-setting-id="challenge-cooldown"><strong>Challenge cooldown</strong><p>Recent branch history reduces repetition and blocks a family during its cooldown window.</p><span className="settings-status">Active branch</span></article>
         <article className="choice-detail-setting" data-setting-id="choice-details">
-          <strong>Choice details</strong>
-          <p>Show intent, risk, scope, certainty, and related attributes beneath each suggested action.</p>
-          <label className="settings-policy-toggle"><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /><span>Show details</span></label>
+          <strong>Choice context</strong>
+          <p>Show intent, risk, scope, certainty, and attributes used by each action. Used attributes influence resolution; they are not guaranteed pass/fail thresholds.</p>
+          <label className="settings-policy-toggle"><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /><span>Show context</span></label>
         </article>
       </div>,
     },
