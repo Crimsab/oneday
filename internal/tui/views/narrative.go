@@ -223,13 +223,6 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.inCombat = false
 			m.combatView = nil
 			var cmds []tea.Cmd
-			if endMsg.PersistErr != nil {
-				m.statusMsg = "Combat summary not saved"
-				m.statusExpiry = time.Now().Add(3 * time.Second)
-				cmds = append(cmds, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
-					return clearStatusMsg{}
-				}))
-			}
 			// Append combat summary to narrative history.
 			summary := components.RenderMarkdown("\n---\n**[Riepilogo Combattimento]** " + endMsg.Summary + "\n---\n")
 			if cmd := m.appendNarrativeSegment(summary, false); cmd != nil {

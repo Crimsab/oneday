@@ -1,16 +1,221 @@
 package engine
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/crimsab/oneday/internal/ai"
+	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
+
+type combatTestProvider struct{}
+
+func (combatTestProvider) Name() string { return "combat-test" }
+func (combatTestProvider) Complete(context.Context, ai.Request) (ai.Response, error) {
+	return ai.Response{Content: `{"narrative":"The exchange continues.","choices":[{"id":1,"text":"Press on"}]}`, Model: "combat-test"}, nil
+}
+
+func TestCombatRNGStreamsAreIsolated(t *testing.T) {
+	first := NewDefaultRNGService()
+	second := NewDefaultRNGService()
+	if first == second {
+		t.Fatal("combat RNG streams must not share a singleton")
+	}
+	second.Roll("other-combat", 20)
+	snapshot := first.snapshot()
+	first.Roll("failed-combat", 20)
+	first.restore(snapshot)
+	if len(first.RollLog()) != 0 || len(second.RollLog()) != 1 {
+		t.Fatalf("restoring one stream affected another: first=%+v second=%+v", first.RollLog(), second.RollLog())
+	}
+}
+
+func TestFailedCombatTurnRestoresStateCharacterAndRNG(t *testing.T) {
+	root := t.TempDir()
+	db, err := storage.Open(filepath.Join(root, "combat-retry.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createSessionTestStory(t, db, "story-combat-retry", 0)
+	session, err := NewGameSession(db, "story-combat-retry", filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close(db)
+	story, _ := db.GetStory("story-combat-retry")
+	character, _ := db.GetCharacterByStory(story.ID)
+	character.StatsJSON = `{"vitals":{"hp":{"current":100,"max":100}},"attributes":{"str":{"value":0}}}`
+	world, _ := db.GetWorldState(story.ID)
+	timeline, _ := db.GetActiveTimeline(story.ID)
+	router, _ := ai.NewRouter([]ai.Provider{combatTestProvider{}})
+	narrator := &Narrator{router: router, db: db, story: story, character: character, world: world, session: session}
+	combat := &CombatEngine{
+		state:            &CombatState{Enemy: EnemyStats{Name: "Warden", HP: 999, MaxHP: 999, Attack: 0, Defense: 30, Behavior: BehaviorAggressive}, PlayerHP: 100, PlayerMaxHP: 100, Turn: 1, Phase: "player_turn"},
+		narrator:         narrator,
+		session:          session,
+		challenge:        NewChallengeEngine(),
+		rng:              NewRNGService(4242),
+		expectedBranchID: timeline.Branch.ID,
+		expectedHeadID:   timeline.Commit.ID,
+		expectedRevision: story.Revision,
+	}
+	originalState := *combat.state
+	originalStats := character.StatsJSON
+	if _, err := db.Conn().Exec(`CREATE TRIGGER reject_combat_turn_revision BEFORE UPDATE OF revision ON stories BEGIN SELECT RAISE(ABORT, 'revision failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := combat.PlayerAction(context.Background(), "attack"); err == nil {
+		t.Fatal("expected failed combat turn")
+	}
+	if !reflect.DeepEqual(*combat.state, originalState) {
+		t.Fatalf("combat state changed after rollback: before=%+v after=%+v", originalState, *combat.state)
+	}
+	if character.StatsJSON != originalStats {
+		t.Fatalf("character changed after rollback: %s", character.StatsJSON)
+	}
+	if len(combat.rng.RollLog()) != 0 {
+		t.Fatalf("rng log was not restored: %+v", combat.rng.RollLog())
+	}
+	if _, err := db.Conn().Exec(`DROP TRIGGER reject_combat_turn_revision`); err != nil {
+		t.Fatal(err)
+	}
+	expectedRNG := NewRNGService(4242)
+	expectedPlayer := expectedRNG.Roll("combat.player_attack", 20)
+	expectedEnemy := expectedRNG.Roll("combat.enemy_attack", 20)
+	result, err := combat.PlayerAction(context.Background(), "attack")
+	if err != nil {
+		t.Fatalf("retry combat turn: %v", err)
+	}
+	if len(result.RollLog) != 2 || result.RollLog[0].Raw != expectedPlayer.Raw || result.RollLog[1].Raw != expectedEnemy.Raw {
+		t.Fatalf("retry rolls=%+v, want raw %d,%d", result.RollLog, expectedPlayer.Raw, expectedEnemy.Raw)
+	}
+}
+
+func TestCombatFinalizationRollsBackAllCanonicalWrites(t *testing.T) {
+	root := t.TempDir()
+	db, err := storage.Open(filepath.Join(root, "combat-finalize.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createSessionTestStory(t, db, "story-combat-finalize", 0)
+	session, err := NewGameSession(db, "story-combat-finalize", filepath.Join(root, "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close(db)
+	story, _ := db.GetStory("story-combat-finalize")
+	character, _ := db.GetCharacterByStory(story.ID)
+	world, _ := db.GetWorldState(story.ID)
+	timeline, _ := db.GetActiveTimeline(story.ID)
+	originalStats := character.StatsJSON
+	character.StatsJSON = `{"vitals":{"hp":{"current":1,"max":20}}}`
+	narrator := &Narrator{db: db, story: story, character: character, world: world, session: session}
+	combat := &CombatEngine{
+		state:            &CombatState{Enemy: EnemyStats{Name: "Warden", MaxHP: 12}, PlayerHP: 1, PlayerMaxHP: 20, Turn: 2, Resolved: true, Victory: true, Summary: "The warden falls."},
+		narrator:         narrator,
+		session:          session,
+		expectedBranchID: timeline.Branch.ID,
+		expectedHeadID:   timeline.Commit.ID,
+		expectedRevision: story.Revision,
+	}
+	instance := NewOrdinaryActionChallenge(story.ID, story.ActiveBranchID, 0, "combat-finalize", DefaultOutcomePolicy("combat", "balanced"))
+	resolution := contracts.ChallengeResolution{ProtocolVersion: contracts.ChallengeProtocolVersion, InstanceID: instance.ID, Outcome: contracts.OutcomeEnvelope{Version: 1, Degree: contracts.OutcomeFullSuccess, Seed: instance.Seed}}
+	result := &CombatTurnResult{CombatOver: true, Victory: true, ChallengeInstance: &instance, ChallengeResolution: &resolution}
+	if _, err := db.Conn().Exec(`CREATE TRIGGER reject_combat_log BEFORE INSERT ON combat_log BEGIN SELECT RAISE(ABORT, 'combat log failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := combat.commitCombatOutcome(result); err == nil {
+		t.Fatal("expected combat finalization failure")
+	}
+	if _, err := db.GetChallengeRun(instance.ID); err == nil {
+		t.Fatal("challenge survived rolled-back finalization")
+	}
+	persistedCharacter, _ := db.GetCharacterByStory(story.ID)
+	if persistedCharacter.StatsJSON != originalStats {
+		t.Fatalf("character stats changed despite rollback: %s", persistedCharacter.StatsJSON)
+	}
+	for table, want := range map[string]int{"combat_log": 0, "chat_messages": 0} {
+		var count int
+		if err := db.Conn().QueryRow("SELECT COUNT(*) FROM "+table+" WHERE story_id=?", story.ID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != want {
+			t.Fatalf("%s rows=%d, want %d", table, count, want)
+		}
+	}
+	revision, _ := db.GetStoryRevision(story.ID)
+	if revision != 0 {
+		t.Fatalf("revision changed despite rollback: %d", revision)
+	}
+	if _, err := db.Conn().Exec(`DROP TRIGGER reject_combat_log`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Conn().Exec(`CREATE TRIGGER reject_combat_revision BEFORE UPDATE OF revision ON stories BEGIN SELECT RAISE(ABORT, 'revision failure'); END`); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := combat.commitCombatOutcome(result); err == nil {
+		t.Fatal("expected final revision failure")
+	}
+	for _, table := range []string{"combat_log", "chat_messages", "challenge_runs"} {
+		var count int
+		if err := db.Conn().QueryRow("SELECT COUNT(*) FROM "+table+" WHERE story_id=?", story.ID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Fatalf("%s survived failed revision bump", table)
+		}
+	}
+	if _, err := db.Conn().Exec(`DROP TRIGGER reject_combat_revision`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Conn().Exec(`INSERT INTO story_branches (id,story_id,name,fork_commit_id,head_commit_id) VALUES ('combat-other','story-combat-finalize','other',?,?)`, timeline.Commit.ID, timeline.Commit.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Conn().Exec(`UPDATE stories SET active_branch_id='combat-other' WHERE id=?`, story.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := combat.commitCombatOutcome(result); err == nil {
+		t.Fatal("expected stale combat branch failure")
+	}
+	if _, err := db.Conn().Exec(`UPDATE stories SET active_branch_id=? WHERE id=?`, timeline.Branch.ID, story.ID); err != nil {
+		t.Fatal(err)
+	}
+	committedRevision, entry, err := combat.commitCombatOutcome(result)
+	if err != nil {
+		t.Fatalf("retry combat finalization: %v", err)
+	}
+	if committedRevision != 1 || entry == nil {
+		t.Fatalf("retry revision=%d entry=%v", committedRevision, entry)
+	}
+	for table, want := range map[string]int{"combat_log": 1, "chat_messages": 1, "challenge_runs": 1} {
+		var count int
+		if err := db.Conn().QueryRow("SELECT COUNT(*) FROM "+table+" WHERE story_id=?", story.ID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != want {
+			t.Fatalf("%s rows after retry=%d, want %d", table, count, want)
+		}
+	}
+	var branchID, sourceCommitID string
+	if err := db.Conn().QueryRow(`SELECT branch_id,source_commit_id FROM chat_messages WHERE story_id=? AND message_type='combat_summary'`, story.ID).Scan(&branchID, &sourceCommitID); err != nil {
+		t.Fatal(err)
+	}
+	if branchID != timeline.Branch.ID || sourceCommitID != timeline.Commit.ID {
+		t.Fatalf("summary lineage branch=%q commit=%q", branchID, sourceCommitID)
+	}
+}
 
 func TestCommitTurnAdvancesImmutableTimelineAtomically(t *testing.T) {
 	root := t.TempDir()

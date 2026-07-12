@@ -19,9 +19,8 @@ import (
 
 // CombatEndMsg signals combat is over and carries the summary for the narrative.
 type CombatEndMsg struct {
-	Summary    string
-	Victory    bool
-	PersistErr error
+	Summary string
+	Victory bool
 }
 
 // combatTurnMsg carries the result of a combat turn.
@@ -186,12 +185,11 @@ func (m CombatModel) Update(msg tea.Msg) (CombatModel, tea.Cmd) {
 
 		// Check if combat is over.
 		if result.CombatOver {
-			persistErr := m.combat.WriteSummaryToMain()
 			// Emit CombatEndMsg to parent (narrative view).
 			summary := result.Summary
 			victory := result.Victory
 			return m, func() tea.Msg {
-				return CombatEndMsg{Summary: summary, Victory: victory, PersistErr: persistErr}
+				return CombatEndMsg{Summary: summary, Victory: victory}
 			}
 		}
 

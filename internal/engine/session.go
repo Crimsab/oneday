@@ -452,6 +452,10 @@ func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world
 }
 
 func (gs *GameSession) appendEntryToDB(tx *sql.Tx, db *storage.DB, entry ChatEntry) error {
+	return gs.appendEntryToDBAtLineage(tx, db, entry, "", "")
+}
+
+func (gs *GameSession) appendEntryToDBAtLineage(tx *sql.Tx, db *storage.DB, entry ChatEntry, branchID, sourceCommitID string) error {
 	msgType := entry.MessageType
 	if msgType == "" {
 		msgType = "narrative"
@@ -460,14 +464,16 @@ func (gs *GameSession) appendEntryToDB(tx *sql.Tx, db *storage.DB, entry ChatEnt
 	now := entry.Timestamp
 	if entry.Input != nil {
 		userMsg := &storage.ChatMessage{
-			SessionID:    gs.session.ID,
-			StoryID:      gs.storyID,
-			Turn:         entry.Turn,
-			Role:         "user",
-			Content:      entry.Input.Text,
-			MessageType:  msgType,
-			MetadataJSON: "{}",
-			CreatedAt:    now,
+			SessionID:      gs.session.ID,
+			StoryID:        gs.storyID,
+			Turn:           entry.Turn,
+			Role:           "user",
+			Content:        entry.Input.Text,
+			MessageType:    msgType,
+			MetadataJSON:   "{}",
+			CreatedAt:      now,
+			BranchID:       branchID,
+			SourceCommitID: sourceCommitID,
 		}
 		if err := db.AppendChatMessageTx(tx, userMsg); err != nil {
 			return fmt.Errorf("saving user message to db: %w", err)
@@ -500,14 +506,16 @@ func (gs *GameSession) appendEntryToDB(tx *sql.Tx, db *storage.DB, entry ChatEnt
 		metaJSON = []byte("{}")
 	}
 	assistantMsg := &storage.ChatMessage{
-		SessionID:    gs.session.ID,
-		StoryID:      gs.storyID,
-		Turn:         entry.Turn,
-		Role:         "assistant",
-		Content:      entry.Output.Narrative,
-		MessageType:  msgType,
-		MetadataJSON: string(metaJSON),
-		CreatedAt:    now,
+		SessionID:      gs.session.ID,
+		StoryID:        gs.storyID,
+		Turn:           entry.Turn,
+		Role:           "assistant",
+		Content:        entry.Output.Narrative,
+		MessageType:    msgType,
+		MetadataJSON:   string(metaJSON),
+		CreatedAt:      now,
+		BranchID:       branchID,
+		SourceCommitID: sourceCommitID,
 	}
 	if err := db.AppendChatMessageTx(tx, assistantMsg); err != nil {
 		return fmt.Errorf("saving assistant message to db: %w", err)

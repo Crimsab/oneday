@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -16,11 +17,14 @@ import (
 
 // CombatEngine manages a single combat encounter.
 type CombatEngine struct {
-	state     *CombatState
-	narrator  *Narrator
-	session   *GameSession
-	challenge *ChallengeEngine
-	rng       *RNGService
+	state            *CombatState
+	narrator         *Narrator
+	session          *GameSession
+	challenge        *ChallengeEngine
+	rng              *RNGService
+	expectedBranchID string
+	expectedHeadID   string
+	expectedRevision int64
 }
 
 // NewCombatEngine starts a combat encounter.
@@ -28,6 +32,14 @@ type CombatEngine struct {
 func NewCombatEngine(narrator *Narrator, enemy *EnemyStats) (*CombatEngine, error) {
 	// Validate and clamp enemy stats.
 	ValidateEnemy(enemy)
+
+	timeline, err := narrator.db.GetActiveTimeline(narrator.story.ID)
+	if err != nil {
+		return nil, fmt.Errorf("loading combat timeline: %w", err)
+	}
+	if timeline.Branch.ID != narrator.story.ActiveBranchID {
+		return nil, fmt.Errorf("combat story branch is stale")
+	}
 
 	// Open a sub-session for this combat.
 	subSessionID, err := narrator.session.OpenSubSession("combat")
@@ -49,11 +61,14 @@ func NewCombatEngine(narrator *Narrator, enemy *EnemyStats) (*CombatEngine, erro
 	}
 
 	return &CombatEngine{
-		state:     state,
-		narrator:  narrator,
-		session:   narrator.session,
-		challenge: NewChallengeEngine(),
-		rng:       defaultRNGService(),
+		state:            state,
+		narrator:         narrator,
+		session:          narrator.session,
+		challenge:        NewChallengeEngine(),
+		rng:              NewDefaultRNGService(),
+		expectedBranchID: timeline.Branch.ID,
+		expectedHeadID:   timeline.Commit.ID,
+		expectedRevision: narrator.story.Revision,
 	}, nil
 }
 
@@ -96,11 +111,13 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 	}
 	originalState := *ce.state
 	originalCharacter := *ce.narrator.character
+	originalRNG := ce.rng.snapshot()
 	completed := false
 	defer func() {
 		if !completed {
 			*ce.state = originalState
 			*ce.narrator.character = originalCharacter
+			ce.rng.restore(originalRNG)
 		}
 	}()
 
@@ -295,18 +312,12 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		resolution := contracts.ChallengeResolution{ProtocolVersion: contracts.ChallengeProtocolVersion, InstanceID: instance.ID, Input: contracts.ChallengeInput{ActorID: ce.narrator.character.ID, Intent: action}, Outcome: *result.Outcome}
 		result.ChallengeInstance, result.ChallengeResolution = &instance, &resolution
 	}
-	revision, err := ce.narrator.db.RecordChallengeResolutionAndCharacterAtHead(
-		ce.narrator.story.ID,
-		ce.narrator.session.SessionID(),
-		ce.narrator.session.Turn(),
-		*result.ChallengeInstance,
-		*result.ChallengeResolution,
-		ce.narrator.character,
-	)
+	committedRevision, summaryEntry, err := ce.commitCombatOutcome(result)
 	if err != nil {
-		return nil, fmt.Errorf("persisting combat outcome and character: %w", err)
+		return nil, err
 	}
-	ce.narrator.story.Revision = revision
+	ce.narrator.story.Revision = committedRevision
+	ce.expectedRevision = committedRevision
 	if mechanicalNote != "" {
 		result.Narrative += "\n\n" + mechanicalNote
 	}
@@ -343,9 +354,80 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 	} else if err := ce.session.CloseSubSession(ce.state.SubSessionID); err != nil {
 		log.Printf("oneday: combat outcome persisted canonically but closing sub-session failed: %v", err)
 	}
+	if summaryEntry != nil {
+		if err := ce.session.writeJSONLEntry(*summaryEntry); err != nil {
+			log.Printf("oneday: combat summary persisted canonically but jsonl mirror failed: %v", err)
+		}
+	}
 
 	completed = true
 	return result, nil
+}
+
+func (ce *CombatEngine) commitCombatOutcome(result *CombatTurnResult) (int64, *ChatEntry, error) {
+	if !result.CombatOver {
+		var revision int64
+		err := ce.narrator.db.WithTx(func(tx *sql.Tx) error {
+			if err := ce.requireExpectedTimelineTx(tx); err != nil {
+				return err
+			}
+			if err := ce.narrator.db.RecordChallengeResolutionAtHeadTx(tx, ce.narrator.story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), *result.ChallengeInstance, *result.ChallengeResolution); err != nil {
+				return err
+			}
+			if err := ce.narrator.db.UpdateCharacterFullTx(tx, ce.narrator.character); err != nil {
+				return err
+			}
+			var err error
+			revision, err = ce.narrator.db.BumpStoryRevisionTx(tx, ce.narrator.story.ID)
+			return err
+		})
+		if err != nil {
+			return 0, nil, fmt.Errorf("persisting combat outcome and character: %w", err)
+		}
+		return revision, nil, nil
+	}
+
+	entry := ce.combatSummaryEntry()
+	combatLog := ce.combatLog()
+	var revision int64
+	err := ce.narrator.db.WithTx(func(tx *sql.Tx) error {
+		if err := ce.requireExpectedTimelineTx(tx); err != nil {
+			return err
+		}
+		if err := ce.narrator.db.RecordChallengeResolutionAtHeadTx(tx, ce.narrator.story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), *result.ChallengeInstance, *result.ChallengeResolution); err != nil {
+			return err
+		}
+		if err := ce.narrator.db.UpdateCharacterFullTx(tx, ce.narrator.character); err != nil {
+			return err
+		}
+		if err := ce.narrator.db.InsertCombatLogTx(tx, combatLog); err != nil {
+			return err
+		}
+		if err := ce.session.appendEntryToDBAtLineage(tx, ce.narrator.db, entry, ce.expectedBranchID, ce.expectedHeadID); err != nil {
+			return err
+		}
+		var err error
+		revision, err = ce.narrator.db.BumpStoryRevisionTx(tx, ce.narrator.story.ID)
+		return err
+	})
+	if err != nil {
+		return 0, nil, fmt.Errorf("finalizing combat outcome: %w", err)
+	}
+	return revision, &entry, nil
+}
+
+func (ce *CombatEngine) requireExpectedTimelineTx(tx *sql.Tx) error {
+	if err := ce.narrator.db.RequireStoryRevisionTx(tx, ce.narrator.story.ID, ce.expectedRevision); err != nil {
+		return err
+	}
+	timeline, err := ce.narrator.db.EnsureStoryTimelineTx(tx, ce.narrator.story.ID)
+	if err != nil {
+		return err
+	}
+	if timeline.Branch.ID != ce.expectedBranchID || timeline.Commit.ID != ce.expectedHeadID {
+		return fmt.Errorf("combat timeline changed while encounter was active")
+	}
+	return nil
 }
 
 func defaultCombatChoices() []Choice {
@@ -546,13 +628,8 @@ func (ce *CombatEngine) syncPlayerHP() error {
 	return nil
 }
 
-// WriteSummaryToMain writes the combat outcome summary to the main narrative
-// history without consuming a new story turn.
-func (ce *CombatEngine) WriteSummaryToMain() error {
-	if ce.state.Summary == "" {
-		return nil
-	}
-	entry := ChatEntry{
+func (ce *CombatEngine) combatSummaryEntry() ChatEntry {
+	return ChatEntry{
 		Turn:        ce.narrator.World().CurrentTurn,
 		Timestamp:   time.Now(),
 		MessageType: "combat_summary",
@@ -564,14 +641,6 @@ func (ce *CombatEngine) WriteSummaryToMain() error {
 			Location:  ce.narrator.World().CurrentLocation,
 		},
 	}
-	if err := ce.session.AppendHistoryEntry(ce.narrator.db, entry); err != nil {
-		if IsMirrorSyncError(err) {
-			log.Printf("oneday: combat summary persisted canonically but jsonl mirror failed: %v", err)
-			return nil
-		}
-		return err
-	}
-	return nil
 }
 
 // --- Helper functions ---
@@ -828,21 +897,21 @@ func isFleeing(action string) bool {
 	return false
 }
 
-// LogCombatResult saves combat outcome to the combat_log table.
-func (ce *CombatEngine) LogCombatResult(db *storage.DB, storyID string) error {
-	log := &storage.CombatLog{
-		StoryID:       storyID,
-		SessionID:     ce.session.SessionID(),
-		EnemyName:     ce.state.Enemy.Name,
-		EnemyHP:       ce.state.Enemy.MaxHP,
-		Turns:         ce.state.Turn,
-		Victory:       ce.state.Victory,
-		DefeatOutcome: ce.state.DefeatOutcome,
-		PlayerHPStart: ce.state.PlayerMaxHP,
-		PlayerHPEnd:   ce.state.PlayerHP,
-		CreatedAt:     time.Now(),
+func (ce *CombatEngine) combatLog() *storage.CombatLog {
+	return &storage.CombatLog{
+		StoryID:        ce.narrator.story.ID,
+		SessionID:      ce.session.SessionID(),
+		EnemyName:      ce.state.Enemy.Name,
+		EnemyHP:        ce.state.Enemy.MaxHP,
+		Turns:          ce.state.Turn,
+		Victory:        ce.state.Victory,
+		DefeatOutcome:  ce.state.DefeatOutcome,
+		PlayerHPStart:  ce.state.PlayerMaxHP,
+		PlayerHPEnd:    ce.state.PlayerHP,
+		CreatedAt:      time.Now(),
+		BranchID:       ce.expectedBranchID,
+		SourceCommitID: ce.expectedHeadID,
 	}
-	return db.InsertCombatLog(log)
 }
 
 // RandomEnemyStats creates a placeholder enemy for testing.
