@@ -1,6 +1,7 @@
 package gatewayprotocol
 
 import (
+	"encoding/json"
 	"github.com/crimsab/oneday/internal/ai"
 	audioservice "github.com/crimsab/oneday/internal/audio"
 	"github.com/crimsab/oneday/internal/config"
@@ -8,6 +9,42 @@ import (
 	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
+
+const Version = 1
+
+type Error struct {
+	Code      string          `json:"code"`
+	Message   string          `json:"message"`
+	Retryable bool            `json:"retryable"`
+	Details   json.RawMessage `json:"details,omitempty"`
+}
+
+// SchemaRoot keeps every public bridge shape reachable from one reflection
+// root. It is not serialized at runtime; it is the canonical codegen input.
+type SchemaRoot struct {
+	TurnResponse               TurnResponse               `json:"turn_response"`
+	CraftRequest               CraftRequest               `json:"craft_request"`
+	CraftResponse              CraftResponse              `json:"craft_response"`
+	TurnStreamLine             TurnStreamLine             `json:"turn_stream_line"`
+	MetaResponse               MetaResponse               `json:"meta_response"`
+	SaveResponse               SaveResponse               `json:"save_response"`
+	LoadResponse               LoadResponse               `json:"load_response"`
+	DeleteSaveResponse         DeleteSaveResponse         `json:"delete_save_response"`
+	CommandDescriptorsResponse CommandDescriptorsResponse `json:"command_descriptors_response"`
+	StoryCreateRequest         StoryCreateRequest         `json:"story_create_request"`
+	StoryWizardRequest         StoryWizardRequest         `json:"story_wizard_request"`
+	StoryEnhanceRequest        StoryEnhanceRequest        `json:"story_enhance_request"`
+	StoryCreateResponse        StoryCreateResponse        `json:"story_create_response"`
+	StoryWizardResponse        StoryWizardResponse        `json:"story_wizard_response"`
+	StoryEnhanceResponse       StoryEnhanceResponse       `json:"story_enhance_response"`
+	ModelSettingsResponse      ModelSettingsResponse      `json:"model_settings_response"`
+	SchemaPreflightResponse    SchemaPreflightResponse    `json:"schema_preflight_response"`
+	MiniGameRequest            MiniGameRequest            `json:"minigame_request"`
+	MiniGameResponse           MiniGameResponse           `json:"minigame_response"`
+	AudioRequest               AudioRequest               `json:"audio_request"`
+	AudioResponse              AudioResponse              `json:"audio_response"`
+	Error                      Error                      `json:"error"`
+}
 
 type TurnResponse struct {
 	Events []contracts.TurnEvent `json:"events,omitempty"`
