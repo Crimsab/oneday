@@ -23,7 +23,7 @@ export function SuggestedActions({ choices, snapshot, disabled = false, showDeta
       {visibleChoices.length > 0 ? (
           <>
             {visibleChoices.map((choice) => {
-              const presentation = choicePresentation(choice, choice.id - 1);
+              const presentation = choicePresentation(choice);
               const outcome = choiceOutcome(presentation);
               const metadataTitle = [presentation.gain, presentation.tradeoff, presentation.meta.join(" ")]
                 .filter(Boolean)

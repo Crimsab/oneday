@@ -27,7 +27,6 @@ describe("choicePresentation", () => {
         certainty: "uncertain",
         related_stats: ["cha", "wil"],
       },
-      0,
     );
 
     expect(presentation.tone).toBe("social");
@@ -39,7 +38,7 @@ describe("choicePresentation", () => {
   });
 
   it("keeps fallback debug copy out of choices without metadata", () => {
-    const presentation = choicePresentation({ id: 1, text: "Do something" }, 1);
+    const presentation = choicePresentation({ id: 1, text: "Do something" });
     expect(presentation.tone).toBe("neutral");
     expect(presentation.hasMetadata).toBe(false);
     expect(presentation.meta).toEqual([]);

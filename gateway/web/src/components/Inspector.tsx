@@ -22,7 +22,6 @@ import type { VisualCatalog } from "../visualAssets";
 import type { SpatialEdge } from "../spatialMap";
 import { characterAsset, normalizeKey, readyAssetUrl } from "../visualAssets";
 import { HistoryReader } from "./HistoryReader";
-import { MarkdownText } from "./MarkdownText";
 import { CanonicalMap } from "./CanonicalMap";
 
 interface InspectorProps {

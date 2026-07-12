@@ -65,7 +65,6 @@ import type {
   ModelSettingsUpdate,
   MiniGameInput,
   MiniGameInstance,
-  MiniGameKind,
   ModuleTab,
   OverlayKind,
   PendingTurnView,
