@@ -172,7 +172,6 @@ pub struct StoryEnhanceEnvelope {
     pub context: String,
 }
 
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MiniGameStartEnvelope {
     pub definition: serde_json::Value,
@@ -220,7 +219,9 @@ pub async fn command_descriptors(
     Ok(parsed)
 }
 
-pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<protocol::ModelRoutingSettings> {
+pub async fn model_settings(
+    state: Arc<AppState>,
+) -> anyhow::Result<protocol::ModelRoutingSettings> {
     let output = run_gateway_command(
         &state,
         "gateway-model-settings",
@@ -240,7 +241,10 @@ pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<protocol::Mo
     if let Some(error) = gateway_response_error(
         parsed.error_detail.as_ref(),
         parsed.error.as_deref(),
-        parsed.error_code.as_deref().unwrap_or("model_settings_failed"),
+        parsed
+            .error_code
+            .as_deref()
+            .unwrap_or("model_settings_failed"),
     ) {
         return Err(error);
     }
@@ -635,9 +639,9 @@ async fn call_gateway_turn_stream(
             let _ = stderr_task.await;
             return match cleanup {
                 Ok(()) => Err(err),
-                Err(cleanup_err) => Err(err.context(format!(
-                    "gateway-turn cleanup failed: {cleanup_err}"
-                ))),
+                Err(cleanup_err) => {
+                    Err(err.context(format!("gateway-turn cleanup failed: {cleanup_err}")))
+                }
             };
         }
         Err(_) => {
@@ -662,6 +666,7 @@ async fn call_gateway_turn_stream(
             compact_stderr(&stderr)
         ));
     }
+    log_gateway_stderr("gateway-turn", &stderr);
     Ok(protocol::TurnResponse {
         error_detail: None,
         events,
@@ -700,7 +705,9 @@ pub async fn create_story(
     if parsed.story_id.as_deref().unwrap_or("").is_empty()
         || parsed.character_id.as_deref().unwrap_or("").is_empty()
     {
-        return Err(anyhow!("gateway-story-create returned incomplete identifiers"));
+        return Err(anyhow!(
+            "gateway-story-create returned incomplete identifiers"
+        ));
     }
     Ok(parsed)
 }
@@ -896,13 +903,8 @@ where
     TResp: DeserializeOwned,
 {
     let input = serde_json::to_vec(req).with_context(|| format!("encoding {command} request"))?;
-    let output = run_gateway_command(
-        &state,
-        command,
-        Some(&input),
-        Duration::from_secs(360),
-    )
-    .await?;
+    let output =
+        run_gateway_command(&state, command, Some(&input), Duration::from_secs(360)).await?;
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let parsed = match serde_json::from_slice(&output.stdout) {
         Ok(parsed) => parsed,
@@ -1012,6 +1014,9 @@ async fn run_gateway_command(
     let stderr = stderr_task
         .await
         .with_context(|| format!("joining {command} stderr reader"))??;
+    if status.success() {
+        log_gateway_stderr(command, &String::from_utf8_lossy(&stderr));
+    }
     Ok(GatewayProcessOutput {
         status,
         stdout,
@@ -1090,6 +1095,18 @@ fn compact_stderr(stderr: &str) -> String {
     text
 }
 
+fn log_gateway_stderr(command: &str, stderr: &str) {
+    let warning = compact_stderr(stderr);
+    if !warning.is_empty() {
+        tracing::warn!(
+            target: "oneday_gateway::bridge",
+            command,
+            stderr = %warning,
+            "Go bridge completed with diagnostics"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1098,6 +1115,16 @@ mod tests {
     use std::io::Write;
     use std::path::PathBuf;
     use tokio::sync::broadcast;
+
+    #[test]
+    fn compact_stderr_bounds_success_diagnostics() {
+        let diagnostic = format!("warning\n{}", "x".repeat(1000));
+        let compact = compact_stderr(&diagnostic);
+        assert!(!compact.contains('\n'));
+        assert!(compact.len() <= 803);
+        assert!(compact.ends_with("..."));
+        assert!(compact_stderr("  \n ").is_empty());
+    }
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
@@ -1267,8 +1294,10 @@ mod tests {
         let state = test_state(script).await;
         let response = audio(
             state,
-            serde_json::from_value(serde_json::json!({"operation":"message-get","story_id":"story-1","message_id":42}))
-                .expect("typed audio request"),
+            serde_json::from_value(
+                serde_json::json!({"operation":"message-get","story_id":"story-1","message_id":42}),
+            )
+            .expect("typed audio request"),
         )
         .await
         .expect("audio bridge");
@@ -1336,8 +1365,8 @@ mod tests {
 
     #[test]
     fn generated_gateway_contract_decodes_load_snapshot_metadata() {
-        let response: crate::gateway_protocol::LoadResponse = serde_json::from_value(
-            serde_json::json!({
+        let response: crate::gateway_protocol::LoadResponse =
+            serde_json::from_value(serde_json::json!({
                 "save": {
                     "id": "save-1",
                     "name": "Before the gate",
@@ -1348,13 +1377,18 @@ mod tests {
                 "legacy": true,
                 "snapshot_state": "complete",
                 "snapshot_detail": "canonical snapshot restored"
-            }),
-        )
-        .expect("generated load contract");
+            }))
+            .expect("generated load contract");
 
         assert_eq!(response.snapshot_state, "complete");
-        assert_eq!(response.snapshot_detail.as_deref(), Some("canonical snapshot restored"));
-        assert_eq!(response.save.as_ref().map(|save| save.id.as_str()), Some("save-1"));
+        assert_eq!(
+            response.snapshot_detail.as_deref(),
+            Some("canonical snapshot restored")
+        );
+        assert_eq!(
+            response.save.as_ref().map(|save| save.id.as_str()),
+            Some("save-1")
+        );
     }
 
     #[tokio::test]
