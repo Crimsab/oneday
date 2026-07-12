@@ -537,7 +537,9 @@ summary:focus-visible {
 .craft-error { margin: 0; border-top: 1px solid color-mix(in srgb,var(--danger) 25%,var(--line)); padding: 8px 10px; color: var(--danger); font-size: 11px; }
 
 @media (max-width: 520px) {
-  .module-overview dl { grid-template-columns: 1fr; }
+  .module-overview { gap: 6px; padding: 12px; }
+  .module-overview h3 { font-size: 15px; }
+  .module-overview dl { grid-template-columns: repeat(3,minmax(0,1fr)); }
   .craft-composer { grid-template-columns: 1fr; }
 }
 
@@ -794,6 +796,14 @@ summary:focus-visible {
   .map-art-settings { padding: 15px; }
   .map-art-settings .settings-status { position: static; }
   .settings-policy-toggle { position: static; justify-self: start; margin-top: 5px; transform: none; }
+  .visual-asset-editor { grid-template-columns: minmax(0,1fr); padding: 9px; }
+  .visual-asset-preview { max-height: 280px; aspect-ratio: 16 / 10; }
+  .visual-version-bar { grid-template-columns: minmax(76px,1fr) minmax(70px,auto) minmax(76px,1fr); gap: 5px; }
+  .visual-version-bar button { padding-inline: 7px; }
+  .visual-job-row { grid-template-columns: 68px minmax(0,1fr) auto; gap: 6px; }
+  .visual-job-row small { grid-column: 2 / -1; }
+  .visual-asset-row { grid-template-columns: 64px minmax(0,1fr) 64px; gap: 7px; }
+  .card-section[data-section="characters"] .inspector-card-image { max-height: 280px; aspect-ratio: 4 / 3; }
 }
 
 @media (prefers-reduced-motion: reduce) {

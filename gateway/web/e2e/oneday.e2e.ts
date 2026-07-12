@@ -473,8 +473,8 @@ test("opens a codex image directly in its editable visual asset workspace", asyn
   await page.goto("/");
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Codex" }).click();
-  const inspector = page.locator(".right-inspector");
-  await inspector.getByRole("button", { name: "Open image for Mira" }).click();
+  const moduleSurface = page.viewportSize()!.width <= 1240 ? page.getByRole("dialog") : page.locator(".right-inspector");
+  await moduleSurface.getByRole("button", { name: "Open image for Mira" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Options" })).toBeVisible();
   await expect(dialog.getByLabel("Asset prompt")).toHaveValue("Mira restored portrait");
@@ -486,21 +486,24 @@ test("uses the dedicated inventory-aware crafting conversation and separates ach
   await page.goto("/");
   await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Craft" }).click();
-  const inspector = page.locator(".right-inspector");
-  await expect(inspector.getByText("Dedicated AI workbench")).toBeVisible();
+  const compact = page.viewportSize()!.width <= 1240;
+  const craftSurface = compact ? page.getByRole("dialog") : page.locator(".right-inspector");
+  await expect(craftSurface.getByText("Dedicated AI workbench")).toBeVisible();
   const craftRequest = page.waitForRequest((request) => request.url().endsWith("/craft"));
-  await inspector.getByPlaceholder("What do you want to craft or improvise?").fill("a prism key");
-  await inspector.getByRole("button", { name: "Evaluate" }).click();
+  await craftSurface.getByPlaceholder("What do you want to craft or improvise?").fill("a prism key");
+  await craftSurface.getByRole("button", { name: "Evaluate" }).click();
   const request = await craftRequest;
   expect(request.postDataJSON()).toMatchObject({ message: "a prism key", history: [] });
-  await expect(inspector.getByText("You assemble a prism key without advancing the story turn.")).toBeVisible();
-  await expect(inspector.getByText("Prism key", { exact: true })).toBeVisible();
+  await expect(craftSurface.getByText("You assemble a prism key without advancing the story turn.")).toBeVisible();
+  await expect(craftSurface.getByText("Prism key", { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Library" }).click();
+  if (compact) await craftSurface.getByRole("button", { name: "Close" }).click();
+  else await page.getByRole("button", { name: "Library" }).click();
   await page.getByRole("button", { name: "Achievements" }).click();
-  await expect(inspector.getByRole("heading", { name: "Achievements" })).toBeVisible();
-  await expect(inspector.getByText("Achievements are permanent milestones recorded by the engine.")).toBeVisible();
-  await expect(inspector.getByText("Saved snapshots", { exact: true })).toHaveCount(0);
+  const achievementSurface = compact ? page.getByRole("dialog") : page.locator(".right-inspector");
+  await expect(achievementSurface.getByRole("heading", { name: "Achievements" })).toBeVisible();
+  await expect(achievementSurface.getByText("Achievements are permanent milestones recorded by the engine.")).toBeVisible();
+  await expect(achievementSurface.getByText("Saved snapshots", { exact: true })).toHaveCount(0);
 });
 
 test("plays a timing-free minigame through the shared browser host", async ({ page }) => {

@@ -1301,6 +1301,7 @@ function App() {
         onVisualAssetPromptSave={saveVisualAssetPrompt}
         onVisualAssetVersionSelect={chooseVisualAssetVersion}
         onVisualAssetSelectionStep={stepVisualSelection}
+        onOpenVisualAsset={openVisualAssetEditor}
         onRunStoryWizard={(payload) => runBrowserStoryWizard(payload)}
         onEnhanceStoryText={(payload) => runBrowserStoryEnhance(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}
