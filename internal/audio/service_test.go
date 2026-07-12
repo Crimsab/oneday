@@ -107,6 +107,26 @@ func TestQueueCommittedMessageUsesPolicyLineageAndDedupe(t *testing.T) {
 	}
 }
 
+func TestQueueCommittedMessageLoadsEachLanguageLexiconOnce(t *testing.T) {
+	db, service, messageID := audioServiceFixture(t)
+	defer db.Close()
+	loads := 0
+	service.loadPronunciations = func(storyID, language string) ([]storage.PronunciationEntry, error) {
+		loads++
+		return db.ListPronunciations(storyID, language)
+	}
+	assets, err := service.QueueCommittedMessage(context.Background(), "story-audio-service", messageID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(assets) != 2 {
+		t.Fatalf("queued assets = %d, want 2", len(assets))
+	}
+	if loads != 1 {
+		t.Fatalf("pronunciation lexicon loads = %d, want 1 for shared language", loads)
+	}
+}
+
 func TestProcessJobWritesCacheAndCausalTTSRun(t *testing.T) {
 	db, service, messageID := audioServiceFixture(t)
 	defer db.Close()
