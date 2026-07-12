@@ -741,5 +741,39 @@ func TestApplyStateChangesDefersNarratorManagedKeysWithoutDiagnostics(t *testing
 	}
 }
 
+func TestApplyStateChangesUsesDeterministicDependencyOrder(t *testing.T) {
+	for iteration := 0; iteration < 100; iteration++ {
+		char := newTestChar()
+		world := newTestWorld()
+		changes := map[string]interface{}{
+			"skill_xp":    map[string]interface{}{"skill": "Alchemy", "xp": 120},
+			"skill_learn": "Alchemy",
+			"trait_add":   "Methodical",
+			"z_unknown":   true,
+			"a_unknown":   true,
+		}
+
+		applied, err := ApplyStateChanges(changes, char, world, nil, "test-story-id", 1)
+		if err != nil {
+			t.Fatalf("iteration %d: ApplyStateChanges: %v", iteration, err)
+		}
+		fields := make([]string, 0, len(applied))
+		for _, change := range applied {
+			fields = append(fields, change.Field)
+		}
+		want := []string{"traits", "skills.Alchemy", "skills.Alchemy", "unknown_state_change", "unknown_state_change"}
+		if strings.Join(fields, "|") != strings.Join(want, "|") {
+			t.Fatalf("iteration %d: fields = %v, want %v", iteration, fields, want)
+		}
+		if applied[len(applied)-2].New != "a_unknown" || applied[len(applied)-1].New != "z_unknown" {
+			t.Fatalf("iteration %d: unknown keys are not sorted: %+v", iteration, applied[len(applied)-2:])
+		}
+		skill := toSkillsMap(parseStats(t, char)["skills"])["Alchemy"].(map[string]interface{})
+		if level, xp := int(toFloat(skill["level"])), int(toFloat(skill["xp"])); level != 2 || xp != 20 {
+			t.Fatalf("iteration %d: Alchemy = %+v, want level 2 with 20 XP", iteration, skill)
+		}
+	}
+}
+
 // TODO: NPC-related tests (new_npc, disposition) require a live DB.
 // Integration tests to be added in a future phase once a test DB helper is available.

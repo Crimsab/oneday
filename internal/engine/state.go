@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,44 @@ type StateChange struct {
 	New    interface{}
 	// Description is a human-readable summary (used for character growth events).
 	Description string
+}
+
+var standardStateChangeOrder = []string{
+	"vitals", "attributes", "secondary", "location", "currency",
+	"inventory_remove", "inventory_add", "trait_add", "title_add",
+	"skill_learn", "skill_xp", "new_npc", "npc_reference",
+	"npc_discovery_update", "npc_disposition", "npc_thoughts", "npc_notes",
+	"npc_desire_update", "npc_desires", "npc_relationship", "nemesis_resolution",
+	"investigation_update", "project_update", "hook_add", "hook_update",
+	"hook_resolve", "guide_update", "timeline_update", "world_reaction_add",
+	"fail_forward", "combat_start", "crafting_start",
+}
+
+var narratorStateChangeOrder = []string{
+	"setting_factions_add", "setting_cultures_add", "setting_dangers_add",
+	"setting_rules_add", "setting_tone_add", "world_location_add",
+	"world_event_add", "world_faction_standing", "front_add", "front_advance",
+	"front_reveal", "front_stall", "front_resolve", "front_pressure", "npc_desires",
+}
+
+func orderedStateChangeKeys(changes map[string]interface{}, priority []string) []string {
+	keys := make([]string, 0, len(changes))
+	seen := make(map[string]struct{}, len(changes))
+	for _, key := range priority {
+		if _, ok := changes[key]; !ok {
+			continue
+		}
+		keys = append(keys, key)
+		seen[key] = struct{}{}
+	}
+	unknown := make([]string, 0, len(changes)-len(keys))
+	for key := range changes {
+		if _, ok := seen[key]; !ok {
+			unknown = append(unknown, key)
+		}
+	}
+	sort.Strings(unknown)
+	return append(keys, unknown...)
 }
 
 // ApplyStateChanges takes the state_changes map from an AI response
@@ -79,7 +118,8 @@ func applyStateChangesWithNPCStore(
 
 	var applied []StateChange
 
-	for key, val := range changes {
+	for _, key := range orderedStateChangeKeys(changes, standardStateChangeOrder) {
+		val := changes[key]
 		switch key {
 		case "vitals":
 			vitalsMap, ok := toStringMap(val)
@@ -1385,7 +1425,8 @@ func ApplyNarratorStateChanges(
 		currentTurn = world.CurrentTurn
 	}
 
-	for key, val := range changes {
+	for _, key := range orderedStateChangeKeys(changes, narratorStateChangeOrder) {
+		val := changes[key]
 		switch key {
 
 		// --- Story setting mutations ---
