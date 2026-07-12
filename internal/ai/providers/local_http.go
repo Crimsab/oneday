@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -51,7 +50,7 @@ func (l *LocalHTTPEmbedding) Embed(ctx context.Context, req ai.EmbeddingRequest)
 		return ai.EmbeddingResponse{}, fmt.Errorf("local embedding request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readResponseBody(resp.Body)
 	if err != nil {
 		return ai.EmbeddingResponse{}, fmt.Errorf("reading local embedding response: %w", err)
 	}
