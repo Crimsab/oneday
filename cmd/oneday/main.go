@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,7 @@ import (
 )
 
 func main() {
+	configureGatewayRequestContext()
 	if wantsVersion(os.Args[1:]) {
 		fmt.Println(buildinfo.Text("oneday"))
 		return
@@ -150,7 +152,7 @@ func main() {
 		return
 	}
 	if wantsGatewayAudio(os.Args[1:]) {
-		if err := runGatewayAudio(context.Background(), cfg, db, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayAudio(gatewayContext(), cfg, db, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway audio failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -166,63 +168,63 @@ func main() {
 	router.SetTelemetryRecorder(storage.NewAITelemetryRecorder(db))
 
 	if wantsGatewayTurn(os.Args[1:]) {
-		if err := runGatewayTurn(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayTurn(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway turn failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewayCraft(os.Args[1:]) {
-		if err := runGatewayCraft(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayCraft(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway craft failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewayStoryCreate(os.Args[1:]) {
-		if err := runGatewayStoryCreate(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayStoryCreate(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway story create failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewayStoryWizard(os.Args[1:]) {
-		if err := runGatewayStoryWizard(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayStoryWizard(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway story wizard failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewayStoryEnhance(os.Args[1:]) {
-		if err := runGatewayStoryEnhance(context.Background(), cfg, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayStoryEnhance(gatewayContext(), cfg, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway story enhance failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewayMeta(os.Args[1:]) {
-		if err := runGatewayMeta(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayMeta(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway meta failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewaySave(os.Args[1:]) {
-		if err := runGatewaySave(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewaySave(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway save failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewayLoad(os.Args[1:]) {
-		if err := runGatewayLoad(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayLoad(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway load failed: %v\n", err)
 			os.Exit(1)
 		}
 		return
 	}
 	if wantsGatewayDeleteSave(os.Args[1:]) {
-		if err := runGatewayDeleteSave(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+		if err := runGatewayDeleteSave(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway delete save failed: %v\n", err)
 			os.Exit(1)
 		}
@@ -236,6 +238,42 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error running TUI: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func gatewayRequestID() string {
+	raw := strings.TrimSpace(os.Getenv("ONEDAY_REQUEST_ID"))
+	if raw == "" {
+		return ""
+	}
+	var safe strings.Builder
+	for _, char := range raw {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '-' || char == '_' || char == '.' {
+			safe.WriteRune(char)
+			if safe.Len() >= 128 {
+				break
+			}
+		}
+	}
+	return safe.String()
+}
+
+func configureGatewayRequestContext() {
+	if requestID := gatewayRequestID(); requestID != "" {
+		log.SetPrefix("request_id=" + requestID + " ")
+	}
+}
+
+func gatewayContext() context.Context {
+	ctx := context.Background()
+	requestID := gatewayRequestID()
+	if requestID == "" {
+		return ctx
+	}
+	return ai.WithTelemetry(ctx, ai.TelemetryMetadata{
+		TraceID:      requestID,
+		SafeMetadata: map[string]string{"request_id": requestID},
+	})
 }
 
 func resolveDotEnvPath() string {

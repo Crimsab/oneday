@@ -14,6 +14,8 @@ mod telemetry;
 use anyhow::Context;
 use axum::body::Body;
 use axum::http::{HeaderName, Request};
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::Router;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use std::net::SocketAddr;
@@ -32,6 +34,24 @@ pub struct AppState {
     pub paths: config::ResolvedPaths,
     pub turn_events: broadcast::Sender<events::TurnStreamEvent>,
     pub visual_workers: Arc<Semaphore>,
+}
+
+tokio::task_local! {
+    static HTTP_REQUEST_ID: String;
+}
+
+pub fn current_request_id() -> Option<String> {
+    HTTP_REQUEST_ID.try_with(Clone::clone).ok()
+}
+
+async fn scope_request_id(request: Request<Body>, next: Next) -> Response {
+    let request_id = request
+        .headers()
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("-")
+        .to_string();
+    HTTP_REQUEST_ID.scope(request_id, next.run(request)).await
 }
 
 #[tokio::main]
@@ -102,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
                         .latency_unit(LatencyUnit::Millis),
                 ),
         )
+        .layer(middleware::from_fn(scope_request_id))
         .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
         .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid));
     let listener = tokio::net::TcpListener::bind(addr)

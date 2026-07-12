@@ -1034,6 +1034,9 @@ fn gateway_command(state: &AppState, command: &str) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    if let Some(request_id) = crate::current_request_id() {
+        child.env("ONEDAY_REQUEST_ID", request_id);
+    }
     #[cfg(unix)]
     child.process_group(0);
     child
@@ -1098,9 +1101,11 @@ fn compact_stderr(stderr: &str) -> String {
 fn log_gateway_stderr(command: &str, stderr: &str) {
     let warning = compact_stderr(stderr);
     if !warning.is_empty() {
+        let request_id = crate::current_request_id().unwrap_or_else(|| "-".to_string());
         tracing::warn!(
             target: "oneday_gateway::bridge",
             command,
+            request_id,
             stderr = %warning,
             "Go bridge completed with diagnostics"
         );
@@ -1115,6 +1120,36 @@ mod tests {
     use std::io::Write;
     use std::path::PathBuf;
     use tokio::sync::broadcast;
+
+    #[tokio::test]
+    async fn gateway_command_propagates_request_id() {
+        let root = std::env::temp_dir().join(format!("oneday-request-id-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create request-id test dir");
+        let script = root.join("fake-oneday.sh");
+        fs::write(
+            &script,
+            "#!/usr/bin/env bash\nprintf '%s' \"$ONEDAY_REQUEST_ID\"\n",
+        )
+        .expect("write request-id script");
+        let mut permissions = fs::metadata(&script)
+            .expect("script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).expect("chmod request-id script");
+        let state = test_state(script).await;
+        let output = crate::HTTP_REQUEST_ID
+            .scope("request-test-123".to_string(), async {
+                run_gateway_command(&state, "request-id-test", None, Duration::from_secs(2)).await
+            })
+            .await
+            .expect("run gateway command");
+        assert!(output.status.success());
+        assert_eq!(
+            String::from_utf8(output.stdout).unwrap(),
+            "request-test-123"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
 
     #[test]
     fn compact_stderr_bounds_success_diagnostics() {

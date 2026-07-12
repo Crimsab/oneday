@@ -7,9 +7,21 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/game/contracts"
 )
+
+func TestGatewayRequestIDIsSanitizedAndAddedToTelemetry(t *testing.T) {
+	t.Setenv("ONEDAY_REQUEST_ID", " request-123\nunsafe:value ")
+	if got := gatewayRequestID(); got != "request-123unsafevalue" {
+		t.Fatalf("gatewayRequestID = %q", got)
+	}
+	metadata := ai.TelemetryFromContext(gatewayContext())
+	if metadata.TraceID != "request-123unsafevalue" || metadata.SafeMetadata["request_id"] != metadata.TraceID {
+		t.Fatalf("gateway telemetry metadata = %#v", metadata)
+	}
+}
 
 func TestWantsVersion(t *testing.T) {
 	tests := []struct {
