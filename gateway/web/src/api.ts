@@ -128,19 +128,31 @@ export function updateVoiceAssignment(storyId: string, assignment: VoiceAssignme
 }
 
 export function getMessageAudio(storyId: string, messageId: number): Promise<MessageAudioResponse> {
-  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/messages/${messageId}/audio`);
+  return request<Partial<MessageAudioResponse>>(`/api/stories/${encodeURIComponent(storyId)}/messages/${messageId}/audio`)
+    .then(normalizeMessageAudioResponse);
 }
 
 export function createMessageAudio(storyId: string, messageId: number): Promise<MessageAudioResponse> {
-  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/messages/${messageId}/audio`, { method: "POST" });
+  return request<Partial<MessageAudioResponse>>(`/api/stories/${encodeURIComponent(storyId)}/messages/${messageId}/audio`, { method: "POST" })
+    .then(normalizeMessageAudioResponse);
 }
 
 export function retryAudioJob(storyId: string, jobId: string): Promise<MessageAudioResponse> {
-  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/audio/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" });
+  return request<Partial<MessageAudioResponse>>(`/api/stories/${encodeURIComponent(storyId)}/audio/jobs/${encodeURIComponent(jobId)}/retry`, { method: "POST" })
+    .then(normalizeMessageAudioResponse);
 }
 
 export function cancelAudioJob(storyId: string, jobId: string): Promise<MessageAudioResponse> {
-  return request<MessageAudioResponse>(`/api/stories/${encodeURIComponent(storyId)}/audio/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+  return request<Partial<MessageAudioResponse>>(`/api/stories/${encodeURIComponent(storyId)}/audio/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" })
+    .then(normalizeMessageAudioResponse);
+}
+
+export function normalizeMessageAudioResponse(response: Partial<MessageAudioResponse>): MessageAudioResponse {
+  return {
+    ...response,
+    assets: Array.isArray(response.assets) ? response.assets : [],
+    jobs: Array.isArray(response.jobs) ? response.jobs : [],
+  };
 }
 
 export function getPronunciations(storyId: string, language = ""): Promise<PronunciationsResponse> {
