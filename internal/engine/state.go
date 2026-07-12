@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -272,7 +273,10 @@ func applyCharacterStateOperations(operations []stateChangeOperation, mutation *
 				}
 				for subKey, subVal := range subMap {
 					oldVal := existing[subKey]
-					newVal := toFloat(subVal)
+					newVal, valid := stateNumber(subVal)
+					if !valid {
+						continue
+					}
 					// Clamp HP-like values to >= 0
 					if newVal < 0 {
 						newVal = 0
@@ -317,7 +321,10 @@ func applyCharacterStateOperations(operations []stateChangeOperation, mutation *
 			}
 			for attrKey, attrVal := range attrMap {
 				oldVal := statsAttrs[attrKey]
-				newVal := toFloat(attrVal)
+				newVal, valid := stateNumber(attrVal)
+				if !valid {
+					continue
+				}
 				if newVal < 0 {
 					newVal = 0
 				}
@@ -342,7 +349,10 @@ func applyCharacterStateOperations(operations []stateChangeOperation, mutation *
 			}
 			for secKey, secVal := range secMap {
 				oldVal := statsSec[secKey]
-				newVal := toFloat(secVal)
+				newVal, valid := stateNumber(secVal)
+				if !valid {
+					continue
+				}
 				statsSec[secKey] = newVal
 				applied = append(applied, StateChange{
 					Target: "character",
@@ -370,7 +380,10 @@ func applyCharacterStateOperations(operations []stateChangeOperation, mutation *
 
 		case "currency":
 			oldVal := stats["currency"]
-			newVal := toFloat(val)
+			newVal, valid := stateNumber(val)
+			if !valid {
+				continue
+			}
 			if newVal < 0 {
 				newVal = 0
 			}
@@ -544,7 +557,11 @@ func applyCharacterStateOperations(operations []stateChangeOperation, mutation *
 			if skillName == "" {
 				continue
 			}
-			xpGain := int(toFloat(xpMap["xp"]))
+			xpValue, valid := stateNumber(xpMap["xp"])
+			if !valid {
+				continue
+			}
+			xpGain := int(xpValue)
 			if xpGain <= 0 {
 				continue
 			}
@@ -1511,6 +1528,36 @@ func toFloat(val interface{}) float64 {
 		}
 	}
 	return 0
+}
+
+func stateNumber(value interface{}) (float64, bool) {
+	var number float64
+	switch typed := value.(type) {
+	case float64:
+		number = typed
+	case int:
+		number = float64(typed)
+	case int64:
+		number = float64(typed)
+	case json.Number:
+		parsed, err := typed.Float64()
+		if err != nil {
+			return 0, false
+		}
+		number = parsed
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(typed), 64)
+		if err != nil {
+			return 0, false
+		}
+		number = parsed
+	default:
+		return 0, false
+	}
+	if math.IsNaN(number) || math.IsInf(number, 0) {
+		return 0, false
+	}
+	return number, true
 }
 
 // toStringSlice converts an interface{} to []string.
