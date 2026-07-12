@@ -544,7 +544,27 @@ test("renders only canonical known map topology and bounded agency events", asyn
   await page.getByPlaceholder("What do you want to try?").fill("/map");
   await page.getByRole("button", { name: "Send action" }).click();
   await expect(page.locator(".agency-feed:visible").filter({ hasText: "Mira advances an offscreen goal." })).toBeVisible();
-  if (page.viewportSize()!.width > 1240) await page.getByRole("button", { name: "Open Map in a larger view" }).click();
+  if (page.viewportSize()!.width > 1240) {
+    const compactMap = page.locator(".right-inspector .canonical-map");
+    await compactMap.scrollIntoViewIfNeeded();
+    const toolbarIcons = compactMap.locator(".canonical-map-toolbar button svg");
+    await expect(toolbarIcons).toHaveCount(4);
+    expect(await toolbarIcons.evaluateAll((icons) => icons.every((icon) => {
+      const box = icon.getBoundingClientRect();
+      return box.width === 15 && box.height === 15 && getComputedStyle(icon).stroke !== "none";
+    }))).toBe(true);
+
+    const inspector = page.locator(".inspector-body");
+    const scrollBeforeZoom = await inspector.evaluate((node) => node.scrollTop);
+    const stageBox = await compactMap.locator(".canonical-map-stage").boundingBox();
+    expect(stageBox).not.toBeNull();
+    await page.mouse.move(stageBox!.x + stageBox!.width * 0.5, stageBox!.y + stageBox!.height * 0.5);
+    await page.mouse.wheel(0, -140);
+    await expect(compactMap.getByText("114%", { exact: true })).toBeVisible();
+    await expect.poll(() => inspector.evaluate((node) => node.scrollTop)).toBe(scrollBeforeZoom);
+
+    await page.getByRole("button", { name: "Open Map in a larger view" }).click();
+  }
   const mapWorkspace = page.getByRole("dialog");
   const mapShell = mapWorkspace.locator(".canonical-map");
   const map = mapShell.locator('svg[role="img"]');

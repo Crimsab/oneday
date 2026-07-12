@@ -1,5 +1,6 @@
 import { Image as ImageIcon, LocateFixed, Minus, Plus } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { layoutMapTopology } from "../mapLayout";
 import type { JsonValue, VisualAsset } from "../types";
 import { normalizeKey, readyAssetUrl, type VisualCatalog } from "../visualAssets";
 
@@ -27,20 +28,18 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
   const edges = useMemo(() => mapEdges(edgesValue).filter((edge) => locationIDs.has(edge.from_location_id) && locationIDs.has(edge.to_location_id)), [edgesValue, locationIDs]);
   const [selectedLocationId, setSelectedLocationId] = useState(currentLocationId || locations[0]?.id || "");
   const [zoomPercent, setZoomPercent] = useState(100);
+  const stageRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const viewportRef = useRef<SVGGElement | null>(null);
   const viewRef = useRef<MapView>({ scale: 1, x: 0, y: 0 });
   const dragRef = useRef<{ pointerId: number; x: number; y: number; moved: boolean } | null>(null);
 
-  const columns = Math.min(expanded ? 4 : 3, Math.max(1, locations.length));
-  const rows = Math.ceil(locations.length / columns);
   const width = expanded ? 960 : 660;
-  const height = Math.max(expanded ? 460 : 220, 120 + rows * (expanded ? 150 : 125));
-  const horizontalSpan = width - (expanded ? 220 : 180);
-  const positions = useMemo(() => new Map(locations.map((location, index) => [location.id, {
-    x: columns === 1 ? width / 2 : (expanded ? 110 : 90) + (index % columns) * (horizontalSpan / (columns - 1)),
-    y: (expanded ? 112 : 82) + Math.floor(index / columns) * (expanded ? 150 : 125),
-  }])), [columns, expanded, horizontalSpan, locations, width]);
+  const height = expanded ? 460 : 220;
+  const positions = useMemo(
+    () => layoutMapTopology(locations, edges, width, height),
+    [edges, height, locations, width],
+  );
   const backgroundAsset = visuals?.mapBackground ?? null;
   const backgroundUrl = readyAssetUrl(backgroundAsset);
   const selectedLocation = locations.find((location) => location.id === selectedLocationId) ?? locations[0] ?? null;
@@ -61,8 +60,6 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
     resetView(viewportRef, viewRef, setZoomPercent);
   }, [expanded, locations.length, edges.length]);
 
-  if (locations.length === 0) return <p className="empty-copy">No canonical known locations are available for the map.</p>;
-
   const updateView = (next: MapView) => {
     const normalized = { ...next, scale: clamp(next.scale, MIN_ZOOM, MAX_ZOOM) };
     viewRef.current = normalized;
@@ -81,14 +78,33 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
     });
   };
 
-  const handleWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
-    event.preventDefault();
-    const rect = event.currentTarget.getBoundingClientRect();
-    zoomAt(event.deltaY < 0 ? 1.14 : 0.88, {
-      x: ((event.clientX - rect.left) / rect.width) * width,
-      y: ((event.clientY - rect.top) / rect.height) * height,
-    });
-  };
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const rect = stage.getBoundingClientRect();
+      const current = viewRef.current;
+      const scale = clamp(current.scale * (event.deltaY < 0 ? 1.14 : 0.88), MIN_ZOOM, MAX_ZOOM);
+      const ratio = scale / current.scale;
+      const anchor = {
+        x: ((event.clientX - rect.left) / rect.width) * width,
+        y: ((event.clientY - rect.top) / rect.height) * height,
+      };
+      const next = {
+        scale,
+        x: anchor.x - (anchor.x - current.x) * ratio,
+        y: anchor.y - (anchor.y - current.y) * ratio,
+      };
+      viewRef.current = next;
+      viewportRef.current?.setAttribute("transform", `translate(${next.x} ${next.y}) scale(${next.scale})`);
+      setZoomPercent(Math.round(next.scale * 100));
+    };
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", handleWheel);
+  }, [height, width]);
+
+  if (locations.length === 0) return <p className="empty-copy">No canonical known locations are available for the map.</p>;
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
@@ -124,7 +140,7 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
 
   return (
     <div className={`canonical-map ${backgroundUrl ? "illustrated" : "graph-only"} ${expanded ? "expanded" : ""}`}>
-      <div className="canonical-map-stage">
+      <div ref={stageRef} className="canonical-map-stage">
         {backgroundUrl && <img className="canonical-map-art" src={backgroundUrl} alt="" aria-hidden="true" />}
         <div className="canonical-map-toolbar" aria-label="Map controls">
           <button type="button" onClick={() => zoomAt(1.2)} title="Zoom in" aria-label="Zoom in"><Plus size={15} /></button>
@@ -137,10 +153,10 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
         </div>
         <svg
           ref={svgRef}
+          className="canonical-map-canvas"
           viewBox={`0 0 ${width} ${height}`}
           role="img"
           aria-label={`Interactive canonical map with ${locations.length} known locations and ${edges.length} known routes`}
-          onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerEnd}

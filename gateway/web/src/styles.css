@@ -4179,7 +4179,7 @@ input:disabled {
   pointer-events: none;
 }
 
-.canonical-map svg {
+.canonical-map-canvas {
   position: relative;
   z-index: 1;
   display: block;
@@ -4188,33 +4188,33 @@ input:disabled {
   height: auto;
 }
 
-.canonical-map line {
+.canonical-map-canvas .map-route line {
   stroke: #8a989e;
   stroke-width: 2;
   paint-order: stroke;
 }
 
-.canonical-map circle {
+.canonical-map-canvas .map-node circle {
   fill: #111c20;
   stroke: #8b989e;
   stroke-width: 2;
 }
 
-.canonical-map g.current circle {
+.canonical-map-canvas g.current circle {
   fill: color-mix(in srgb, var(--accent) 18%, #111c20);
   stroke: var(--accent);
   stroke-width: 3;
 }
 
-.canonical-map g.has-icon circle {
+.canonical-map-canvas g.has-icon circle {
   fill: rgba(8, 14, 16, 0.82);
 }
 
-.canonical-map g.has-icon image {
+.canonical-map-canvas g.has-icon image {
   pointer-events: none;
 }
 
-.canonical-map text {
+.canonical-map-canvas text {
   fill: var(--muted);
   font-size: 11px;
 }
