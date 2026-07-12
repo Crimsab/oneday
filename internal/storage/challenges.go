@@ -86,16 +86,36 @@ func (db *DB) GetChallengeRun(id string) (*ChallengeRun, error) {
 // current immutable head (combat/crafting/social do not advance a story turn).
 func (db *DB) RecordChallengeResolutionAtHead(storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution) error {
 	return db.WithTx(func(tx *sql.Tx) error {
-		head, err := getActiveTimelineExec(tx, storyID)
-		if err != nil {
+		return db.recordChallengeResolutionAtHeadTx(tx, storyID, sessionID, turn, instance, resolution)
+	})
+}
+
+// RecordChallengeResolutionAndCharacterAtHead commits a sub-session outcome and
+// its resulting character state together, so neither side can become canonical
+// without the other.
+func (db *DB) RecordChallengeResolutionAndCharacterAtHead(storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution, character *Character) error {
+	return db.WithTx(func(tx *sql.Tx) error {
+		if err := db.recordChallengeResolutionAtHeadTx(tx, storyID, sessionID, turn, instance, resolution); err != nil {
 			return err
 		}
-		instance.BranchID = head.Branch.ID
-		instance.StoryID = storyID
-		if err := db.RecordChallengeResolutionTx(tx, storyID, sessionID, head.Branch.ID, turn, instance, resolution); err != nil {
+		if err := db.UpdateCharacterFullTx(tx, character); err != nil {
 			return err
 		}
-		_, err = tx.Exec(`UPDATE challenge_runs SET source_commit_id=? WHERE id=? AND source_commit_id=''`, head.Commit.ID, instance.ID)
+		_, err := db.BumpStoryRevisionTx(tx, storyID)
 		return err
 	})
+}
+
+func (db *DB) recordChallengeResolutionAtHeadTx(tx *sql.Tx, storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution) error {
+	head, err := getActiveTimelineExec(tx, storyID)
+	if err != nil {
+		return err
+	}
+	instance.BranchID = head.Branch.ID
+	instance.StoryID = storyID
+	if err := db.RecordChallengeResolutionTx(tx, storyID, sessionID, head.Branch.ID, turn, instance, resolution); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`UPDATE challenge_runs SET source_commit_id=? WHERE id=? AND source_commit_id=''`, head.Commit.ID, instance.ID)
+	return err
 }
