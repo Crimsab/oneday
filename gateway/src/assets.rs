@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqlitePool};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -518,7 +518,126 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
     )
     .execute(pool)
     .await?;
+    normalize_location_asset_lineages(pool).await?;
     recover_stale_visual_jobs(pool).await?;
+    Ok(())
+}
+
+async fn normalize_location_asset_lineages(pool: &SqlitePool) -> anyhow::Result<()> {
+    let rows = sqlx::query(
+        r#"SELECT id,story_id,kind,canonical_location_id
+           FROM visual_assets
+           WHERE kind IN ('location','map_icon') AND canonical_location_id!=''
+           ORDER BY created_at ASC,id ASC"#,
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut groups = BTreeMap::<(String, String, String), Vec<String>>::new();
+    for row in rows {
+        groups
+            .entry((
+                row_string(&row, "story_id"),
+                row_string(&row, "kind"),
+                row_string(&row, "canonical_location_id"),
+            ))
+            .or_default()
+            .push(row_string(&row, "id"));
+    }
+
+    for ((story_id, kind, location_id), asset_ids) in groups {
+        let Some(keeper) = asset_ids.first() else {
+            continue;
+        };
+        let mut transaction = pool.begin().await?;
+        for duplicate in asset_ids.iter().skip(1) {
+            sqlx::query(
+                r#"INSERT INTO visual_asset_branch_overrides (
+                     asset_id,story_id,branch_id,source_commit_id,prompt_override,
+                     negative_prompt_override,gate_state,gate_reason,generation_eligible,
+                     status_override,error_override,provider_override,created_at,updated_at
+                   )
+                   SELECT ?,story_id,branch_id,source_commit_id,prompt_override,
+                     negative_prompt_override,gate_state,gate_reason,generation_eligible,
+                     status_override,error_override,provider_override,created_at,updated_at
+                   FROM visual_asset_branch_overrides WHERE asset_id=? AND 1=1
+                   ON CONFLICT(asset_id,branch_id) DO UPDATE SET
+                     source_commit_id=excluded.source_commit_id,
+                     prompt_override=excluded.prompt_override,
+                     negative_prompt_override=excluded.negative_prompt_override,
+                     gate_state=excluded.gate_state,gate_reason=excluded.gate_reason,
+                     generation_eligible=excluded.generation_eligible,
+                     status_override=excluded.status_override,error_override=excluded.error_override,
+                     provider_override=excluded.provider_override,updated_at=excluded.updated_at
+                   WHERE excluded.updated_at>=visual_asset_branch_overrides.updated_at"#,
+            )
+            .bind(keeper)
+            .bind(duplicate)
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query(
+                r#"INSERT INTO visual_asset_selection_states (
+                     asset_id,story_id,branch_id,source_commit_id,selected_version_id,
+                     history_json,cursor,updated_at
+                   )
+                   SELECT ?,story_id,branch_id,source_commit_id,selected_version_id,
+                     history_json,cursor,updated_at
+                   FROM visual_asset_selection_states WHERE asset_id=? AND 1=1
+                   ON CONFLICT(asset_id,branch_id) DO UPDATE SET
+                     source_commit_id=excluded.source_commit_id,
+                     selected_version_id=excluded.selected_version_id,
+                     history_json=excluded.history_json,cursor=excluded.cursor,
+                     updated_at=excluded.updated_at
+                   WHERE excluded.updated_at>=visual_asset_selection_states.updated_at"#,
+            )
+            .bind(keeper)
+            .bind(duplicate)
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query("UPDATE visual_asset_versions SET asset_id=? WHERE asset_id=?")
+                .bind(keeper)
+                .bind(duplicate)
+                .execute(&mut *transaction)
+                .await?;
+            sqlx::query(
+                r#"UPDATE visual_generation_jobs SET status='cancelled',
+                     error=CASE WHEN error='' THEN 'Superseded while consolidating canonical location art.' ELSE error END,
+                     finished_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+                   WHERE asset_id=? AND status IN ('queued','running')
+                     AND EXISTS (
+                       SELECT 1 FROM visual_generation_jobs current
+                       WHERE current.asset_id=? AND current.branch_id=visual_generation_jobs.branch_id
+                         AND current.status IN ('queued','running')
+                     )"#,
+            )
+            .bind(duplicate)
+            .bind(keeper)
+            .execute(&mut *transaction)
+            .await?;
+            sqlx::query("UPDATE visual_generation_jobs SET asset_id=? WHERE asset_id=?")
+                .bind(keeper)
+                .bind(duplicate)
+                .execute(&mut *transaction)
+                .await?;
+            sqlx::query("DELETE FROM visual_assets WHERE id=?")
+                .bind(duplicate)
+                .execute(&mut *transaction)
+                .await?;
+        }
+        let stable_lineage = if kind == "map_icon" {
+            format!("map-icon:{location_id}")
+        } else {
+            format!("location:{location_id}")
+        };
+        sqlx::query(
+            "UPDATE visual_assets SET lineage_key=?,updated_at=updated_at WHERE id=? AND story_id=?",
+        )
+        .bind(stable_lineage)
+        .bind(keeper)
+        .bind(story_id)
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+    }
     Ok(())
 }
 
@@ -2604,10 +2723,7 @@ async fn visual_specs(
             canonical_entity_id: String::new(),
             canonical_location_id: snapshot.world.current_location_id.clone(),
             form_id: String::new(),
-            lineage_key: format!(
-                "location:{}:{appearance_fingerprint}",
-                snapshot.world.current_location_id
-            ),
+            lineage_key: format!("location:{}", snapshot.world.current_location_id),
             appearance_fingerprint,
             profile_revision_id: profile.id.clone(),
             canon_status: gate.canon_status,
@@ -2828,7 +2944,7 @@ fn known_map_specs(
             canonical_entity_id: String::new(),
             canonical_location_id: id.clone(),
             form_id: String::new(),
-            lineage_key: format!("map-icon:{id}:{icon_fingerprint}"),
+            lineage_key: format!("map-icon:{id}"),
             appearance_fingerprint: icon_fingerprint,
             profile_revision_id: profile.id.clone(),
             canon_status: "canonical".to_string(),
@@ -2837,14 +2953,14 @@ fn known_map_specs(
                 .to_string(),
             generation_eligible: true,
             prompt: format!(
-                "{} Create one isolated cartographic symbol for the known location '{}'. Known details: {}. Centered single landmark emblem, transparent background, no text, no letters, no border, strong silhouette, consistent map icon set, designed at 256 by 256 and readable at 40 pixels. Palette: {}.",
+                "{} Create one isolated cartographic symbol for the known location '{}'. Known details: {}. Centered single landmark emblem on a transparent background, with clean alpha transparency all the way to every canvas edge; no backdrop, paper, tile, square, disc, scene, or environmental fill. No text, no letters, no border. Use a strong silhouette, a consistent map icon set, and restrained edge detail readable at 40 pixels. Palette: {}.",
                 profile.world_style_prompt,
                 name,
                 clean_or(&description, "use only the location name as context"),
                 clean_or(&profile.palette, "restrained story palette")
             ),
             negative_prompt: format!(
-                "{}, text, label, lettering, multiple icons, scenery background, frame, watermark",
+                "{}, text, label, lettering, multiple icons, scenery background, white background, solid background, paper texture, square tile, circular plate, frame, watermark",
                 profile.negative_prompt
             ),
             turn,
@@ -4592,6 +4708,65 @@ mod tests {
             .unwrap();
         assert_eq!(asset.selected_version_id, None);
         assert_ne!(asset.prompt, "main-only prompt");
+    }
+
+    #[tokio::test]
+    async fn canonical_location_assets_merge_versions_and_keep_one_stable_lineage() {
+        let pool = visual_job_pool().await;
+        sqlx::query(
+            r#"INSERT INTO visual_assets (
+                 id,story_id,kind,subject,canonical_location_id,lineage_key,
+                 appearance_fingerprint,status,branch_id,source_commit_id
+               ) VALUES (
+                 'asset-location-duplicate','story','location','Station','loc-station',
+                 'location:loc-station:changed-look','changed-look','ready','branch-main','commit-main'
+               )"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        for (asset_id, url) in [
+            ("asset-location", "/station-one.png"),
+            ("asset-location-duplicate", "/station-two.png"),
+        ] {
+            sqlx::query(
+                r#"INSERT INTO visual_asset_versions (
+                     asset_id,story_id,kind,subject,url,branch_id,source_commit_id,
+                     canonical_location_id,appearance_fingerprint
+                   ) VALUES (?,'story','location','Station',?,'branch-main','commit-main','loc-station','look')"#,
+            )
+            .bind(asset_id)
+            .bind(url)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+
+        normalize_location_asset_lineages(&pool).await.unwrap();
+
+        let assets: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_assets WHERE story_id='story' AND kind='location' AND canonical_location_id='loc-station'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let lineage: String =
+            sqlx::query_scalar("SELECT lineage_key FROM visual_assets WHERE id='asset-location'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let versions = visual_asset_versions(&pool, "story", "asset-location")
+            .await
+            .unwrap();
+        assert_eq!(assets, 1);
+        assert_eq!(lineage, "location:loc-station");
+        assert_eq!(versions.len(), 2);
+        assert!(versions
+            .iter()
+            .any(|version| version.url == "/station-one.png"));
+        assert!(versions
+            .iter()
+            .any(|version| version.url == "/station-two.png"));
     }
 
     #[tokio::test]
