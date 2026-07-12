@@ -1,7 +1,7 @@
 FROM lukemathwalker/cargo-chef:latest-rust-1@sha256:3a1dd6010466c1cf591607a75c6e144ba9f099e7f3790d595c6a611a9c78f387 AS chef
 WORKDIR /app
 
-FROM oven/bun:1 AS web-builder
+FROM oven/bun:1@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS web-builder
 WORKDIR /app/gateway/web
 COPY gateway/web/package.json gateway/web/bun.lock ./
 COPY gateway/web/index.html gateway/web/tsconfig.json gateway/web/vite.config.ts ./
@@ -11,7 +11,7 @@ COPY contracts /app/contracts
 RUN bun install --frozen-lockfile
 RUN bun run build
 
-FROM golang:1.25-bookworm AS go-builder
+FROM golang:1.25-bookworm@sha256:a9c020ee3d1508c7be5435c262434e3d3fc1d0e76a11afeb9ddae7d60bc86aa4 AS go-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
@@ -21,6 +21,7 @@ RUN CGO_ENABLED=0 go build -o /out/oneday ./cmd/oneday
 
 FROM chef AS planner
 COPY gateway/Cargo.toml gateway/Cargo.toml
+COPY gateway/Cargo.lock gateway/Cargo.lock
 COPY gateway/src gateway/src
 WORKDIR /app/gateway
 RUN cargo chef prepare --recipe-path recipe.json
@@ -28,14 +29,16 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS builder
 WORKDIR /app/gateway
 COPY --from=planner /app/gateway/recipe.json recipe.json
+COPY gateway/Cargo.lock Cargo.lock
 RUN cargo chef cook --release --recipe-path recipe.json
+COPY gateway/Cargo.lock Cargo.lock
 COPY gateway/Cargo.toml Cargo.toml
 COPY gateway/build.rs build.rs
 COPY gateway/src src
 COPY contracts /app/contracts
-RUN cargo build --release
+RUN cargo build --release --locked
 
-FROM debian:trixie-slim AS runtime
+FROM debian:trixie-slim@sha256:28de0877c2189802884ccd20f15ee41c203573bd87bb6b883f5f46362d24c5c2 AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates iproute2 \
     && rm -rf /var/lib/apt/lists/*
