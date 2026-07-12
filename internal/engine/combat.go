@@ -94,6 +94,15 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 	if ce.state.Resolved {
 		return nil, fmt.Errorf("combat is already resolved")
 	}
+	originalState := *ce.state
+	originalCharacter := *ce.narrator.character
+	completed := false
+	defer func() {
+		if !completed {
+			*ce.state = originalState
+			*ce.narrator.character = originalCharacter
+		}
+	}()
 
 	result := &CombatTurnResult{
 		Choices: defaultCombatChoices(),
@@ -198,10 +207,9 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		result.Victory = true
 
 		// Sync player HP to character stats.
-		ce.syncPlayerHP()
-
-		// Close sub-session.
-		_ = ce.session.CloseSubSession(ce.state.SubSessionID)
+		if err := ce.syncPlayerHP(); err != nil {
+			return nil, err
+		}
 	} else if ce.state.PlayerHP <= 0 {
 		ce.state.Resolved = true
 		ce.state.Victory = false
@@ -225,10 +233,9 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		result.DefeatOutcome = ce.state.DefeatOutcome
 
 		// Sync player HP to character stats.
-		ce.syncPlayerHP()
-
-		// Close sub-session.
-		_ = ce.session.CloseSubSession(ce.state.SubSessionID)
+		if err := ce.syncPlayerHP(); err != nil {
+			return nil, err
+		}
 	} else {
 		// Combat continues: check flee action.
 		if isFleeing(action) {
@@ -250,8 +257,9 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 				result.Victory = false
 				result.DefeatOutcome = "retreat"
 				mechanicalNote = fmt.Sprintf("[You managed to escape! (fled on roll %d/100)]", fleeRoll)
-				ce.syncPlayerHP()
-				_ = ce.session.CloseSubSession(ce.state.SubSessionID)
+				if err := ce.syncPlayerHP(); err != nil {
+					return nil, err
+				}
 			} else {
 				fleeRecord.Outcome = "failure"
 				mechanicalNote = fmt.Sprintf("[Escape failed! (rolled %d/100, needed 50+)]", fleeRoll)
@@ -268,9 +276,6 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		}
 		resolution := contracts.ChallengeResolution{ProtocolVersion: contracts.ChallengeProtocolVersion, InstanceID: instance.ID, Input: contracts.ChallengeInput{ActorID: ce.narrator.character.ID, Intent: action}, Outcome: *result.Outcome}
 		result.ChallengeInstance, result.ChallengeResolution = &instance, &resolution
-		if err := ce.narrator.db.RecordChallengeResolutionAtHead(ce.narrator.story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, resolution); err != nil {
-			return nil, fmt.Errorf("persisting combat outcome: %w", err)
-		}
 		narrative, aiResp, aiLatency, err := ce.narrateResolvedCombatTurn(ctx, action, result)
 		if err != nil {
 			return nil, err
@@ -289,10 +294,19 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 		}
 		resolution := contracts.ChallengeResolution{ProtocolVersion: contracts.ChallengeProtocolVersion, InstanceID: instance.ID, Input: contracts.ChallengeInput{ActorID: ce.narrator.character.ID, Intent: action}, Outcome: *result.Outcome}
 		result.ChallengeInstance, result.ChallengeResolution = &instance, &resolution
-		if err := ce.narrator.db.RecordChallengeResolutionAtHead(ce.narrator.story.ID, ce.narrator.session.SessionID(), ce.narrator.session.Turn(), instance, resolution); err != nil {
-			return nil, fmt.Errorf("persisting combat outcome: %w", err)
-		}
 	}
+	revision, err := ce.narrator.db.RecordChallengeResolutionAndCharacterAtHead(
+		ce.narrator.story.ID,
+		ce.narrator.session.SessionID(),
+		ce.narrator.session.Turn(),
+		*result.ChallengeInstance,
+		*result.ChallengeResolution,
+		ce.narrator.character,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("persisting combat outcome and character: %w", err)
+	}
+	ce.narrator.story.Revision = revision
 	if mechanicalNote != "" {
 		result.Narrative += "\n\n" + mechanicalNote
 	}
@@ -326,8 +340,11 @@ func (ce *CombatEngine) PlayerAction(ctx context.Context, action string) (*Comba
 	// Advance turn counter.
 	if !result.CombatOver {
 		ce.state.Turn++
+	} else if err := ce.session.CloseSubSession(ce.state.SubSessionID); err != nil {
+		log.Printf("oneday: combat outcome persisted canonically but closing sub-session failed: %v", err)
 	}
 
+	completed = true
 	return result, nil
 }
 
@@ -504,18 +521,18 @@ func (ce *CombatEngine) narrateDefeat(ctx context.Context) (string, string, erro
 }
 
 // syncPlayerHP writes the current player HP back to character.StatsJSON.
-func (ce *CombatEngine) syncPlayerHP() {
+func (ce *CombatEngine) syncPlayerHP() error {
 	var stats map[string]interface{}
 	if err := json.Unmarshal([]byte(ce.narrator.character.StatsJSON), &stats); err != nil {
-		return
+		return fmt.Errorf("parsing character stats while syncing combat HP: %w", err)
 	}
 	vitals, ok := stats["vitals"].(map[string]interface{})
 	if !ok {
-		return
+		return fmt.Errorf("character stats are missing vitals while syncing combat HP")
 	}
 	hp, ok := vitals["hp"].(map[string]interface{})
 	if !ok {
-		return
+		return fmt.Errorf("character vitals are missing hp while syncing combat HP")
 	}
 	hp["current"] = ce.state.PlayerHP
 	vitals["hp"] = hp
@@ -523,10 +540,10 @@ func (ce *CombatEngine) syncPlayerHP() {
 
 	b, err := json.Marshal(stats)
 	if err != nil {
-		return
+		return fmt.Errorf("marshaling character stats while syncing combat HP: %w", err)
 	}
 	ce.narrator.character.StatsJSON = string(b)
-	_ = ce.narrator.db.UpdateCharacterFull(ce.narrator.character)
+	return nil
 }
 
 // WriteSummaryToMain writes the combat outcome summary to the main narrative

@@ -93,17 +93,20 @@ func (db *DB) RecordChallengeResolutionAtHead(storyID, sessionID string, turn in
 // RecordChallengeResolutionAndCharacterAtHead commits a sub-session outcome and
 // its resulting character state together, so neither side can become canonical
 // without the other.
-func (db *DB) RecordChallengeResolutionAndCharacterAtHead(storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution, character *Character) error {
-	return db.WithTx(func(tx *sql.Tx) error {
+func (db *DB) RecordChallengeResolutionAndCharacterAtHead(storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution, character *Character) (int64, error) {
+	var revision int64
+	err := db.WithTx(func(tx *sql.Tx) error {
 		if err := db.recordChallengeResolutionAtHeadTx(tx, storyID, sessionID, turn, instance, resolution); err != nil {
 			return err
 		}
 		if err := db.UpdateCharacterFullTx(tx, character); err != nil {
 			return err
 		}
-		_, err := db.BumpStoryRevisionTx(tx, storyID)
+		var err error
+		revision, err = db.BumpStoryRevisionTx(tx, storyID)
 		return err
 	})
+	return revision, err
 }
 
 func (db *DB) recordChallengeResolutionAtHeadTx(tx *sql.Tx, storyID, sessionID string, turn int, instance contracts.ChallengeInstance, resolution contracts.ChallengeResolution) error {
