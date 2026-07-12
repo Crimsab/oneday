@@ -8,7 +8,7 @@ function snapshot(turn = 4, branchId = "branch-main") {
     { id: 1, session_id: "session-1", story_id: story.id, turn: 3, role: "assistant", content: "The archive doors wait in silence.", message_type: "narrative", metadata: {}, created_at: now, branch_id: branchId, source_commit_id: "commit-3" },
     { id: 2, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "Mira studies the fractured seal.", message_type: "narrative", metadata: { provider: "codex", model: "gpt-5.5", latency_ms: 1250, streamed: true, usage: { total_tokens: 321 }, generation: { run_id: "run-2", trace_id: "trace-2", stage: "narrator" }, output: { dialogue_blocks: [{ speaker_id: "npc-mira", speaker: "Mira", role: "Archivist", text: "Choose carefully." }] } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
     { id: 3, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "An older generation record remains readable.", message_type: "narrative", metadata: { model: "gpt-5.4-mini", latency_ms: 13250, streamed: true, usage: { total_tokens: 10311 } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
-  ];
+  ].filter((message) => message.turn <= turn);
   return {
     server_time: new Date().toISOString(),
     version: { turn, revision: branchId === "branch-main" ? 7 : 8, story_updated_at: now, active_session_id: "session-1", last_message_id: 3, world_updated_at: now, character_updated_at: now, npc_count: 1, npc_updated_at: now, chapter_count: 1, achievement_count: 0, latest_achievement_at: "", save_count: 0, latest_save_at: "", visual_asset_updated_at: "", visual_job_updated_at: "", active_visual_job_count: 0 },
@@ -307,10 +307,11 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
 test("restores a message decision and only exposes branch navigation when alternatives exist", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Previous story branch" })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Next story branch" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Previous alternative" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Next alternative" })).toBeEnabled();
   await page.getByRole("button", { name: "Try another path from here", description: "Create a new branch from before turn 4" }).click();
   await expect(page.getByText("Back at the previous decision on Turn 4 alternative 2.")).toBeVisible();
+  await expect(page.getByLabel("Available story alternatives")).toHaveCount(0);
 });
 
 test("does not render spoken audio controls while story speech is off", async ({ page }) => {
