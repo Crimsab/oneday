@@ -664,12 +664,22 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 	if err != nil {
 		return nil, fmt.Errorf("loading telemetry lineage: %w", err)
 	}
+	baseTelemetry := ai.TelemetryFromContext(ctx)
+	traceID := baseTelemetry.TraceID
+	if traceID == "" {
+		traceID = uuid.NewString()
+	}
+	safeMetadata := make(map[string]string, len(baseTelemetry.SafeMetadata)+1)
+	for key, value := range baseTelemetry.SafeMetadata {
+		safeMetadata[key] = value
+	}
+	safeMetadata["session_id"] = n.SessionID()
 	turnTelemetry := ai.TelemetryMetadata{
-		TraceID:        uuid.NewString(),
+		TraceID:        traceID,
 		StoryID:        n.story.ID,
 		BranchID:       head.Branch.ID,
 		SourceCommitID: head.Commit.ID,
-		SafeMetadata:   map[string]string{"session_id": n.SessionID()},
+		SafeMetadata:   safeMetadata,
 	}
 
 	// Load recent messages from DB to build context.
