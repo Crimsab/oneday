@@ -219,18 +219,6 @@ func LoadForEdit(path string) (Config, error) {
 	return configFromEditBytes(path, raw)
 }
 
-func SaveForEdit(path string, cfg Config) error {
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("validating config: %w", err)
-	}
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("serializing config: %w", err)
-	}
-	raw, _ := os.ReadFile(path)
-	return writeConfigAtomic(path, raw, data)
-}
-
 func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRoutingSettings {
 	activeProvider := ""
 	if enabled := cfg.EnabledProviders(); len(enabled) > 0 {
