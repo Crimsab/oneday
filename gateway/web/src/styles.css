@@ -1597,7 +1597,7 @@ input:disabled {
   content: "";
   position: absolute;
   inset: -1px auto -1px -1px;
-  width: 3px;
+  width: 2px;
   background: var(--choice-color, var(--accent));
 }
 
@@ -2115,7 +2115,7 @@ input:disabled {
   background:
     linear-gradient(180deg, rgba(255, 178, 56, 0.09), rgba(255, 255, 255, 0.012)),
     #11120f;
-  box-shadow: inset 3px 0 0 var(--accent);
+  box-shadow: inset 2px 0 0 var(--accent);
   outline: 0;
 }
 
