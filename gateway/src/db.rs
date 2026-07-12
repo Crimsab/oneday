@@ -371,7 +371,7 @@ pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Story
     let character = load_character(&mut *tx, story_id).await?;
     let world = load_world(&mut *tx, story_id, &branch_id).await?;
     let active_session = load_active_session(&mut *tx, story_id, &branch_id).await?;
-    let messages = load_messages(&mut *tx, story_id, &branch_id, 500).await?;
+    let messages = load_messages(&mut *tx, story_id, &branch_id, 120).await?;
     let choices = latest_choices(&messages, &active_session.id, world.current_turn);
     let panels = PanelsView {
         chapters: load_chapters(&mut *tx, story_id, &branch_id).await?,
