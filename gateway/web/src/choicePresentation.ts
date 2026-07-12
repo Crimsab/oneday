@@ -14,7 +14,7 @@ export interface ChoicePresentation {
 const forceIntents = new Set(["attack", "combat", "aggressive", "force"]);
 const exploreIntents = new Set(["explore", "observe"]);
 
-export function choicePresentation(choice: ChoiceView, index = 0): ChoicePresentation {
+export function choicePresentation(choice: ChoiceView): ChoicePresentation {
   const intent = clean(choice.intent);
   const risk = clean(choice.risk);
   const scope = clean(choice.scope);
