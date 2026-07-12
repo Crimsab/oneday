@@ -231,7 +231,21 @@ export function sendCraftMessage(
   });
 }
 
-export function getTimeline(storyId:string):Promise<TimelineResponse> { return request<TimelineResponse>(`/api/stories/${encodeURIComponent(storyId)}/timeline`); }
+export async function getTimeline(storyId:string):Promise<TimelineResponse> {
+  const path = `/api/stories/${encodeURIComponent(storyId)}/timeline`;
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await request<TimelineResponse>(path);
+    } catch (error) {
+      lastError = error;
+      const retryable = error instanceof ApiRequestError ? error.status >= 500 : error instanceof TypeError;
+      if (!retryable || attempt === 2) throw error;
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 120 * (attempt + 1)));
+    }
+  }
+  throw lastError;
+}
 export function updateTimeline(storyId:string,payload:TimelineEnvelope):Promise<TimelineMutationResponse> { return request<TimelineMutationResponse>(`/api/stories/${encodeURIComponent(storyId)}/timeline`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); }
 export function getHistory(storyId:string,cursor?:number,search=""):Promise<HistoryPage> { const query=new URLSearchParams({limit:"40",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<HistoryPage>(`/api/stories/${encodeURIComponent(storyId)}/history?${query}`); }
 export function getChapters(storyId:string,cursor?:number,search=""):Promise<ChapterPage> { const query=new URLSearchParams({limit:"30",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<ChapterPage>(`/api/stories/${encodeURIComponent(storyId)}/chapters?${query}`); }

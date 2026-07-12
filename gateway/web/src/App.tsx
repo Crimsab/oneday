@@ -308,6 +308,7 @@ function App() {
       }
       setSnapshot(nextSnapshot);
       void refreshVisualAssets(storyId);
+      void getTimeline(storyId).then(setTimeline).catch(() => undefined);
       setSync("Live");
     });
     source.addEventListener("turn", (event) => {

@@ -1,4 +1,4 @@
-import type { TimelineBranchView, TimelineResponse } from "./types";
+import type { MessageView, TimelineBranchView, TimelineResponse } from "./types";
 
 export interface MessageAlternativeSet {
   decisionCommitId: string;
@@ -56,4 +56,35 @@ export function messageAlternativesForCommit(
     currentIndex: branches.findIndex((branch) => branch.id === outcomeCommit.branch_id),
     atDecision: false,
   };
+}
+
+export function timelineControlAnchorMessageIds(
+  messages: MessageView[],
+  timeline: TimelineResponse | null,
+): Set<number> {
+  if (!timeline) return new Set();
+
+  const messagesByCommit = new Map<string, MessageView[]>();
+  for (const message of messages) {
+    if (!message.source_commit_id || message.role === "system") continue;
+    const group = messagesByCommit.get(message.source_commit_id) ?? [];
+    group.push(message);
+    messagesByCommit.set(message.source_commit_id, group);
+  }
+
+  const anchors = new Set<number>();
+  for (const [sourceCommitId, group] of messagesByCommit) {
+    const alternatives = messageAlternativesForCommit(sourceCommitId, timeline);
+    const commit = timeline.commits.find((item) => item.id === sourceCommitId);
+    const canRestore = Boolean(commit?.parent_commit_id);
+    const canSwitch = alternatives.branches.length > 1 && (alternatives.currentIndex >= 0 || alternatives.atDecision);
+    if (!canRestore && !canSwitch) continue;
+
+    const latest = (role: MessageView["role"]) => [...group].reverse().find((message) => message.role === role);
+    const anchor = alternatives.atDecision
+      ? latest("assistant") ?? latest("user")
+      : latest("user") ?? latest("assistant");
+    if (anchor) anchors.add(anchor.id);
+  }
+  return anchors;
 }

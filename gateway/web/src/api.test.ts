@@ -187,6 +187,16 @@ describe("api request handling", () => {
     );
   });
 
+  it("recovers timeline reads from transient server failures", async () => {
+    mockFetchSequence([
+      new Response(JSON.stringify({ error: "temporary timeline failure" }), { status: 500 }),
+      new Response(JSON.stringify({ active_branch_id: "branch-main", revision: 9, branches: [], head: null, commits: [] }), { status: 200 }),
+    ]);
+
+    await expect(getTimeline("story-1")).resolves.toMatchObject({ revision: 9 });
+    expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+  });
+
   it("requests branch-scoped paginated history, chapters, and exports", async () => {
     mockFetch(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
     await getHistory("story-1", 41, "glass seal");
@@ -259,4 +269,9 @@ describe("api request handling", () => {
 
 function mockFetch(response: Response) {
   globalThis.fetch = vi.fn(async () => response.clone()) as typeof fetch;
+}
+
+function mockFetchSequence(responses: Response[]) {
+  let index = 0;
+  globalThis.fetch = vi.fn(async () => responses[Math.min(index++, responses.length - 1)].clone()) as typeof fetch;
 }

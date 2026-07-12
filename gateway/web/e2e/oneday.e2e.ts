@@ -6,12 +6,13 @@ const story = { id: "story-1", name: "The Glass Archive", description: "A branch
 function snapshot(turn = 4, branchId = "branch-main") {
   const messages = [
     { id: 1, session_id: "session-1", story_id: story.id, turn: 3, role: "assistant", content: "The archive doors wait in silence.", message_type: "narrative", metadata: {}, created_at: now, branch_id: branchId, source_commit_id: "commit-3" },
+    { id: 4, session_id: "session-1", story_id: story.id, turn: 4, role: "user", content: "[Choice 1] Inspect the fractured seal.", message_type: "action", metadata: {}, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
     { id: 2, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "Mira studies the fractured seal.", message_type: "narrative", metadata: { provider: "codex", model: "gpt-5.5", latency_ms: 1250, streamed: true, usage: { total_tokens: 321 }, generation: { run_id: "run-2", trace_id: "trace-2", stage: "narrator" }, output: { dialogue_blocks: [{ speaker_id: "npc-mira", speaker: "Mira", role: "Archivist", text: "Choose carefully." }] } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
     { id: 3, session_id: "session-1", story_id: story.id, turn: 4, role: "assistant", content: "An older generation record remains readable.", message_type: "narrative", metadata: { model: "gpt-5.4-mini", latency_ms: 13250, streamed: true, usage: { total_tokens: 10311 } }, created_at: now, branch_id: branchId, source_commit_id: "commit-4" },
   ].filter((message) => message.turn <= turn);
   return {
     server_time: new Date().toISOString(),
-    version: { turn, revision: branchId === "branch-main" ? 7 : 8, story_updated_at: now, active_session_id: "session-1", last_message_id: 3, world_updated_at: now, character_updated_at: now, npc_count: 1, npc_updated_at: now, chapter_count: 1, achievement_count: 0, latest_achievement_at: "", save_count: 0, latest_save_at: "", visual_asset_updated_at: "", visual_job_updated_at: "", active_visual_job_count: 0 },
+    version: { turn, revision: branchId === "branch-main" ? 7 : 8, story_updated_at: now, active_session_id: "session-1", last_message_id: 4, world_updated_at: now, character_updated_at: now, npc_count: 1, npc_updated_at: now, chapter_count: 1, achievement_count: 0, latest_achievement_at: "", save_count: 0, latest_save_at: "", visual_asset_updated_at: "", visual_job_updated_at: "", active_visual_job_count: 0 },
     story,
     character: { id: "hero", name: "Iria", fields: { stats: { resolve: 42 }, condition: "Steady", inventory: [] } },
     world: { id: "world", current_location: "Glass Archive", current_location_id: "loc-archive", current_chapter: 1, current_turn: turn, spatial_locations: [{ id: "loc-archive", name: "Glass Archive", description: "The known archive", discovery_state: "visited" }, { id: "loc-court", name: "Outer Court", description: "A known courtyard", discovery_state: "known" }, { id: "loc-stair", name: "Mirror Stair", description: "A narrow stair lined with cracked mirrors", discovery_state: "known" }, { id: "loc-wharf", name: "Ash Wharf", description: "A loading platform above the black canal", discovery_state: "known" }], spatial_edges: [{ id: "edge-court", from_location_id: "loc-archive", to_location_id: "loc-court", direction: "south", travel_minutes: 5 }, { id: "edge-stair", from_location_id: "loc-court", to_location_id: "loc-stair", direction: "east", travel_minutes: 3 }, { id: "edge-wharf", from_location_id: "loc-stair", to_location_id: "loc-wharf", direction: "down", travel_minutes: 7 }, { id: "edge-return", from_location_id: "loc-wharf", to_location_id: "loc-archive", direction: "canal", travel_minutes: 12 }], world_time: { day: 2, minute_of_day: 780, display_text: "Day 2, 13:00" }, weather: { weather_kind: "clear", description: "Cold clear air" }, known_locations: [], global_events: [], faction_standings: {}, story_hooks: [], world_reactions: [], investigations: [], projects: [], guidance: [], fronts: [], timeline: [], scene_contract: {}, updated_at: now },
@@ -372,11 +373,16 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
 test("restores a message decision and only exposes branch navigation when alternatives exist", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
+  const playerPrompt = page.locator("article.transcript-message.user").filter({ hasText: "Inspect the fractured seal." });
+  const narratorResponse = page.locator("article.transcript-message.assistant").filter({ hasText: "Mira studies the fractured seal." });
+  await expect(playerPrompt.getByLabel("Available story alternatives")).toBeVisible();
+  await expect(narratorResponse.getByLabel("Available story alternatives")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Previous alternative" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Next alternative" })).toBeEnabled();
   await page.getByRole("button", { name: "Try another path from here", description: "Create a new branch from before turn 4" }).click();
   await expect(page.getByText("Back at the previous decision on Turn 4 alternative 2.")).toBeVisible();
-  await expect(page.getByLabel("Available story alternatives")).toContainText("2 paths");
+  const restoredNarrator = page.locator("article.transcript-message.assistant").filter({ hasText: "The archive doors wait in silence." });
+  await expect(restoredNarrator.getByLabel("Available story alternatives")).toContainText("2 paths");
   await expect(page.getByRole("button", { name: "Next alternative" })).toBeEnabled();
   const checkout = page.waitForResponse((response) => response.url().endsWith("/timeline") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Next alternative" }).click();
@@ -547,6 +553,13 @@ test("renders only canonical known map topology and bounded agency events", asyn
   await expect(mapShell).toHaveClass(/illustrated/);
   await expect(mapShell.locator(".canonical-map-stage > img.canonical-map-art")).toHaveAttribute("src", "/assets/map.png");
   await expect(map.locator("image[clip-path]")).toHaveCount(4);
+  const clipPathIds = await page.locator(".canonical-map clipPath[id]").evaluateAll((nodes) => nodes.map((node) => node.id));
+  expect(new Set(clipPathIds).size).toBe(clipPathIds.length);
+  const expandedClipTargetsExist = await map.locator("image[clip-path]").evaluateAll((nodes) => nodes.every((node) => {
+    const reference = node.getAttribute("clip-path")?.match(/^url\(#(.+)\)$/)?.[1];
+    return Boolean(reference && node.ownerSVGElement?.querySelector(`clipPath[id="${CSS.escape(reference)}"]`));
+  }));
+  expect(expandedClipTargetsExist).toBe(true);
   await mapShell.getByRole("button", { name: "Zoom in" }).click();
   await expect(mapShell.getByText("120%", { exact: true })).toBeVisible();
   await map.getByRole("button", { name: "Outer Court" }).click();

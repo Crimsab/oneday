@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, GitBranch, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { messageAlternativesForCommit } from "../messageAlternatives";
 import type { MessageView, TimelineResponse } from "../types";
 
@@ -49,10 +49,6 @@ export function MessageBranchControls({
       )}
       {showBranchSwitcher && (
         <div className="message-branch-switcher" aria-label="Available story alternatives">
-          <GitBranch size={13} aria-hidden="true" />
-          <span title={alternatives.atDecision ? "Choose a generated path from this decision" : alternatives.branches[index]?.name || "Displayed branch"}>
-            {alternatives.atDecision ? `${alternatives.branches.length} paths` : `${index + 1}/${alternatives.branches.length}`}
-          </span>
           <button
             type="button"
             aria-label="Previous alternative"
@@ -62,6 +58,9 @@ export function MessageBranchControls({
           >
             <ChevronLeft size={16} aria-hidden="true" />
           </button>
+          <span title={alternatives.atDecision ? "Choose a generated path from this decision" : alternatives.branches[index]?.name || "Displayed branch"}>
+            {alternatives.atDecision ? `${alternatives.branches.length} paths` : `${index + 1}/${alternatives.branches.length}`}
+          </span>
           <button
             type="button"
             aria-label="Next alternative"
