@@ -249,6 +249,15 @@
     },
     "AudioResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "providers": {
           "items": {
             "$ref": "#/$defs/ProviderStatus"
@@ -785,6 +794,15 @@
     },
     "CommandDescriptorsResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "commands": {
           "items": {
             "$ref": "#/$defs/CommandDescriptor"
@@ -822,6 +840,15 @@
     },
     "CraftResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "crafting": {
           "$ref": "#/$defs/CraftingResponse"
         },
@@ -940,6 +967,15 @@
     },
     "DeleteSaveResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "save": {
           "$ref": "#/$defs/BrowserSaveView"
         },
@@ -1132,6 +1168,15 @@
     },
     "LoadResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "save": {
           "$ref": "#/$defs/BrowserSaveView"
         },
@@ -1172,6 +1217,15 @@
     },
     "MetaResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "meta": {
           "$ref": "#/$defs/BrowserMetaResponse"
         },
@@ -1323,6 +1377,15 @@
     },
     "MiniGameResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "instance": {
           "$ref": "#/$defs/MiniGameInstance"
         },
@@ -1657,6 +1720,15 @@
     },
     "ModelSettingsResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "settings": {
           "$ref": "#/$defs/ModelRoutingSettings"
         },
@@ -1915,6 +1987,15 @@
     },
     "SaveResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "save": {
           "$ref": "#/$defs/BrowserSaveView"
         },
@@ -1927,6 +2008,15 @@
     },
     "SchemaPreflightResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "status": {
           "type": "string"
         }
@@ -2233,6 +2323,15 @@
     },
     "StoryCreateResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "story_id": {
           "type": "string"
         },
@@ -2349,6 +2448,15 @@
     },
     "StoryEnhanceResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "text": {
           "type": "string"
         },
@@ -2420,6 +2528,15 @@
     },
     "StoryWizardResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "state": {
           "$ref": "#/$defs/StoryCreatorState"
         },
@@ -2693,6 +2810,15 @@
     },
     "TurnResponse": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "events": {
           "items": {
             "$ref": "#/$defs/TurnEvent"
@@ -2708,6 +2834,15 @@
     },
     "TurnStreamLine": {
       "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
         "event": {
           "$ref": "#/$defs/TurnEvent"
         },

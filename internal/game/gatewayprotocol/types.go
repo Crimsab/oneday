@@ -19,6 +19,22 @@ type Error struct {
 	Details   json.RawMessage `json:"details,omitempty"`
 }
 
+type ResponseMeta struct {
+	ProtocolVersion int    `json:"protocol_version,omitempty"`
+	RequestID       string `json:"request_id,omitempty"`
+	ErrorDetail     *Error `json:"error_detail,omitempty"`
+}
+
+func Failure(code, message string) ResponseMeta {
+	return ResponseMeta{
+		ProtocolVersion: Version,
+		ErrorDetail: &Error{
+			Code:    code,
+			Message: message,
+		},
+	}
+}
+
 // SchemaRoot keeps every public bridge shape reachable from one reflection
 // root. It is not serialized at runtime; it is the canonical codegen input.
 type SchemaRoot struct {
@@ -55,6 +71,7 @@ type SchemaRoot struct {
 }
 
 type TurnResponse struct {
+	ResponseMeta
 	Events []contracts.TurnEvent `json:"events,omitempty"`
 	Error  string                `json:"error,omitempty"`
 }
@@ -64,24 +81,29 @@ type CraftRequest struct {
 	History []ai.Message `json:"history,omitempty"`
 }
 type CraftResponse struct {
+	ResponseMeta
 	Crafting *engine.CraftingResponse `json:"crafting,omitempty"`
 	Error    string                   `json:"error,omitempty"`
 }
 type TurnStreamLine struct {
+	ResponseMeta
 	Event *contracts.TurnEvent `json:"event,omitempty"`
 	Phase string               `json:"phase,omitempty"`
 	Error string               `json:"error,omitempty"`
 	Done  bool                 `json:"done,omitempty"`
 }
 type MetaResponse struct {
+	ResponseMeta
 	Meta  *contracts.BrowserMetaResponse `json:"meta,omitempty"`
 	Error string                         `json:"error,omitempty"`
 }
 type SaveResponse struct {
+	ResponseMeta
 	Save  *contracts.BrowserSaveView `json:"save,omitempty"`
 	Error string                     `json:"error,omitempty"`
 }
 type LoadResponse struct {
+	ResponseMeta
 	Save           *contracts.BrowserSaveView `json:"save,omitempty"`
 	Legacy         bool                       `json:"legacy,omitempty"`
 	SnapshotState  string                     `json:"snapshot_state"`
@@ -94,10 +116,12 @@ func LoadResponseFromContract(resp *contracts.BrowserLoadResponse) LoadResponse 
 }
 
 type DeleteSaveResponse struct {
+	ResponseMeta
 	Save  *contracts.BrowserSaveView `json:"save,omitempty"`
 	Error string                     `json:"error,omitempty"`
 }
 type CommandDescriptorsResponse struct {
+	ResponseMeta
 	Commands []contracts.CommandDescriptor `json:"commands,omitempty"`
 	Error    string                        `json:"error,omitempty"`
 }
@@ -120,6 +144,7 @@ type StoryEnhanceRequest struct {
 	State   *engine.StoryCreatorState `json:"state,omitempty"`
 }
 type StoryCreateResponse struct {
+	ResponseMeta
 	StoryID     string `json:"story_id,omitempty"`
 	CharacterID string `json:"character_id,omitempty"`
 	SessionID   string `json:"session_id,omitempty"`
@@ -128,6 +153,7 @@ type StoryCreateResponse struct {
 	Error       string `json:"error,omitempty"`
 }
 type StoryWizardResponse struct {
+	ResponseMeta
 	State       engine.StoryCreatorState `json:"state,omitempty"`
 	Phase       string                   `json:"phase,omitempty"`
 	Stage       string                   `json:"stage,omitempty"`
@@ -146,6 +172,7 @@ type StoryWizardResponse struct {
 	Error       string                   `json:"error,omitempty"`
 }
 type StoryEnhanceResponse struct {
+	ResponseMeta
 	Text      string `json:"text,omitempty"`
 	Model     string `json:"model,omitempty"`
 	Provider  string `json:"provider,omitempty"`
@@ -153,11 +180,13 @@ type StoryEnhanceResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 type ModelSettingsResponse struct {
+	ResponseMeta
 	Settings  *config.ModelRoutingSettings `json:"settings,omitempty"`
 	Error     string                       `json:"error,omitempty"`
 	ErrorCode string                       `json:"error_code,omitempty"`
 }
 type SchemaPreflightResponse struct {
+	ResponseMeta
 	Status string `json:"status"`
 }
 type MiniGameRequest struct {
@@ -169,6 +198,7 @@ type MiniGameRequest struct {
 	Selection  engine.MiniGameSelectionContext `json:"selection,omitempty"`
 }
 type MiniGameResponse struct {
+	ResponseMeta
 	Instance *engine.MiniGameInstance `json:"instance,omitempty"`
 	Error    string                   `json:"error,omitempty"`
 }
@@ -202,6 +232,7 @@ type AudioExport struct {
 	Jobs           []storage.TTSJob              `json:"jobs"`
 }
 type AudioResponse struct {
+	ResponseMeta
 	Statuses       []audioservice.ProviderStatus `json:"providers,omitempty"`
 	Profiles       []storage.VoiceProfile        `json:"voices,omitempty"`
 	Settings       *storage.StoryTTSSettings     `json:"settings,omitempty"`

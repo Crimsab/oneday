@@ -608,8 +608,11 @@ async fn call_gateway_turn_stream(
         ));
     }
     Ok(protocol::TurnResponse {
+        error_detail: None,
         events,
         error: None,
+        protocol_version: None,
+        request_id: None,
     })
 }
 
