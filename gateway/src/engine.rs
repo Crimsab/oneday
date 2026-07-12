@@ -24,6 +24,19 @@ fn bridge_error(code: impl Into<String>, message: impl Into<String>) -> anyhow::
     .into()
 }
 
+fn gateway_response_error(
+    detail: Option<&protocol::Error>,
+    legacy: Option<&str>,
+    fallback_code: &str,
+) -> Option<anyhow::Error> {
+    if let Some(detail) = detail {
+        return Some(bridge_error(&detail.code, &detail.message));
+    }
+    legacy
+        .filter(|message| !message.trim().is_empty())
+        .map(|message| bridge_error(fallback_code, message))
+}
+
 #[derive(Debug, Deserialize, Serialize)]
 pub struct ActionEnvelope {
     pub session_id: String,
@@ -191,8 +204,12 @@ pub async fn command_descriptors(
                 compact_stderr(&stderr)
             )
         })?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_owned()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "command_descriptors_failed",
+    ) {
+        return Err(error);
     }
     if !output.status.success() {
         return Err(anyhow!(
@@ -220,11 +237,12 @@ pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<protocol::Mo
                 compact_stderr(&stderr)
             )
         })?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(bridge_error(
-            parsed.error_code.as_deref().unwrap_or("model_settings_failed"),
-            error,
-        ));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        parsed.error_code.as_deref().unwrap_or("model_settings_failed"),
+    ) {
+        return Err(error);
     }
     if !output.status.success() {
         return Err(anyhow!(
@@ -247,11 +265,15 @@ pub async fn update_model_settings(
         &update,
     )
     .await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(bridge_error(
-            parsed.error_code.as_deref().unwrap_or("model_settings_update_failed"),
-            error,
-        ));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        parsed
+            .error_code
+            .as_deref()
+            .unwrap_or("model_settings_update_failed"),
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!(
@@ -306,8 +328,12 @@ pub async fn submit_action(
 
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::TurnResponse>(state, "gateway-turn", &req).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "turn_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!("gateway-turn failed: {}", compact_stderr(&stderr)));
@@ -334,8 +360,12 @@ pub async fn craft(
     };
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::CraftResponse>(state, "gateway-craft", &request).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "craft_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!("gateway-craft failed: {}", compact_stderr(&stderr)));
@@ -473,8 +503,12 @@ async fn call_minigame_gateway(
 ) -> anyhow::Result<protocol::MiniGameResponse> {
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::MiniGameResponse>(state, command, &request).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_owned()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "minigame_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!("{command} failed: {}", compact_stderr(&stderr)));
@@ -488,8 +522,12 @@ pub async fn audio(
 ) -> anyhow::Result<protocol::AudioResponse> {
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::AudioResponse>(state, "gateway-audio", &request).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_owned()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "audio_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!("gateway-audio failed: {}", compact_stderr(&stderr)));
@@ -529,8 +567,12 @@ async fn call_gateway_turn_stream(
             }
             let parsed: protocol::TurnStreamLine = serde_json::from_str(line)
                 .with_context(|| format!("decoding gateway-turn stream line: {line}"))?;
-            if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-                return Err(anyhow!(error.to_string()));
+            if let Some(error) = gateway_response_error(
+                parsed.error_detail.as_ref(),
+                parsed.error.as_deref(),
+                "turn_stream_failed",
+            ) {
+                return Err(error);
             }
             if let Some(event) = parsed.event {
                 let event_type = event.type_.clone();
@@ -629,8 +671,12 @@ pub async fn create_story(
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::StoryCreateResponse>(state, "gateway-story-create", &req)
             .await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "story_create_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!(
@@ -664,8 +710,12 @@ pub async fn story_wizard(
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::StoryWizardResponse>(state, "gateway-story-wizard", &req)
             .await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "story_wizard_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!(
@@ -694,8 +744,12 @@ pub async fn story_enhance(
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::StoryEnhanceResponse>(state, "gateway-story-enhance", &req)
             .await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "story_enhance_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!(
@@ -721,8 +775,12 @@ pub async fn submit_meta(
     };
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::MetaResponse>(state, "gateway-meta", &req).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "meta_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!("gateway-meta failed: {}", compact_stderr(&stderr)));
@@ -745,8 +803,12 @@ pub async fn create_save(
     };
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::SaveResponse>(state, "gateway-save", &req).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "save_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!("gateway-save failed: {}", compact_stderr(&stderr)));
@@ -768,8 +830,12 @@ pub async fn load_save(
     };
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::LoadResponse>(state, "gateway-load", &req).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "load_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!("gateway-load failed: {}", compact_stderr(&stderr)));
@@ -791,8 +857,12 @@ pub async fn delete_save(
     };
     let (parsed, status_ok, stderr) =
         call_gateway::<_, protocol::DeleteSaveResponse>(state, "gateway-delete-save", &req).await?;
-    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
-        return Err(anyhow!(error.to_string()));
+    if let Some(error) = gateway_response_error(
+        parsed.error_detail.as_ref(),
+        parsed.error.as_deref(),
+        "delete_save_failed",
+    ) {
+        return Err(error);
     }
     if !status_ok {
         return Err(anyhow!(
@@ -1120,6 +1190,26 @@ mod tests {
             final_committed.event_type.as_deref(),
             Some("turn.committed")
         );
+    }
+
+    #[test]
+    fn typed_gateway_error_preserves_code_and_message() {
+        let error = gateway_response_error(
+            Some(&protocol::Error {
+                code: "stale_revision".to_owned(),
+                details: None,
+                message: "revision moved".to_owned(),
+                retryable: true,
+            }),
+            Some("legacy fallback"),
+            "fallback",
+        )
+        .expect("typed gateway error");
+        let bridge = error
+            .downcast_ref::<BridgeError>()
+            .expect("bridge error classification");
+        assert_eq!(bridge.code, "stale_revision");
+        assert_eq!(bridge.message, "revision moved");
     }
 
     #[tokio::test]
