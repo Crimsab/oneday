@@ -327,11 +327,9 @@ func (nc *NarratorCommand) enqueueNarratorLore(changes map[string]interface{}) {
 	}
 	storyID := nc.story.ID
 	turn := nc.world.CurrentTurn
-	go func() {
-		if err := nc.rag.StoreChunk(context.Background(), storyID, loreText, "narrator", turn, turn); err != nil {
-			log.Printf("oneday: narrator state committed but lore indexing failed: %v", err)
-		}
-	}()
+	submitRAGTask(storyID, ragTaskKey("narrator-lore", loreText), func(taskCtx context.Context) error {
+		return nc.rag.StoreChunk(taskCtx, storyID, loreText, "narrator", turn, turn)
+	})
 }
 
 // buildNPCContext builds a formatted NPC context string for the narrator meta prompt.
