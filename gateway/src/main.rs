@@ -12,12 +12,18 @@ mod routes;
 mod telemetry;
 
 use anyhow::Context;
+use axum::body::Body;
+use axum::http::{HeaderName, Request};
 use axum::Router;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use std::net::SocketAddr;
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Semaphore};
+use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tower_http::LatencyUnit;
+use tracing::Level;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
@@ -72,7 +78,32 @@ async fn main() -> anyhow::Result<()> {
     assets::spawn_visual_generation_maintenance(state.clone());
     assets::spawn_visual_generation_worker(state.clone());
     assets::spawn_automatic_visual_catchup(state.clone());
-    let app: Router = routes::router(state);
+    let request_id_header = HeaderName::from_static("x-request-id");
+    let trace_request_id_header = request_id_header.clone();
+    let app: Router = routes::router(state)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(move |request: &Request<Body>| {
+                    let request_id = request
+                        .headers()
+                        .get(&trace_request_id_header)
+                        .and_then(|value| value.to_str().ok())
+                        .unwrap_or("-");
+                    tracing::info_span!(
+                        "http_request",
+                        request_id,
+                        method = %request.method(),
+                        uri = %request.uri(),
+                    )
+                })
+                .on_response(
+                    DefaultOnResponse::new()
+                        .level(Level::INFO)
+                        .latency_unit(LatencyUnit::Millis),
+                ),
+        )
+        .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
+        .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("binding {addr}"))?;
