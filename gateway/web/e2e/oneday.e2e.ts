@@ -66,6 +66,25 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let activeMiniGame: any = options.activeMiniGame ? automaticPatternMiniGame() : null;
   let visualCanUndo = true;
   let visualCanRedo = false;
+  let visualPrompt = "Mira restored portrait";
+  let visualStatus = "pending";
+  let visualSelectedVersion = 21;
+  let visualGenerationQueued = false;
+  let visualVersions = [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }];
+  const currentVisualResponse = () => {
+    const response: any = visualResponse(visualCanUndo, visualCanRedo);
+    response.assets[0] = {
+      ...response.assets[0],
+      prompt: visualPrompt,
+      status: visualStatus,
+      selected_version_id: visualSelectedVersion,
+      updated_at: visualSelectedVersion === 22 ? "2026-07-11T12:01:00Z" : now,
+    };
+    response.jobs = visualGenerationQueued
+      ? [{ id: 91, asset_id: "asset-mira-new", story_id: story.id, canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", status: "queued", attempts: 0, max_attempts: 3, locked_until: "", error: "", provider: "", started_at: "", finished_at: "", branch_id: "branch-main", source_commit_id: "commit-4", created_at: now, updated_at: now }]
+      : [];
+    return response;
+  };
   let currentTimeline = structuredClone(timeline);
   let audioGenerated = false;
   let ttsSettings = { story_id: story.id, mode: options.ttsOff ? "off" : "all", autoplay: false, default_language_tag: "en", provider_policy: {} };
@@ -133,18 +152,35 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       return json(route, { wizard: { state: { stage: "brief" }, phase: "conversation", stage: "brief", stage_label: "Choose the story brief", placeholder: "Describe the story you want...", message: "Story setup starts with one short brief.", actions: [{ key: "preset_dark_fantasy", label: "Dark fantasy", seed: "Italian dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue." }, { key: "preset_cyberpunk", label: "Cyberpunk noir", seed: "Italian cyberpunk noir with sharp dialogue." }, { key: "focus_input", label: "Write my own" }] } });
     }
     if (path.endsWith("/snapshot")) return json(route, snapshot());
-    if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }]);
+    if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, visualVersions);
+    if (path.endsWith("/visual-assets/asset-mira-new") && request.method() === "PUT") {
+      visualPrompt = request.postDataJSON().prompt;
+      return json(route, currentVisualResponse());
+    }
+    if (path.endsWith("/visual-assets/generate") && request.method() === "POST") {
+      visualGenerationQueued = true;
+      visualStatus = "queued";
+      return json(route, currentVisualResponse());
+    }
     if (path.endsWith("/visual-assets/asset-mira-new/selection/undo")) {
       visualCanUndo = false;
       visualCanRedo = true;
-      return json(route, visualResponse(visualCanUndo, visualCanRedo));
+      return json(route, currentVisualResponse());
     }
     if (path.endsWith("/visual-assets/asset-mira-new/selection/redo")) {
       visualCanUndo = true;
       visualCanRedo = false;
-      return json(route, visualResponse(visualCanUndo, visualCanRedo));
+      return json(route, currentVisualResponse());
     }
-    if (path.endsWith("/visual-assets")) return json(route, visualResponse(visualCanUndo, visualCanRedo));
+    if (path.endsWith("/visual-assets")) {
+      if (visualGenerationQueued) {
+        visualGenerationQueued = false;
+        visualStatus = "ready";
+        visualSelectedVersion = 22;
+        visualVersions = [{ ...visualVersions[0], id: 22, url: "/assets/mira-new.png", prompt: visualPrompt, created_at: "2026-07-11T12:01:00Z" }, ...visualVersions];
+      }
+      return json(route, currentVisualResponse());
+    }
     if (path.endsWith("/minigames") && request.method() === "GET") return json(route, { instance: activeMiniGame });
     if (path.endsWith("/minigames") && request.method() === "POST") {
       const body = request.postDataJSON() as { definition: { kind: string } };
@@ -364,6 +400,37 @@ test("shows canonical visual lineage and branch-local selection controls", async
   await expect(page.getByText("Visual selection undone.")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Redo selection" })).toBeEnabled();
   expect(errors).toEqual([]);
+});
+
+test("keeps asset prompt edits stable and reveals completed image versions", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Options" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByPlaceholder("Search options").fill("known location icons");
+  await dialog.getByRole("button", { name: /Map art/ }).click();
+
+  const prompt = dialog.getByLabel("Asset prompt");
+  await prompt.fill("Mira beneath rain-dark archive glass");
+  const reload = page.waitForResponse((response) => response.url().endsWith("/visual-assets"));
+  await dialog.getByRole("button", { name: "Reload assets" }).click();
+  await reload;
+  await expect(prompt).toHaveValue("Mira beneath rain-dark archive glass");
+
+  const queued = page.waitForResponse((response) => response.url().endsWith("/visual-assets/generate"));
+  await dialog.getByRole("button", { name: "Regenerate", exact: true }).click();
+  await queued;
+  await expect(prompt).toHaveValue("Mira beneath rain-dark archive glass");
+  await expect(dialog.getByRole("button", { name: "Generating…" })).toBeDisabled();
+
+  const completed = page.waitForResponse((response) => response.url().endsWith("/visual-assets"));
+  await dialog.getByRole("button", { name: "Reload assets" }).click();
+  await completed;
+  await expect(dialog.getByText("2 / 2 · selected")).toBeVisible();
+  await dialog.getByRole("button", { name: "Older →" }).click();
+  await expect(dialog.getByText("1 / 2 · preview")).toBeVisible();
+  await dialog.getByRole("button", { name: "← Newer" }).click();
+  await expect(dialog.getByText("2 / 2 · selected")).toBeVisible();
 });
 
 test("plays a timing-free minigame through the shared browser host", async ({ page }) => {

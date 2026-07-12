@@ -453,6 +453,11 @@ function VisualDirectionSettings({
   const selectedImageUrl = readyAssetUrl(selectedAsset);
   const activeVersion =
     versions[Math.min(versionIndex, Math.max(versions.length - 1, 0))] ?? null;
+  const selectedJobActive = Boolean(
+    selectedAsset &&
+      activeJobs.some((job) => job.asset_id === selectedAsset.id),
+  );
+  const loadedAssetId = useRef("");
 
   useEffect(() => {
     setDraft(profileDraft(profile));
@@ -468,23 +473,35 @@ function VisualDirectionSettings({
   }, [assets, selectedAssetId]);
 
   useEffect(() => {
-    if (!selectedAsset) {
+    const asset = selectedAsset;
+    if (!asset) {
+      loadedAssetId.current = "";
       setAssetDraft({ prompt: "", negative_prompt: "" });
       setVersions([]);
       return;
     }
-    setAssetDraft({
-      prompt: selectedAsset.prompt,
-      negative_prompt: selectedAsset.negative_prompt,
-    });
+    const assetChanged = loadedAssetId.current !== asset.id;
+    loadedAssetId.current = asset.id;
+    if (assetChanged) {
+      setAssetDraft({
+        prompt: asset.prompt,
+        negative_prompt: asset.negative_prompt,
+      });
+    }
     let cancelled = false;
     setVersionsBusy(true);
     setSaveError("");
-    onVersionsLoad(selectedAsset.id)
+    const previouslyShownId = assetChanged ? null : activeVersion?.id ?? null;
+    onVersionsLoad(asset.id)
       .then((nextVersions) => {
         if (cancelled) return;
         setVersions(nextVersions);
-        setVersionIndex(0);
+        const preferredVersionId =
+          asset.selected_version_id ?? previouslyShownId ?? nextVersions[0]?.id;
+        const preferredIndex = nextVersions.findIndex(
+          (version) => version.id === preferredVersionId,
+        );
+        setVersionIndex(preferredIndex >= 0 ? preferredIndex : 0);
       })
       .catch((failure) => {
         if (cancelled) return;
@@ -499,7 +516,12 @@ function VisualDirectionSettings({
     return () => {
       cancelled = true;
     };
-  }, [onVersionsLoad, selectedAsset]);
+  }, [
+    onVersionsLoad,
+    selectedAsset?.id,
+    selectedAsset?.selected_version_id,
+    selectedAsset?.status,
+  ]);
 
   const update = <K extends keyof VisualProfileUpdate>(
     key: K,
@@ -578,9 +600,6 @@ function VisualDirectionSettings({
         allow_silhouette: selectedAsset.gate_state === "silhouette_available",
         limit: 1,
       });
-      const nextVersions = await onVersionsLoad(selectedAsset.id);
-      setVersions(nextVersions);
-      setVersionIndex(0);
     } catch (failure) {
       setSaveError(
         failure instanceof Error ? failure.message : String(failure),
@@ -761,6 +780,22 @@ function VisualDirectionSettings({
                 <div className="visual-version-bar">
                   <button
                     type="button"
+                    disabled={busy || versionIndex <= 0}
+                    onClick={() =>
+                      setVersionIndex((value) => Math.max(0, value - 1))
+                    }
+                  >
+                    ← Newer
+                  </button>
+                  <span>
+                    {versionsBusy
+                      ? "Loading versions"
+                      : versions.length
+                        ? `${versions.length - versionIndex} / ${versions.length}${activeVersion?.id === selectedAsset.selected_version_id ? " · selected" : " · preview"}`
+                        : "No versions yet"}
+                  </span>
+                  <button
+                    type="button"
                     disabled={busy || versionIndex >= versions.length - 1}
                     onClick={() =>
                       setVersionIndex((value) =>
@@ -768,23 +803,7 @@ function VisualDirectionSettings({
                       )
                     }
                   >
-                    Previous
-                  </button>
-                  <span>
-                    {versionsBusy
-                      ? "Loading versions"
-                      : versions.length
-                        ? `${versionIndex + 1} / ${versions.length}`
-                        : "No versions yet"}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy || versionIndex <= 0}
-                    onClick={() =>
-                      setVersionIndex((value) => Math.max(0, value - 1))
-                    }
-                  >
-                    Next
+                    Older →
                   </button>
                 </div>
                 {activeVersion && (
@@ -835,9 +854,13 @@ function VisualDirectionSettings({
                     type="button"
                     className="primary-action"
                     onClick={() => void regenerateSelectedAsset()}
-                    disabled={busy || !generationAllowed}
+                    disabled={busy || selectedJobActive || !generationAllowed}
                   >
-                    {selectedAsset.gate_state === "silhouette_available" ? "Generate silhouette" : "Regenerate"}
+                    {selectedJobActive
+                      ? "Generating…"
+                      : selectedAsset.gate_state === "silhouette_available"
+                        ? "Generate silhouette"
+                        : "Regenerate"}
                   </button>
                 </div>
               </div>
