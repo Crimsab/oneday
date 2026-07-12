@@ -401,13 +401,13 @@ summary:focus-visible {
 .map-expand-button { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; }
 .map-expand-button:hover { background: rgba(255,255,255,.05); color: var(--text); }
 .canonical-map { display: grid; overflow: hidden; border-color: var(--line-soft); border-radius: 7px; background: #0a1012; }
-.canonical-map-stage { position: relative; isolation: isolate; min-width: 0; overflow: hidden; background: #091012; }
+.canonical-map-stage { position: relative; isolation: isolate; min-width: 0; overflow: hidden; overscroll-behavior: contain; background: #091012; }
 .canonical-map.illustrated::after { content: none; }
 .canonical-map-stage::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(circle at 50% 46%, rgba(208,154,72,.055), transparent 42%), linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px); background-size: auto, 32px 32px, 32px 32px; pointer-events: none; }
 .canonical-map-art { z-index: -2; }
 .canonical-map.illustrated .canonical-map-stage::after { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(180deg, rgba(5,9,10,.38), rgba(5,9,10,.72)); pointer-events: none; }
-.canonical-map svg { min-width: 0; height: 220px; cursor: grab; touch-action: none; user-select: none; }
-.canonical-map svg.dragging { cursor: grabbing; }
+.canonical-map-canvas { min-width: 0; height: 220px; cursor: grab; touch-action: none; user-select: none; }
+.canonical-map-canvas.dragging { cursor: grabbing; }
 .canonical-map .map-route line { stroke: color-mix(in srgb, var(--muted) 62%, transparent); stroke-width: 1.5; stroke-dasharray: 5 5; }
 .canonical-map .map-route text { fill: var(--faint); font-family: var(--mono); font-size: 9px; letter-spacing: .04em; paint-order: stroke; stroke: #091012; stroke-width: 3px; }
 .canonical-map .map-node { cursor: pointer; outline: none; }
@@ -420,6 +420,7 @@ summary:focus-visible {
 .canonical-map .node-label { font-size: 11px; font-weight: 650; stroke: rgba(4,8,9,.94); stroke-width: 4px; }
 .canonical-map-toolbar { position: absolute; inset: 10px 10px auto auto; z-index: 4; display: inline-flex; align-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 6px; background: rgba(13,18,21,.94); box-shadow: 0 8px 24px rgba(0,0,0,.26); }
 .canonical-map-toolbar button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-right: 1px solid var(--line-soft); border-radius: 0; background: transparent; padding: 0; color: var(--muted); cursor: pointer; }
+.canonical-map-toolbar button svg { width: 15px; height: 15px; display: block; color: currentColor; stroke: currentColor; }
 .canonical-map-toolbar button:last-child { border-right: 0; }
 .canonical-map-toolbar button:hover { background: rgba(255,255,255,.05); color: var(--text); }
 .canonical-map-toolbar span { min-width: 46px; padding-inline: 7px; color: var(--faint); font-family: var(--mono); font-size: 9px; text-align: center; }
@@ -437,7 +438,7 @@ summary:focus-visible {
 .world-state.expanded .ws-metrics,
 .world-state.expanded .ws-map-block { grid-column: 1 / -1; }
 .world-state.expanded .ws-map-block { grid-row: 1; }
-.canonical-map.expanded svg { height: 460px; min-height: 460px; }
+.canonical-map.expanded .canonical-map-canvas { height: 460px; min-height: 460px; }
 .canonical-map.expanded .canonical-map-selection { grid-template-columns: 52px minmax(0,1fr) auto; padding: 12px 14px; }
 .canonical-map.expanded .canonical-map-selection-icon { width: 52px; height: 52px; }
 .canonical-map.expanded .canonical-map-selection strong { font-size: 14px; }
