@@ -318,11 +318,6 @@ func normalizeLocationKind(value string) string {
 		return "place"
 	}
 }
-func (db *DB) EnsureLocation(storyID, name string, turn int) (*CanonicalLocation, error) {
-	var l *CanonicalLocation
-	err := db.WithTx(func(tx *sql.Tx) error { var e error; l, e = ensureLocationTx(tx, storyID, name, turn); return e })
-	return l, err
-}
 func (db *DB) SetCurrentLocation(storyID, entityID, name string, turn int) error {
 	return db.WithTx(func(tx *sql.Tx) error {
 		l, err := ensureLocationTx(tx, storyID, name, turn)
@@ -538,58 +533,6 @@ func (db *DB) AdvanceWorldTimeTx(tx *sql.Tx, storyID, reason string, deltaMinute
 	return clock, err
 }
 
-func (db *DB) RecordWorldEvent(e *CanonicalWorldEvent) error {
-	if e == nil {
-		return errors.New("world event required")
-	}
-	return db.WithTx(func(tx *sql.Tx) error {
-		b, c, err := activeLineageTx(tx, e.StoryID)
-		if err != nil {
-			return err
-		}
-		var day, minute int
-		if err = tx.QueryRow(`SELECT day,minute_of_day FROM world_clocks WHERE story_id=?`, e.StoryID).Scan(&day, &minute); err != nil {
-			return err
-		}
-		if e.ID == "" {
-			e.ID = uuid.NewString()
-		}
-		if e.DetailsJSON == "" {
-			e.DetailsJSON = "{}"
-		}
-		if e.Visibility == "" {
-			e.Visibility = "private"
-		}
-		e.BranchID = b
-		e.SourceCommitID = c
-		_, err = tx.Exec(`INSERT INTO canonical_world_events (id,story_id,event_kind,title,details_json,location_id,faction_id,entity_id,caused_by_event_id,turn,world_day,world_minute,visibility,branch_id,source_commit_id) VALUES (?,?,?,?,?,NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),NULLIF(?,''),?,?,?,?,?,?)`, e.ID, e.StoryID, e.Kind, e.Title, e.DetailsJSON, e.LocationID, e.FactionID, e.EntityID, e.CausedByEventID, e.Turn, day, minute, e.Visibility, b, c)
-		return err
-	})
-}
-func (db *DB) RecordWorldThread(e *WorldThreadEvent) error {
-	if e == nil {
-		return errors.New("world thread event required")
-	}
-	return db.WithTx(func(tx *sql.Tx) error {
-		b, c, err := activeLineageTx(tx, e.StoryID)
-		if err != nil {
-			return err
-		}
-		if e.ID == "" {
-			e.ID = uuid.NewString()
-		}
-		if e.DetailsJSON == "" {
-			e.DetailsJSON = "{}"
-		}
-		if e.Visibility == "" {
-			e.Visibility = "private"
-		}
-		e.BranchID = b
-		e.SourceCommitID = c
-		_, err = tx.Exec(`INSERT INTO world_thread_events (id,story_id,thread_id,title,status,pressure,details_json,visibility,turn,branch_id,source_commit_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, e.ID, e.StoryID, e.ThreadID, e.Title, e.Status, e.Pressure, e.DetailsJSON, e.Visibility, e.Turn, b, c)
-		return err
-	})
-}
 func (db *DB) RecordWeather(storyID, locationID, kind, intensity, description string, fromDay, fromMinute int) error {
 	return db.WithTx(func(tx *sql.Tx) error {
 		b, c, e := activeLineageTx(tx, storyID)

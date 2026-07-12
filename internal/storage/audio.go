@@ -36,10 +36,6 @@ type VoiceProfile struct {
 	UpdatedAt       string          `json:"updated_at,omitempty"`
 }
 
-func (voice VoiceProfile) Signature() string {
-	return strings.Join([]string{voice.Provider, voice.Model, voice.ProviderVoiceID, voice.Version, voice.StyleFamily}, ":")
-}
-
 type VoiceAssignment struct {
 	ID             string          `json:"id"`
 	AssignmentKey  string          `json:"assignment_key"`

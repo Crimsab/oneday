@@ -63,64 +63,6 @@ func (db *DB) GetTurnIdempotency(storyID, key, requestHash string) (string, bool
 	return eventsJSON, true, nil
 }
 
-func (db *DB) SaveTurnIdempotency(storyID, key, requestHash, eventsJSON string) error {
-	storyID = strings.TrimSpace(storyID)
-	key = strings.TrimSpace(key)
-	requestHash = strings.TrimSpace(requestHash)
-	if storyID == "" || key == "" {
-		return nil
-	}
-	if requestHash == "" {
-		return errors.New("idempotency request hash is required")
-	}
-	_, err := db.conn.Exec(
-		`INSERT INTO turn_idempotency (story_id, idempotency_key, request_hash, events_json)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(story_id, idempotency_key) DO UPDATE SET
-           request_hash = excluded.request_hash,
-           events_json = excluded.events_json,
-           status = 'committed',
-           owner = '',
-           locked_until = '',
-           updated_at = CURRENT_TIMESTAMP,
-           error = ''`,
-		storyID, key, requestHash, eventsJSON,
-	)
-	if err != nil {
-		return fmt.Errorf("saving turn idempotency key: %w", err)
-	}
-	return nil
-}
-
-func (db *DB) SaveTurnIdempotencyTx(tx *sql.Tx, storyID, key, requestHash, eventsJSON string) error {
-	storyID = strings.TrimSpace(storyID)
-	key = strings.TrimSpace(key)
-	requestHash = strings.TrimSpace(requestHash)
-	if storyID == "" || key == "" {
-		return nil
-	}
-	if requestHash == "" {
-		return errors.New("idempotency request hash is required")
-	}
-	_, err := tx.Exec(
-		`INSERT INTO turn_idempotency (story_id, idempotency_key, request_hash, events_json, status, owner, locked_until, updated_at, error)
-         VALUES (?, ?, ?, ?, 'committed', '', '', CURRENT_TIMESTAMP, '')
-         ON CONFLICT(story_id, idempotency_key) DO UPDATE SET
-           request_hash = excluded.request_hash,
-           events_json = excluded.events_json,
-           status = 'committed',
-           owner = '',
-           locked_until = '',
-           updated_at = CURRENT_TIMESTAMP,
-           error = ''`,
-		storyID, key, requestHash, eventsJSON,
-	)
-	if err != nil {
-		return fmt.Errorf("saving turn idempotency key: %w", err)
-	}
-	return nil
-}
-
 func (db *DB) ClaimTurnIdempotency(storyID, key, requestHash, owner string, ttl time.Duration) (*TurnIdempotencyClaimResult, error) {
 	storyID = strings.TrimSpace(storyID)
 	key = strings.TrimSpace(key)

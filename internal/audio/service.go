@@ -50,16 +50,6 @@ func NewService(db *storage.DB, cfg config.TTSConfig) *Service {
 	}
 }
 
-func NewServiceWithProviders(db *storage.DB, cfg config.TTSConfig, providers ...Provider) *Service {
-	service := NewService(db, cfg)
-	for _, provider := range providers {
-		if provider != nil {
-			service.providers[provider.ID()] = provider
-		}
-	}
-	return service
-}
-
 func (service *Service) ProviderStatuses(ctx context.Context) []ProviderStatus {
 	statuses := make([]ProviderStatus, 0, len(service.providerOrder))
 	seen := map[string]bool{}

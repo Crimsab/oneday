@@ -551,24 +551,6 @@ func (db *DB) AddFactionMembershipEvent(e *FactionMembershipEvent) error {
 		return err
 	})
 }
-func (db *DB) AddFactionRelationshipEvent(e *FactionRelationshipEvent) error {
-	if e == nil || e.Delta < -100 || e.Delta > 100 {
-		return errors.New("valid faction relationship event required")
-	}
-	return db.WithTx(func(tx *sql.Tx) error {
-		b, c, err := activeLineageTx(tx, e.StoryID)
-		if err != nil {
-			return err
-		}
-		if e.ID == "" {
-			e.ID = uuid.NewString()
-		}
-		e.BranchID = b
-		e.SourceCommitID = c
-		_, err = tx.Exec(`INSERT INTO faction_relationship_events (id,story_id,source_faction_id,target_faction_id,delta,reason,turn,branch_id,source_commit_id) VALUES (?,?,?,?,?,?,?,?,?)`, e.ID, e.StoryID, e.SourceFactionID, e.TargetFactionID, e.Delta, e.Reason, e.Turn, b, c)
-		return err
-	})
-}
 func (db *DB) ReputationScore(storyID, factionID, entityID string) (int, error) {
 	var score int
 	err := db.conn.QueryRow(`SELECT MAX(-100,MIN(100,COALESCE(SUM(delta),0))) FROM reputation_events WHERE story_id=? AND faction_id=? AND entity_id=?`, storyID, factionID, entityID).Scan(&score)
