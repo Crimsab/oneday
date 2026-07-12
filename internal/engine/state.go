@@ -79,6 +79,79 @@ type stateChangeOperation struct {
 	Value interface{}
 }
 
+type stateMutationContext struct {
+	character   *storage.Character
+	world       *storage.WorldState
+	db          *storage.DB
+	npcs        npcStateStore
+	storyID     string
+	currentTurn int
+	stats       map[string]interface{}
+	inventory   []interface{}
+}
+
+func newStateMutationContext(
+	character *storage.Character,
+	world *storage.WorldState,
+	db *storage.DB,
+	npcs npcStateStore,
+	storyID string,
+	currentTurn int,
+) (*stateMutationContext, error) {
+	var stats map[string]interface{}
+	if err := json.Unmarshal([]byte(character.StatsJSON), &stats); err != nil {
+		return nil, fmt.Errorf("parsing character stats: %w", err)
+	}
+
+	var inventory []interface{}
+	if character.InventoryJSON != "" && character.InventoryJSON != "null" {
+		parsed, err := parseInventoryItems(character.InventoryJSON)
+		if err != nil {
+			return nil, fmt.Errorf("parsing character inventory: %w", err)
+		}
+		inventory = parsed
+	}
+	if inventory == nil {
+		inventory = []interface{}{}
+	}
+
+	return &stateMutationContext{
+		character:   character,
+		world:       world,
+		db:          db,
+		npcs:        npcs,
+		storyID:     storyID,
+		currentTurn: currentTurn,
+		stats:       stats,
+		inventory:   inventory,
+	}, nil
+}
+
+func (mutation *stateMutationContext) commit() error {
+	statsBytes, err := json.Marshal(mutation.stats)
+	if err != nil {
+		return fmt.Errorf("marshaling updated character stats: %w", err)
+	}
+	inventoryBytes, err := json.Marshal(mutation.inventory)
+	if err != nil {
+		return fmt.Errorf("marshaling updated inventory: %w", err)
+	}
+
+	mutation.character.StatsJSON = string(statsBytes)
+	if traits, err := json.Marshal(toStringSlice(mutation.stats["traits"])); err == nil {
+		mutation.character.TraitsJSON = string(traits)
+	}
+	if skills, err := json.Marshal(toSkillsMap(mutation.stats["skills"])); err == nil {
+		mutation.character.SkillsJSON = string(skills)
+	}
+	mutation.character.InventoryJSON = string(inventoryBytes)
+
+	now := time.Now()
+	mutation.character.UpdatedAt = now
+	mutation.world.UpdatedAt = now
+	return nil
+}
+
 var standardStateChangeOrder = []StateChangeKey{
 	StateChangeVitals, StateChangeAttributes, StateChangeSecondary, StateChangeLocation, StateChangeCurrency,
 	StateChangeInventoryRemove, StateChangeInventoryAdd, StateChangeTraitAdd, StateChangeTitleAdd,
@@ -153,26 +226,12 @@ func applyStateChangesWithNPCStore(
 		return nil, nil
 	}
 
-	// Parse character stats JSON into a mutable map.
-	var stats map[string]interface{}
-	if err := json.Unmarshal([]byte(char.StatsJSON), &stats); err != nil {
-		return nil, fmt.Errorf("parsing character stats: %w", err)
+	mutation, err := newStateMutationContext(char, world, db, npcs, storyID, currentTurn)
+	if err != nil {
+		return nil, err
 	}
-
-	// Parse character inventory JSON into a separate mutable slice.
-	// We keep inventory in char.InventoryJSON (not inside stats_json) so that
-	// the full item objects (name, type, rarity, effects, description) survive.
-	var invItems []interface{}
-	if char.InventoryJSON != "" && char.InventoryJSON != "null" {
-		parsedItems, err := parseInventoryItems(char.InventoryJSON)
-		if err != nil {
-			return nil, fmt.Errorf("parsing character inventory: %w", err)
-		}
-		invItems = parsedItems
-	}
-	if invItems == nil {
-		invItems = []interface{}{}
-	}
+	stats := mutation.stats
+	invItems := mutation.inventory
 
 	var applied []StateChange
 
@@ -1102,28 +1161,11 @@ func applyStateChangesWithNPCStore(
 		}
 	}
 
-	// Marshal the modified stats back to character.
-	statsBytes, err := json.Marshal(stats)
-	if err != nil {
-		return applied, fmt.Errorf("marshaling updated character stats: %w", err)
+	mutation.stats = stats
+	mutation.inventory = invItems
+	if err := mutation.commit(); err != nil {
+		return applied, err
 	}
-	char.StatsJSON = string(statsBytes)
-	if traits, err := json.Marshal(toStringSlice(stats["traits"])); err == nil {
-		char.TraitsJSON = string(traits)
-	}
-	if skills, err := json.Marshal(toSkillsMap(stats["skills"])); err == nil {
-		char.SkillsJSON = string(skills)
-	}
-
-	// Marshal the inventory items back to char.InventoryJSON (separate column).
-	invBytes, err := json.Marshal(invItems)
-	if err != nil {
-		return applied, fmt.Errorf("marshaling updated inventory: %w", err)
-	}
-	char.InventoryJSON = string(invBytes)
-
-	char.UpdatedAt = time.Now()
-	world.UpdatedAt = time.Now()
 
 	return applied, nil
 }
