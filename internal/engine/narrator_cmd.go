@@ -114,18 +114,38 @@ func (nc *NarratorCommand) Execute(ctx context.Context, input string) (*Narrator
 		}
 	}
 
-	// Apply state changes (extended types for world/story modifications).
+	// Stage state changes in memory; the canonical writes are committed together
+	// with the interaction and revision below.
+	originalStory := *nc.story
+	originalWorld := *nc.world
+	var npcRecorder *npcMutationRecorder
 	if len(metaResp.StateChanges) > 0 {
-		if err := nc.applyNarratorStateChanges(ctx, metaResp.StateChanges); err != nil {
-			// Non-fatal: log but continue showing the message.
-			metaResp.Message += fmt.Sprintf("\n\n_(Note: some changes could not be applied: %v)_", err)
+		var err error
+		npcRecorder, err = nc.stageNarratorStateChanges(ctx, metaResp.StateChanges)
+		if err != nil {
+			*nc.story = originalStory
+			*nc.world = originalWorld
+			return nil, fmt.Errorf("staging narrator state changes: %w", err)
 		}
 	}
 
-	// Persist the interaction canonically without advancing the story turn.
-	if err := nc.logNarratorInteraction(input, metaResp.Message, resp.Telemetry); err != nil {
-		metaResp.Message += fmt.Sprintf("\n\n_(Note: this narrator exchange could not be saved cleanly: %v)_", err)
+	beforeCommit := func(tx *sql.Tx) error {
+		if npcRecorder != nil {
+			if err := npcRecorder.Commit(txNPCStore{db: nc.db, tx: tx}); err != nil {
+				return err
+			}
+		}
+		if err := nc.db.UpdateStorySettingTx(tx, nc.story.ID, nc.story.SettingJSON); err != nil {
+			return err
+		}
+		return nc.db.UpdateWorldStateTx(tx, nc.world)
 	}
+	if err := nc.logMetaInteractionWithSideEffects("narrator", input, metaResp.Message, beforeCommit, resp.Telemetry); err != nil {
+		*nc.story = originalStory
+		*nc.world = originalWorld
+		return nil, fmt.Errorf("committing narrator interaction and state: %w", err)
+	}
+	nc.enqueueNarratorLore(metaResp.StateChanges)
 
 	return metaResp, nil
 }
@@ -213,6 +233,7 @@ func (nc *NarratorCommand) ExecuteGuide(ctx context.Context, input string) (*Gui
 	}
 
 	var beforeCommit func(*sql.Tx) error
+	originalWorld := *nc.world
 	if len(guideResp.Guidance) > 0 {
 		existing := loadPlayerGuidance(nc.world)
 		storePlayerGuidance(nc.world, upsertPlayerGuidance(existing, guideResp.Guidance, nc.world.CurrentTurn))
@@ -222,7 +243,8 @@ func (nc *NarratorCommand) ExecuteGuide(ctx context.Context, input string) (*Gui
 	}
 
 	if err := nc.logMetaInteractionWithSideEffects("guide", input, guideResp.Message, beforeCommit, resp.Telemetry); err != nil {
-		guideResp.Message += fmt.Sprintf("\n\n_(Note: this guide exchange could not be saved cleanly: %v)_", err)
+		*nc.world = originalWorld
+		return nil, fmt.Errorf("committing guide interaction and state: %w", err)
 	}
 
 	return guideResp, nil
@@ -251,7 +273,7 @@ func (nc *NarratorCommand) telemetryContext(ctx context.Context, stage string) c
 
 // applyNarratorStateChanges applies the extended state changes from a /narrator response.
 // These extend the normal ApplyStateChanges with story/world mutation operations.
-func (nc *NarratorCommand) applyNarratorStateChanges(ctx context.Context, changes map[string]interface{}) error {
+func (nc *NarratorCommand) stageNarratorStateChanges(ctx context.Context, changes map[string]interface{}) (*npcMutationRecorder, error) {
 	// First apply standard state changes (npc_disposition, npc_thoughts, etc).
 	// We pass a copy of the character and world since narrator shouldn't modify player stats.
 	charCopy := *nc.character
@@ -270,7 +292,6 @@ func (nc *NarratorCommand) applyNarratorStateChanges(ctx context.Context, change
 		"world_location_add":     true,
 		"world_event_add":        true,
 		"world_faction_standing": true,
-		"npc_desires":            true,
 	}
 
 	for k, v := range changes {
@@ -282,16 +303,35 @@ func (nc *NarratorCommand) applyNarratorStateChanges(ctx context.Context, change
 	}
 
 	// Apply standard changes (NPC thoughts, notes, dispositions).
+	recorder := newNPCMutationRecorder(directNPCStore{db: nc.db})
 	if len(standardChanges) > 0 {
-		_, err := ApplyStateChanges(standardChanges, &charCopy, &worldCopy, nc.db, nc.story.ID, nc.world.CurrentTurn)
+		_, err := applyStateChangesWithNPCStore(standardChanges, &charCopy, &worldCopy, nc.db, recorder, nc.story.ID, nc.world.CurrentTurn)
 		if err != nil {
-			// Non-fatal.
-			_ = err
+			return nil, err
 		}
 	}
 
-	// Apply narrator-specific changes.
-	return ApplyNarratorStateChanges(ctx, narratorChanges, nc.db, nc.story, nc.world, nc.rag)
+	if err := ApplyNarratorStateChanges(ctx, narratorChanges, nil, nc.story, nc.world, nil); err != nil {
+		return nil, err
+	}
+	return recorder, nil
+}
+
+func (nc *NarratorCommand) enqueueNarratorLore(changes map[string]interface{}) {
+	if nc.rag == nil || len(changes) == 0 {
+		return
+	}
+	loreText := buildLoreChunk(changes)
+	if loreText == "" {
+		return
+	}
+	storyID := nc.story.ID
+	turn := nc.world.CurrentTurn
+	go func() {
+		if err := nc.rag.StoreChunk(context.Background(), storyID, loreText, "narrator", turn, turn); err != nil {
+			log.Printf("oneday: narrator state committed but lore indexing failed: %v", err)
+		}
+	}()
 }
 
 // buildNPCContext builds a formatted NPC context string for the narrator meta prompt.
@@ -369,10 +409,6 @@ func (nc *NarratorCommand) logMetaInteractionWithSideEffects(commandName, input,
 		return nil
 	}
 	return nil
-}
-
-func (nc *NarratorCommand) logNarratorInteraction(input, response string, telemetry ai.TelemetryRef) error {
-	return nc.logMetaInteractionWithSideEffects("narrator", input, response, nil, telemetry)
 }
 
 // parseNarratorMetaResponse extracts JSON from the AI response and unmarshals it.
