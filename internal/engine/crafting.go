@@ -53,6 +53,27 @@ type CraftingEngine struct {
 	turnCount    int
 }
 
+// RestoreConversation lets non-terminal clients continue the dedicated crafting
+// exchange without accepting system-role prompt injection from the client.
+func (ce *CraftingEngine) RestoreConversation(history []ai.Message) {
+	const maxMessages = 16
+	if len(history) > maxMessages {
+		history = history[len(history)-maxMessages:]
+	}
+	ce.chatHistory = ce.chatHistory[:0]
+	for _, message := range history {
+		role := strings.TrimSpace(strings.ToLower(message.Role))
+		content := strings.TrimSpace(message.Content)
+		if content == "" || (role != ai.RoleUser && role != ai.RoleAssistant) {
+			continue
+		}
+		if len(content) > 8000 {
+			content = content[:8000]
+		}
+		ce.chatHistory = append(ce.chatHistory, ai.Message{Role: role, Content: content})
+	}
+}
+
 // NewCraftingEngine starts a crafting session.
 func NewCraftingEngine(narrator *Narrator) (*CraftingEngine, error) {
 	// Open sub-session JSONL for this crafting session.

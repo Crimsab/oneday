@@ -2,6 +2,8 @@ import type {
   ActionEnvelope,
   ActionResponse,
   CommandDescriptor,
+  CraftConversationMessage,
+  CraftResponseEnvelope,
   DeleteSaveEnvelope,
   DeleteSaveResponse,
   Health,
@@ -215,6 +217,18 @@ export function enhanceStoryText(envelope: StoryEnhanceEnvelope): Promise<StoryE
 
 export function getSnapshot(storyId: string): Promise<StorySnapshot> {
   return request<StorySnapshot>(`/api/stories/${encodeURIComponent(storyId)}/snapshot`);
+}
+
+export function sendCraftMessage(
+  storyId: string,
+  message: string,
+  history: CraftConversationMessage[],
+): Promise<CraftResponseEnvelope> {
+  return request<CraftResponseEnvelope>(`/api/stories/${encodeURIComponent(storyId)}/craft`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ message, history }),
+  });
 }
 
 export function getTimeline(storyId:string):Promise<TimelineResponse> { return request<TimelineResponse>(`/api/stories/${encodeURIComponent(storyId)}/timeline`); }

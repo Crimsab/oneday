@@ -172,6 +172,13 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayCraft(os.Args[1:]) {
+		if err := runGatewayCraft(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway craft failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if wantsGatewayStoryCreate(os.Args[1:]) {
 		if err := runGatewayStoryCreate(context.Background(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway story create failed: %v\n", err)
@@ -362,6 +369,10 @@ func wantsGatewayModelSettingsUpdate(args []string) bool {
 
 func wantsGatewayTurn(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-turn"
+}
+
+func wantsGatewayCraft(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-craft"
 }
 
 func wantsGatewayStoryCreate(args []string) bool {

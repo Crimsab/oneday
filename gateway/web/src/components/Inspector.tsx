@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Activity, ChevronDown, Clock3, Hash, MapPin, Maximize2, RefreshCw, Search, Sun, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Activity, ChevronDown, Clock3, Hash, MapPin, Maximize2, RefreshCw, Search, SendHorizontal, Sun, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
-import { getAgencyEvents } from "../api";
+import { getAgencyEvents, sendCraftMessage } from "../api";
 import {
   asArray,
   asObject,
@@ -17,9 +17,9 @@ import {
   titleCase,
   valueToText,
 } from "../format";
-import type { AgencyEventView, JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
+import type { AgencyEventView, CraftConversationMessage, CraftingResponseView, JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
 import type { VisualCatalog } from "../visualAssets";
-import { characterAsset, readyAssetUrl } from "../visualAssets";
+import { characterAsset, normalizeKey, readyAssetUrl } from "../visualAssets";
 import { HistoryReader } from "./HistoryReader";
 import { MarkdownText } from "./MarkdownText";
 import { CanonicalMap } from "./CanonicalMap";
@@ -40,6 +40,7 @@ interface CardView {
   rows: Array<[string, string]>;
   imageUrl?: string;
   imageState?: string;
+  imageAssetId?: string;
 }
 
 const stackedRowLabels = new Set([
@@ -120,10 +121,11 @@ function renderModule(
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
   if (tab === "craft") return <CraftModule snapshot={snapshot} />;
   if (tab === "stats") return <StatsModule snapshot={snapshot} />;
-  if (tab === "codex") return <CodexModule snapshot={snapshot} visuals={visuals} focusCardId={focusCardId} />;
+  if (tab === "codex") return <CodexModule snapshot={snapshot} visuals={visuals} focusCardId={focusCardId} onOpenVisualAsset={onOpenVisualAsset} />;
   if (tab === "fronts") return <FrontsModule snapshot={snapshot} />;
   if (tab === "investigations") return <InvestigationsModule snapshot={snapshot} />;
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
+  if (tab === "achievements") return <AchievementsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
 	if (tab === "history") return <HistoryReader snapshot={snapshot} />;
   if (tab === "map") return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} expanded={expanded} onExpandMap={onExpandMap} />;
@@ -200,11 +202,13 @@ function rawStateForModule(tab: ModuleTab, snapshot: StorySnapshot): Record<stri
       faction_standings: snapshot.world.faction_standings,
     };
   }
+  if (tab === "achievements") {
+    return { achievements: snapshot.panels.achievements };
+  }
   if (tab === "saves") {
     return {
       saves: snapshot.panels.saves,
       sessions: snapshot.panels.sessions,
-      achievements: snapshot.panels.achievements,
     };
   }
   return {
@@ -755,14 +759,95 @@ function InventoryModule({ snapshot }: { snapshot: StorySnapshot }) {
 }
 
 function CraftModule({ snapshot }: { snapshot: StorySnapshot }) {
+  const [workingSnapshot, setWorkingSnapshot] = useState<StorySnapshot | null>(null);
+  const [history, setHistory] = useState<CraftConversationMessage[]>([]);
+  const [entries, setEntries] = useState<Array<{ id: number; role: "user" | "assistant"; text: string; response?: CraftingResponseView }>>([]);
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const current = workingSnapshot?.story.id === snapshot.story.id ? workingSnapshot : snapshot;
+
+  useEffect(() => {
+    setWorkingSnapshot(null);
+    setHistory([]);
+    setEntries([]);
+    setDraft("");
+    setError("");
+  }, [snapshot.story.id]);
+
+  const send = async (message: string) => {
+    const text = message.trim();
+    if (!text || busy) return;
+    const id = Date.now();
+    setBusy(true);
+    setError("");
+    setDraft("");
+    setEntries((items) => [...items, { id, role: "user", text }]);
+    try {
+      const envelope = await sendCraftMessage(snapshot.story.id, text, history);
+      const assistantContext = JSON.stringify(envelope.crafting);
+      setHistory((items) => [...items, { role: "user", content: text }, { role: "assistant", content: assistantContext }]);
+      setEntries((items) => [...items, { id: id + 1, role: "assistant", text: envelope.crafting.narrative, response: envelope.crafting }]);
+      setWorkingSnapshot(envelope.snapshot);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Crafting failed.");
+      setDraft(text);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    void send(draft);
+  };
+
   return (
-    <>
-      <InspectorSection title="Crafting Station" rows={craftingStationRows(snapshot)} />
-      <CardsSection title="Known Recipes" cards={cardsFromValue(snapshot.character.fields.known_recipes, "Recipe")} emptyLabel="No known recipes." />
-      <CardsSection title="Materials & Items" cards={cardsFromValue(snapshot.character.fields.inventory, "Material")} emptyLabel="No usable inventory items." />
-      <CardsSection title="Crafting Projects" cards={cardsFromValue(snapshot.world.projects, "Project")} emptyLabel="No crafting projects are active." />
-      <InspectorSection title="Scene Fit" rows={craftingSceneRows(snapshot)} />
-    </>
+    <div className="craft-workspace">
+      <ModuleOverview
+        label="Dedicated AI workbench"
+        title="Describe what you want to make"
+        description="This is the same inventory-aware evaluator used by the CLI: it checks feasibility, resolves the attempt, consumes canonical materials and remembers discovered recipes without advancing the main narrative turn."
+        metrics={[["Items", String(recordCount(current.character.fields.inventory))], ["Recipes", String(recordCount(current.character.fields.known_recipes))], ["Turn", String(current.world.current_turn)]]}
+      />
+      <section className="craft-conversation" aria-label="Crafting conversation">
+        <div className="craft-chat" aria-live="polite">
+          {entries.length === 0 ? (
+            <div className="craft-welcome"><strong>Crafting station ready</strong><p>Ask what is possible, propose an improvised tool, or describe a complete recipe. The evaluator will use your inventory, skills and world rules.</p></div>
+          ) : entries.map((entry) => (
+            <article key={entry.id} className={entry.role}>
+              <span>{entry.role === "user" ? "You" : "Workbench"}</span>
+              <p>{entry.text}</p>
+              {entry.response && <CraftResult response={entry.response} onTry={(value) => void send(value)} busy={busy} />}
+            </article>
+          ))}
+          {busy && <div className="craft-thinking"><i /><span>Evaluating materials, feasibility and outcome…</span></div>}
+        </div>
+        <form className="craft-composer" onSubmit={submit}>
+          <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={3} placeholder="What do you want to craft or improvise?" disabled={busy} />
+          <button type="submit" disabled={busy || !draft.trim()}><SendHorizontal size={15} />Evaluate</button>
+        </form>
+        {error && <p className="craft-error">{error}</p>}
+      </section>
+      <InspectorSection title="Workbench context" rows={craftingStationRows(current)} />
+      <CardsSection title="Known recipes" cards={cardsFromValue(current.character.fields.known_recipes, "Recipe")} emptyLabel="No recipe has been learned yet." />
+      <CardsSection title="Materials and items" cards={cardsFromValue(current.character.fields.inventory, "Material")} emptyLabel="No usable inventory item is available." />
+      <CardsSection title="Long-term crafting projects" cards={cardsFromValue(current.world.projects, "Project")} emptyLabel="No complex crafting project is active." />
+      <InspectorSection title="Scene constraints" rows={craftingSceneRows(current)} />
+    </div>
+  );
+}
+
+function CraftResult({ response, onTry, busy }: { response: CraftingResponseView; onTry: (value: string) => void; busy: boolean }) {
+  const suggestions = [...(response.alternatives ?? []), ...(response.choices ?? []).map((choice) => choice.text)]
+    .filter((value, index, list) => value.trim() && !/^leave|exit|esci/i.test(value) && list.indexOf(value) === index)
+    .slice(0, 4);
+  return (
+    <div className={`craft-result ${response.feasible ? "feasible" : "blocked"}`}>
+      <strong>{response.feasible ? "Feasible" : "Not feasible yet"}</strong>
+      {response.item && <dl><div><dt>Created</dt><dd>{response.item.name}</dd></div><div><dt>Effect</dt><dd>{response.item.effect || response.item.description}</dd></div><div><dt>Used</dt><dd>{response.item.materials?.join(", ") || "No canonical material listed"}</dd></div></dl>}
+      {Boolean(response.missing?.length) && <p><b>Missing:</b> {response.missing!.join(", ")}</p>}
+      {suggestions.length > 0 && <div className="craft-suggestions">{suggestions.map((suggestion) => <button type="button" key={suggestion} disabled={busy} onClick={() => onTry(suggestion)}>{suggestion}</button>)}</div>}
+    </div>
   );
 }
 
@@ -781,12 +866,22 @@ function StatsModule({ snapshot }: { snapshot: StorySnapshot }) {
   );
 }
 
-function CodexModule({ snapshot, visuals, focusCardId }: { snapshot: StorySnapshot; visuals?: VisualCatalog; focusCardId?: string | null }) {
+function CodexModule({ snapshot, visuals, focusCardId, onOpenVisualAsset }: { snapshot: StorySnapshot; visuals?: VisualCatalog; focusCardId?: string | null; onOpenVisualAsset?: (assetId: string) => void }) {
   return (
     <>
+      <ModuleOverview
+        label="Reference library"
+        title="What the story has established"
+        description="People, places, chapters and public events that are safe to use as story canon. Open an image to revise or regenerate that exact asset."
+        metrics={[
+          ["Characters", String(snapshot.panels.npcs.length)],
+          ["Places", String(recordCount(snapshot.world.known_locations))],
+          ["Chapters", String(snapshot.panels.chapters.length)],
+        ]}
+      />
       <CardsSection title="Chapters" cards={chapterCards(snapshot)} emptyLabel="No chapters recorded." />
-      <CardsSection title="Characters" cards={npcCards(snapshot, visuals)} emptyLabel="No characters recorded." focusCardId={focusCardId} />
-      <CardsSection title="Known Locations" cards={cardsFromValue(snapshot.world.known_locations, "Location")} emptyLabel="No known locations." />
+      <CardsSection title="Characters" cards={npcCards(snapshot, visuals)} emptyLabel="No characters recorded." focusCardId={focusCardId} onOpenVisualAsset={onOpenVisualAsset} />
+      <CardsSection title="Known Locations" cards={locationCards(snapshot, visuals)} emptyLabel="No known locations." onOpenVisualAsset={onOpenVisualAsset} />
       <CardsSection title="Global Events" cards={cardsFromValue(snapshot.world.global_events, "Event")} emptyLabel="No global events." />
     </>
   );
@@ -795,10 +890,16 @@ function CodexModule({ snapshot, visuals, focusCardId }: { snapshot: StorySnapsh
 function FrontsModule({ snapshot }: { snapshot: StorySnapshot }) {
   return (
     <>
-      <CardsSection title="Active Fronts" cards={cardsFromValue(snapshot.world.fronts, "Front")} emptyLabel="No fronts recorded." />
-      <CardsSection title="Story Hooks" cards={cardsFromValue(snapshot.world.story_hooks, "Hook")} emptyLabel="No story hooks recorded." />
-      <CardsSection title="World Reactions" cards={cardsFromValue(snapshot.world.world_reactions, "Reaction")} emptyLabel="No world reactions." />
-      <CardsSection title="Scene Contract" cards={cardsFromValue(snapshot.world.scene_contract, "Scene")} emptyLabel="No scene contract details." />
+      <ModuleOverview
+        label="Escalating pressure"
+        title="Threats that keep moving"
+        description="Fronts are active forces with momentum. Hooks are openings you can pursue; reactions show how the world already answered your actions."
+        metrics={[["Fronts", String(recordCount(snapshot.world.fronts))], ["Hooks", String(recordCount(snapshot.world.story_hooks))], ["Reactions", String(recordCount(snapshot.world.world_reactions))]]}
+      />
+      <CardsSection title="Active threats" cards={cardsFromValue(snapshot.world.fronts, "Front")} emptyLabel="No active threat has been established." />
+      <CardsSection title="Open hooks" cards={cardsFromValue(snapshot.world.story_hooks, "Hook")} emptyLabel="No story hook is currently open." />
+      <CardsSection title="World fallout" cards={cardsFromValue(snapshot.world.world_reactions, "Reaction")} emptyLabel="The world has not recorded a reaction yet." />
+      <CardsSection title="Current scene pressure" cards={cardsFromValue(snapshot.world.scene_contract, "Scene")} emptyLabel="No special scene constraint is active." />
     </>
   );
 }
@@ -806,9 +907,15 @@ function FrontsModule({ snapshot }: { snapshot: StorySnapshot }) {
 function InvestigationsModule({ snapshot }: { snapshot: StorySnapshot }) {
   return (
     <>
-      <CardsSection title="Investigations" cards={cardsFromValue(snapshot.world.investigations, "Investigation")} emptyLabel="No investigations are active." />
-      <InspectorSection title="Flags" rows={flagRows(snapshot)} />
-      <CardsSection title="Recent Clues" cards={messageCards(snapshot, ["clue", "investigation", "examine", "search"])} emptyLabel="No recent clue-like transcript entries." />
+      <ModuleOverview
+        label="Evidence workspace"
+        title="Questions, leads and contradictions"
+        description="Investigations group what you are trying to prove. Signals are structured state; recent evidence is transcript material worth revisiting, not automatically confirmed truth."
+        metrics={[["Cases", String(recordCount(snapshot.world.investigations))], ["Signals", String(flagRows(snapshot).length)], ["Evidence", String(messageCards(snapshot, ["clue", "investigation", "examine", "search"]).length)]]}
+      />
+      <CardsSection title="Open cases" cards={cardsFromValue(snapshot.world.investigations, "Investigation")} emptyLabel="No investigation is active." />
+      <InspectorSection title="Structured signals" rows={flagRows(snapshot)} />
+      <CardsSection title="Recent evidence" cards={messageCards(snapshot, ["clue", "investigation", "examine", "search"])} emptyLabel="No recent clue-like transcript entries." />
     </>
   );
 }
@@ -816,9 +923,32 @@ function InvestigationsModule({ snapshot }: { snapshot: StorySnapshot }) {
 function ProjectsModule({ snapshot }: { snapshot: StorySnapshot }) {
   return (
     <>
-      <CardsSection title="Projects" cards={cardsFromValue(snapshot.world.projects, "Project")} emptyLabel="No projects are active." />
-      <CardsSection title="Guidance" cards={cardsFromValue(snapshot.world.guidance, "Guidance")} emptyLabel="No guidance recorded." />
-      <CardsSection title="Faction Standings" cards={cardsFromValue(snapshot.world.faction_standings, "Faction")} emptyLabel="No faction standings." />
+      <ModuleOverview
+        label="Long-term progress"
+        title="Work that survives the current scene"
+        description="Projects track durable efforts such as training, rituals, relationships, bases and complex crafting. Guidance records your softer future direction."
+        metrics={[["Projects", String(recordCount(snapshot.world.projects))], ["Guidance", String(recordCount(snapshot.world.guidance))], ["Factions", String(recordCount(snapshot.world.faction_standings))]]}
+      />
+      <CardsSection title="Ongoing work" cards={cardsFromValue(snapshot.world.projects, "Project")} emptyLabel="No long-term project is active." />
+      <CardsSection title="Player guidance" cards={cardsFromValue(snapshot.world.guidance, "Guidance")} emptyLabel="No future-facing guidance is recorded." />
+      <CardsSection title="Faction context" cards={cardsFromValue(snapshot.world.faction_standings, "Faction")} emptyLabel="No faction standing is known." />
+    </>
+  );
+}
+
+function AchievementsModule({ snapshot }: { snapshot: StorySnapshot }) {
+  const achievements = snapshot.panels.achievements;
+  const categories = new Set(achievements.map((item) => item.category).filter(Boolean));
+  const rare = achievements.filter((item) => /rare|epic|legend/i.test(item.rarity || "")).length;
+  return (
+    <>
+      <ModuleOverview
+        label="Milestones"
+        title="What this story run has earned"
+        description="Achievements are permanent milestones recorded by the engine. They are separate from save snapshots and never change which branch is currently active."
+        metrics={[["Earned", String(achievements.length)], ["Categories", String(categories.size)], ["Rare+", String(rare)]]}
+      />
+      <CardsSection title="Earned achievements" cards={achievementCards(snapshot)} emptyLabel="No achievements have been earned on this story yet." />
     </>
   );
 }
@@ -826,10 +956,28 @@ function ProjectsModule({ snapshot }: { snapshot: StorySnapshot }) {
 function SavesModule({ snapshot }: { snapshot: StorySnapshot }) {
   return (
     <>
-      <CardsSection title="Saves" cards={saveCards(snapshot)} emptyLabel="No saved snapshots yet." />
-      <CardsSection title="Sessions" cards={sessionCards(snapshot)} emptyLabel="No sessions recorded." />
-      <CardsSection title="Achievements" cards={achievementCards(snapshot)} emptyLabel="No achievements recorded." />
+      <ModuleOverview
+        label="Recovery points"
+        title="Snapshots and play sessions"
+        description="Saves restore canonical state. Sessions are chronological play records; alternate narrative paths remain in Story Branches instead."
+        metrics={[["Saves", String(snapshot.panels.saves.length)], ["Sessions", String(snapshot.panels.sessions.length)], ["Current turn", String(snapshot.world.current_turn)]]}
+      />
+      <CardsSection title="Saved snapshots" cards={saveCards(snapshot)} emptyLabel="No saved snapshot yet." />
+      <CardsSection title="Play sessions" cards={sessionCards(snapshot)} emptyLabel="No session is recorded." />
     </>
+  );
+}
+
+function ModuleOverview({ label, title, description, metrics }: { label: string; title: string; description: string; metrics: Array<[string, string]> }) {
+  return (
+    <header className="module-overview">
+      <span>{label}</span>
+      <h3>{title}</h3>
+      <p>{description}</p>
+      <dl>
+        {metrics.map(([metric, value]) => <div key={metric}><dt>{metric}</dt><dd>{value}</dd></div>)}
+      </dl>
+    </header>
   );
 }
 
@@ -856,7 +1004,7 @@ function InspectorSection({ title, rows }: { title: string; rows: Array<[string,
   );
 }
 
-function CardsSection({ title, cards, emptyLabel, focusCardId }: { title: string; cards: CardView[]; emptyLabel: string; focusCardId?: string | null }) {
+function CardsSection({ title, cards, emptyLabel, focusCardId, onOpenVisualAsset }: { title: string; cards: CardView[]; emptyLabel: string; focusCardId?: string | null; onOpenVisualAsset?: (assetId: string) => void }) {
   const focusedCardRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -887,7 +1035,11 @@ function CardsSection({ title, cards, emptyLabel, focusCardId }: { title: string
               >
                 {card.imageUrl && (
                   <div className="inspector-card-image">
-                    <img src={card.imageUrl} alt="" />
+                    {card.imageAssetId && onOpenVisualAsset ? (
+                      <button type="button" onClick={() => onOpenVisualAsset(card.imageAssetId!)} aria-label={`Open image for ${card.title}`} title={`Open, edit or regenerate the image for ${card.title}`}>
+                        <img src={card.imageUrl} alt="" />
+                      </button>
+                    ) : <img src={card.imageUrl} alt="" />}
                   </div>
                 )}
                 {!card.imageUrl && card.imageState && <div className="inspector-card-image pending">{card.imageState}</div>}
@@ -1106,18 +1258,48 @@ function chapterCards(snapshot: StorySnapshot): CardView[] {
 }
 
 function npcCards(snapshot: StorySnapshot, visuals?: VisualCatalog): CardView[] {
-  return snapshot.panels.npcs.slice(0, 12).map((npc) => ({
-    id: npc.id,
-    title: npc.name,
-    imageUrl: readyAssetUrl(visuals ? characterAsset(visuals, npc) : null),
-    imageState: visuals ? characterAsset(visuals, npc)?.status : undefined,
-    rows: [
-      ...fieldRows(npc.fields)
-        .filter(([key]) => !["Name", "Id"].includes(key) && !isPlayerHiddenField(key))
-        .map(([key, value]) => [key, compactText(value, 220)] as [string, string])
-        .slice(0, 7),
-    ],
-  }));
+  return snapshot.panels.npcs.slice(0, 12).map((npc) => {
+    const asset = visuals ? characterAsset(visuals, npc) : null;
+    return {
+      id: npc.id,
+      title: npc.name,
+      imageUrl: readyAssetUrl(asset),
+      imageState: asset?.status,
+      imageAssetId: asset?.id,
+      rows: [
+        ...fieldRows(npc.fields)
+          .filter(([key]) => !["Name", "Id"].includes(key) && !isPlayerHiddenField(key))
+          .map(([key, value]) => [key, compactText(value, 220)] as [string, string])
+          .slice(0, 7),
+      ],
+    };
+  });
+}
+
+function locationCards(snapshot: StorySnapshot, visuals?: VisualCatalog): CardView[] {
+  const source = asArray(snapshot.world.spatial_locations).length
+    ? asArray(snapshot.world.spatial_locations)
+    : asArray(snapshot.world.known_locations);
+  return source.slice(0, 16).map((location, index) => {
+    const object = asObject(location);
+    const id = typeof object.id === "string" ? object.id : "";
+    const name = typeof object.name === "string" ? object.name : entryLabel(location, index);
+    const asset = visuals?.mapIcons.get(normalizeKey(id || name));
+    const card = cardFromEntry(location, name, index);
+    return {
+      ...card,
+      id: id || undefined,
+      imageUrl: readyAssetUrl(asset),
+      imageState: asset?.status,
+      imageAssetId: asset?.id,
+    };
+  });
+}
+
+function recordCount(value: JsonValue | undefined): number {
+  if (Array.isArray(value)) return value.length;
+  if (value && typeof value === "object") return Object.keys(value).length;
+  return value === undefined || value === null || value === "" ? 0 : 1;
 }
 
 function saveCards(snapshot: StorySnapshot): CardView[] {

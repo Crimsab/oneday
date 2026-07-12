@@ -63,6 +63,9 @@ func TestWantsOperatorCommands(t *testing.T) {
 	if !wantsGatewayTimeline([]string{"gateway-timeline"}) {
 		t.Fatal("expected gateway-timeline")
 	}
+	if !wantsGatewayCraft([]string{"gateway-craft"}) {
+		t.Fatal("expected gateway-craft")
+	}
 }
 
 func TestGatewayTurnEventPhase(t *testing.T) {

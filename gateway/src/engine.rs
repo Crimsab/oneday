@@ -47,6 +47,26 @@ pub struct PlayerAction {
     pub choice_id: i64,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CraftMessage {
+    pub role: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct CraftEnvelope {
+    pub message: String,
+    #[serde(default)]
+    pub history: Vec<CraftMessage>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct GatewayCraftResponse {
+    pub crafting: Option<serde_json::Value>,
+    #[serde(default)]
+    pub error: String,
+}
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub struct ClientCapabilities {
     #[serde(default)]
@@ -752,6 +772,29 @@ pub async fn submit_action(
         return Err(anyhow!("gateway-turn failed: {}", compact_stderr(&stderr)));
     }
     Ok(parsed)
+}
+
+pub async fn craft(
+    state: Arc<AppState>,
+    story_id: &str,
+    envelope: CraftEnvelope,
+) -> anyhow::Result<serde_json::Value> {
+    let request = serde_json::json!({
+        "story_id": story_id,
+        "message": envelope.message,
+        "history": envelope.history,
+    });
+    let (parsed, status_ok, stderr) =
+        call_gateway::<_, GatewayCraftResponse>(state, "gateway-craft", &request).await?;
+    if !parsed.error.trim().is_empty() {
+        return Err(anyhow!(parsed.error));
+    }
+    if !status_ok {
+        return Err(anyhow!("gateway-craft failed: {}", compact_stderr(&stderr)));
+    }
+    parsed
+        .crafting
+        .ok_or_else(|| anyhow!("gateway-craft returned no crafting response"))
 }
 
 pub async fn timeline(

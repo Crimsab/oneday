@@ -11,7 +11,7 @@ const moduleGroups: Array<{ label: string; tabs: ModuleTab[] }> = [
   { label: "Story", tabs: ["history", "map", "codex"] },
   { label: "Character", tabs: ["inventory", "stats", "craft"] },
   { label: "Active threads", tabs: ["fronts", "investigations", "projects"] },
-  { label: "Library", tabs: ["saves"] },
+  { label: "Library", tabs: ["achievements", "saves"] },
 ];
 
 interface LeftRailProps {

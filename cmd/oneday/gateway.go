@@ -27,6 +27,17 @@ type gatewayTurnResponse struct {
 	Error  string                `json:"error,omitempty"`
 }
 
+type gatewayCraftRequest struct {
+	StoryID string       `json:"story_id"`
+	Message string       `json:"message"`
+	History []ai.Message `json:"history,omitempty"`
+}
+
+type gatewayCraftResponse struct {
+	Crafting *engine.CraftingResponse `json:"crafting,omitempty"`
+	Error    string                   `json:"error,omitempty"`
+}
+
 type gatewayTurnStreamLine struct {
 	Event *contracts.TurnEvent `json:"event,omitempty"`
 	Phase string               `json:"phase,omitempty"`
@@ -851,6 +862,49 @@ func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, rout
 	return nil
 }
 
+func runGatewayCraft(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
+	var req gatewayCraftRequest
+	if err := json.NewDecoder(in).Decode(&req); err != nil {
+		return writeGatewayCraftError(out, fmt.Errorf("invalid gateway-craft JSON: %w", err))
+	}
+	req.StoryID = strings.TrimSpace(req.StoryID)
+	req.Message = strings.TrimSpace(req.Message)
+	if req.StoryID == "" || req.Message == "" {
+		return writeGatewayCraftError(out, fmt.Errorf("story_id and message are required"))
+	}
+	story, err := db.GetStory(req.StoryID)
+	if err != nil {
+		return writeGatewayCraftError(out, err)
+	}
+	character, err := db.GetCharacterByStory(req.StoryID)
+	if err != nil {
+		return writeGatewayCraftError(out, err)
+	}
+	world, err := db.GetWorldState(req.StoryID)
+	if err != nil {
+		return writeGatewayCraftError(out, err)
+	}
+	session, err := engine.NewGameSession(db, req.StoryID, cfg.DataDir)
+	if err != nil {
+		return writeGatewayCraftError(out, err)
+	}
+	defer func() { _ = session.CloseMirrors() }()
+	contextCfg := engine.DefaultContextConfig()
+	contextCfg.RewardBudget = cfg.Game.RewardBudget
+	narrator := engine.NewNarrator(router, db, story, character, world, session, contextCfg, cfg.AI.Generation, cfg.AI.ASCIIArt, cfg.DataDir, cfg.Game.AutosaveEvery)
+	crafting, err := engine.NewCraftingEngine(narrator)
+	if err != nil {
+		return writeGatewayCraftError(out, err)
+	}
+	defer func() { _ = crafting.Close() }()
+	crafting.RestoreConversation(req.History)
+	response, err := crafting.SendMessage(ctx, req.Message)
+	if err != nil {
+		return writeGatewayCraftError(out, err)
+	}
+	return json.NewEncoder(out).Encode(gatewayCraftResponse{Crafting: response})
+}
+
 func runGatewayMeta(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.BrowserMetaRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
@@ -964,15 +1018,16 @@ func runGatewayTimeline(db *storage.DB, in io.Reader, out io.Writer) error {
 	}
 	rows, err := db.Conn().Query(`
 		WITH RECURSIVE ancestors(id,branch_id,parent_commit_id,canonical_turn,kind,message,created_at) AS (
-			SELECT id,branch_id,COALESCE(parent_commit_id,''),canonical_turn,kind,message,created_at
-			FROM turn_commits WHERE id=? AND story_id=?
-			UNION ALL
+			SELECT c.id,c.branch_id,COALESCE(c.parent_commit_id,''),c.canonical_turn,c.kind,c.message,c.created_at
+			FROM turn_commits c JOIN story_branches b ON b.head_commit_id=c.id
+			WHERE b.story_id=? AND c.story_id=?
+			UNION
 			SELECT parent.id,parent.branch_id,COALESCE(parent.parent_commit_id,''),parent.canonical_turn,parent.kind,parent.message,parent.created_at
 			FROM turn_commits parent JOIN ancestors child ON child.parent_commit_id=parent.id
 			WHERE parent.story_id=?
 		)
 		SELECT id,branch_id,parent_commit_id,canonical_turn,kind,message,created_at
-		FROM ancestors ORDER BY canonical_turn,created_at,id`, head.Commit.ID, req.StoryID, req.StoryID)
+		FROM ancestors ORDER BY canonical_turn,created_at,id`, req.StoryID, req.StoryID, req.StoryID)
 	if err != nil {
 		return fmt.Errorf("loading active timeline ancestry: %w", err)
 	}
@@ -994,6 +1049,11 @@ func runGatewayTimeline(db *storage.DB, in io.Reader, out io.Writer) error {
 
 func writeGatewayTurnError(out io.Writer, err error) error {
 	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{Error: err.Error()})
+	return err
+}
+
+func writeGatewayCraftError(out io.Writer, err error) error {
+	_ = json.NewEncoder(out).Encode(gatewayCraftResponse{Error: err.Error()})
 	return err
 }
 
