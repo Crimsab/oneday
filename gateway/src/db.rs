@@ -2,7 +2,7 @@ use anyhow::Context;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::io::{Cursor, Write};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
@@ -366,21 +366,22 @@ pub async fn story_delete_plan(
 }
 
 pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StorySnapshot> {
-    let story = load_story(pool, story_id).await?;
-    let character = load_character(pool, story_id).await?;
-    let world = load_world(pool, story_id).await?;
-    let active_session = load_active_session(pool, story_id).await?;
-    let messages = load_messages(pool, story_id, 500).await?;
+    let mut tx = pool.begin().await?;
+    let (story, branch_id) = load_snapshot_story(&mut *tx, story_id).await?;
+    let character = load_character(&mut *tx, story_id).await?;
+    let world = load_world(&mut *tx, story_id, &branch_id).await?;
+    let active_session = load_active_session(&mut *tx, story_id, &branch_id).await?;
+    let messages = load_messages(&mut *tx, story_id, &branch_id, 500).await?;
     let choices = latest_choices(&messages, &active_session.id, world.current_turn);
     let panels = PanelsView {
-        chapters: load_chapters(pool, story_id).await?,
-        achievements: load_achievements(pool, story_id).await?,
-        npcs: load_npcs(pool, story_id).await?,
-        sessions: load_sessions(pool, story_id).await?,
-        saves: load_saves(pool, story_id).await?,
+        chapters: load_chapters(&mut *tx, story_id, &branch_id).await?,
+        achievements: load_achievements(&mut *tx, story_id).await?,
+        npcs: load_npcs(&mut *tx, story_id).await?,
+        sessions: load_sessions(&mut *tx, story_id, &branch_id).await?,
+        saves: load_saves(&mut *tx, story_id, &branch_id).await?,
     };
-    let version = story_version(pool, story_id).await?;
-    Ok(StorySnapshot {
+    let version = story_version_for_branch(&mut *tx, story_id, &branch_id).await?;
+    let snapshot = StorySnapshot {
         server_time: chrono::Utc::now().to_rfc3339(),
         version,
         story,
@@ -390,51 +391,55 @@ pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Story
         choices,
         messages,
         panels,
-    })
+    };
+    tx.commit().await?;
+    Ok(snapshot)
 }
 
 pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StoryVersion> {
-    let row = sqlx::query(r#"WITH active AS (SELECT active_branch_id FROM stories WHERE id = ?) SELECT
-           COALESCE((SELECT current_turn FROM world_state WHERE story_id = ?), 0) AS turn,
-           COALESCE((SELECT revision FROM stories WHERE id = ?), 0) AS revision,
-           COALESCE((SELECT CAST(updated_at AS TEXT) FROM stories WHERE id = ?), '') AS story_updated_at,
-           COALESCE((SELECT id FROM sessions WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active) AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1),
-                    (SELECT id FROM sessions WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active) ORDER BY started_at DESC LIMIT 1),
+    let mut tx = pool.begin().await?;
+    let branch_id: String =
+        sqlx::query_scalar("SELECT active_branch_id FROM stories WHERE id = ?")
+            .bind(story_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    let version = story_version_for_branch(&mut *tx, story_id, &branch_id).await?;
+    tx.commit().await?;
+    Ok(version)
+}
+
+async fn story_version_for_branch<'e, E>(
+    executor: E,
+    story_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<StoryVersion>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
+    let row = sqlx::query(r#"WITH target AS (SELECT ? AS story_id, ? AS branch_id) SELECT
+           COALESCE((SELECT current_turn FROM world_state WHERE story_id=(SELECT story_id FROM target)), 0) AS turn,
+           COALESCE((SELECT revision FROM stories WHERE id=(SELECT story_id FROM target)), 0) AS revision,
+           COALESCE((SELECT CAST(updated_at AS TEXT) FROM stories WHERE id=(SELECT story_id FROM target)), '') AS story_updated_at,
+           COALESCE((SELECT id FROM sessions WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target) AND ended_at IS NULL ORDER BY started_at DESC LIMIT 1),
+                    (SELECT id FROM sessions WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target) ORDER BY started_at DESC LIMIT 1),
                     '') AS active_session_id,
-           COALESCE((SELECT MAX(id) FROM chat_messages WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), 0) AS last_message_id,
-           COALESCE((SELECT CAST(updated_at AS TEXT) FROM world_state WHERE story_id = ?), '') AS world_updated_at,
-           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM characters WHERE story_id = ?), '') AS character_updated_at,
-           COALESCE((SELECT COUNT(*) FROM npcs WHERE story_id = ?), 0) AS npc_count,
-           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM npcs WHERE story_id = ?), '') AS npc_updated_at,
-           COALESCE((SELECT COUNT(*) FROM chapters WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), 0) AS chapter_count,
-           COALESCE((SELECT COUNT(*) FROM achievements WHERE story_id = ?), 0) AS achievement_count,
-           COALESCE((SELECT CAST(MAX(earned_at) AS TEXT) FROM achievements WHERE story_id = ?), '') AS latest_achievement_at,
-           COALESCE((SELECT COUNT(*) FROM saves WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), 0) AS save_count,
-           COALESCE((SELECT CAST(MAX(created_at) AS TEXT) FROM saves WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), '') AS latest_save_at,
-           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_assets WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), '') AS visual_asset_updated_at,
-           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_generation_jobs WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active)), '') AS visual_job_updated_at,
-           COALESCE((SELECT COUNT(*) FROM visual_generation_jobs WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM active) AND status IN ('queued', 'running')), 0) AS active_visual_job_count"#,
+           COALESCE((SELECT MAX(id) FROM chat_messages WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target)), 0) AS last_message_id,
+           COALESCE((SELECT CAST(updated_at AS TEXT) FROM world_state WHERE story_id=(SELECT story_id FROM target)), '') AS world_updated_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM characters WHERE story_id=(SELECT story_id FROM target)), '') AS character_updated_at,
+           COALESCE((SELECT COUNT(*) FROM npcs WHERE story_id=(SELECT story_id FROM target)), 0) AS npc_count,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM npcs WHERE story_id=(SELECT story_id FROM target)), '') AS npc_updated_at,
+           COALESCE((SELECT COUNT(*) FROM chapters WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target)), 0) AS chapter_count,
+           COALESCE((SELECT COUNT(*) FROM achievements WHERE story_id=(SELECT story_id FROM target)), 0) AS achievement_count,
+           COALESCE((SELECT CAST(MAX(earned_at) AS TEXT) FROM achievements WHERE story_id=(SELECT story_id FROM target)), '') AS latest_achievement_at,
+           COALESCE((SELECT COUNT(*) FROM saves WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target)), 0) AS save_count,
+           COALESCE((SELECT CAST(MAX(created_at) AS TEXT) FROM saves WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target)), '') AS latest_save_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_assets WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target)), '') AS visual_asset_updated_at,
+           COALESCE((SELECT CAST(MAX(updated_at) AS TEXT) FROM visual_generation_jobs WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target)), '') AS visual_job_updated_at,
+           COALESCE((SELECT COUNT(*) FROM visual_generation_jobs WHERE story_id=(SELECT story_id FROM target) AND branch_id=(SELECT branch_id FROM target) AND status IN ('queued', 'running')), 0) AS active_visual_job_count"#,
     )
     .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .bind(story_id)
-    .fetch_one(pool)
+    .bind(branch_id)
+    .fetch_one(executor)
     .await?;
     Ok(StoryVersion {
         turn: row.try_get("turn")?,
@@ -466,6 +471,23 @@ async fn load_story(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StorySu
     .await
     .with_context(|| format!("loading story {story_id}"))?;
     Ok(story_summary_from_row(row))
+}
+
+async fn load_snapshot_story(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+) -> anyhow::Result<(StorySummary, String)> {
+    let row = sqlx::query(
+        r#"SELECT id, name, description, genre, tone, language, is_archived,
+                  active_branch_id, CAST(updated_at AS TEXT) AS updated_at
+           FROM stories WHERE id = ?"#,
+    )
+    .bind(story_id)
+    .fetch_one(&mut *conn)
+    .await
+    .with_context(|| format!("loading snapshot story {story_id}"))?;
+    let branch_id = row.try_get("active_branch_id")?;
+    Ok((story_summary_from_row(row), branch_id))
 }
 
 async fn count_story_rows(pool: &SqlitePool, table: &str, story_id: &str) -> anyhow::Result<i64> {
@@ -502,14 +524,17 @@ async fn retained_asset_files(pool: &SqlitePool, story_id: &str) -> anyhow::Resu
     Ok(files)
 }
 
-async fn load_character(pool: &SqlitePool, story_id: &str) -> anyhow::Result<RecordView> {
+async fn load_character(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+) -> anyhow::Result<RecordView> {
     let row = sqlx::query(
         r#"SELECT id, name, background, stats_json, traits_json, skills_json,
                 inventory_json, known_recipes_json, CAST(updated_at AS TEXT) AS updated_at
          FROM characters WHERE story_id = ?"#,
     )
     .bind(story_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(RecordView {
         id: row.try_get("id")?,
@@ -526,7 +551,11 @@ async fn load_character(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Rec
     })
 }
 
-async fn load_world(pool: &SqlitePool, story_id: &str) -> anyhow::Result<WorldView> {
+async fn load_world(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<WorldView> {
     let row = sqlx::query(
         r#"SELECT id, current_location, current_location_id, known_locations_json, global_events_json,
                 faction_standings_json, story_hooks_json, world_reactions_json,
@@ -536,13 +565,13 @@ async fn load_world(pool: &SqlitePool, story_id: &str) -> anyhow::Result<WorldVi
          FROM world_state WHERE story_id = ?"#,
     )
     .bind(story_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
-    let spatial_regions: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'name',name,'kind',region_kind,'parent_region_id',parent_region_id,'visibility',visibility)),'[]') FROM (SELECT id,name,region_kind,parent_region_id,visibility FROM regions WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND visibility IN ('public','player') ORDER BY lower(name),id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
-    let spatial_locations: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'name',canonical_name,'kind',location_kind,'region_id',region_id,'parent_location_id',parent_location_id,'description',description,'discovery_state',discovery_state)),'[]') FROM (SELECT id,canonical_name,location_kind,region_id,parent_location_id,description,discovery_state FROM locations WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND visibility IN ('public','player') AND discovery_state!='unknown' ORDER BY lower(canonical_name),id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
-    let spatial_edges: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'from_location_id',from_location_id,'to_location_id',to_location_id,'direction',direction,'travel_minutes',travel_minutes,'travel_mode',travel_mode,'bidirectional',json(CASE WHEN bidirectional=1 THEN 'true' ELSE 'false' END),'conditions',json(conditions_json))),'[]') FROM (SELECT id,from_location_id,to_location_id,direction,travel_minutes,travel_mode,bidirectional,conditions_json FROM location_edges WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND visibility IN ('public','player') ORDER BY from_location_id,to_location_id,direction,travel_mode,id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
-    let world_time: String=sqlx::query_scalar(r#"SELECT json_object('day',day,'minute_of_day',minute_of_day,'display_text',display_text) FROM world_clocks WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id)"#).bind(story_id).bind(story_id).fetch_one(pool).await?;
-    let weather: Option<String>=sqlx::query_scalar(r#"SELECT json_object('tracked',json('true'),'label',weather_kind,'intensity',intensity,'description',description) FROM weather_states WHERE story_id=? AND branch_id=COALESCE(NULLIF((SELECT active_branch_id FROM stories WHERE id=?),''),branch_id) AND (location_id=? OR location_id IS NULL) AND visibility IN ('public','player') ORDER BY valid_from_day DESC,valid_from_minute DESC LIMIT 1"#).bind(story_id).bind(story_id).bind(row_string(&row,"current_location_id")).fetch_optional(pool).await?;
+    let spatial_regions: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'name',name,'kind',region_kind,'parent_region_id',parent_region_id,'visibility',visibility)),'[]') FROM (SELECT id,name,region_kind,parent_region_id,visibility FROM regions WHERE story_id=? AND branch_id=? AND visibility IN ('public','player') ORDER BY lower(name),id)"#).bind(story_id).bind(branch_id).fetch_one(&mut *conn).await?;
+    let spatial_locations: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'name',canonical_name,'kind',location_kind,'region_id',region_id,'parent_location_id',parent_location_id,'description',description,'discovery_state',discovery_state)),'[]') FROM (SELECT id,canonical_name,location_kind,region_id,parent_location_id,description,discovery_state FROM locations WHERE story_id=? AND branch_id=? AND visibility IN ('public','player') AND discovery_state!='unknown' ORDER BY lower(canonical_name),id)"#).bind(story_id).bind(branch_id).fetch_one(&mut *conn).await?;
+    let spatial_edges: String=sqlx::query_scalar(r#"SELECT COALESCE(json_group_array(json_object('id',id,'from_location_id',from_location_id,'to_location_id',to_location_id,'direction',direction,'travel_minutes',travel_minutes,'travel_mode',travel_mode,'bidirectional',json(CASE WHEN bidirectional=1 THEN 'true' ELSE 'false' END),'conditions',json(conditions_json))),'[]') FROM (SELECT id,from_location_id,to_location_id,direction,travel_minutes,travel_mode,bidirectional,conditions_json FROM location_edges WHERE story_id=? AND branch_id=? AND visibility IN ('public','player') ORDER BY from_location_id,to_location_id,direction,travel_mode,id)"#).bind(story_id).bind(branch_id).fetch_one(&mut *conn).await?;
+    let world_time: String=sqlx::query_scalar(r#"SELECT json_object('day',day,'minute_of_day',minute_of_day,'display_text',display_text) FROM world_clocks WHERE story_id=? AND branch_id=?"#).bind(story_id).bind(branch_id).fetch_one(&mut *conn).await?;
+    let weather: Option<String>=sqlx::query_scalar(r#"SELECT json_object('tracked',json('true'),'label',weather_kind,'intensity',intensity,'description',description) FROM weather_states WHERE story_id=? AND branch_id=? AND (location_id=? OR location_id IS NULL) AND visibility IN ('public','player') ORDER BY valid_from_day DESC,valid_from_minute DESC LIMIT 1"#).bind(story_id).bind(branch_id).bind(row_string(&row,"current_location_id")).fetch_optional(&mut *conn).await?;
     Ok(WorldView {
         id: row.try_get("id")?,
         current_location: row.try_get("current_location")?,
@@ -572,18 +601,22 @@ async fn load_world(pool: &SqlitePool, story_id: &str) -> anyhow::Result<WorldVi
     })
 }
 
-async fn load_active_session(pool: &SqlitePool, story_id: &str) -> anyhow::Result<SessionView> {
+async fn load_active_session(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<SessionView> {
     let row = sqlx::query(
         r#"SELECT id, story_id, CAST(started_at AS TEXT) AS started_at,
                 CAST(ended_at AS TEXT) AS ended_at, summary
          FROM sessions
-         WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND ended_at IS NULL
+         WHERE story_id = ? AND branch_id = ? AND ended_at IS NULL
          ORDER BY started_at DESC
          LIMIT 1"#,
     )
     .bind(story_id)
-	.bind(story_id)
-    .fetch_optional(pool)
+    .bind(branch_id)
+    .fetch_optional(&mut *conn)
     .await?;
     if let Some(row) = row {
         return Ok(session_from_row(row));
@@ -593,20 +626,21 @@ async fn load_active_session(pool: &SqlitePool, story_id: &str) -> anyhow::Resul
         r#"SELECT id, story_id, CAST(started_at AS TEXT) AS started_at,
                 CAST(ended_at AS TEXT) AS ended_at, summary
          FROM sessions
-         WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
+         WHERE story_id = ? AND branch_id = ?
          ORDER BY started_at DESC
          LIMIT 1"#,
     )
     .bind(story_id)
-    .bind(story_id)
-    .fetch_one(pool)
+    .bind(branch_id)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(session_from_row(row))
 }
 
 async fn load_messages(
-    pool: &SqlitePool,
+    conn: &mut SqliteConnection,
     story_id: &str,
+    branch_id: &str,
     limit: i64,
 ) -> anyhow::Result<Vec<MessageView>> {
     let rows = sqlx::query(
@@ -616,29 +650,33 @@ async fn load_messages(
            SELECT id, session_id, story_id, turn, role, content, message_type,
                   metadata_json, created_at, branch_id, source_commit_id
            FROM chat_messages
-           WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)
+           WHERE story_id = ? AND branch_id = ?
            ORDER BY turn DESC, id DESC
            LIMIT ?
          )
          ORDER BY turn ASC, id ASC"#,
     )
     .bind(story_id)
-    .bind(story_id)
+    .bind(branch_id)
     .bind(limit)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
     rows.into_iter().map(message_from_row).collect()
 }
 
-async fn load_chapters(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<ChapterView>> {
+async fn load_chapters(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<Vec<ChapterView>> {
     let rows = sqlx::query(
         r#"SELECT id, chapter_number, title, summary, start_turn, end_turn,
                 CAST(created_at AS TEXT) AS created_at, branch_id, source_commit_id
-         FROM chapters WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) ORDER BY chapter_number ASC"#,
+         FROM chapters WHERE story_id = ? AND branch_id = ? ORDER BY chapter_number ASC"#,
     )
     .bind(story_id)
-	.bind(story_id)
-    .fetch_all(pool)
+    .bind(branch_id)
+    .fetch_all(&mut *conn)
     .await?;
     rows.into_iter()
         .map(|row| {
@@ -896,7 +934,7 @@ fn xml_escape(value: &str) -> String {
 }
 
 async fn load_achievements(
-    pool: &SqlitePool,
+    conn: &mut SqliteConnection,
     story_id: &str,
 ) -> anyhow::Result<Vec<AchievementView>> {
     let rows = sqlx::query(
@@ -905,7 +943,7 @@ async fn load_achievements(
          FROM achievements WHERE story_id = ? ORDER BY earned_at ASC"#,
     )
     .bind(story_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
     rows.into_iter()
         .map(|row| {
@@ -922,7 +960,10 @@ async fn load_achievements(
         .collect()
 }
 
-async fn load_npcs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<RecordView>> {
+async fn load_npcs(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+) -> anyhow::Result<Vec<RecordView>> {
     let rows = sqlx::query(r#"SELECT id, COALESCE(NULLIF(canonical_entity_id,''),id) AS canonical_entity_id, name, role, appearance, personality_json, relationship_json,
                 discovery_json,
                 disposition, is_alive,
@@ -934,7 +975,7 @@ async fn load_npcs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Reco
          FROM npcs WHERE story_id = ? ORDER BY last_seen_turn DESC, name ASC"#,
     )
     .bind(story_id)
-    .fetch_all(pool)
+    .fetch_all(&mut *conn)
     .await?;
     Ok(rows
         .into_iter()
@@ -973,27 +1014,36 @@ async fn load_npcs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Reco
         .collect())
 }
 
-async fn load_sessions(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<SessionView>> {
+async fn load_sessions(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<Vec<SessionView>> {
     let rows = sqlx::query(
         r#"SELECT id, story_id, CAST(started_at AS TEXT) AS started_at,
                 CAST(ended_at AS TEXT) AS ended_at, summary
-         FROM sessions WHERE story_id = ? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) ORDER BY started_at DESC"#,
+         FROM sessions WHERE story_id = ? AND branch_id = ? ORDER BY started_at DESC"#,
     )
     .bind(story_id)
-	.bind(story_id)
-    .fetch_all(pool)
+    .bind(branch_id)
+    .fetch_all(&mut *conn)
     .await?;
     Ok(rows.into_iter().map(session_from_row).collect())
 }
 
-async fn load_saves(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<SaveView>> {
+async fn load_saves(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<Vec<SaveView>> {
     let rows = sqlx::query(
         r#"SELECT id, name, turn, chapter, location, session_id, metadata_json,
                 CAST(created_at AS TEXT) AS created_at
-         FROM saves WHERE story_id = ? ORDER BY created_at DESC"#,
+         FROM saves WHERE story_id = ? AND branch_id = ? ORDER BY created_at DESC"#,
     )
     .bind(story_id)
-    .fetch_all(pool)
+    .bind(branch_id)
+    .fetch_all(&mut *conn)
     .await?;
     rows.into_iter()
         .map(|row| {
@@ -1239,7 +1289,7 @@ mod tests {
             "CREATE TABLE npcs (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '')",
             "CREATE TABLE chapters (story_id TEXT NOT NULL, branch_id TEXT NOT NULL DEFAULT 'branch-main', source_commit_id TEXT NOT NULL DEFAULT 'commit-main')",
             "CREATE TABLE achievements (story_id TEXT NOT NULL, earned_at TEXT NOT NULL DEFAULT '')",
-            "CREATE TABLE saves (story_id TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main')",
+            "CREATE TABLE saves (id TEXT NOT NULL DEFAULT 'save-default', story_id TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', turn INTEGER NOT NULL DEFAULT 0, chapter INTEGER NOT NULL DEFAULT 0, location TEXT NOT NULL DEFAULT '', session_id TEXT NOT NULL DEFAULT '', metadata_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main')",
             "CREATE TABLE visual_assets (story_id TEXT NOT NULL, updated_at TEXT NOT NULL DEFAULT '', file_path TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main')",
             "CREATE TABLE visual_generation_jobs (story_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'queued', updated_at TEXT NOT NULL DEFAULT '', branch_id TEXT NOT NULL DEFAULT 'branch-main')",
         ] {
@@ -1266,6 +1316,107 @@ mod tests {
             .fetch_one(pool)
             .await
             .expect("story revision")
+    }
+
+    #[tokio::test]
+    async fn snapshot_transaction_keeps_branch_and_revision_consistent() {
+        let path = std::env::temp_dir().join(format!(
+            "oneday-snapshot-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let database_url = format!("sqlite://{}?mode=rwc", path.display());
+        let pool = SqlitePoolOptions::new()
+            .max_connections(2)
+            .connect(&database_url)
+            .await
+            .expect("file sqlite pool");
+        sqlx::query("PRAGMA journal_mode=WAL")
+            .execute(&pool)
+            .await
+            .expect("enable WAL");
+        sqlx::query(
+            r#"CREATE TABLE stories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                genre TEXT NOT NULL DEFAULT '',
+                tone TEXT NOT NULL DEFAULT '',
+                language TEXT NOT NULL DEFAULT '',
+                is_archived INTEGER NOT NULL DEFAULT 0,
+                revision INTEGER NOT NULL DEFAULT 0,
+                active_branch_id TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create stories table");
+        create_story_version_tables(&pool).await;
+        sqlx::query("INSERT INTO stories (id,name,revision,active_branch_id,updated_at) VALUES ('story-1','Story',7,'branch-main','v7')")
+            .execute(&pool)
+            .await
+            .expect("insert story");
+        sqlx::query("INSERT INTO sessions (id,story_id,started_at,branch_id) VALUES ('session-main','story-1','1','branch-main')")
+            .execute(&pool)
+            .await
+            .expect("insert main session");
+        sqlx::query("INSERT INTO chat_messages (story_id,session_id,turn,role,branch_id) VALUES ('story-1','session-main',7,'assistant','branch-main')")
+            .execute(&pool)
+            .await
+            .expect("insert main message");
+        sqlx::query("INSERT INTO saves (id,story_id,name,branch_id) VALUES ('save-main','story-1','Main save','branch-main')")
+            .execute(&pool)
+            .await
+            .expect("insert main save");
+
+        let mut read_tx = pool.begin().await.expect("begin snapshot transaction");
+        let (_, branch_id) = load_snapshot_story(&mut *read_tx, "story-1")
+            .await
+            .expect("load snapshot context");
+        assert_eq!(branch_id, "branch-main");
+
+        let mut write_tx = pool.begin().await.expect("begin branch switch");
+        sqlx::query("UPDATE stories SET revision=8,active_branch_id='branch-alt',updated_at='v8' WHERE id='story-1'")
+            .execute(&mut *write_tx)
+            .await
+            .expect("switch active branch");
+        sqlx::query("INSERT INTO sessions (id,story_id,started_at,branch_id) VALUES ('session-alt','story-1','2','branch-alt')")
+            .execute(&mut *write_tx)
+            .await
+            .expect("insert alt session");
+        sqlx::query("INSERT INTO chat_messages (story_id,session_id,turn,role,branch_id) VALUES ('story-1','session-alt',8,'assistant','branch-alt')")
+            .execute(&mut *write_tx)
+            .await
+            .expect("insert alt message");
+        sqlx::query("INSERT INTO saves (id,story_id,name,branch_id) VALUES ('save-alt','story-1','Alt save','branch-alt')")
+            .execute(&mut *write_tx)
+            .await
+            .expect("insert alt save");
+        write_tx.commit().await.expect("commit branch switch");
+
+        let during = story_version_for_branch(&mut *read_tx, "story-1", &branch_id)
+            .await
+            .expect("version inside snapshot transaction");
+        assert_eq!(during.revision, 7);
+        assert_eq!(during.active_session_id, "session-main");
+        assert_eq!(during.last_message_id, 1);
+        assert_eq!(during.save_count, 1);
+        let saves = load_saves(&mut *read_tx, "story-1", &branch_id)
+            .await
+            .expect("branch-scoped saves inside snapshot transaction");
+        assert_eq!(saves.len(), 1);
+        assert_eq!(saves[0].id, "save-main");
+        read_tx.commit().await.expect("commit snapshot transaction");
+
+        let after = story_version(&pool, "story-1")
+            .await
+            .expect("version after branch switch");
+        assert_eq!(after.revision, 8);
+        assert_eq!(after.active_session_id, "session-alt");
+        assert_eq!(after.last_message_id, 2);
+        assert_eq!(after.save_count, 1);
+        pool.close().await;
+        let _ = std::fs::remove_file(path);
     }
 
     #[tokio::test]
