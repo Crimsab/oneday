@@ -154,7 +154,7 @@ async fn update_model_settings(
 
 async fn command_descriptors(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<serde_json::Value>>, ApiError> {
+) -> Result<Json<Vec<protocol::CommandDescriptor>>, ApiError> {
     let descriptors = engine::command_descriptors(state.clone()).await?;
     Ok(Json(descriptors.commands))
 }

@@ -161,14 +161,6 @@ pub struct StoryEnhanceEnvelope {
 
 
 #[derive(Debug, Deserialize, Serialize)]
-pub struct GatewayCommandDescriptorsResponse {
-    #[serde(default)]
-    pub commands: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub error: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
 pub struct MiniGameStartEnvelope {
     pub definition: serde_json::Value,
     #[serde(default)]
@@ -182,7 +174,7 @@ pub struct MiniGameInputEnvelope {
 
 pub async fn command_descriptors(
     state: Arc<AppState>,
-) -> anyhow::Result<GatewayCommandDescriptorsResponse> {
+) -> anyhow::Result<protocol::CommandDescriptorsResponse> {
     let output = run_gateway_command(
         &state,
         "gateway-command-descriptors",
@@ -192,15 +184,15 @@ pub async fn command_descriptors(
     .await?;
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let parsed = serde_json::from_slice::<GatewayCommandDescriptorsResponse>(&output.stdout)
+    let parsed = serde_json::from_slice::<protocol::CommandDescriptorsResponse>(&output.stdout)
         .with_context(|| {
             format!(
                 "decoding gateway-command-descriptors stdout; stderr={}",
                 compact_stderr(&stderr)
             )
         })?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_owned()));
     }
     if !output.status.success() {
         return Err(anyhow!(
@@ -1125,6 +1117,19 @@ mod tests {
             final_committed.event_type.as_deref(),
             Some("turn.committed")
         );
+    }
+
+    #[tokio::test]
+    async fn command_descriptor_bridge_preserves_typed_contract() {
+        let script = fake_oneday_input_script(&[
+            r#"{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"Save","description":"Save the story","group":"story","parity":"full","behavior":"immediate"}]}"#,
+        ]);
+        let state = test_state(script).await;
+        let response = command_descriptors(state)
+            .await
+            .expect("command descriptor bridge");
+        assert_eq!(response.commands[0].id, "save");
+        assert_eq!(response.commands[0].aliases, vec!["s"]);
     }
 
     #[tokio::test]
