@@ -171,16 +171,6 @@ struct GatewayTurnRequest<'a> {
     capabilities: &'a ClientCapabilities,
 }
 
-#[derive(Debug, Serialize)]
-struct GatewayMetaRequest<'a> {
-    story_id: &'a str,
-    session_id: &'a str,
-    client_turn: i64,
-    client_revision: i64,
-    kind: &'a str,
-    text: &'a str,
-}
-
 
 #[derive(Debug, Serialize)]
 struct GatewayStoryCreateRequest<'a> {
@@ -223,20 +213,6 @@ struct GatewayTurnStreamLine {
     pub error: String,
     #[serde(default)]
     pub done: bool,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewayMetaResult {
-    pub kind: String,
-    pub title: String,
-    pub message: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewayMetaResponse {
-    pub meta: Option<GatewayMetaResult>,
-    #[serde(default)]
-    pub error: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -973,19 +949,19 @@ pub async fn submit_meta(
     state: Arc<AppState>,
     story_id: &str,
     envelope: MetaEnvelope,
-) -> anyhow::Result<GatewayMetaResponse> {
-    let req = GatewayMetaRequest {
-        story_id,
-        session_id: &envelope.session_id,
+) -> anyhow::Result<protocol::MetaResponse> {
+    let req = protocol::BrowserMetaRequest {
+        story_id: story_id.to_string(),
+        session_id: envelope.session_id,
         client_turn: envelope.client_turn,
         client_revision: envelope.client_revision,
-        kind: &envelope.kind,
-        text: &envelope.text,
+        kind: envelope.kind,
+        text: (!envelope.text.is_empty()).then_some(envelope.text),
     };
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, GatewayMetaResponse>(state, "gateway-meta", &req).await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        call_gateway::<_, protocol::MetaResponse>(state, "gateway-meta", &req).await?;
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_string()));
     }
     if !status_ok {
         return Err(anyhow!("gateway-meta failed: {}", compact_stderr(&stderr)));
