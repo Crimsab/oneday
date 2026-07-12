@@ -1197,12 +1197,26 @@ where
     )
     .await?;
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let parsed = serde_json::from_slice(&output.stdout).with_context(|| {
-        format!(
-            "decoding {command} stdout; stderr={}",
-            compact_stderr(&stderr)
-        )
-    })?;
+    let parsed = match serde_json::from_slice(&output.stdout) {
+        Ok(parsed) => parsed,
+        Err(_) if !output.status.success() => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            return Err(anyhow!(
+                "{command} transport failed with {}; stderr={}; stdout={}",
+                output.status,
+                compact_stderr(&stderr),
+                compact_stderr(&stdout),
+            ));
+        }
+        Err(err) => {
+            return Err(err).with_context(|| {
+                format!(
+                    "decoding {command} stdout; stderr={}",
+                    compact_stderr(&stderr)
+                )
+            });
+        }
+    };
     Ok((parsed, output.status.success(), stderr))
 }
 
@@ -1669,6 +1683,38 @@ mod tests {
         assert!(err.to_string().contains("provider failed"), "{err}");
         let event = rx.recv().await.expect("broadcast error event");
         assert_eq!(event.event_type.as_deref(), Some("error"));
+    }
+
+    #[tokio::test]
+    async fn call_gateway_reports_transport_failure_before_json_decode() {
+        let root = std::env::temp_dir().join(format!("oneday-transport-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create transport test root");
+        let script = root.join("oneday-fake");
+        fs::write(
+            &script,
+            "#!/usr/bin/env bash\ncat >/dev/null\nprintf 'not-json'\nprintf 'bridge crashed' >&2\nexit 17\n",
+        )
+        .expect("write transport script");
+        #[cfg(unix)]
+        {
+            let mut permissions = fs::metadata(&script).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&script, permissions).unwrap();
+        }
+        let state = test_state(script).await;
+
+        let err = call_gateway::<_, serde_json::Value>(
+            state,
+            "gateway-crash",
+            &serde_json::json!({"request": true}),
+        )
+        .await
+        .expect_err("invalid stdout from failed process must be a transport error");
+        let message = err.to_string();
+
+        assert!(message.contains("transport failed"), "{message}");
+        assert!(message.contains("bridge crashed"), "{message}");
+        assert!(!message.starts_with("decoding"), "{message}");
     }
 
     async fn test_state(oneday_bin: PathBuf) -> Arc<AppState> {
