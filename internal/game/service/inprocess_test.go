@@ -52,6 +52,30 @@ type fakeStreamTurnProvider struct {
 	calls int
 }
 
+type cancelStreamTurnProvider struct{}
+
+func (*cancelStreamTurnProvider) Name() string { return "cancel-stream-turn" }
+
+func (*cancelStreamTurnProvider) Complete(ctx context.Context, _ ai.Request) (ai.Response, error) {
+	<-ctx.Done()
+	return ai.Response{}, ctx.Err()
+}
+
+func (*cancelStreamTurnProvider) Stream(ctx context.Context, _ ai.Request) (<-chan ai.StreamChunk, error) {
+	ch := make(chan ai.StreamChunk)
+	go func() {
+		defer close(ch)
+		for {
+			select {
+			case ch <- ai.StreamChunk{Content: "delta", Model: "cancel-model"}:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return ch, nil
+}
+
 func (f *fakeStreamTurnProvider) Name() string { return "fake-stream-turn" }
 
 func (f *fakeStreamTurnProvider) Complete(_ context.Context, _ ai.Request) (ai.Response, error) {
@@ -330,6 +354,62 @@ func TestInProcessTurnServiceSubmitActionStreamReplayReturnsCanonicalEvents(t *t
 	}
 	if provider.callCount() != 1 {
 		t.Fatalf("provider calls = %d, want 1 after stream replay", provider.callCount())
+	}
+}
+
+func TestSubmitActionStreamCancellationReleasesStoryLease(t *testing.T) {
+	root := t.TempDir()
+	db := newTurnServiceTestDB(t, root)
+	createTurnServiceStory(t, db, "story-cancel-stream", 0)
+	router, err := ai.NewRouter([]ai.Provider{&cancelStreamTurnProvider{}})
+	if err != nil {
+		t.Fatalf("NewRouter: %v", err)
+	}
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "data")
+	cfg.RAG.Enabled = false
+	cfg.AI.ASCIIArt.Enabled = false
+	svc := NewInProcessTurnService(cfg, db, router)
+	snapshot, err := svc.Snapshot(context.Background(), "story-cancel-stream")
+	if err != nil {
+		t.Fatalf("Snapshot: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	stream, err := svc.SubmitActionStream(ctx, contracts.SubmitActionRequest{
+		StoryID: snapshot.StoryID, SessionID: snapshot.SessionID,
+		ClientTurn: snapshot.Turn, ClientRevision: snapshot.Revision,
+		IdempotencyKey: "cancel-stream-key",
+		Action:         contracts.PlayerAction{Kind: contracts.ActionKindFreeText, Text: "Wait here."},
+	})
+	if err != nil {
+		t.Fatalf("SubmitActionStream: %v", err)
+	}
+	select {
+	case <-stream:
+	case <-time.After(time.Second):
+		t.Fatal("stream did not emit its initial event")
+	}
+	cancel()
+	for {
+		select {
+		case _, ok := <-stream:
+			if !ok {
+				goto streamClosed
+			}
+		case <-time.After(time.Second):
+			t.Fatal("stream did not close after cancellation")
+		}
+	}
+
+streamClosed:
+	leaseCtx, leaseCancel := context.WithTimeout(context.Background(), time.Second)
+	defer leaseCancel()
+	lease, err := svc.acquireStoryMutationLease(leaseCtx, snapshot.StoryID, "cancellation-test")
+	if err != nil {
+		t.Fatalf("story lease remained held after cancellation: %v", err)
+	}
+	if err := lease.Release(); err != nil {
+		t.Fatalf("release reacquired lease: %v", err)
 	}
 }
 

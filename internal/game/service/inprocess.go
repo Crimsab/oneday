@@ -179,7 +179,7 @@ func (s *InProcessTurnService) SubmitActionStream(ctx context.Context, req contr
 	go func() {
 		defer close(out)
 		if err := s.submitActionStreamLocked(ctx, req, requestHash, out); err != nil {
-			out <- errorTurnEvent(req, err)
+			sendTurnEvent(ctx, out, errorTurnEvent(req, err))
 		}
 	}()
 	return out, nil
@@ -199,7 +199,9 @@ func (s *InProcessTurnService) submitActionStreamLocked(ctx context.Context, req
 	if events, ok, err := s.cachedEvents(req, requestHash); err != nil {
 		return err
 	} else if ok {
-		sendTurnEvents(out, events)
+		if !sendTurnEvents(ctx, out, events) {
+			return ctx.Err()
+		}
 		return nil
 	}
 
@@ -219,7 +221,9 @@ func (s *InProcessTurnService) submitActionStreamLocked(ctx context.Context, req
 		return err
 	}
 	if ok {
-		sendTurnEvents(out, events)
+		if !sendTurnEvents(ctx, out, events) {
+			return ctx.Err()
+		}
 		return nil
 	}
 
@@ -530,7 +534,9 @@ func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.
 			return contracts.TurnEvent{}, err
 		}
 		seq++
-		out <- event
+		if !sendTurnEvent(ctx, out, event) {
+			return contracts.TurnEvent{}, ctx.Err()
+		}
 		return event, nil
 	}
 
@@ -571,7 +577,18 @@ func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.
 		return nil, err
 	}
 	var resp *engine.NarrativeResponse
-	for chunk := range stream {
+streamLoop:
+	for {
+		var chunk engine.NarrativeStreamChunk
+		var ok bool
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case chunk, ok = <-stream:
+			if !ok {
+				break streamLoop
+			}
+		}
 		if chunk.Err != nil {
 			return nil, chunk.Err
 		}
@@ -598,7 +615,9 @@ func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.
 		}
 	}
 	for _, event := range finalEvents {
-		out <- event
+		if !sendTurnEvent(ctx, out, event) {
+			return nil, ctx.Err()
+		}
 	}
 	return cloneEvents(finalEvents), nil
 }
@@ -970,9 +989,21 @@ func eventsChannel(events []contracts.TurnEvent) <-chan contracts.TurnEvent {
 	return out
 }
 
-func sendTurnEvents(out chan<- contracts.TurnEvent, events []contracts.TurnEvent) {
+func sendTurnEvents(ctx context.Context, out chan<- contracts.TurnEvent, events []contracts.TurnEvent) bool {
 	for _, event := range events {
-		out <- event
+		if !sendTurnEvent(ctx, out, event) {
+			return false
+		}
+	}
+	return true
+}
+
+func sendTurnEvent(ctx context.Context, out chan<- contracts.TurnEvent, event contracts.TurnEvent) bool {
+	select {
+	case out <- event:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 

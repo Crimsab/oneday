@@ -568,6 +568,14 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 	go func() {
 		defer close(ch)
 		defer resp.Body.Close()
+		emit := func(chunk ai.StreamChunk) bool {
+			select {
+			case ch <- chunk:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
 
 		// sseChunk mirrors the SSE delta payload from OpenAI-compatible endpoints.
 		type sseChunk struct {
@@ -591,36 +599,40 @@ func (o *OpenAICompat) Stream(ctx context.Context, req ai.Request) (<-chan ai.St
 			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 			if data == "[DONE]" {
 				if !seenContent {
-					ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream returned no content", o.name)}
+					emit(ai.StreamChunk{Error: fmt.Errorf("%s stream returned no content", o.name)})
 					return
 				}
-				ch <- ai.StreamChunk{Done: true}
+				emit(ai.StreamChunk{Done: true})
 				return
 			}
 			var chunk sseChunk
 			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-				ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream chunk parse: %w", o.name, err)}
+				emit(ai.StreamChunk{Error: fmt.Errorf("%s stream chunk parse: %w", o.name, err)})
 				return
 			}
 			if chunk.Usage.TotalTokens > 0 || chunk.Usage.Cost > 0 {
-				ch <- ai.StreamChunk{
+				if !emit(ai.StreamChunk{
 					Model: chunk.Model,
 					Usage: usageFromDTO(chunk.Usage),
+				}) {
+					return
 				}
 			}
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				seenContent = true
-				ch <- ai.StreamChunk{
+				if !emit(ai.StreamChunk{
 					Content: chunk.Choices[0].Delta.Content,
 					Model:   chunk.Model,
+				}) {
+					return
 				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream scanner: %w", o.name, err)}
+			emit(ai.StreamChunk{Error: fmt.Errorf("%s stream scanner: %w", o.name, err)})
 			return
 		}
-		ch <- ai.StreamChunk{Error: fmt.Errorf("%s stream closed before [DONE]", o.name)}
+		emit(ai.StreamChunk{Error: fmt.Errorf("%s stream closed before [DONE]", o.name)})
 	}()
 
 	return ch, nil
@@ -648,6 +660,14 @@ func (o *OpenAICompat) streamResponses(ctx context.Context, body responsesReques
 	go func() {
 		defer close(ch)
 		defer resp.Body.Close()
+		emit := func(chunk ai.StreamChunk) bool {
+			select {
+			case ch <- chunk:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
 
 		resolvedModel := body.Model
 		var finalUsage ai.Usage
@@ -665,15 +685,15 @@ func (o *OpenAICompat) streamResponses(ctx context.Context, body responsesReques
 			if data == "[DONE]" {
 				seenDone = true
 				if !seenContent {
-					ch <- ai.StreamChunk{Error: fmt.Errorf("%s responses stream returned no content", o.name)}
+					emit(ai.StreamChunk{Error: fmt.Errorf("%s responses stream returned no content", o.name)})
 					return
 				}
-				ch <- ai.StreamChunk{Model: resolvedModel, Usage: finalUsage, Done: true}
+				emit(ai.StreamChunk{Model: resolvedModel, Usage: finalUsage, Done: true})
 				return
 			}
 			event, err := parseResponsesStreamEvent(data)
 			if err != nil {
-				ch <- ai.StreamChunk{Error: err}
+				emit(ai.StreamChunk{Error: err})
 				return
 			}
 			if event == nil {
@@ -683,18 +703,24 @@ func (o *OpenAICompat) streamResponses(ctx context.Context, body responsesReques
 			case "response.output_text.delta":
 				if event.Delta != "" {
 					seenContent = true
-					ch <- ai.StreamChunk{Content: event.Delta, Model: resolvedModel}
+					if !emit(ai.StreamChunk{Content: event.Delta, Model: resolvedModel}) {
+						return
+					}
 				}
 			case "response.output_text.done":
 				if !seenContent && event.Text != "" {
 					seenContent = true
-					ch <- ai.StreamChunk{Content: event.Text, Model: resolvedModel}
+					if !emit(ai.StreamChunk{Content: event.Text, Model: resolvedModel}) {
+						return
+					}
 				}
 			case "response.output_item.done":
 				if !seenContent {
 					if text := textFromResponsesOutputItem(event.Item); text != "" {
 						seenContent = true
-						ch <- ai.StreamChunk{Content: text, Model: resolvedModel}
+						if !emit(ai.StreamChunk{Content: text, Model: resolvedModel}) {
+							return
+						}
 					}
 				}
 			case "response.completed":
@@ -703,31 +729,35 @@ func (o *OpenAICompat) streamResponses(ctx context.Context, body responsesReques
 				}
 				if responsesUsageNonZero(event.Response.Usage) || event.Response.Cost != 0 {
 					finalUsage = usageFromResponsesResponse(event.Response)
-					ch <- ai.StreamChunk{Model: resolvedModel, Usage: finalUsage}
+					if !emit(ai.StreamChunk{Model: resolvedModel, Usage: finalUsage}) {
+						return
+					}
 				}
 				if !seenContent {
 					if text := textFromResponsesResponse(event.Response); text != "" {
 						seenContent = true
-						ch <- ai.StreamChunk{Content: text, Model: resolvedModel}
+						if !emit(ai.StreamChunk{Content: text, Model: resolvedModel}) {
+							return
+						}
 					}
 				}
 				if !seenContent {
-					ch <- ai.StreamChunk{Error: fmt.Errorf("%s responses stream completed without content", o.name)}
+					emit(ai.StreamChunk{Error: fmt.Errorf("%s responses stream completed without content", o.name)})
 					return
 				}
-				ch <- ai.StreamChunk{Model: resolvedModel, Usage: finalUsage, Done: true}
+				emit(ai.StreamChunk{Model: resolvedModel, Usage: finalUsage, Done: true})
 				return
 			case "response.failed", "response.incomplete":
-				ch <- ai.StreamChunk{Error: fmt.Errorf("responses stream failed: %s", responsesFailureMessage(event.Response))}
+				emit(ai.StreamChunk{Error: fmt.Errorf("responses stream failed: %s", responsesFailureMessage(event.Response))})
 				return
 			}
 		}
 		if err := scanner.Err(); err != nil {
-			ch <- ai.StreamChunk{Error: fmt.Errorf("%s responses stream scanner: %w", o.name, err)}
+			emit(ai.StreamChunk{Error: fmt.Errorf("%s responses stream scanner: %w", o.name, err)})
 			return
 		}
 		if !seenDone {
-			ch <- ai.StreamChunk{Error: fmt.Errorf("%s responses stream closed before completion", o.name)}
+			emit(ai.StreamChunk{Error: fmt.Errorf("%s responses stream closed before completion", o.name)})
 			return
 		}
 	}()
@@ -750,8 +780,10 @@ func (o *OpenAICompat) completeResponsesOnceAsStream(ctx context.Context, body r
 	ch := make(chan ai.StreamChunk, 3)
 	go func() {
 		defer close(ch)
-		ch <- ai.StreamChunk{Content: content, Model: model, Usage: usage}
-		ch <- ai.StreamChunk{Model: model, Usage: usage, Done: true}
+		if !sendAIStreamChunk(ctx, ch, ai.StreamChunk{Content: content, Model: model, Usage: usage}) {
+			return
+		}
+		sendAIStreamChunk(ctx, ch, ai.StreamChunk{Model: model, Usage: usage, Done: true})
 	}()
 	return ch, nil
 }
@@ -968,19 +1000,30 @@ func (o *OpenAICompat) completeAsStream(ctx context.Context, req ai.Request) (<-
 	go func() {
 		defer close(ch)
 		if resp.Content != "" {
-			ch <- ai.StreamChunk{
+			if !sendAIStreamChunk(ctx, ch, ai.StreamChunk{
 				Content: resp.Content,
 				Model:   resp.Model,
 				Usage:   resp.Usage,
+			}) {
+				return
 			}
 		}
-		ch <- ai.StreamChunk{
+		sendAIStreamChunk(ctx, ch, ai.StreamChunk{
 			Model: resp.Model,
 			Usage: resp.Usage,
 			Done:  true,
-		}
+		})
 	}()
 	return ch, nil
+}
+
+func sendAIStreamChunk(ctx context.Context, ch chan<- ai.StreamChunk, chunk ai.StreamChunk) bool {
+	select {
+	case ch <- chunk:
+		return true
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func (o *OpenAICompat) applyStructuredJSONGuards(body *openAIChatRequest) {
