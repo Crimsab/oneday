@@ -140,6 +140,24 @@ func TestStoryCreatorGeneratesDraftAndMovesToWorldReview(t *testing.T) {
 	}
 }
 
+func TestStoryCreatorPresetExposesCanonicalBriefBeforeGeneration(t *testing.T) {
+	creator, provider := newStoryCreatorForTest(t, validStoryDefinitionJSON)
+	actions := creator.Actions()
+
+	if len(actions) == 0 {
+		t.Fatal("expected story brief presets")
+	}
+	if actions[0].Key != "preset_dark_fantasy" {
+		t.Fatalf("first action key = %q, want preset_dark_fantasy", actions[0].Key)
+	}
+	if actions[0].Seed != darkFantasyPreset {
+		t.Fatalf("preset seed = %q, want canonical dark fantasy preset", actions[0].Seed)
+	}
+	if provider.callCount != 0 {
+		t.Fatalf("AI call count = %d, want 0 before preset confirmation", provider.callCount)
+	}
+}
+
 func TestStoryCreatorCanFinishWithLocalCharacterSetup(t *testing.T) {
 	creator, provider := newStoryCreatorForTest(t, validStoryDefinitionJSON)
 

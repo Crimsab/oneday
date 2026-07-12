@@ -697,6 +697,7 @@ export interface StoryCreateResponse {
 export interface StoryWizardAction {
   key: string;
   label: string;
+  seed?: string;
 }
 
 export interface StoryWizardEnvelope {

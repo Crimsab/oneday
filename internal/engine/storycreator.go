@@ -43,7 +43,15 @@ const (
 type CreationAction struct {
 	Key   string `json:"key"`
 	Label string `json:"label"`
+	Seed  string `json:"seed,omitempty"`
 }
+
+const (
+	darkFantasyPreset = "Italian dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue."
+	cyberpunkPreset   = "Italian cyberpunk noir with sharp dialogue, neon decay, corporate power, and a slightly darkly comic edge."
+	horrorPreset      = "Italian horror mystery with oppressive atmosphere, slow dread, and clear, controlled prose."
+	cozyPreset        = "Italian cozy slice-of-life fantasy with gentle humor, warm relationships, and light, vivid prose."
+)
 
 // StoryCreatorState is the serializable browser/terminal bridge state for the
 // guided story wizard. The browser sends it back on the next step so the
@@ -161,10 +169,10 @@ func (sc *StoryCreator) Actions() []CreationAction {
 	switch sc.stage {
 	case stageBrief:
 		return []CreationAction{
-			{Key: "preset_dark_fantasy", Label: "Dark fantasy"},
-			{Key: "preset_cyberpunk", Label: "Cyberpunk noir"},
-			{Key: "preset_horror", Label: "Horror mystery"},
-			{Key: "preset_cozy", Label: "Cozy slice-of-life"},
+			{Key: "preset_dark_fantasy", Label: "Dark fantasy", Seed: darkFantasyPreset},
+			{Key: "preset_cyberpunk", Label: "Cyberpunk noir", Seed: cyberpunkPreset},
+			{Key: "preset_horror", Label: "Horror mystery", Seed: horrorPreset},
+			{Key: "preset_cozy", Label: "Cozy slice-of-life", Seed: cozyPreset},
 			{Key: "focus_input", Label: "Write my own"},
 		}
 	case stageReviewWorld:
@@ -317,13 +325,13 @@ func (sc *StoryCreator) ExecuteAction(ctx context.Context, actionKey string) (st
 		sc.lastLatency = 0
 		return "Write your own brief in the input box. A single compact paragraph is enough.", nil
 	case "preset_dark_fantasy":
-		return sc.handleBrief(ctx, "Italian dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue.")
+		return sc.handleBrief(ctx, darkFantasyPreset)
 	case "preset_cyberpunk":
-		return sc.handleBrief(ctx, "Italian cyberpunk noir with sharp dialogue, neon decay, corporate power, and a slightly darkly comic edge.")
+		return sc.handleBrief(ctx, cyberpunkPreset)
 	case "preset_horror":
-		return sc.handleBrief(ctx, "Italian horror mystery with oppressive atmosphere, slow dread, and clear, controlled prose.")
+		return sc.handleBrief(ctx, horrorPreset)
 	case "preset_cozy":
-		return sc.handleBrief(ctx, "Italian cozy slice-of-life fantasy with gentle humor, warm relationships, and light, vivid prose.")
+		return sc.handleBrief(ctx, cozyPreset)
 	}
 
 	switch sc.stage {
