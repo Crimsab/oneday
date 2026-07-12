@@ -855,9 +855,9 @@ async fn load_save(
     let snapshot = db::snapshot(&state.pool, &story_id).await?;
     Ok(Json(json!({
         "save": load.save,
-        "legacy": load.legacy,
+        "legacy": load.legacy.unwrap_or(false),
         "snapshot_state": load.snapshot_state,
-        "snapshot_detail": load.snapshot_detail,
+        "snapshot_detail": load.snapshot_detail.unwrap_or_default(),
         "snapshot": snapshot,
     })))
 }

@@ -1,4 +1,4 @@
-use crate::{events::TurnStreamEvent, AppState};
+use crate::{events::TurnStreamEvent, gateway_protocol as protocol, AppState};
 use anyhow::{anyhow, Context};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -234,33 +234,6 @@ struct GatewayMetaRequest<'a> {
     text: &'a str,
 }
 
-#[derive(Debug, Serialize)]
-struct GatewaySaveRequest<'a> {
-    story_id: &'a str,
-    session_id: &'a str,
-    client_turn: i64,
-    client_revision: i64,
-    name: &'a str,
-    kind: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct GatewayLoadRequest<'a> {
-    story_id: &'a str,
-    session_id: &'a str,
-    client_turn: i64,
-    client_revision: i64,
-    save_id: &'a str,
-}
-
-#[derive(Debug, Serialize)]
-struct GatewayDeleteSaveRequest<'a> {
-    story_id: &'a str,
-    session_id: &'a str,
-    client_turn: i64,
-    client_revision: i64,
-    save_id: &'a str,
-}
 
 #[derive(Debug, Serialize)]
 struct GatewayStoryCreateRequest<'a> {
@@ -315,48 +288,6 @@ pub struct GatewayMetaResult {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct GatewayMetaResponse {
     pub meta: Option<GatewayMetaResult>,
-    #[serde(default)]
-    pub error: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewaySaveView {
-    pub id: String,
-    pub name: String,
-    pub turn: i64,
-    pub chapter: i64,
-    #[serde(default)]
-    pub location: String,
-    #[serde(default)]
-    pub session_id: String,
-    #[serde(default)]
-    pub metadata: serde_json::Value,
-    pub created_at: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewaySaveResponse {
-    pub save: Option<GatewaySaveView>,
-    #[serde(default)]
-    pub error: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewayLoadResponse {
-    pub save: Option<GatewaySaveView>,
-    #[serde(default)]
-    pub legacy: bool,
-    #[serde(default)]
-    pub snapshot_state: String,
-    #[serde(default)]
-    pub snapshot_detail: String,
-    #[serde(default)]
-    pub error: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewayDeleteSaveResponse {
-    pub save: Option<GatewaySaveView>,
     #[serde(default)]
     pub error: String,
 }
@@ -1110,19 +1041,19 @@ pub async fn create_save(
     state: Arc<AppState>,
     story_id: &str,
     envelope: SaveEnvelope,
-) -> anyhow::Result<GatewaySaveResponse> {
-    let req = GatewaySaveRequest {
-        story_id,
-        session_id: &envelope.session_id,
+) -> anyhow::Result<protocol::SaveResponse> {
+    let req = protocol::BrowserSaveRequest {
+        story_id: story_id.to_string(),
+        session_id: envelope.session_id,
         client_turn: envelope.client_turn,
         client_revision: envelope.client_revision,
-        name: &envelope.name,
-        kind: &envelope.kind,
+        name: Some(envelope.name),
+        kind: Some(envelope.kind),
     };
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, GatewaySaveResponse>(state, "gateway-save", &req).await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        call_gateway::<_, protocol::SaveResponse>(state, "gateway-save", &req).await?;
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_string()));
     }
     if !status_ok {
         return Err(anyhow!("gateway-save failed: {}", compact_stderr(&stderr)));
@@ -1134,18 +1065,18 @@ pub async fn load_save(
     state: Arc<AppState>,
     story_id: &str,
     envelope: LoadEnvelope,
-) -> anyhow::Result<GatewayLoadResponse> {
-    let req = GatewayLoadRequest {
-        story_id,
-        session_id: &envelope.session_id,
+) -> anyhow::Result<protocol::LoadResponse> {
+    let req = protocol::BrowserLoadRequest {
+        story_id: story_id.to_string(),
+        session_id: envelope.session_id,
         client_turn: envelope.client_turn,
         client_revision: envelope.client_revision,
-        save_id: &envelope.save_id,
+        save_id: envelope.save_id,
     };
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, GatewayLoadResponse>(state, "gateway-load", &req).await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        call_gateway::<_, protocol::LoadResponse>(state, "gateway-load", &req).await?;
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_string()));
     }
     if !status_ok {
         return Err(anyhow!("gateway-load failed: {}", compact_stderr(&stderr)));
@@ -1157,18 +1088,18 @@ pub async fn delete_save(
     state: Arc<AppState>,
     story_id: &str,
     envelope: DeleteSaveEnvelope,
-) -> anyhow::Result<GatewayDeleteSaveResponse> {
-    let req = GatewayDeleteSaveRequest {
-        story_id,
-        session_id: &envelope.session_id,
+) -> anyhow::Result<protocol::DeleteSaveResponse> {
+    let req = protocol::BrowserDeleteSaveRequest {
+        story_id: story_id.to_string(),
+        session_id: envelope.session_id,
         client_turn: envelope.client_turn,
         client_revision: envelope.client_revision,
-        save_id: &envelope.save_id,
+        save_id: envelope.save_id,
     };
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, GatewayDeleteSaveResponse>(state, "gateway-delete-save", &req).await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        call_gateway::<_, protocol::DeleteSaveResponse>(state, "gateway-delete-save", &req).await?;
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_string()));
     }
     if !status_ok {
         return Err(anyhow!(
