@@ -111,8 +111,6 @@ export const fallbackCommandDescriptors: CommandDescriptor[] = [
   descriptor("quit", "quit", "Quit", "Save and leave the terminal session.", "system", "terminal_only", "local_only", ["q"]),
 ];
 
-export const slashCommands = commandDescriptorsToSlashCommands(fallbackCommandDescriptors);
-
 export const commandGroupLabels: Record<string, string> = {
   play: "Play",
   talk: "Talk",
