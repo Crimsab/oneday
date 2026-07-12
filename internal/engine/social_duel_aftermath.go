@@ -21,9 +21,18 @@ type SocialDuelAftermath struct {
 	NPCNote            string           `json:"npc_note,omitempty"`
 }
 
-func ApplySocialDuelAftermath(db *storage.DB, world *storage.WorldState, npc *storage.NPC, state *SocialDuelState, result *SocialRoundResult, cue *SocialDuelCue, currentTurn int) *SocialDuelAftermath {
+func ApplySocialDuelAftermath(db *storage.DB, world *storage.WorldState, npc *storage.NPC, state *SocialDuelState, result *SocialRoundResult, cue *SocialDuelCue, currentTurn int) (*SocialDuelAftermath, error) {
 	if state == nil || result == nil {
-		return nil
+		return nil, nil
+	}
+	originalWorld, originalNPC := world, npc
+	if world != nil {
+		workingWorld := *world
+		world = &workingWorld
+	}
+	if npc != nil {
+		workingNPC := *npc
+		npc = &workingNPC
 	}
 
 	aftermath := &SocialDuelAftermath{}
@@ -107,7 +116,7 @@ func ApplySocialDuelAftermath(db *storage.DB, world *storage.WorldState, npc *st
 		} else if npc != nil {
 			storyID = npc.StoryID
 		}
-		_ = db.WithTx(func(tx *sql.Tx) error {
+		if err := db.WithTx(func(tx *sql.Tx) error {
 			if changedNPC && npc != nil {
 				if err := db.UpdateNPCTx(tx, npc); err != nil {
 					return err
@@ -123,13 +132,21 @@ func ApplySocialDuelAftermath(db *storage.DB, world *storage.WorldState, npc *st
 			}
 			_, err := db.BumpStoryRevisionTx(tx, storyID)
 			return err
-		})
+		}); err != nil {
+			return nil, fmt.Errorf("persisting social duel aftermath: %w", err)
+		}
+	}
+	if originalNPC != nil && changedNPC {
+		*originalNPC = *npc
+	}
+	if originalWorld != nil && changedWorld {
+		*originalWorld = *world
 	}
 
 	if len(aftermath.Summary) == 0 && aftermath.NPCNote == "" {
-		return nil
+		return nil, nil
 	}
-	return aftermath
+	return aftermath, nil
 }
 
 func socialDuelRelationshipDelta(state *SocialDuelState, result *SocialRoundResult) (int, RelationshipAxes) {

@@ -324,7 +324,8 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 						m.socialDuelNPC = freshNPC
 					}
 				}
-				aftermath = engine.ApplySocialDuelAftermath(
+				var aftermathErr error
+				aftermath, aftermathErr = engine.ApplySocialDuelAftermath(
 					m.narrator.DB(),
 					m.narrator.World(),
 					npc,
@@ -333,6 +334,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 					duelMsg.Cue,
 					m.narrator.Turn(),
 				)
+				if aftermathErr != nil {
+					return aftermathErr
+				}
 				return lease.Renew()
 			}); err != nil {
 				m.statusMsg = "Social duel sync failed"
