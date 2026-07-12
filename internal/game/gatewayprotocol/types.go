@@ -87,10 +87,11 @@ type CraftResponse struct {
 }
 type TurnStreamLine struct {
 	ResponseMeta
-	Event *contracts.TurnEvent `json:"event,omitempty"`
-	Phase string               `json:"phase,omitempty"`
-	Error string               `json:"error,omitempty"`
-	Done  bool                 `json:"done,omitempty"`
+	Event    *contracts.TurnEvent `json:"event,omitempty"`
+	Phase    string               `json:"phase,omitempty"`
+	Error    string               `json:"error,omitempty"`
+	Done     bool                 `json:"done,omitempty"`
+	Sequence int64                `json:"sequence,omitempty"`
 }
 type MetaResponse struct {
 	ResponseMeta

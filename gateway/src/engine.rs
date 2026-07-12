@@ -555,6 +555,7 @@ async fn call_gateway_turn_stream(
 
     let mut events = Vec::new();
     let mut saw_done = false;
+    let mut expected_sequence = 1_i64;
     let mut lines = BufReader::new(stdout).lines();
     let run_result = tokio::time::timeout(Duration::from_secs(360), async {
         stdin.write_all(&input).await?;
@@ -567,6 +568,18 @@ async fn call_gateway_turn_stream(
             }
             let parsed: protocol::TurnStreamLine = serde_json::from_str(line)
                 .with_context(|| format!("decoding gateway-turn stream line: {line}"))?;
+            if saw_done {
+                return Err(anyhow!("gateway-turn stream emitted a frame after done"));
+            }
+            let sequence = parsed
+                .sequence
+                .ok_or_else(|| anyhow!("gateway-turn stream frame has no sequence"))?;
+            if sequence != expected_sequence {
+                return Err(anyhow!(
+                    "gateway-turn stream sequence {sequence}, expected {expected_sequence}"
+                ));
+            }
+            expected_sequence += 1;
             if let Some(error) = gateway_response_error(
                 parsed.error_detail.as_ref(),
                 parsed.error.as_deref(),
@@ -602,7 +615,7 @@ async fn call_gateway_turn_stream(
             }
             if parsed.done.unwrap_or(false) {
                 saw_done = true;
-                break;
+                continue;
             }
         }
         if !saw_done {
@@ -1157,10 +1170,10 @@ mod tests {
     #[tokio::test]
     async fn call_gateway_turn_stream_broadcasts_live_but_returns_final_only() {
         let script = fake_oneday_input_script(&[
-            r#"{"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"narrative.delta","payload":{"text":"Hello"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
-            r#"{"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.started","payload":{},"created_at":"2026-01-01T00:00:01Z"},"phase":"final"}"#,
-            r#"{"event":{"id":"idem:2","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:02Z"},"phase":"final"}"#,
-            r#"{"done":true}"#,
+            r#"{"sequence":1,"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"narrative.delta","payload":{"text":"Hello"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
+            r#"{"sequence":2,"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.started","payload":{},"created_at":"2026-01-01T00:00:01Z"},"phase":"final"}"#,
+            r#"{"sequence":3,"event":{"id":"idem:2","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:02Z"},"phase":"final"}"#,
+            r#"{"sequence":4,"done":true}"#,
         ]);
         let state = test_state(script).await;
         let mut rx = state.turn_events.subscribe();
@@ -1347,7 +1360,7 @@ mod tests {
     #[tokio::test]
     async fn call_gateway_turn_stream_requires_done_line() {
         let script = fake_oneday_input_script(&[
-            r#"{"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:00Z"},"phase":"final"}"#,
+            r#"{"sequence":1,"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:00Z"},"phase":"final"}"#,
         ]);
         let state = test_state(script).await;
         let req = stream_test_request();
@@ -1367,9 +1380,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn call_gateway_turn_stream_rejects_sequence_gaps() {
+        let script = fake_oneday_input_script(&[r#"{"sequence":2,"done":true}"#]);
+        let state = test_state(script).await;
+        let req = stream_test_request();
+
+        let err = call_gateway_turn_stream(
+            state,
+            &req,
+            "story-1",
+            1,
+            "free_text".to_string(),
+            "look".to_string(),
+        )
+        .await
+        .expect_err("sequence gap should fail");
+
+        assert!(err.to_string().contains("expected 1"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn call_gateway_turn_stream_rejects_frames_after_done() {
+        let script = fake_oneday_input_script(&[
+            r#"{"sequence":1,"done":true}"#,
+            r#"{"sequence":2,"done":true}"#,
+        ]);
+        let state = test_state(script).await;
+        let req = stream_test_request();
+
+        let err = call_gateway_turn_stream(
+            state,
+            &req,
+            "story-1",
+            1,
+            "free_text".to_string(),
+            "look".to_string(),
+        )
+        .await
+        .expect_err("trailing frame should fail");
+
+        assert!(err.to_string().contains("after done"), "{err}");
+    }
+
+    #[tokio::test]
     async fn call_gateway_turn_stream_error_event_returns_error() {
         let script = fake_oneday_input_script(&[
-            r#"{"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"error","payload":{"message":"provider failed"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
+            r#"{"sequence":1,"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"error","payload":{"message":"provider failed"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
         ]);
         let state = test_state(script).await;
         let mut rx = state.turn_events.subscribe();

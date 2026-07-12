@@ -685,16 +685,20 @@ func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, rout
 			return writeGatewayTurnStreamError(out, err)
 		}
 		encoder := json.NewEncoder(out)
+		var sequence int64
 		for event := range stream {
+			sequence++
 			eventCopy := event
 			if err := encoder.Encode(gatewayTurnStreamLine{
-				Event: &eventCopy,
-				Phase: gatewayTurnEventPhase(eventCopy),
+				Event:    &eventCopy,
+				Phase:    gatewayTurnEventPhase(eventCopy),
+				Sequence: sequence,
 			}); err != nil {
 				return fmt.Errorf("writing gateway-turn stream event: %w", err)
 			}
 		}
-		if err := encoder.Encode(gatewayTurnStreamLine{Done: true}); err != nil {
+		sequence++
+		if err := encoder.Encode(gatewayTurnStreamLine{Done: true, Sequence: sequence}); err != nil {
 			return fmt.Errorf("writing gateway-turn stream done: %w", err)
 		}
 		return nil
@@ -911,7 +915,7 @@ func writeGatewayCraftError(out io.Writer, err error) error {
 }
 
 func writeGatewayTurnStreamError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{ResponseMeta: gatewayprotocol.Failure("turn_stream_failed", err.Error()), Error: err.Error()})
+	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{ResponseMeta: gatewayprotocol.Failure("turn_stream_failed", err.Error()), Error: err.Error(), Sequence: 1})
 	return err
 }
 

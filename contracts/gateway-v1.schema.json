@@ -2854,6 +2854,9 @@
         },
         "done": {
           "type": "boolean"
+        },
+        "sequence": {
+          "type": "integer"
         }
       },
       "additionalProperties": false,
