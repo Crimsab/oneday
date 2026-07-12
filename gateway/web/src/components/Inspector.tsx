@@ -325,7 +325,7 @@ function WorldStateModule({
             </button>
           )}
         </header>
-        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} visuals={visuals} expanded={expanded} />
+        <CanonicalMap locationsValue={snapshot.world.spatial_locations} edgesValue={snapshot.world.spatial_edges} currentLocationId={snapshot.world.current_location_id} visuals={visuals} expanded={expanded} onOpenVisualAsset={onOpenVisualAsset} />
       </section>
 
       {threads.length > 0 && (

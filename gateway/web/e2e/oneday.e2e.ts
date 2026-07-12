@@ -14,7 +14,7 @@ function snapshot(turn = 4, branchId = "branch-main") {
     version: { turn, revision: branchId === "branch-main" ? 7 : 8, story_updated_at: now, active_session_id: "session-1", last_message_id: 3, world_updated_at: now, character_updated_at: now, npc_count: 1, npc_updated_at: now, chapter_count: 1, achievement_count: 0, latest_achievement_at: "", save_count: 0, latest_save_at: "", visual_asset_updated_at: "", visual_job_updated_at: "", active_visual_job_count: 0 },
     story,
     character: { id: "hero", name: "Iria", fields: { stats: { resolve: 42 }, condition: "Steady", inventory: [] } },
-    world: { id: "world", current_location: "Glass Archive", current_location_id: "loc-archive", current_chapter: 1, current_turn: turn, spatial_locations: [{ id: "loc-archive", name: "Glass Archive", description: "The known archive", discovery_state: "visited" }, { id: "loc-court", name: "Outer Court", description: "A known courtyard", discovery_state: "known" }], spatial_edges: [{ id: "edge-court", from_location_id: "loc-archive", to_location_id: "loc-court", direction: "south", travel_minutes: 5 }], world_time: { day: 2, minute_of_day: 780, display_text: "Day 2, 13:00" }, weather: { weather_kind: "clear", description: "Cold clear air" }, known_locations: [], global_events: [], faction_standings: {}, story_hooks: [], world_reactions: [], investigations: [], projects: [], guidance: [], fronts: [], timeline: [], scene_contract: {}, updated_at: now },
+    world: { id: "world", current_location: "Glass Archive", current_location_id: "loc-archive", current_chapter: 1, current_turn: turn, spatial_locations: [{ id: "loc-archive", name: "Glass Archive", description: "The known archive", discovery_state: "visited" }, { id: "loc-court", name: "Outer Court", description: "A known courtyard", discovery_state: "known" }, { id: "loc-stair", name: "Mirror Stair", description: "A narrow stair lined with cracked mirrors", discovery_state: "known" }, { id: "loc-wharf", name: "Ash Wharf", description: "A loading platform above the black canal", discovery_state: "known" }], spatial_edges: [{ id: "edge-court", from_location_id: "loc-archive", to_location_id: "loc-court", direction: "south", travel_minutes: 5 }, { id: "edge-stair", from_location_id: "loc-court", to_location_id: "loc-stair", direction: "east", travel_minutes: 3 }, { id: "edge-wharf", from_location_id: "loc-stair", to_location_id: "loc-wharf", direction: "down", travel_minutes: 7 }, { id: "edge-return", from_location_id: "loc-wharf", to_location_id: "loc-archive", direction: "canal", travel_minutes: 12 }], world_time: { day: 2, minute_of_day: 780, display_text: "Day 2, 13:00" }, weather: { weather_kind: "clear", description: "Cold clear air" }, known_locations: [], global_events: [], faction_standings: {}, story_hooks: [], world_reactions: [], investigations: [], projects: [], guidance: [], fronts: [], timeline: [], scene_contract: {}, updated_at: now },
     active_session: { id: "session-1", story_id: story.id, started_at: now, ended_at: null, summary: "" },
     choices: [{ id: 1, text: "Inspect the seal", intent: "investigate", risk: "measured", scope: "local", certainty: "uncertain", related_stats: ["resolve"] }],
     messages,
@@ -43,6 +43,9 @@ function visualResponse(canUndo = true, canRedo = false) {
       { id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", entity_id: "npc-mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", lineage_key: "npc-mira:form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "form_changed", gate_reason: "Mira's restored form has not been rendered on this branch.", generation_eligible: true, prompt: "Mira restored portrait", negative_prompt: "", status: "pending", url: "", provider: "", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: 21, can_undo_selection: canUndo, can_redo_selection: canRedo, inherited: false, updated_at: now },
       { id: "map-background", story_id: story.id, kind: "map_background", subject: "Known world", entity_id: "", canonical_entity_id: "", canonical_location_id: "", form_id: "", lineage_key: "map:branch-main", appearance_fingerprint: "map-v1", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "established_canonical", gate_reason: "Known map topology", generation_eligible: true, prompt: "Decorative map", negative_prompt: "", status: "ready", url: "/assets/map.png", provider: "mock", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: null, can_undo_selection: false, can_redo_selection: false, inherited: false, updated_at: now },
       { id: "archive-icon", story_id: story.id, kind: "map_icon", subject: "Glass Archive", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-archive", form_id: "", lineage_key: "map-icon:loc-archive", appearance_fingerprint: "archive-v1", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "established_canonical", gate_reason: "Known location", generation_eligible: true, prompt: "Archive icon", negative_prompt: "", status: "ready", url: "/assets/archive.png", provider: "mock", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: null, can_undo_selection: false, can_redo_selection: false, inherited: false, updated_at: now },
+      { id: "court-icon", story_id: story.id, kind: "map_icon", subject: "Outer Court", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-court", form_id: "", lineage_key: "map-icon:loc-court", appearance_fingerprint: "court-v1", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "established_canonical", gate_reason: "Known location", generation_eligible: true, prompt: "Court icon", negative_prompt: "", status: "ready", url: "/assets/court.png", provider: "mock", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: null, can_undo_selection: false, can_redo_selection: false, inherited: false, updated_at: now },
+      { id: "stair-icon", story_id: story.id, kind: "map_icon", subject: "Mirror Stair", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-stair", form_id: "", lineage_key: "map-icon:loc-stair", appearance_fingerprint: "stair-v1", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "established_canonical", gate_reason: "Known location", generation_eligible: true, prompt: "Stair icon", negative_prompt: "", status: "ready", url: "/assets/stair.png", provider: "mock", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: null, can_undo_selection: false, can_redo_selection: false, inherited: false, updated_at: now },
+      { id: "wharf-icon", story_id: story.id, kind: "map_icon", subject: "Ash Wharf", entity_id: "", canonical_entity_id: "", canonical_location_id: "loc-wharf", form_id: "", lineage_key: "map-icon:loc-wharf", appearance_fingerprint: "wharf-v1", profile_revision_id: "profile-1", canon_status: "canonical", gate_state: "established_canonical", gate_reason: "Known location", generation_eligible: true, prompt: "Wharf icon", negative_prompt: "", status: "ready", url: "/assets/wharf.png", provider: "mock", source: "", error: "", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", selected_version_id: null, can_undo_selection: false, can_redo_selection: false, inherited: false, updated_at: now },
     ],
     jobs: [],
   };
@@ -67,6 +70,10 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let audioGenerated = false;
   let ttsSettings = { story_id: story.id, mode: options.ttsOff ? "off" : "all", autoplay: false, default_language_tag: "en", provider_policy: {} };
   let pronunciations: any[] = [];
+  await page.route("**/assets/*.png", async (route) => {
+    const label = new URL(route.request().url()).pathname.split("/").at(-1)?.slice(0, 1).toUpperCase() || "M";
+    await route.fulfill({ status: 200, contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><rect width="96" height="96" fill="white"/><circle cx="48" cy="48" r="27" fill="#24292d"/><text x="48" y="57" text-anchor="middle" font-size="26" fill="#d09a48">${label}</text></svg>` });
+  });
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -387,14 +394,31 @@ test("renders only canonical known map topology and bounded agency events", asyn
   await page.getByPlaceholder("What do you want to try?").fill("/map");
   await page.getByRole("button", { name: "Send action" }).click();
   await expect(page.locator(".agency-feed:visible").filter({ hasText: "Mira advances an offscreen goal." })).toBeVisible();
-  const map = page.locator('.canonical-map:visible svg[role="img"]');
-  await expect(map).toHaveAttribute("aria-label", "Canonical map with 2 known locations and 1 known routes");
+  if (page.viewportSize()!.width > 1240) await page.getByRole("button", { name: "Open Map in a larger view" }).click();
+  const mapWorkspace = page.getByRole("dialog");
+  const mapShell = mapWorkspace.locator(".canonical-map");
+  const map = mapShell.locator('svg[role="img"]');
+  await expect(map).toHaveAttribute("aria-label", "Interactive canonical map with 4 known locations and 4 known routes");
   await expect(map).toBeVisible();
   await expect(map.getByText("Glass Archive", { exact: true })).toBeVisible();
   await expect(map.getByText("Outer Court", { exact: true })).toBeVisible();
-  await expect(page.locator(".canonical-map:visible")).toHaveClass(/illustrated/);
-  await expect(page.locator('.canonical-map:visible > img.canonical-map-art')).toHaveAttribute("src", "/assets/map.png");
-  await expect(map.locator('image[href="/assets/archive.png"]')).toHaveCount(1);
+  await expect(map.getByText("Mirror Stair", { exact: true })).toBeVisible();
+  await expect(map.getByText("Ash Wharf", { exact: true })).toBeVisible();
+  await expect(mapShell).toHaveClass(/illustrated/);
+  await expect(mapShell.locator(".canonical-map-stage > img.canonical-map-art")).toHaveAttribute("src", "/assets/map.png");
+  await expect(map.locator("image[clip-path]")).toHaveCount(4);
+  await mapShell.getByRole("button", { name: "Zoom in" }).click();
+  await expect(mapShell.getByText("120%", { exact: true })).toBeVisible();
+  await map.getByRole("button", { name: "Outer Court" }).click();
+  await expect(mapShell.locator(".canonical-map-selection")).toContainText("A known courtyard");
+  const beforeDrag = await map.locator(".canonical-map-viewport").getAttribute("transform");
+  const box = await map.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width * 0.55, box!.y + box!.height * 0.55);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.68, box!.y + box!.height * 0.64, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(() => map.locator(".canonical-map-viewport").getAttribute("transform")).not.toBe(beforeDrag);
 });
 
 test("generates committed audio and exposes per-story and per-character voice controls", async ({ page }) => {
