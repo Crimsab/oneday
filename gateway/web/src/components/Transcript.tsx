@@ -4,7 +4,7 @@ import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
 import { AudioControls } from "./AudioControls";
 import { MessageBranchControls } from "./MessageBranchControls";
-import { timelineControlAnchorMessageIds } from "../messageAlternatives";
+import { timelineControlPlacements } from "../messageAlternatives";
 import type { MessageView, PendingTurnView, TimelineResponse } from "../types";
 
 interface TranscriptProps {
@@ -24,8 +24,8 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
     () => messages.filter((message) => message.id > hiddenBeforeId),
     [messages, hiddenBeforeId],
   );
-  const timelineControlMessageIds = useMemo(
-    () => timelineControlAnchorMessageIds(visibleMessages, timeline),
+  const timelineControls = useMemo(
+    () => timelineControlPlacements(visibleMessages, timeline),
     [timeline, visibleMessages],
   );
 
@@ -41,14 +41,14 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
           {messages.length ? "Transcript cleared locally. New canonical messages will appear here." : "Choose a story to load the canonical transcript."}
         </div>
       ) : (
-        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} showTimelineControls={timelineControlMessageIds.has(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />)
+        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
     </div>
   );
 }
 
-function TranscriptMessage({ storyId, message, showTimelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; showTimelineControls: boolean; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
+function TranscriptMessage({ storyId, message, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
   const content = readableStructuredText(message.content) || compactText(message.content || "(empty)", 160);
@@ -65,8 +65,8 @@ function TranscriptMessage({ storyId, message, showTimelineControls, timeline, t
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={`Structured dialogue for turn ${message.turn}`}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || "Unknown speaker"}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
         <MessageDiagnostics message={message} />
         {message.role === "assistant" && Boolean(message.source_commit_id) && <AudioControls storyId={storyId} messageId={message.id} />}
-        {showTimelineControls && (
-          <MessageBranchControls message={message} timeline={timeline} busy={timelineBusy} onCheckout={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />
+        {timelineControls && (
+          <MessageBranchControls message={message} timeline={timeline} showRestore={timelineControls.restore} showSwitcher={timelineControls.switcher} busy={timelineBusy} onCheckout={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />
         )}
       </div>
     </article>

@@ -5,6 +5,8 @@ import type { MessageView, TimelineResponse } from "../types";
 interface MessageBranchControlsProps {
   message: MessageView;
   timeline: TimelineResponse | null;
+  showRestore: boolean;
+  showSwitcher: boolean;
   busy: boolean;
   onCheckout: (branchId: string) => Promise<void>;
   onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void>;
@@ -13,6 +15,8 @@ interface MessageBranchControlsProps {
 export function MessageBranchControls({
   message,
   timeline,
+  showRestore,
+  showSwitcher,
   busy,
   onCheckout,
   onRestoreDecision,
@@ -29,13 +33,15 @@ export function MessageBranchControls({
   const next = alternatives.atDecision
     ? alternatives.branches[0]
     : alternatives.branches[index + 1];
-  const showBranchSwitcher = alternatives.branches.length > 1 && (index >= 0 || alternatives.atDecision);
+  const showBranchSwitcher = showSwitcher && (alternatives.atDecision
+    ? alternatives.branches.length > 0
+    : alternatives.branches.length > 1 && index >= 0);
 
-  if (!restoreFrom && !showBranchSwitcher) return null;
+  if (!(showRestore && restoreFrom) && !showBranchSwitcher) return null;
 
   return (
     <nav className="message-branch-controls" aria-label={`Story alternatives for turn ${message.turn}`}>
-      {restoreFrom && (
+      {showRestore && restoreFrom && (
         <button
           type="button"
           className="restore-decision-button"
@@ -44,7 +50,7 @@ export function MessageBranchControls({
           title={`Create a new branch from before turn ${message.turn}`}
         >
           <RotateCcw size={13} aria-hidden="true" />
-          Try another path from here
+          Try another choice
         </button>
       )}
       {showBranchSwitcher && (
@@ -58,8 +64,8 @@ export function MessageBranchControls({
           >
             <ChevronLeft size={16} aria-hidden="true" />
           </button>
-          <span title={alternatives.atDecision ? "Choose a generated path from this decision" : alternatives.branches[index]?.name || "Displayed branch"}>
-            {alternatives.atDecision ? `${alternatives.branches.length} paths` : `${index + 1}/${alternatives.branches.length}`}
+          <span title={alternatives.atDecision ? "Open a saved path from this restored decision" : alternatives.branches[index]?.name || "Displayed branch"}>
+            {alternatives.atDecision ? `${alternatives.branches.length} saved` : `${index + 1}/${alternatives.branches.length}`}
           </span>
           <button
             type="button"

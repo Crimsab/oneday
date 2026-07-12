@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { messageAlternativesForCommit, timelineControlAnchorMessageIds } from "./messageAlternatives";
+import { messageAlternativesForCommit, timelineControlPlacements } from "./messageAlternatives";
 import type { MessageView, TimelineResponse } from "./types";
 
 describe("messageAlternativesForCommit", () => {
@@ -45,14 +45,31 @@ describe("messageAlternativesForCommit", () => {
     expect(alternatives.currentIndex).toBe(-1);
   });
 
-  it("anchors a materialized branch version to the player prompt that selected it", () => {
+  it("places rollback on the player prompt and branch versions on the narrator result", () => {
     const timeline = abcTimeline();
     const messages = [
       message(10, "user", "commit-c"),
       message(11, "assistant", "commit-c"),
     ];
 
-    expect([...timelineControlAnchorMessageIds(messages, timeline)]).toEqual([10]);
+    expect([...timelineControlPlacements(messages, timeline)]).toEqual([
+      [10, { restore: true, switcher: false }],
+      [11, { restore: false, switcher: true }],
+    ]);
+  });
+
+  it("places the path pager after the final narrator block for an outcome", () => {
+    const timeline = abcTimeline();
+    const messages = [
+      message(10, "user", "commit-c"),
+      message(11, "assistant", "commit-c"),
+      message(12, "assistant", "commit-c"),
+    ];
+
+    expect([...timelineControlPlacements(messages, timeline)]).toEqual([
+      [10, { restore: true, switcher: false }],
+      [12, { restore: false, switcher: true }],
+    ]);
   });
 
   it("anchors restored forward paths to the narrator when no new prompt exists", () => {
@@ -65,14 +82,32 @@ describe("messageAlternativesForCommit", () => {
       message(21, "assistant", "commit-b"),
     ];
 
-    expect([...timelineControlAnchorMessageIds(messages, timeline)]).toEqual([21]);
+    expect([...timelineControlPlacements(messages, timeline)]).toEqual([
+      [20, { restore: true, switcher: false }],
+      [21, { restore: false, switcher: true }],
+    ]);
   });
 
   it("falls back to the narrator for response-only alternatives", () => {
     const timeline = abcTimeline();
     const messages = [message(31, "assistant", "commit-c")];
 
-    expect([...timelineControlAnchorMessageIds(messages, timeline)]).toEqual([31]);
+    expect([...timelineControlPlacements(messages, timeline)]).toEqual([
+      [31, { restore: true, switcher: true }],
+    ]);
+  });
+
+  it("keeps a restored decision switchable when only one saved path exists", () => {
+    const timeline = abcTimeline();
+    timeline.branches = timeline.branches.filter((branch) => branch.id !== "branch-c-alternate");
+    timeline.active_branch_id = "branch-c-empty";
+    timeline.head = commit("commit-b", "branch-main", "commit-a", 2);
+    const messages = [message(41, "assistant", "commit-b")];
+
+    expect(messageAlternativesForCommit("commit-b", timeline).branches).toHaveLength(1);
+    expect([...timelineControlPlacements(messages, timeline)]).toEqual([
+      [41, { restore: true, switcher: true }],
+    ]);
   });
 });
 
