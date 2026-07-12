@@ -810,8 +810,31 @@ pub async fn timeline(
         from_commit_id: &envelope.from_commit_id,
         name: &envelope.name,
     };
+    let first = call_timeline_gateway(state.clone(), &request).await;
+    match first {
+        Ok(response) => Ok(response),
+        Err(first_error) if envelope.action == "list" => {
+            tokio::time::sleep(Duration::from_millis(75)).await;
+            call_timeline_gateway(state, &request)
+                .await
+                .map_err(|retry_error| {
+                    anyhow!(
+                        "gateway-timeline list failed after retry: {}; first error: {}",
+                        retry_error,
+                        first_error
+                    )
+                })
+        }
+        Err(error) => Err(error),
+    }
+}
+
+async fn call_timeline_gateway(
+    state: Arc<AppState>,
+    request: &GatewayTimelineRequest<'_>,
+) -> anyhow::Result<TimelineResponse> {
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, TimelineResponse>(state, "gateway-timeline", &request).await?;
+        call_gateway::<_, TimelineResponse>(state, "gateway-timeline", request).await?;
     if !status_ok {
         return Err(anyhow!(
             "gateway-timeline failed: {}",
@@ -1328,6 +1351,53 @@ mod tests {
         assert_eq!(response.providers[0]["reason"], "disabled");
         assert_eq!(response.assets[0]["branch_id"], "branch-1");
         assert_eq!(response.assets[0]["source_commit_id"], "commit-1");
+    }
+
+    #[tokio::test]
+    async fn timeline_list_retries_one_transient_bridge_failure() {
+        let root =
+            std::env::temp_dir().join(format!("oneday-timeline-retry-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create temp root");
+        let script = root.join("oneday-fake");
+        let counter = root.join("attempts");
+        let response = r#"{"active_branch_id":"branch-main","revision":7,"branches":[],"head":null,"commits":[]}"#;
+        fs::write(
+            &script,
+            format!(
+                "#!/usr/bin/env bash\ncat >/dev/null\nif [ ! -f '{}' ]; then touch '{}'; echo 'database is locked' >&2; exit 1; fi\nprintf '%s\\n' '{}'\n",
+                counter.display(),
+                counter.display(),
+                response.replace('\'', "'\\''"),
+            ),
+        )
+        .expect("write retry script");
+        #[cfg(unix)]
+        {
+            let mut permissions = fs::metadata(&script)
+                .expect("script metadata")
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&script, permissions).expect("chmod retry script");
+        }
+        let state = test_state(script).await;
+
+        let response = timeline(
+            state,
+            "story-1",
+            TimelineEnvelope {
+                action: "list".into(),
+                client_revision: 0,
+                branch_id: String::new(),
+                from_commit_id: String::new(),
+                name: String::new(),
+            },
+        )
+        .await
+        .expect("timeline retry response");
+
+        assert_eq!(response.active_branch_id, "branch-main");
+        assert_eq!(response.revision, 7);
+        assert!(counter.exists());
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { Image as ImageIcon, LocateFixed, Minus, Plus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import type { JsonValue, VisualAsset } from "../types";
 import { normalizeKey, readyAssetUrl, type VisualCatalog } from "../visualAssets";
 
@@ -21,6 +21,7 @@ const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 3;
 
 export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, visuals, expanded = false, onOpenVisualAsset }: CanonicalMapProps) {
+  const clipPathPrefix = `map-node-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const locations = useMemo(() => mapLocations(locationsValue), [locationsValue]);
   const locationIDs = useMemo(() => new Set(locations.map((location) => location.id)), [locations]);
   const edges = useMemo(() => mapEdges(edgesValue).filter((edge) => locationIDs.has(edge.from_location_id) && locationIDs.has(edge.to_location_id)), [edgesValue, locationIDs]);
@@ -148,7 +149,7 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
           <defs>
             {locations.map((location, index) => {
               const point = positions.get(location.id)!;
-              return <clipPath id={`map-node-clip-${index}`} key={location.id}><circle cx={point.x} cy={point.y} r="18" /></clipPath>;
+              return <clipPath id={`${clipPathPrefix}-clip-${index}`} key={location.id}><circle cx={point.x} cy={point.y} r="18" /></clipPath>;
             })}
           </defs>
           <g ref={viewportRef} className="canonical-map-viewport">
@@ -180,7 +181,7 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
                   }}
                 >
                   <circle cx={point.x} cy={point.y} r={current ? 26 : 22} />
-                  {iconUrl && <image href={iconUrl} x={point.x - 18} y={point.y - 18} width="36" height="36" preserveAspectRatio="xMidYMid slice" clipPath={`url(#map-node-clip-${index})`} />}
+                  {iconUrl && <image href={iconUrl} x={point.x - 18} y={point.y - 18} width="36" height="36" preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clipPathPrefix}-clip-${index})`} />}
                   <text className="node-label" x={point.x} y={point.y + 42} textAnchor="middle">{location.name}</text>
                   <title>{`${location.name}${location.description ? ` - ${location.description}` : ""}`}</title>
                 </g>

@@ -347,9 +347,9 @@ summary:focus-visible {
 .message-branch-controls button:hover:not(:disabled) { background: rgba(255,255,255,.045); color: var(--text); }
 .message-branch-controls button:disabled { cursor: default; opacity: .3; }
 .restore-decision-button { gap: 6px; padding: 0 7px; font-size: 10px; }
-.message-branch-switcher { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: var(--muted); font-family: var(--mono); font-size: 10px; }
-.message-branch-switcher > span { min-width: 28px; text-align: center; }
-.message-branch-switcher button { width: 26px; padding: 0; }
+.message-branch-switcher { display: inline-flex; align-items: center; gap: 1px; margin-left: auto; color: var(--text); font-family: var(--mono); font-size: 11px; }
+.message-branch-switcher > span { min-width: 36px; text-align: center; font-variant-numeric: tabular-nums; }
+.message-branch-switcher button { width: 24px; min-height: 24px; padding: 0; color: var(--muted); }
 
 /* Bring legacy utility surfaces into the same carbon control system. */
 .new-story-overlay { width: min(1380px, calc(100vw - 24px)); height: min(940px, calc(100dvh - 24px)); max-height: calc(100dvh - 24px); }
