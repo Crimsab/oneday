@@ -2,11 +2,11 @@ use crate::{events::TurnStreamEvent, AppState};
 use anyhow::{anyhow, Context};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::process::Stdio;
+use std::process::{ExitStatus, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -923,13 +923,7 @@ async fn call_gateway_turn_stream(
     action_text: String,
 ) -> anyhow::Result<GatewayTurnResponse> {
     let input = serde_json::to_vec(req).context("encoding gateway-turn stream request")?;
-    let mut child = Command::new(&state.paths.oneday_bin)
-        .arg("gateway-turn")
-        .env("ONEDAY_CONFIG", &state.paths.config_path)
-        .current_dir(&state.paths.oneday_root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut child = gateway_command(&state, "gateway-turn")
         .spawn()
         .with_context(|| format!("starting {}", state.paths.oneday_bin.display()))?;
 
@@ -950,7 +944,7 @@ async fn call_gateway_turn_stream(
     let mut events = Vec::new();
     let mut saw_done = false;
     let mut lines = BufReader::new(stdout).lines();
-    let read_result = tokio::time::timeout(Duration::from_secs(360), async {
+    let read_result = match tokio::time::timeout(Duration::from_secs(360), async {
         while let Some(line) = lines.next_line().await? {
             let line = line.trim();
             if line.is_empty() {
@@ -999,15 +993,29 @@ async fn call_gateway_turn_stream(
         Ok::<(), anyhow::Error>(())
     })
     .await
-    .context("gateway-turn stream timed out")?;
+    {
+        Ok(result) => result,
+        Err(_) => {
+            terminate_child(&mut child).await;
+            let _ = stderr_task.await;
+            return Err(anyhow!("gateway-turn stream timed out"));
+        }
+    };
 
-    let status = tokio::time::timeout(Duration::from_secs(30), child.wait())
-        .await
-        .context("waiting for gateway-turn stream timed out")?
-        .context("waiting for gateway-turn stream")?;
+    if let Err(err) = read_result {
+        terminate_child(&mut child).await;
+        let _ = stderr_task.await;
+        return Err(err);
+    }
+
+    let status = wait_for_child(
+        &mut child,
+        Duration::from_secs(30),
+        "waiting for gateway-turn stream",
+    )
+    .await?;
     let stderr = stderr_task.await.unwrap_or_default();
 
-    read_result?;
     if !status.success() {
         return Err(anyhow!(
             "gateway-turn stream failed: {}",
@@ -1200,13 +1208,7 @@ where
     TResp: DeserializeOwned,
 {
     let input = serde_json::to_vec(req).with_context(|| format!("encoding {command} request"))?;
-    let mut child = Command::new(&state.paths.oneday_bin)
-        .arg(command)
-        .env("ONEDAY_CONFIG", &state.paths.config_path)
-        .current_dir(&state.paths.oneday_root)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut child = gateway_command(&state, command)
         .spawn()
         .with_context(|| format!("starting {}", state.paths.oneday_bin.display()))?;
 
@@ -1218,19 +1220,80 @@ where
     stdin.shutdown().await?;
     drop(stdin);
 
-    let output = tokio::time::timeout(Duration::from_secs(360), child.wait_with_output())
-        .await
-        .with_context(|| format!("{command} timed out"))?
-        .with_context(|| format!("waiting for {command}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .with_context(|| format!("opening {command} stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .with_context(|| format!("opening {command} stderr"))?;
+    let stdout_task = tokio::spawn(read_child_output(stdout));
+    let stderr_task = tokio::spawn(read_child_output(stderr));
 
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let parsed = serde_json::from_slice(&output.stdout).with_context(|| {
+    let status = wait_for_child(
+        &mut child,
+        Duration::from_secs(360),
+        &format!("waiting for {command}"),
+    )
+    .await?;
+    let stdout = stdout_task
+        .await
+        .with_context(|| format!("joining {command} stdout reader"))??;
+    let stderr = stderr_task
+        .await
+        .with_context(|| format!("joining {command} stderr reader"))??;
+    let stderr = String::from_utf8_lossy(&stderr).to_string();
+    let parsed = serde_json::from_slice(&stdout).with_context(|| {
         format!(
             "decoding {command} stdout; stderr={}",
             compact_stderr(&stderr)
         )
     })?;
-    Ok((parsed, output.status.success(), stderr))
+    Ok((parsed, status.success(), stderr))
+}
+
+fn gateway_command(state: &AppState, command: &str) -> Command {
+    let mut child = Command::new(&state.paths.oneday_bin);
+    child
+        .arg(command)
+        .env("ONEDAY_CONFIG", &state.paths.config_path)
+        .current_dir(&state.paths.oneday_root)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    child
+}
+
+async fn read_child_output<R>(mut reader: R) -> std::io::Result<Vec<u8>>
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    let mut output = Vec::new();
+    reader.read_to_end(&mut output).await?;
+    Ok(output)
+}
+
+async fn wait_for_child(
+    child: &mut Child,
+    timeout: Duration,
+    operation: &str,
+) -> anyhow::Result<ExitStatus> {
+    match tokio::time::timeout(timeout, child.wait()).await {
+        Ok(status) => status.with_context(|| operation.to_string()),
+        Err(_) => {
+            terminate_child(child).await;
+            Err(anyhow!("{operation} timed out"))
+        }
+    }
+}
+
+async fn terminate_child(child: &mut Child) {
+    if matches!(child.try_wait(), Ok(None)) {
+        let _ = child.kill().await;
+    }
+    let _ = child.wait().await;
 }
 
 fn default_save_kind() -> String {
@@ -1261,6 +1324,27 @@ mod tests {
 
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+
+    #[tokio::test]
+    async fn timed_out_child_is_killed_and_reaped() {
+        let mut command = Command::new("bash");
+        command.arg("-c").arg("sleep 30").kill_on_drop(true);
+        let mut child = command.spawn().expect("spawn sleeping child");
+
+        let err = wait_for_child(
+            &mut child,
+            Duration::from_millis(25),
+            "waiting for sleeping child",
+        )
+        .await
+        .expect_err("sleeping child should time out");
+
+        assert!(err.to_string().contains("timed out"), "{err}");
+        assert!(
+            child.try_wait().expect("inspect child status").is_some(),
+            "timed-out child must be reaped"
+        );
+    }
 
     #[tokio::test]
     async fn call_gateway_turn_stream_broadcasts_live_but_returns_final_only() {
