@@ -84,6 +84,9 @@ docker compose up -d oneday-gateway
 # Run the reusable verification sweep (tests + vet + QA matrix)
 make verify
 
+# Generate Go and browser coverage baselines
+make coverage
+
 # Run the game
 go run ./cmd/oneday
 
