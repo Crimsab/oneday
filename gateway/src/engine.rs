@@ -159,18 +159,6 @@ pub struct StoryEnhanceEnvelope {
     pub context: String,
 }
 
-#[derive(Debug, Serialize)]
-struct GatewayTurnRequest<'a> {
-    story_id: &'a str,
-    session_id: &'a str,
-    client_turn: i64,
-    client_revision: i64,
-    idempotency_key: &'a str,
-    action: &'a PlayerAction,
-    stream: bool,
-    capabilities: &'a ClientCapabilities,
-}
-
 
 #[derive(Debug, Serialize)]
 struct GatewayStoryCreateRequest<'a> {
@@ -194,25 +182,6 @@ struct GatewayStoryEnhanceRequest<'a> {
     stage: &'a str,
     text: &'a str,
     context: &'a str,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GatewayTurnResponse {
-    #[serde(default)]
-    pub events: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub error: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct GatewayTurnStreamLine {
-    pub event: Option<serde_json::Value>,
-    #[serde(default)]
-    pub phase: String,
-    #[serde(default)]
-    pub error: String,
-    #[serde(default)]
-    pub done: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -567,20 +536,28 @@ pub async fn submit_action(
     state: Arc<AppState>,
     story_id: &str,
     mut envelope: ActionEnvelope,
-) -> anyhow::Result<GatewayTurnResponse> {
+) -> anyhow::Result<protocol::TurnResponse> {
     if envelope.idempotency_key.trim().is_empty() {
         envelope.idempotency_key = Uuid::new_v4().to_string();
     }
 
-    let req = GatewayTurnRequest {
-        story_id,
-        session_id: &envelope.session_id,
+    let req = protocol::SubmitActionRequest {
+        story_id: story_id.to_string(),
+        session_id: envelope.session_id,
         client_turn: envelope.client_turn,
         client_revision: envelope.client_revision,
-        idempotency_key: &envelope.idempotency_key,
-        action: &envelope.action,
-        stream: envelope.stream,
-        capabilities: &envelope.capabilities,
+        idempotency_key: envelope.idempotency_key,
+        action: protocol::PlayerAction {
+            kind: envelope.action.kind.clone(),
+            text: (!envelope.action.text.is_empty()).then_some(envelope.action.text.clone()),
+            choice_id: (envelope.action.choice_id != 0).then_some(envelope.action.choice_id),
+        },
+        stream: Some(envelope.stream),
+        capabilities: Some(protocol::ClientCapabilities {
+            images: Some(envelope.capabilities.images),
+            ascii: Some(envelope.capabilities.ascii),
+            roll_log: Some(envelope.capabilities.roll_log),
+        }),
     };
 
     if envelope.stream {
@@ -596,9 +573,9 @@ pub async fn submit_action(
     }
 
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, GatewayTurnResponse>(state, "gateway-turn", &req).await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        call_gateway::<_, protocol::TurnResponse>(state, "gateway-turn", &req).await?;
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_string()));
     }
     if !status_ok {
         return Err(anyhow!("gateway-turn failed: {}", compact_stderr(&stderr)));
@@ -757,12 +734,12 @@ pub async fn audio(
 
 async fn call_gateway_turn_stream(
     state: Arc<AppState>,
-    req: &GatewayTurnRequest<'_>,
+    req: &protocol::SubmitActionRequest,
     story_id: &str,
     client_turn: i64,
     action_kind: String,
     action_text: String,
-) -> anyhow::Result<GatewayTurnResponse> {
+) -> anyhow::Result<protocol::TurnResponse> {
     let input = serde_json::to_vec(req).context("encoding gateway-turn stream request")?;
     let mut child = gateway_command(&state, "gateway-turn")
         .spawn()
@@ -785,39 +762,38 @@ async fn call_gateway_turn_stream(
             if line.is_empty() {
                 continue;
             }
-            let parsed: GatewayTurnStreamLine = serde_json::from_str(line)
+            let parsed: protocol::TurnStreamLine = serde_json::from_str(line)
                 .with_context(|| format!("decoding gateway-turn stream line: {line}"))?;
-            if !parsed.error.trim().is_empty() {
-                return Err(anyhow!(parsed.error));
+            if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+                return Err(anyhow!(error.to_string()));
             }
             if let Some(event) = parsed.event {
-                let event_type = event
-                    .get("type")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("turn.event")
-                    .to_string();
+                let event_type = event.type_.clone();
+                let event_json = serde_json::to_value(&event)
+                    .context("encoding typed gateway-turn stream event")?;
                 let _ = state.turn_events.send(TurnStreamEvent::contract(
                     story_id,
                     client_turn,
                     &action_kind,
                     &action_text,
-                    &event,
+                    &event_json,
                 ));
                 let is_error = event_type == "error";
                 let error_message = event
-                    .get("payload")
+                    .payload
+                    .as_ref()
                     .and_then(|payload| payload.get("message"))
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or("gateway-turn stream failed")
                     .to_string();
-                if parsed.phase != "live" {
+                if parsed.phase.as_deref() != Some("live") {
                     events.push(event);
                 }
                 if is_error {
                     return Err(anyhow!(error_message));
                 }
             }
-            if parsed.done {
+            if parsed.done.unwrap_or(false) {
                 saw_done = true;
                 break;
             }
@@ -866,9 +842,9 @@ async fn call_gateway_turn_stream(
             compact_stderr(&stderr)
         ));
     }
-    Ok(GatewayTurnResponse {
+    Ok(protocol::TurnResponse {
         events,
-        error: String::new(),
+        error: None,
     })
 }
 
@@ -1333,22 +1309,7 @@ mod tests {
         ]);
         let state = test_state(script).await;
         let mut rx = state.turn_events.subscribe();
-        let action = PlayerAction {
-            kind: "free_text".to_string(),
-            text: "look".to_string(),
-            choice_id: 0,
-        };
-        let caps = ClientCapabilities::default();
-        let req = GatewayTurnRequest {
-            story_id: "story-1",
-            session_id: "session-1",
-            client_turn: 1,
-            client_revision: 1,
-            idempotency_key: "idem",
-            action: &action,
-            stream: true,
-            capabilities: &caps,
-        };
+        let req = stream_test_request();
 
         let resp = call_gateway_turn_stream(
             state.clone(),
@@ -1362,8 +1323,8 @@ mod tests {
         .expect("stream response");
 
         assert_eq!(resp.events.len(), 2);
-        assert_eq!(resp.events[0]["id"], "idem:1");
-        assert_eq!(resp.events[1]["id"], "idem:2");
+        assert_eq!(resp.events[0].id, "idem:1");
+        assert_eq!(resp.events[1].id, "idem:2");
 
         let live = rx.recv().await.expect("live event");
         let final_started = rx.recv().await.expect("final started event");
@@ -1500,22 +1461,7 @@ mod tests {
             r#"{"event":{"id":"idem:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"turn.committed","payload":{},"created_at":"2026-01-01T00:00:00Z"},"phase":"final"}"#,
         ]);
         let state = test_state(script).await;
-        let action = PlayerAction {
-            kind: "free_text".to_string(),
-            text: "look".to_string(),
-            choice_id: 0,
-        };
-        let caps = ClientCapabilities::default();
-        let req = GatewayTurnRequest {
-            story_id: "story-1",
-            session_id: "session-1",
-            client_turn: 1,
-            client_revision: 1,
-            idempotency_key: "idem",
-            action: &action,
-            stream: true,
-            capabilities: &caps,
-        };
+        let req = stream_test_request();
 
         let err = call_gateway_turn_stream(
             state,
@@ -1538,22 +1484,7 @@ mod tests {
         ]);
         let state = test_state(script).await;
         let mut rx = state.turn_events.subscribe();
-        let action = PlayerAction {
-            kind: "free_text".to_string(),
-            text: "look".to_string(),
-            choice_id: 0,
-        };
-        let caps = ClientCapabilities::default();
-        let req = GatewayTurnRequest {
-            story_id: "story-1",
-            session_id: "session-1",
-            client_turn: 1,
-            client_revision: 1,
-            idempotency_key: "idem",
-            action: &action,
-            stream: true,
-            capabilities: &caps,
-        };
+        let req = stream_test_request();
 
         let err = call_gateway_turn_stream(
             state,
@@ -1601,6 +1532,27 @@ mod tests {
         assert!(message.contains("transport failed"), "{message}");
         assert!(message.contains("bridge crashed"), "{message}");
         assert!(!message.starts_with("decoding"), "{message}");
+    }
+
+    fn stream_test_request() -> protocol::SubmitActionRequest {
+        protocol::SubmitActionRequest {
+            story_id: "story-1".into(),
+            session_id: "session-1".into(),
+            client_turn: 1,
+            client_revision: 1,
+            idempotency_key: "idem".into(),
+            action: protocol::PlayerAction {
+                kind: "free_text".into(),
+                text: Some("look".into()),
+                choice_id: None,
+            },
+            stream: Some(true),
+            capabilities: Some(protocol::ClientCapabilities {
+                images: Some(false),
+                ascii: Some(false),
+                roll_log: Some(false),
+            }),
+        }
     }
 
     async fn test_state(oneday_bin: PathBuf) -> Arc<AppState> {
