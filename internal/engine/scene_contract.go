@@ -35,7 +35,8 @@ func narrativeHasValidatedSceneDelta(narrative *NarrativeResponse) bool {
 		len(narrative.Challenges) > 0 ||
 		narrative.SocialDuel != nil ||
 		narrative.CombatStart != nil ||
-		narrative.ChapterEnd {
+		narrative.ChapterEnd ||
+		narrative.LocationTransition != nil {
 		return true
 	}
 	for key := range narrative.StateChanges {

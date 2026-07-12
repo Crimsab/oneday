@@ -163,6 +163,7 @@ type NarrativeResponse struct {
 	TurnDelta            *TurnDelta                     `json:"turn_delta,omitempty"`
 	Mood                 string                         `json:"mood,omitempty"`
 	Location             string                         `json:"location,omitempty"`
+	LocationTransition   *storage.LocationTransition    `json:"location_transition,omitempty"`
 	SceneType            string                         `json:"scene_type,omitempty"`
 	DialogueBlocks       []DialogueBlock                `json:"dialogue_blocks,omitempty"`
 	EntitiesMentioned    []EntityMention                `json:"entities_mentioned,omitempty"`

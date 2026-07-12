@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"database/sql"
 	"testing"
 	"time"
 )
@@ -64,6 +65,69 @@ func TestCanonicalWorldProjectionTimeWeatherAndTravel(t *testing.T) {
 	}
 }
 
+func TestLocationTransitionBuildsHierarchyRoutesAndClock(t *testing.T) {
+	db, story := newTimelineStory(t)
+	defer db.Close()
+	world := &WorldState{ID: "world-spatial", StoryID: story.ID, CurrentLocation: "Dock 7", KnownLocationsJSON: `["Dock 7"]`, CurrentChapter: 1, CurrentTurn: 3, UpdatedAt: time.Now()}
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatal(err)
+	}
+	transition := LocationTransition{
+		From:       &SpatialLocationRef{Name: "Dock 7", Kind: "site", RegionPath: []string{"Vharrow", "Port District"}},
+		To:         SpatialLocationRef{Name: "Access Lane", Kind: "subzone", RegionPath: []string{"Vharrow", "Port District"}, ParentLocation: "Dock 7", Description: "A narrow service lane."},
+		Discovered: []SpatialLocationRef{{Name: "Old Pump House", Kind: "landmark", RegionPath: []string{"Vharrow", "Port District"}}},
+		Routes:     []SpatialRouteRef{{From: "Dock 7", To: "Access Lane", Direction: "inside", TravelMinutes: 7, TravelMode: "walk", Bidirectional: true, Conditions: map[string]any{"requires": "gate open"}}},
+	}
+	var destination *CanonicalLocation
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		var err error
+		destination, err = db.ApplyLocationTransitionTx(tx, story.ID, "hero", transition, 3)
+		if err != nil {
+			return err
+		}
+		world.CurrentLocation = destination.Name
+		world.CurrentLocationID = destination.ID
+		return db.UpdateWorldStateTx(tx, world)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	projection, err := db.PlayerWorld(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if projection.CurrentLocation != "Access Lane" || projection.CurrentLocationID != destination.ID {
+		t.Fatalf("current location = %q/%q", projection.CurrentLocation, projection.CurrentLocationID)
+	}
+	hasNestedRegion := false
+	for _, region := range projection.Regions {
+		hasNestedRegion = hasNestedRegion || region.ParentRegionID != ""
+	}
+	if len(projection.Regions) != 2 || !hasNestedRegion {
+		t.Fatalf("regions = %#v", projection.Regions)
+	}
+	if len(projection.Locations) != 3 {
+		t.Fatalf("locations = %#v", projection.Locations)
+	}
+	var dock, lane *CanonicalLocation
+	for i := range projection.Locations {
+		switch projection.Locations[i].Name {
+		case "Dock 7":
+			dock = &projection.Locations[i]
+		case "Access Lane":
+			lane = &projection.Locations[i]
+		}
+	}
+	if dock == nil || lane == nil || lane.ParentLocationID != dock.ID || lane.RegionID == "" || lane.Kind != "subzone" {
+		t.Fatalf("hierarchy dock=%#v lane=%#v", dock, lane)
+	}
+	if len(projection.Edges) != 1 || !projection.Edges[0].Bidirectional || projection.Edges[0].TravelMode != "walk" {
+		t.Fatalf("edges = %#v", projection.Edges)
+	}
+	if projection.Clock.MinuteOfDay != 7 {
+		t.Fatalf("clock = %#v", projection.Clock)
+	}
+}
+
 func TestWeatherRemainsExplicitlyUntrackedWhenAbsent(t *testing.T) {
 	db, story := newTimelineStory(t)
 	defer db.Close()
@@ -76,5 +140,31 @@ func TestWeatherRemainsExplicitlyUntrackedWhenAbsent(t *testing.T) {
 	}
 	if p.Weather.Label != "Not tracked" || p.Weather.Tracked {
 		t.Fatalf("weather=%#v", p.Weather)
+	}
+}
+
+func TestLegacyKnownLocationObjectsSeedCanonicalRegionAndDescription(t *testing.T) {
+	db, story := newTimelineStory(t)
+	defer db.Close()
+	world := &WorldState{
+		ID: "world-legacy-spatial", StoryID: story.ID, CurrentLocation: "Old Gate",
+		KnownLocationsJSON: `[{"name":"Old Gate","description":"A gate in the rain.","region":"North Ward","discovered_turn":2}]`,
+		CurrentTurn:        7, UpdatedAt: time.Now(),
+	}
+	if err := db.CreateWorldState(world); err != nil {
+		t.Fatal(err)
+	}
+	projection, err := db.PlayerWorld(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projection.Regions) != 1 || projection.Regions[0].Name != "North Ward" {
+		t.Fatalf("regions = %#v", projection.Regions)
+	}
+	if len(projection.Locations) != 1 || projection.Locations[0].Description != "A gate in the rain." || projection.Locations[0].RegionID != projection.Regions[0].ID {
+		t.Fatalf("locations = %#v", projection.Locations)
+	}
+	if projection.Locations[0].DiscoveredTurn != 2 {
+		t.Fatalf("discovered turn = %d, want legacy turn 2", projection.Locations[0].DiscoveredTurn)
 	}
 }

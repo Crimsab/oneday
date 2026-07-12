@@ -56,6 +56,7 @@ func (db *DB) migrate() error {
 		{33, migrationV33},
 		{34, migrationV34},
 		{35, migrationV35},
+		{36, migrationV36},
 	}
 
 	for _, m := range migrations {
@@ -94,10 +95,37 @@ func (db *DB) applyMigration(version int, migrationSQL string) error {
 		return db.applyMigrationV30()
 	case 33:
 		return db.applyMigrationV33()
+	case 36:
+		return db.applyMigrationV36()
 	default:
 		_, err := db.conn.Exec(migrationSQL)
 		return err
 	}
+}
+
+func (db *DB) applyMigrationV36() error {
+	for _, item := range []struct {
+		table      string
+		column     string
+		definition string
+	}{
+		{"regions", "region_kind", "region_kind TEXT NOT NULL DEFAULT 'region'"},
+		{"locations", "location_kind", "location_kind TEXT NOT NULL DEFAULT 'place'"},
+		{"location_edges", "travel_mode", "travel_mode TEXT NOT NULL DEFAULT 'travel'"},
+		{"location_edges", "bidirectional", "bidirectional INTEGER NOT NULL DEFAULT 0 CHECK(bidirectional IN (0,1))"},
+		{"visual_assets", "map_scope_kind", "map_scope_kind TEXT NOT NULL DEFAULT ''"},
+		{"visual_assets", "map_scope_id", "map_scope_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_asset_versions", "map_scope_kind", "map_scope_kind TEXT NOT NULL DEFAULT ''"},
+		{"visual_asset_versions", "map_scope_id", "map_scope_id TEXT NOT NULL DEFAULT ''"},
+		{"visual_generation_jobs", "map_scope_kind", "map_scope_kind TEXT NOT NULL DEFAULT ''"},
+		{"visual_generation_jobs", "map_scope_id", "map_scope_id TEXT NOT NULL DEFAULT ''"},
+	} {
+		if err := db.addColumnIfMissing(item.table, item.column, item.definition); err != nil {
+			return err
+		}
+	}
+	_, err := db.conn.Exec(migrationV36)
+	return err
 }
 
 func (db *DB) applyMigrationV33() (err error) {
@@ -1648,4 +1676,15 @@ CREATE INDEX IF NOT EXISTS idx_visual_jobs_lineage ON visual_generation_jobs(sto
 CREATE INDEX IF NOT EXISTS idx_visual_overrides_lineage ON visual_asset_branch_overrides(story_id,asset_id,source_commit_id);
 DROP INDEX IF EXISTS idx_visual_generation_jobs_active_asset;
 CREATE UNIQUE INDEX idx_visual_generation_jobs_active_asset ON visual_generation_jobs(asset_id,branch_id) WHERE status IN ('queued','running');
+`
+
+const migrationV36 = `
+CREATE INDEX IF NOT EXISTS idx_regions_story_parent
+	ON regions(story_id,parent_region_id,visibility,name);
+CREATE INDEX IF NOT EXISTS idx_locations_story_scope
+	ON locations(story_id,region_id,parent_location_id,discovery_state,canonical_name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_location_edges_canonical_route
+	ON location_edges(story_id,branch_id,from_location_id,to_location_id,direction,travel_mode);
+CREATE INDEX IF NOT EXISTS idx_visual_assets_map_scope
+	ON visual_assets(story_id,branch_id,kind,map_scope_kind,map_scope_id,updated_at DESC);
 `

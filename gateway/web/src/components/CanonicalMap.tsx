@@ -1,35 +1,57 @@
-import { Image as ImageIcon, LocateFixed, Minus, Plus } from "lucide-react";
+import { ChevronRight, Image as ImageIcon, LocateFixed, Map as MapIcon, Minus, Plus, Route } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { layoutMapTopology } from "../mapLayout";
+import {
+  breadcrumbsForScope,
+  edgesForScope,
+  nodesForScope,
+  parseSpatialMap,
+  routeFromCurrent,
+  type MapScope,
+  type SpatialEdge,
+  type SpatialMapNode,
+} from "../spatialMap";
 import type { JsonValue, VisualAsset } from "../types";
-import { normalizeKey, readyAssetUrl, type VisualCatalog } from "../visualAssets";
+import { mapBackgroundForScope, normalizeKey, readyAssetUrl, type VisualCatalog } from "../visualAssets";
 
-interface MapLocation { id: string; name: string; region_id?: string; description?: string; discovery_state?: string }
-interface MapEdge { id: string; from_location_id: string; to_location_id: string; direction?: string; travel_minutes?: number }
 interface MapPoint { x: number; y: number }
 interface MapView { scale: number; x: number; y: number }
 
 interface CanonicalMapProps {
+  regionsValue?: JsonValue;
   locationsValue: JsonValue;
   edgesValue: JsonValue;
   currentLocationId: string;
   visuals?: VisualCatalog;
   expanded?: boolean;
   onOpenVisualAsset?: (assetId: string) => void;
+  onTravel?: (locationName: string, route: SpatialEdge | null) => void;
 }
 
 const MIN_ZOOM = 0.8;
 const MAX_ZOOM = 3;
 
-export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, visuals, expanded = false, onOpenVisualAsset }: CanonicalMapProps) {
+export function CanonicalMap({
+  regionsValue,
+  locationsValue,
+  edgesValue,
+  currentLocationId,
+  visuals,
+  expanded = false,
+  onOpenVisualAsset,
+  onTravel,
+}: CanonicalMapProps) {
   const clipPathPrefix = `map-node-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const locations = useMemo(() => mapLocations(locationsValue), [locationsValue]);
-  const locationIDs = useMemo(() => new Set(locations.map((location) => location.id)), [locations]);
-  const edges = useMemo(() => mapEdges(edgesValue).filter((edge) => locationIDs.has(edge.from_location_id) && locationIDs.has(edge.to_location_id)), [edgesValue, locationIDs]);
-  const [selectedLocationId, setSelectedLocationId] = useState(currentLocationId || locations[0]?.id || "");
+  const model = useMemo(
+    () => parseSpatialMap(regionsValue, locationsValue, edgesValue, currentLocationId),
+    [currentLocationId, edgesValue, locationsValue, regionsValue],
+  );
+  const [scope, setScope] = useState<MapScope>(model.defaultScope);
+  const nodes = useMemo(() => nodesForScope(model, scope), [model, scope]);
+  const edges = useMemo(() => edgesForScope(model, nodes), [model, nodes]);
+  const [selectedNodeKey, setSelectedNodeKey] = useState("");
   const [zoomPercent, setZoomPercent] = useState(100);
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
   const viewportRef = useRef<SVGGElement | null>(null);
   const viewRef = useRef<MapView>({ scale: 1, x: 0, y: 0 });
   const dragRef = useRef<{ pointerId: number; x: number; y: number; moved: boolean } | null>(null);
@@ -37,28 +59,34 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
   const width = expanded ? 960 : 660;
   const height = expanded ? 460 : 220;
   const positions = useMemo(
-    () => layoutMapTopology(locations, edges, width, height),
-    [edges, height, locations, width],
+    () => layoutMapTopology(
+      nodes.map((node) => ({ id: node.layoutId })),
+      edges.map((edge) => ({ from_location_id: edge.from_location_id, to_location_id: edge.to_location_id, direction: edge.direction })),
+      width,
+      height,
+    ),
+    [edges, height, nodes, width],
   );
-  const backgroundAsset = visuals?.mapBackground ?? null;
-  const backgroundUrl = readyAssetUrl(backgroundAsset);
-  const selectedLocation = locations.find((location) => location.id === selectedLocationId) ?? locations[0] ?? null;
-  const selectedIcon = selectedLocation ? locationIcon(visuals, selectedLocation) : null;
+  const breadcrumbs = useMemo(() => breadcrumbsForScope(model, scope), [model, scope]);
+  const selectedNode = nodes.find((node) => nodeKey(node) === selectedNodeKey) ?? nodes.find((node) => node.id === currentLocationId) ?? nodes[0] ?? null;
+  const selectedIcon = selectedNode?.nodeKind === "location" ? locationIcon(visuals, selectedNode.id, selectedNode.name) : null;
   const selectedIconUrl = readyAssetUrl(selectedIcon);
+  const selectedRoute = selectedNode?.canonicalLocationId ? routeFromCurrent(model, currentLocationId, selectedNode.canonicalLocationId) : null;
+  const backgroundAsset = mapBackgroundForScope(visuals, scope.kind, scope.id);
+  const backgroundUrl = readyAssetUrl(backgroundAsset);
 
   useEffect(() => {
-    setSelectedLocationId(currentLocationId || locations[0]?.id || "");
-  }, [currentLocationId]);
+    setScope(model.defaultScope);
+    setSelectedNodeKey("");
+  }, [currentLocationId, model.defaultScope.id, model.defaultScope.kind]);
 
   useEffect(() => {
-    if (!locations.some((location) => location.id === selectedLocationId)) {
-      setSelectedLocationId(currentLocationId || locations[0]?.id || "");
-    }
-  }, [currentLocationId, locations, selectedLocationId]);
+    if (selectedNodeKey && !nodes.some((node) => nodeKey(node) === selectedNodeKey)) setSelectedNodeKey("");
+  }, [nodes, selectedNodeKey]);
 
   useEffect(() => {
     resetView(viewportRef, viewRef, setZoomPercent);
-  }, [expanded, locations.length, edges.length]);
+  }, [expanded, scope.id, scope.kind]);
 
   const updateView = (next: MapView) => {
     const normalized = { ...next, scale: clamp(next.scale, MIN_ZOOM, MAX_ZOOM) };
@@ -71,11 +99,7 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
     const current = viewRef.current;
     const scale = clamp(current.scale * factor, MIN_ZOOM, MAX_ZOOM);
     const ratio = scale / current.scale;
-    updateView({
-      scale,
-      x: anchor.x - (anchor.x - current.x) * ratio,
-      y: anchor.y - (anchor.y - current.y) * ratio,
-    });
+    updateView({ scale, x: anchor.x - (anchor.x - current.x) * ratio, y: anchor.y - (anchor.y - current.y) * ratio });
   };
 
   useEffect(() => {
@@ -83,19 +107,13 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
     if (!stage) return;
     const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
+      event.stopPropagation();
       const rect = stage.getBoundingClientRect();
       const current = viewRef.current;
       const scale = clamp(current.scale * (event.deltaY < 0 ? 1.14 : 0.88), MIN_ZOOM, MAX_ZOOM);
       const ratio = scale / current.scale;
-      const anchor = {
-        x: ((event.clientX - rect.left) / rect.width) * width,
-        y: ((event.clientY - rect.top) / rect.height) * height,
-      };
-      const next = {
-        scale,
-        x: anchor.x - (anchor.x - current.x) * ratio,
-        y: anchor.y - (anchor.y - current.y) * ratio,
-      };
+      const anchor = { x: ((event.clientX - rect.left) / rect.width) * width, y: ((event.clientY - rect.top) / rect.height) * height };
+      const next = { scale, x: anchor.x - (anchor.x - current.x) * ratio, y: anchor.y - (anchor.y - current.y) * ratio };
       viewRef.current = next;
       viewportRef.current?.setAttribute("transform", `translate(${next.x} ${next.y}) scale(${next.scale})`);
       setZoomPercent(Math.round(next.scale * 100));
@@ -103,8 +121,6 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
     stage.addEventListener("wheel", handleWheel, { passive: false });
     return () => stage.removeEventListener("wheel", handleWheel);
   }, [height, width]);
-
-  if (locations.length === 0) return <p className="empty-copy">No canonical known locations are available for the map.</p>;
 
   const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (event.button !== 0) return;
@@ -134,12 +150,22 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
 
-  const chooseLocation = (locationId: string) => {
-    setSelectedLocationId(locationId);
+  const inspectNode = (node: SpatialMapNode) => setSelectedNodeKey(nodeKey(node));
+  const openNode = (node: SpatialMapNode) => {
+    inspectNode(node);
+    if (node.hasChildren && node.childScope) setScope(node.childScope);
   };
 
   return (
     <div className={`canonical-map ${backgroundUrl ? "illustrated" : "graph-only"} ${expanded ? "expanded" : ""}`}>
+      <nav className="canonical-map-breadcrumbs" aria-label="Map hierarchy">
+        {breadcrumbs.map((crumb, index) => (
+          <span key={`${crumb.kind}:${crumb.id}`}>
+            {index > 0 && <ChevronRight size={12} aria-hidden="true" />}
+            <button type="button" aria-current={index === breadcrumbs.length - 1 ? "page" : undefined} onClick={() => setScope(crumb)}>{crumb.name}</button>
+          </span>
+        ))}
+      </nav>
       <div ref={stageRef} className="canonical-map-stage">
         {backgroundUrl && <img className="canonical-map-art" src={backgroundUrl} alt="" aria-hidden="true" />}
         <div className="canonical-map-toolbar" aria-label="Map controls">
@@ -148,85 +174,107 @@ export function CanonicalMap({ locationsValue, edgesValue, currentLocationId, vi
           <button type="button" onClick={() => zoomAt(0.82)} title="Zoom out" aria-label="Zoom out"><Minus size={15} /></button>
           <button type="button" onClick={() => resetView(viewportRef, viewRef, setZoomPercent)} title="Reset map view" aria-label="Reset map view"><LocateFixed size={15} /></button>
           {backgroundAsset && onOpenVisualAsset && (
-            <button type="button" onClick={() => onOpenVisualAsset(backgroundAsset.id)} title="Edit map background" aria-label="Edit map background"><ImageIcon size={15} /></button>
+            <button type="button" onClick={() => onOpenVisualAsset(backgroundAsset.id)} title="Edit this map background" aria-label="Edit this map background"><ImageIcon size={15} /></button>
           )}
         </div>
-        <svg
-          ref={svgRef}
-          className="canonical-map-canvas"
-          viewBox={`0 0 ${width} ${height}`}
-          role="img"
-          aria-label={`Interactive canonical map with ${locations.length} known locations and ${edges.length} known routes`}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerEnd}
-          onPointerCancel={handlePointerEnd}
-        >
-          <defs>
-            {locations.map((location, index) => {
-              const point = positions.get(location.id)!;
-              return <clipPath id={`${clipPathPrefix}-clip-${index}`} key={location.id}><circle cx={point.x} cy={point.y} r="18" /></clipPath>;
-            })}
-          </defs>
-          <g ref={viewportRef} className="canonical-map-viewport">
-            {edges.map((edge) => {
-              const from = positions.get(edge.from_location_id)!;
-              const to = positions.get(edge.to_location_id)!;
-              return <g className="map-route" key={edge.id}><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} /><text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}>{edge.direction || (edge.travel_minutes ? `${edge.travel_minutes} min` : "route")}</text></g>;
-            })}
-            {locations.map((location, index) => {
-              const point = positions.get(location.id)!;
-              const current = location.id === currentLocationId;
-              const selected = location.id === selectedLocation?.id;
-              const icon = locationIcon(visuals, location);
-              const iconUrl = readyAssetUrl(icon);
-              return (
-                <g
-                  key={location.id}
-                  className={`map-node ${current ? "current" : ""} ${selected ? "selected" : ""} ${iconUrl ? "has-icon" : ""}`}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`${location.name}${current ? ", current location" : ""}`}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={() => chooseLocation(location.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      setSelectedLocationId(location.id);
-                    }
-                  }}
-                >
-                  <circle cx={point.x} cy={point.y} r={current ? 26 : 22} />
-                  {iconUrl && <image href={iconUrl} x={point.x - 18} y={point.y - 18} width="36" height="36" preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clipPathPrefix}-clip-${index})`} />}
-                  <text className="node-label" x={point.x} y={point.y + 42} textAnchor="middle">{location.name}</text>
-                  <title>{`${location.name}${location.description ? ` - ${location.description}` : ""}`}</title>
-                </g>
-              );
-            })}
-          </g>
-        </svg>
-        <p className="canonical-map-hint">Mouse wheel: zoom · Drag: move · Click a location: inspect</p>
+        {nodes.length === 0 ? (
+          <div className="canonical-map-empty"><MapIcon size={22} /><strong>No mapped places inside {scope.name}</strong><span>Discover a child location to expand this map.</span></div>
+        ) : (
+          <svg
+            className="canonical-map-canvas"
+            viewBox={`0 0 ${width} ${height}`}
+            role="img"
+            aria-label={`Interactive ${scope.name} map with ${nodes.length} known places and ${edges.length} known routes`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerEnd}
+            onPointerCancel={handlePointerEnd}
+          >
+            <defs>
+              {nodes.map((node, index) => {
+                const point = positions.get(node.layoutId)!;
+                return <clipPath id={`${clipPathPrefix}-clip-${index}`} key={nodeKey(node)}><circle cx={point.x} cy={point.y} r="18" /></clipPath>;
+              })}
+            </defs>
+            <g ref={viewportRef} className="canonical-map-viewport">
+              {edges.map((edge) => {
+                const from = positions.get(edge.from_location_id)!;
+                const to = positions.get(edge.to_location_id)!;
+                return <g className="map-route" key={edge.id}><line x1={from.x} y1={from.y} x2={to.x} y2={to.y} /><text x={(from.x + to.x) / 2} y={(from.y + to.y) / 2 - 8}>{routeLabel(edge)}</text></g>;
+              })}
+              {nodes.map((node, index) => {
+                const point = positions.get(node.layoutId)!;
+                const current = node.canonicalLocationId === currentLocationId;
+                const selected = nodeKey(node) === nodeKey(selectedNode);
+                const icon = node.nodeKind === "location" ? locationIcon(visuals, node.id, node.name) : null;
+                const iconUrl = readyAssetUrl(icon);
+                return (
+                  <g
+                    key={nodeKey(node)}
+                    className={`map-node ${node.nodeKind} ${current ? "current" : ""} ${selected ? "selected" : ""} ${iconUrl ? "has-icon" : ""} ${node.hasChildren ? "has-children" : ""}`}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${node.name}, ${node.kind}${current ? ", current location" : ""}${node.hasChildren ? ", contains another map" : ""}`}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={() => inspectNode(node)}
+                    onDoubleClick={() => openNode(node)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        node.hasChildren ? openNode(node) : inspectNode(node);
+                      }
+                    }}
+                  >
+                    <circle cx={point.x} cy={point.y} r={current ? 26 : 22} />
+                    {iconUrl && <image href={iconUrl} x={point.x - 18} y={point.y - 18} width="36" height="36" preserveAspectRatio="xMidYMid slice" clipPath={`url(#${clipPathPrefix}-clip-${index})`} />}
+                    {!iconUrl && node.nodeKind === "region" && <text className="map-node-glyph" x={point.x} y={point.y + 5} textAnchor="middle">M</text>}
+                    {node.hasChildren && <circle className="map-node-child-marker" cx={point.x + 18} cy={point.y - 18} r="5" />}
+                    <text className="node-label" x={point.x} y={point.y + 42} textAnchor="middle">{node.name}</text>
+                    <title>{`${node.name}, ${node.kind}${node.description ? ` - ${node.description}` : ""}`}</title>
+                  </g>
+                );
+              })}
+            </g>
+          </svg>
+        )}
+        <p className="canonical-map-hint">Wheel to zoom, drag to move, double-click an area to enter</p>
       </div>
-      {selectedLocation && (
+      {selectedNode && (
         <div className="canonical-map-selection" aria-live="polite">
           <div className={`canonical-map-selection-icon ${selectedIconUrl ? "ready" : "empty"}`}>
-            {selectedIconUrl ? <img src={selectedIconUrl} alt="" /> : <LocateFixed size={18} aria-hidden="true" />}
+            {selectedIconUrl ? <img src={selectedIconUrl} alt="" /> : selectedNode.nodeKind === "region" ? <MapIcon size={18} aria-hidden="true" /> : <LocateFixed size={18} aria-hidden="true" />}
           </div>
-          <div>
-            <small>{selectedLocation.id === currentLocationId ? "Current location" : selectedLocation.discovery_state || "Known location"}</small>
-            <strong>{selectedLocation.name}</strong>
-            <p>{selectedLocation.description || "No player-known description is available yet."}</p>
+          <div className="canonical-map-selection-copy">
+            <small>{selectedNode.canonicalLocationId === currentLocationId ? "Current location" : selectedNode.kind}</small>
+            <strong>{selectedNode.name}</strong>
+            <p>{selectedNode.description || (selectedNode.hasChildren ? "Open this area to inspect its known places." : "No player-known description is available yet.")}</p>
+            {selectedRoute && <span className="canonical-map-route-summary"><Route size={12} />{routeLabel(selectedRoute)}</span>}
           </div>
-          {selectedIcon && onOpenVisualAsset && <button type="button" onClick={() => onOpenVisualAsset(selectedIcon.id)}>Edit image</button>}
+          <div className="canonical-map-selection-actions">
+            {selectedNode.hasChildren && selectedNode.childScope && <button type="button" onClick={() => setScope(selectedNode.childScope!)}>Open area</button>}
+            {selectedNode.nodeKind === "location" && selectedNode.id !== currentLocationId && onTravel && (
+              <button type="button" onClick={() => onTravel(selectedNode.name, selectedRoute)}>{selectedRoute ? "Travel" : "Explore route"}</button>
+            )}
+            {selectedIcon && onOpenVisualAsset && <button type="button" onClick={() => onOpenVisualAsset(selectedIcon.id)}>Edit image</button>}
+          </div>
         </div>
       )}
-      <ul className="sr-only">{locations.map((location) => <li key={location.id}>{location.name}{location.id === currentLocationId ? " (current)" : ""}</li>)}</ul>
+      <ul className="sr-only">{nodes.map((node) => <li key={nodeKey(node)}>{node.name}{node.canonicalLocationId === currentLocationId ? " (current)" : ""}</li>)}</ul>
     </div>
   );
 }
 
-function locationIcon(visuals: VisualCatalog | undefined, location: MapLocation): VisualAsset | null {
-  return visuals?.mapIcons.get(normalizeKey(location.id)) ?? visuals?.mapIcons.get(normalizeKey(location.name)) ?? null;
+function nodeKey(node: SpatialMapNode | null): string {
+  return node ? `${node.nodeKind}:${node.id}` : "";
+}
+
+function routeLabel(edge: SpatialEdge): string {
+  const parts = [edge.direction, edge.travel_mode, edge.travel_minutes ? `${edge.travel_minutes} min` : ""].filter(Boolean);
+  return parts.join(" / ") || "route";
+}
+
+function locationIcon(visuals: VisualCatalog | undefined, id: string, name: string): VisualAsset | null {
+  return visuals?.mapIcons.get(normalizeKey(id)) ?? visuals?.mapIcons.get(normalizeKey(name)) ?? null;
 }
 
 function resetView(viewportRef: { current: SVGGElement | null }, viewRef: { current: MapView }, setZoomPercent: (value: number) => void) {
@@ -238,15 +286,3 @@ function resetView(viewportRef: { current: SVGGElement | null }, viewRef: { curr
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
-
-function mapLocations(value: JsonValue): MapLocation[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => item && typeof item === "object" && !Array.isArray(item) && typeof item.id === "string" && typeof item.name === "string" ? [{ id: item.id, name: item.name, region_id: text(item.region_id), description: text(item.description), discovery_state: text(item.discovery_state) }] : []);
-}
-
-function mapEdges(value: JsonValue): MapEdge[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => item && typeof item === "object" && !Array.isArray(item) && typeof item.id === "string" && typeof item.from_location_id === "string" && typeof item.to_location_id === "string" ? [{ id: item.id, from_location_id: item.from_location_id, to_location_id: item.to_location_id, direction: text(item.direction), travel_minutes: typeof item.travel_minutes === "number" ? item.travel_minutes : undefined }] : []);
-}
-
-function text(value: unknown): string | undefined { return typeof value === "string" && value.trim() ? value : undefined; }

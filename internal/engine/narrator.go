@@ -701,6 +701,11 @@ func (n *Narrator) prepareTurn(ctx context.Context, input string) (*preparedTurn
 		earnedAchievements,
 		sceneProgression,
 	)
+	if spatialWorld, spatialErr := n.db.PlayerWorld(n.story.ID); spatialErr == nil {
+		if spatialContext := FormatSpatialNarratorContext(spatialWorld, TravelPolicyFromSettingJSON(n.story.SettingJSON)); spatialContext != "" {
+			messages = injectSystemMessageBeforeFinalUser(messages, spatialContext)
+		}
+	}
 	messages = appendRewardBudgetGuidance(messages, n.contextCfg.RewardBudget)
 	branchID := n.story.ActiveBranchID
 	if branchID == "" {
@@ -916,8 +921,12 @@ func (n *Narrator) finalizeTurn(
 	narrative.WorldReactions = visibleWorldReactions(loadWorldReactions(n.world))
 	normalizeNarrativeResponse(narrative)
 
-	// If AI specified a location (and state_changes didn't already update it), sync it.
-	if narrative.Location != "" && narrative.Location != n.world.CurrentLocation {
+	// Structured spatial transitions are canonical. The flat location field remains
+	// as a compatibility projection for old providers and saved turns.
+	if narrative.LocationTransition != nil && strings.TrimSpace(narrative.LocationTransition.To.Name) != "" {
+		narrative.Location = strings.TrimSpace(narrative.LocationTransition.To.Name)
+		n.world.CurrentLocation = narrative.Location
+	} else if narrative.Location != "" && narrative.Location != n.world.CurrentLocation {
 		n.world.CurrentLocation = narrative.Location
 	}
 
@@ -966,6 +975,7 @@ func (n *Narrator) finalizeTurn(
 			TurnDelta:           narrative.TurnDelta,
 			Mood:                narrative.Mood,
 			Location:            n.world.CurrentLocation,
+			LocationTransition:  narrative.LocationTransition,
 			SceneType:           narrative.SceneType,
 			DialogueBlocks:      narrative.DialogueBlocks,
 			EntitiesMentioned:   narrative.EntitiesMentioned,
@@ -998,6 +1008,14 @@ func (n *Narrator) finalizeTurn(
 		}
 		if err := n.db.RecordChallengeResolutionTx(tx, n.story.ID, n.session.SessionID(), prep.challengeInstance.BranchID, prep.currentTurn, prep.challengeInstance, prep.challengeResolution); err != nil {
 			return err
+		}
+		if narrative.LocationTransition != nil && strings.TrimSpace(narrative.LocationTransition.To.Name) != "" {
+			destination, err := n.db.ApplyLocationTransitionTx(tx, n.story.ID, n.character.ID, *narrative.LocationTransition, prep.currentTurn)
+			if err != nil {
+				return fmt.Errorf("applying canonical location transition: %w", err)
+			}
+			n.world.CurrentLocation = destination.Name
+			n.world.CurrentLocationID = destination.ID
 		}
 		if npcRecorder != nil {
 			if err := npcRecorder.Commit(txNPCStore{db: n.db, tx: tx}); err != nil {
@@ -1265,6 +1283,7 @@ func resumeNarrativeFromStoredMessage(msg storage.ChatMessage, defaultLocation s
 		}
 		nr.Mood = firstNonEmpty(meta.Output.Mood, meta.Mood, nr.Mood)
 		nr.Location = firstNonEmpty(meta.Output.Location, meta.Location, nr.Location)
+		nr.LocationTransition = meta.Output.LocationTransition
 		nr.SceneType = strings.TrimSpace(meta.Output.SceneType)
 		nr.TurnDelta = normalizeTurnDelta(meta.Output.TurnDelta)
 		nr.DialogueBlocks = normalizeDialogueBlocks(meta.Output.DialogueBlocks)
@@ -1305,6 +1324,14 @@ func normalizeNarrativeResponse(nr *NarrativeResponse) {
 	nr.OpenHooks = activeStoryHooks(nr.OpenHooks)
 	nr.WorldReactions = visibleWorldReactions(nr.WorldReactions)
 	nr.SocialDuel = normalizeSocialDuelCue(nr.SocialDuel)
+	if nr.LocationTransition != nil {
+		nr.LocationTransition.To.Name = strings.TrimSpace(nr.LocationTransition.To.Name)
+		if nr.LocationTransition.To.Name == "" {
+			nr.LocationTransition = nil
+		} else {
+			nr.Location = nr.LocationTransition.To.Name
+		}
+	}
 }
 
 func normalizeDialogueBlocks(blocks []DialogueBlock) []DialogueBlock {
