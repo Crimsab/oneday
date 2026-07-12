@@ -681,6 +681,48 @@ func TestApplyStateChangesStringNumberDoesNotBecomeZero(t *testing.T) {
 	}
 }
 
+func TestApplyStateChangesMalformedNumbersDoNotOverwriteState(t *testing.T) {
+	char := newTestChar()
+	world := newTestWorld()
+	stats := parseStats(t, char)
+	stats["currency"] = 25
+	stats["secondary"].(map[string]interface{})["reputation"] = 7
+	encoded, err := json.Marshal(stats)
+	if err != nil {
+		t.Fatalf("marshal initial stats: %v", err)
+	}
+	char.StatsJSON = string(encoded)
+
+	applied, err := ApplyStateChanges(map[string]interface{}{
+		"currency":   "many",
+		"attributes": map[string]interface{}{"str": "strong"},
+		"secondary":  map[string]interface{}{"reputation": "famous"},
+		"vitals": map[string]interface{}{
+			"hp": map[string]interface{}{"current": "healthy"},
+		},
+	}, char, world, nil, "test-story-id", 1)
+	if err != nil {
+		t.Fatalf("ApplyStateChanges: %v", err)
+	}
+	if len(applied) != 0 {
+		t.Fatalf("applied malformed numeric changes: %+v", applied)
+	}
+
+	got := parseStats(t, char)
+	if int(toFloat(got["currency"])) != 25 {
+		t.Fatalf("currency = %v, want 25", got["currency"])
+	}
+	if int(toFloat(got["attributes"].(map[string]interface{})["str"])) != 3 {
+		t.Fatalf("strength was overwritten: %+v", got["attributes"])
+	}
+	if int(toFloat(got["secondary"].(map[string]interface{})["reputation"])) != 7 {
+		t.Fatalf("reputation was overwritten: %+v", got["secondary"])
+	}
+	if int(toFloat(got["vitals"].(map[string]interface{})["hp"].(map[string]interface{})["current"])) != 20 {
+		t.Fatalf("health was overwritten: %+v", got["vitals"])
+	}
+}
+
 func TestApplyStateChangesInvalidInventoryDoesNotWipeInventory(t *testing.T) {
 	char := newTestChar()
 	char.InventoryJSON = `{"items": [`
