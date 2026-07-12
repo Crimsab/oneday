@@ -98,12 +98,12 @@ function ChoiceMetadata({ choice, presentation }: { choice: ChoiceView; presenta
     ["RISK", choice.risk],
     ["SCOPE", choice.scope],
     ["CERT", choice.certainty],
-    ["STAT", choice.related_stats?.join(", ")],
+    ["USES", choice.related_stats?.join(", ")],
   ].filter((item): item is [string, string] => Boolean(item[1]));
   if (!chips.length && !presentation.meta.length) return null;
   return (
     <span className="choice-meta">
-      {chips.slice(0, 4).map(([label, value]) => (
+      {chips.map(([label, value]) => (
         <small key={`${label}:${value}`}>
           <b>{label}</b> {value}
         </small>

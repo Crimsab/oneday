@@ -182,6 +182,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       }
       const body = request.postDataJSON() as { action?: { text?: string } };
       if (body.action?.text?.startsWith("[Challenge Result:")) activeMiniGame = null;
+      await new Promise((resolve) => setTimeout(resolve, 350));
       return json(route, { events: [{ id: "challenge-start", type: "challenge.started", payload: { protocol_version: "challenge.v1" } }, { id: "challenge-end", type: "challenge.resolved", payload: { degree: "success" } }, { id: "commit", type: "turn.committed", payload: {} }], snapshot: snapshot(5) });
     }
     return json(route, {});
@@ -208,11 +209,24 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   const actionRequest = page.waitForRequest((request) => request.url().endsWith("/actions"));
   await page.getByRole("button", { name: "Send action" }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
   await actionRequest;
+  await expect(page.locator(".pending-narrator")).toBeVisible();
+  await expect(page.locator(".narrative-skeleton")).toBeVisible();
+  await expect(page.getByText("Turn progress", { exact: true })).toHaveCount(0);
   await expect(composer).toHaveValue("");
   expect(requests.actionRequests()).toBe(1);
-  await expect(page.getByText("challenge.started")).toBeVisible();
-  await expect(page.getByText("challenge.resolved")).toBeVisible();
+  await expect(page.locator(".pending-narrator")).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("shows optional choice context including used attributes", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ density: "balanced", fontSize: "base", accent: "amber", showLeftRail: false, showInspector: false, wrapTranscript: true, showChoiceDetails: true }));
+  });
+  await mockGateway(page);
+  await page.goto("/");
+  const choices = page.getByRole("region", { name: "Suggested actions" });
+  await expect(choices).toContainText("USES resolve");
+  await expect(choices).toContainText("RISK measured");
 });
 
 test("keeps story actions above the rail and closes them on outside click", async ({ page }) => {
