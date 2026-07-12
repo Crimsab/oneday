@@ -230,12 +230,25 @@ func applyStateChangesWithNPCStore(
 	if err != nil {
 		return nil, err
 	}
+	operations := orderedStateChangeOperations(changes, standardStateChangeOrder)
+	applied := applyCharacterStateOperations(operations, mutation)
+	applied = append(applied, applyNPCStateOperations(operations, mutation)...)
+	applied = append(applied, applyWorldStateOperations(operations, mutation)...)
+
+	if err := mutation.commit(); err != nil {
+		return applied, err
+	}
+
+	return applied, nil
+}
+
+func applyCharacterStateOperations(operations []stateChangeOperation, mutation *stateMutationContext) []StateChange {
 	stats := mutation.stats
 	invItems := mutation.inventory
-
+	char := mutation.character
+	world := mutation.world
 	var applied []StateChange
-
-	for _, operation := range orderedStateChangeOperations(changes, standardStateChangeOrder) {
+	for _, operation := range operations {
 		key, val := operation.Key, operation.Value
 		switch key {
 		case "vitals":
@@ -588,6 +601,21 @@ func applyStateChangesWithNPCStore(
 				Description: desc,
 			})
 
+		}
+	}
+	mutation.stats = stats
+	mutation.inventory = invItems
+	return applied
+}
+
+func applyNPCStateOperations(operations []stateChangeOperation, mutation *stateMutationContext) []StateChange {
+	npcs := mutation.npcs
+	storyID := mutation.storyID
+	currentTurn := mutation.currentTurn
+	var applied []StateChange
+	for _, operation := range operations {
+		key, val := operation.Key, operation.Value
+		switch key {
 		// --- NPC operation cases ---
 
 		case "new_npc":
@@ -877,6 +905,24 @@ func applyStateChangesWithNPCStore(
 				}
 			}
 
+		}
+	}
+	return applied
+}
+
+func applyWorldStateOperations(operations []stateChangeOperation, mutation *stateMutationContext) []StateChange {
+	char := mutation.character
+	world := mutation.world
+	db := mutation.db
+	npcs := mutation.npcs
+	storyID := mutation.storyID
+	currentTurn := mutation.currentTurn
+	stats := mutation.stats
+	invItems := mutation.inventory
+	var applied []StateChange
+	for _, operation := range operations {
+		key, val := operation.Key, operation.Value
+		switch key {
 		case "nemesis_resolution":
 			if db == nil {
 				continue
@@ -1149,7 +1195,7 @@ func applyStateChangesWithNPCStore(
 			})
 
 		default:
-			if isNarratorManagedStateChangeKey(key) {
+			if isStandardStateChangeKey(key) || isNarratorManagedStateChangeKey(key) {
 				continue
 			}
 			applied = append(applied, StateChange{
@@ -1160,14 +1206,18 @@ func applyStateChangesWithNPCStore(
 			})
 		}
 	}
-
 	mutation.stats = stats
 	mutation.inventory = invItems
-	if err := mutation.commit(); err != nil {
-		return applied, err
-	}
+	return applied
+}
 
-	return applied, nil
+func isStandardStateChangeKey(key StateChangeKey) bool {
+	for _, known := range standardStateChangeOrder {
+		if key == known {
+			return true
+		}
+	}
+	return false
 }
 
 func isNarratorManagedStateChangeKey(key StateChangeKey) bool {
