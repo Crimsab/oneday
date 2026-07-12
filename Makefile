@@ -4,10 +4,15 @@ ASCII_BENCH=oneday-ascii-benchmark
 BUILD_DIR=build
 LDFLAGS=$(shell bash ./scripts/build-ldflags.sh)
 
-.PHONY: test vet verify qa-matrix qa-matrix-auto universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
+.PHONY: test coverage vet verify qa-matrix qa-matrix-auto universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
 
 test:
 	go test ./...
+
+coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
+	cd gateway/web && bun run test:coverage
 
 vet:
 	go vet ./...

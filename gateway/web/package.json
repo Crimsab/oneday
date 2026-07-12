@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run src",
+    "test:coverage": "node ./node_modules/vitest/vitest.mjs run src --exclude src/commands.contract.test.ts --coverage --coverage.include='src/**/*.{ts,tsx}' --coverage.reporter=text --coverage.reporter=json-summary --coverage.reportsDirectory=coverage",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -24,6 +25,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.2",
+    "@vitest/coverage-v8": "4.1.9",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vitest": "^4.1.9"
