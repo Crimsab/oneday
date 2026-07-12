@@ -11,6 +11,14 @@ COPY contracts /app/contracts
 RUN bun install --frozen-lockfile
 RUN bun run build
 
+FROM golang:1.25-bookworm AS go-builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd cmd
+COPY internal internal
+RUN CGO_ENABLED=0 go build -o /out/oneday ./cmd/oneday
+
 FROM chef AS planner
 COPY gateway/Cargo.toml gateway/Cargo.toml
 COPY gateway/src gateway/src
@@ -29,6 +37,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates iproute2 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/oneday-gateway /usr/local/bin/oneday-gateway
+COPY --from=go-builder /out/oneday /usr/local/bin/oneday
 COPY --from=web-builder /app/gateway/web/dist /usr/local/share/oneday-gateway/web
+ENV ONEDAY_BIN=/usr/local/bin/oneday
 EXPOSE 8788
 ENTRYPOINT ["oneday-gateway"]
