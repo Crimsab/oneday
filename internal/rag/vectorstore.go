@@ -1,6 +1,7 @@
 package rag
 
 import (
+	"container/heap"
 	"context"
 	"database/sql"
 	"fmt"
@@ -41,6 +42,19 @@ type Chunk struct {
 type SearchResult struct {
 	Chunk      Chunk
 	Similarity float64 // cosine similarity, 0.0 to 1.0
+}
+
+type searchResultMinHeap []SearchResult
+
+func (h searchResultMinHeap) Len() int           { return len(h) }
+func (h searchResultMinHeap) Less(i, j int) bool { return h[i].Similarity < h[j].Similarity }
+func (h searchResultMinHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *searchResultMinHeap) Push(value any)    { *h = append(*h, value.(SearchResult)) }
+func (h *searchResultMinHeap) Pop() any {
+	old := *h
+	last := old[len(old)-1]
+	*h = old[:len(old)-1]
+	return last
 }
 
 // NewVectorStore creates a VectorStore using the given DB connection.
@@ -118,6 +132,29 @@ func (vs *VectorStore) Search(ctx context.Context, storyID string, queryEmbeddin
 	}
 
 	queryNorm := vectorNorm(queryEmbedding)
+	if topK > 0 && topK < len(chunks) {
+		best := make(searchResultMinHeap, 0, topK)
+		for _, entry := range chunks {
+			result := SearchResult{
+				Chunk: entry.chunk,
+				Similarity: cosineSimilarityWithNorm(
+					queryEmbedding, queryNorm, entry.chunk.Embedding, entry.norm,
+				),
+			}
+			if len(best) < topK {
+				heap.Push(&best, result)
+			} else if result.Similarity > best[0].Similarity {
+				heap.Pop(&best)
+				heap.Push(&best, result)
+			}
+		}
+		results := []SearchResult(best)
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].Similarity > results[j].Similarity
+		})
+		return results, nil
+	}
+
 	results := make([]SearchResult, 0, len(chunks))
 	for _, entry := range chunks {
 		sim := cosineSimilarityWithNorm(queryEmbedding, queryNorm, entry.chunk.Embedding, entry.norm)
@@ -128,9 +165,6 @@ func (vs *VectorStore) Search(ctx context.Context, storyID string, queryEmbeddin
 		return results[i].Similarity > results[j].Similarity
 	})
 
-	if topK > 0 && len(results) > topK {
-		results = results[:topK]
-	}
 	return results, nil
 }
 
