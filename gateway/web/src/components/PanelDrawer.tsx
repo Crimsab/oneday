@@ -88,6 +88,7 @@ interface PanelDrawerProps {
     assetId: string,
     action: "undo" | "redo",
   ) => Promise<void>;
+  onOpenVisualAsset: (assetId: string) => void;
   onRunStoryWizard: (
     payload: StoryWizardEnvelope,
   ) => Promise<StoryWizardResponse>;
@@ -134,6 +135,7 @@ export function PanelDrawer({
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
   onVisualAssetSelectionStep,
+  onOpenVisualAsset,
   onRunStoryWizard,
   onEnhanceStoryText,
   onCreateSave,
@@ -218,6 +220,7 @@ export function PanelDrawer({
             selectedTab={activeModuleTab}
             visuals={visuals}
             focusCardId={moduleFocusId}
+            onOpenVisualAsset={onOpenVisualAsset}
           />
         )}
       </section>
@@ -1547,11 +1550,13 @@ function ModuleOverlayContent({
   selectedTab,
   visuals,
   focusCardId,
+  onOpenVisualAsset,
 }: {
   snapshot: StorySnapshot | null;
   selectedTab: ModuleTab;
   visuals: VisualCatalog;
   focusCardId?: string | null;
+  onOpenVisualAsset?: (assetId: string) => void;
 }) {
   if (!snapshot) {
     return (
@@ -1570,6 +1575,7 @@ function ModuleOverlayContent({
         visuals={visuals}
         expanded
         focusCardId={focusCardId}
+        onOpenVisualAsset={onOpenVisualAsset}
       />
     </div>
   );
