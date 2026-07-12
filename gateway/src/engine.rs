@@ -168,40 +168,6 @@ pub struct GatewayCommandDescriptorsResponse {
     pub error: String,
 }
 
-#[derive(Debug, Default, Deserialize, Serialize)]
-pub struct GatewayAudioResponse {
-    #[serde(default)]
-    pub providers: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub voices: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub settings: Option<serde_json::Value>,
-    #[serde(default)]
-    pub assignments: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub assignment: Option<serde_json::Value>,
-    #[serde(default)]
-    pub pronunciations: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub pronunciation: Option<serde_json::Value>,
-    #[serde(default)]
-    pub assets: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub jobs: Vec<serde_json::Value>,
-    #[serde(default)]
-    pub asset: Option<serde_json::Value>,
-    #[serde(default)]
-    pub file_path: String,
-    #[serde(default)]
-    pub format: String,
-    #[serde(default)]
-    pub cleanup: Option<serde_json::Value>,
-    #[serde(default)]
-    pub export: Option<serde_json::Value>,
-    #[serde(default)]
-    pub error: String,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MiniGameStartEnvelope {
     pub definition: serde_json::Value,
@@ -656,12 +622,12 @@ async fn call_minigame_gateway(
 
 pub async fn audio(
     state: Arc<AppState>,
-    request: serde_json::Value,
-) -> anyhow::Result<GatewayAudioResponse> {
+    request: protocol::AudioRequest,
+) -> anyhow::Result<protocol::AudioResponse> {
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, GatewayAudioResponse>(state, "gateway-audio", &request).await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        call_gateway::<_, protocol::AudioResponse>(state, "gateway-audio", &request).await?;
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_owned()));
     }
     if !status_ok {
         return Err(anyhow!("gateway-audio failed: {}", compact_stderr(&stderr)));
@@ -1315,18 +1281,19 @@ mod tests {
     #[tokio::test]
     async fn audio_bridge_preserves_provider_and_branch_asset_contracts() {
         let script = fake_oneday_input_script(&[
-            r#"{"providers":[{"id":"cloud","available":false,"reason":"disabled"}],"assets":[{"id":"audio-1","branch_id":"branch-1","source_commit_id":"commit-1","status":"ready"}],"jobs":[]}"#,
+            r#"{"providers":[{"id":"cloud","available":false,"reason":"disabled"}],"assets":[{"id":"audio-1","story_id":"story-1","branch_id":"branch-1","source_commit_id":"commit-1","source_message_id":42,"segment_index":0,"segment_kind":"narration","voice_profile_id":"voice-1","provider":"cloud","model":"tts-1","provider_voice_id":"voice-1","voice_version":"1","language_tag":"it-IT","pronunciation_revision":0,"text":"Test","text_hash":"hash","cache_key":"cache","style":null,"speed":1.0,"output_format":"mp3","status":"ready","duration_ms":100,"timings":null}],"jobs":[]}"#,
         ]);
         let state = test_state(script).await;
         let response = audio(
             state,
-            serde_json::json!({"operation":"message-get","story_id":"story-1","message_id":42}),
+            serde_json::from_value(serde_json::json!({"operation":"message-get","story_id":"story-1","message_id":42}))
+                .expect("typed audio request"),
         )
         .await
         .expect("audio bridge");
-        assert_eq!(response.providers[0]["reason"], "disabled");
-        assert_eq!(response.assets[0]["branch_id"], "branch-1");
-        assert_eq!(response.assets[0]["source_commit_id"], "commit-1");
+        assert_eq!(response.providers[0].reason.as_deref(), Some("disabled"));
+        assert_eq!(response.assets[0].branch_id, "branch-1");
+        assert_eq!(response.assets[0].source_commit_id, "commit-1");
     }
 
     #[tokio::test]
