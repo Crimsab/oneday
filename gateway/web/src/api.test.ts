@@ -8,6 +8,7 @@ import {
   generateVisualAssets,
   getChapters,
   getHistory,
+  getMessageAudio,
   getMessageDiagnostics,
   getActiveMiniGame,
   getStories,
@@ -32,6 +33,12 @@ describe("api request handling", () => {
   it("returns JSON payloads from the gateway", async () => {
     mockFetch(new Response(JSON.stringify([{ id: "story", name: "Story" }]), { status: 200 }));
     await expect(getStories()).resolves.toMatchObject([{ id: "story", name: "Story" }]);
+  });
+
+  it("normalizes omitted empty audio collections", async () => {
+    mockFetch(new Response(JSON.stringify({}), { status: 200 }));
+
+    await expect(getMessageAudio("story-1", 42)).resolves.toEqual({ assets: [], jobs: [] });
   });
 
   it("posts browser story creation requests to the gateway", async () => {
