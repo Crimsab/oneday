@@ -37,6 +37,34 @@ func TestCreateStoryBootstrapsMainBranchAndRootCommit(t *testing.T) {
 	}
 }
 
+func TestEnsureTurnSnapshotSkipsMaterializationWhenAlreadySealed(t *testing.T) {
+	db, s := newTimelineStory(t)
+	defer db.Close()
+	head, err := db.GetActiveTimeline(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		return db.EnsureTurnSnapshotTx(tx, head.Commit.ID, s.ID, head.Branch.ID)
+	}); err != nil {
+		t.Fatalf("initial EnsureTurnSnapshotTx: %v", err)
+	}
+	if _, err := db.GetTurnSnapshot(head.Commit.ID); err != nil {
+		t.Fatalf("GetTurnSnapshot: %v", err)
+	}
+
+	// A missing materialization table would make a recapture fail. Success
+	// proves the immutable snapshot check returns before scanning story tables.
+	if _, err := db.Conn().Exec(`DROP TABLE rag_chunks`); err != nil {
+		t.Fatalf("drop materialization sentinel table: %v", err)
+	}
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		return db.EnsureTurnSnapshotTx(tx, head.Commit.ID, s.ID, head.Branch.ID)
+	}); err != nil {
+		t.Fatalf("sealed snapshot was materialized again: %v", err)
+	}
+}
+
 func TestChatRowsDefaultToActiveBranchAndBindToCommit(t *testing.T) {
 	db, s := newTimelineStory(t)
 	defer db.Close()

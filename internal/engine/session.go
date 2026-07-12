@@ -351,11 +351,7 @@ func (gs *GameSession) commitTurn(db *storage.DB, char *storage.Character, world
 		if err != nil {
 			return fmt.Errorf("loading active timeline head: %w", err)
 		}
-		parentPayload, err := db.CaptureTimelineMaterializationTx(tx, gs.storyID, head.Branch.ID)
-		if err != nil {
-			return fmt.Errorf("capturing parent timeline state: %w", err)
-		}
-		if err := db.SealTurnSnapshotTx(tx, head.Commit.ID, gs.storyID, parentPayload); err != nil {
+		if err := db.EnsureTurnSnapshotTx(tx, head.Commit.ID, gs.storyID, head.Branch.ID); err != nil {
 			return fmt.Errorf("sealing parent timeline state: %w", err)
 		}
 		if beforeCommit != nil {
