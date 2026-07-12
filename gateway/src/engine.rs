@@ -626,24 +626,13 @@ pub struct GatewayModelSettingsResponse {
 pub async fn command_descriptors(
     state: Arc<AppState>,
 ) -> anyhow::Result<GatewayCommandDescriptorsResponse> {
-    let output = tokio::time::timeout(
+    let output = run_gateway_command(
+        &state,
+        "gateway-command-descriptors",
+        None,
         Duration::from_secs(30),
-        Command::new(&state.paths.oneday_bin)
-            .arg("gateway-command-descriptors")
-            .env("ONEDAY_CONFIG", &state.paths.config_path)
-            .current_dir(&state.paths.oneday_root)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output(),
     )
-    .await
-    .context("gateway-command-descriptors timed out")?
-    .with_context(|| {
-        format!(
-            "starting {} gateway-command-descriptors",
-            state.paths.oneday_bin.display()
-        )
-    })?;
+    .await?;
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let parsed = serde_json::from_slice::<GatewayCommandDescriptorsResponse>(&output.stdout)
@@ -666,24 +655,13 @@ pub async fn command_descriptors(
 }
 
 pub async fn model_settings(state: Arc<AppState>) -> anyhow::Result<ModelRoutingSettings> {
-    let output = tokio::time::timeout(
+    let output = run_gateway_command(
+        &state,
+        "gateway-model-settings",
+        None,
         Duration::from_secs(30),
-        Command::new(&state.paths.oneday_bin)
-            .arg("gateway-model-settings")
-            .env("ONEDAY_CONFIG", &state.paths.config_path)
-            .current_dir(&state.paths.oneday_root)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output(),
     )
-    .await
-    .context("gateway-model-settings timed out")?
-    .with_context(|| {
-        format!(
-            "starting {} gateway-model-settings",
-            state.paths.oneday_bin.display()
-        )
-    })?;
+    .await?;
 
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let parsed = serde_json::from_slice::<GatewayModelSettingsResponse>(&output.stdout)
@@ -928,23 +906,17 @@ async fn call_gateway_turn_stream(
         .with_context(|| format!("starting {}", state.paths.oneday_bin.display()))?;
 
     let mut stdin = child.stdin.take().context("opening gateway-turn stdin")?;
-    stdin.write_all(&input).await?;
-    stdin.shutdown().await?;
-    drop(stdin);
-
     let stdout = child.stdout.take().context("opening gateway-turn stdout")?;
     let stderr = child.stderr.take().context("opening gateway-turn stderr")?;
-    let stderr_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr);
-        let mut text = String::new();
-        let _ = reader.read_to_string(&mut text).await;
-        text
-    });
+    let stderr_task = tokio::spawn(read_child_output(stderr, MAX_GATEWAY_STDERR_BYTES));
 
     let mut events = Vec::new();
     let mut saw_done = false;
     let mut lines = BufReader::new(stdout).lines();
-    let read_result = match tokio::time::timeout(Duration::from_secs(360), async {
+    let run_result = tokio::time::timeout(Duration::from_secs(360), async {
+        stdin.write_all(&input).await?;
+        stdin.shutdown().await?;
+        drop(stdin);
         while let Some(line) = lines.next_line().await? {
             let line = line.trim();
             if line.is_empty() {
@@ -990,31 +962,40 @@ async fn call_gateway_turn_stream(
         if !saw_done {
             return Err(anyhow!("gateway-turn stream ended before done line"));
         }
-        Ok::<(), anyhow::Error>(())
+        child
+            .wait()
+            .await
+            .context("waiting for gateway-turn stream")
     })
-    .await
-    {
-        Ok(result) => result,
-        Err(_) => {
-            terminate_child(&mut child).await;
+    .await;
+
+    let status = match run_result {
+        Ok(Ok(status)) => status,
+        Ok(Err(err)) => {
+            let cleanup = terminate_child(&mut child).await;
             let _ = stderr_task.await;
-            return Err(anyhow!("gateway-turn stream timed out"));
+            return match cleanup {
+                Ok(()) => Err(err),
+                Err(cleanup_err) => Err(err.context(format!(
+                    "gateway-turn cleanup failed: {cleanup_err}"
+                ))),
+            };
+        }
+        Err(_) => {
+            let cleanup = terminate_child(&mut child).await;
+            let _ = stderr_task.await;
+            return match cleanup {
+                Ok(()) => Err(anyhow!("gateway-turn stream timed out")),
+                Err(cleanup_err) => Err(anyhow!(
+                    "gateway-turn stream timed out; cleanup failed: {cleanup_err}"
+                )),
+            };
         }
     };
-
-    if let Err(err) = read_result {
-        terminate_child(&mut child).await;
-        let _ = stderr_task.await;
-        return Err(err);
-    }
-
-    let status = wait_for_child(
-        &mut child,
-        Duration::from_secs(30),
-        "waiting for gateway-turn stream",
-    )
-    .await?;
-    let stderr = stderr_task.await.unwrap_or_default();
+    let stderr = stderr_task
+        .await
+        .context("joining gateway-turn stderr reader")??;
+    let stderr = String::from_utf8_lossy(&stderr).to_string();
 
     if !status.success() {
         return Err(anyhow!(
@@ -1208,18 +1189,46 @@ where
     TResp: DeserializeOwned,
 {
     let input = serde_json::to_vec(req).with_context(|| format!("encoding {command} request"))?;
-    let mut child = gateway_command(&state, command)
-        .spawn()
-        .with_context(|| format!("starting {}", state.paths.oneday_bin.display()))?;
+    let output = run_gateway_command(
+        &state,
+        command,
+        Some(&input),
+        Duration::from_secs(360),
+    )
+    .await?;
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let parsed = serde_json::from_slice(&output.stdout).with_context(|| {
+        format!(
+            "decoding {command} stdout; stderr={}",
+            compact_stderr(&stderr)
+        )
+    })?;
+    Ok((parsed, output.status.success(), stderr))
+}
 
+const MAX_GATEWAY_STDOUT_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_GATEWAY_STDERR_BYTES: u64 = 1024 * 1024;
+
+#[derive(Debug)]
+struct GatewayProcessOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+async fn run_gateway_command(
+    state: &AppState,
+    command: &str,
+    input: Option<&[u8]>,
+    timeout: Duration,
+) -> anyhow::Result<GatewayProcessOutput> {
+    let mut child = gateway_command(state, command)
+        .spawn()
+        .with_context(|| format!("starting {} {command}", state.paths.oneday_bin.display()))?;
     let mut stdin = child
         .stdin
         .take()
         .with_context(|| format!("opening {command} stdin"))?;
-    stdin.write_all(&input).await?;
-    stdin.shutdown().await?;
-    drop(stdin);
-
     let stdout = child
         .stdout
         .take()
@@ -1228,29 +1237,65 @@ where
         .stderr
         .take()
         .with_context(|| format!("opening {command} stderr"))?;
-    let stdout_task = tokio::spawn(read_child_output(stdout));
-    let stderr_task = tokio::spawn(read_child_output(stderr));
+    let stdout_task = tokio::spawn(read_child_output(stdout, MAX_GATEWAY_STDOUT_BYTES));
+    let stderr_task = tokio::spawn(read_child_output(stderr, MAX_GATEWAY_STDERR_BYTES));
 
-    let status = wait_for_child(
-        &mut child,
-        Duration::from_secs(360),
-        &format!("waiting for {command}"),
-    )
-    .await?;
+    let run_result = tokio::time::timeout(timeout, async {
+        if let Some(input) = input {
+            stdin
+                .write_all(input)
+                .await
+                .with_context(|| format!("writing {command} stdin"))?;
+        }
+        stdin
+            .shutdown()
+            .await
+            .with_context(|| format!("closing {command} stdin"))?;
+        drop(stdin);
+        child
+            .wait()
+            .await
+            .with_context(|| format!("waiting for {command}"))
+    })
+    .await;
+
+    let status = match run_result {
+        Ok(Ok(status)) => status,
+        Ok(Err(err)) => {
+            let cleanup = terminate_child(&mut child).await;
+            let _ = stdout_task.await;
+            let _ = stderr_task.await;
+            return match cleanup {
+                Ok(()) => Err(err),
+                Err(cleanup_err) => {
+                    Err(err.context(format!("{command} cleanup failed: {cleanup_err}")))
+                }
+            };
+        }
+        Err(_) => {
+            let cleanup = terminate_child(&mut child).await;
+            let _ = stdout_task.await;
+            let _ = stderr_task.await;
+            return match cleanup {
+                Ok(()) => Err(anyhow!("{command} timed out")),
+                Err(cleanup_err) => Err(anyhow!(
+                    "{command} timed out; cleanup failed: {cleanup_err}"
+                )),
+            };
+        }
+    };
+
     let stdout = stdout_task
         .await
         .with_context(|| format!("joining {command} stdout reader"))??;
     let stderr = stderr_task
         .await
         .with_context(|| format!("joining {command} stderr reader"))??;
-    let stderr = String::from_utf8_lossy(&stderr).to_string();
-    let parsed = serde_json::from_slice(&stdout).with_context(|| {
-        format!(
-            "decoding {command} stdout; stderr={}",
-            compact_stderr(&stderr)
-        )
-    })?;
-    Ok((parsed, status.success(), stderr))
+    Ok(GatewayProcessOutput {
+        status,
+        stdout,
+        stderr,
+    })
 }
 
 fn gateway_command(state: &AppState, command: &str) -> Command {
@@ -1263,37 +1308,48 @@ fn gateway_command(state: &AppState, command: &str) -> Command {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    #[cfg(unix)]
+    child.process_group(0);
     child
 }
 
-async fn read_child_output<R>(mut reader: R) -> std::io::Result<Vec<u8>>
+async fn read_child_output<R>(reader: R, max_bytes: u64) -> std::io::Result<Vec<u8>>
 where
     R: tokio::io::AsyncRead + Unpin,
 {
+    let mut reader = reader.take(max_bytes + 1);
     let mut output = Vec::new();
     reader.read_to_end(&mut output).await?;
+    if output.len() as u64 > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("child output exceeded {max_bytes} bytes"),
+        ));
+    }
     Ok(output)
 }
 
-async fn wait_for_child(
-    child: &mut Child,
-    timeout: Duration,
-    operation: &str,
-) -> anyhow::Result<ExitStatus> {
-    match tokio::time::timeout(timeout, child.wait()).await {
-        Ok(status) => status.with_context(|| operation.to_string()),
-        Err(_) => {
-            terminate_child(child).await;
-            Err(anyhow!("{operation} timed out"))
+async fn terminate_child(child: &mut Child) -> anyhow::Result<()> {
+    if child.try_wait().context("checking child status")?.is_some() {
+        return Ok(());
+    }
+
+    #[cfg(unix)]
+    if let Some(pid) = child.id() {
+        let result = unsafe { libc::kill(-(pid as i32), libc::SIGKILL) };
+        if result != 0 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() != Some(libc::ESRCH) {
+                return Err(err).context("killing child process group");
+            }
         }
     }
-}
 
-async fn terminate_child(child: &mut Child) {
-    if matches!(child.try_wait(), Ok(None)) {
-        let _ = child.kill().await;
-    }
-    let _ = child.wait().await;
+    #[cfg(not(unix))]
+    child.kill().await.context("killing child")?;
+
+    child.wait().await.context("reaping child")?;
+    Ok(())
 }
 
 fn default_save_kind() -> String {
@@ -1326,24 +1382,61 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     #[tokio::test]
-    async fn timed_out_child_is_killed_and_reaped() {
-        let mut command = Command::new("bash");
-        command.arg("-c").arg("sleep 30").kill_on_drop(true);
-        let mut child = command.spawn().expect("spawn sleeping child");
+    async fn timed_out_gateway_kills_process_group_and_reaps_child() {
+        let root = std::env::temp_dir().join(format!("oneday-timeout-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create timeout test root");
+        let script = root.join("oneday-fake");
+        let parent_pid = root.join("parent.pid");
+        let child_pid = root.join("child.pid");
+        fs::write(
+            &script,
+            format!(
+                "#!/usr/bin/env bash\nprintf '%s' \"$$\" > '{}'\nsleep 30 &\nprintf '%s' \"$!\" > '{}'\nwait\n",
+                parent_pid.display(),
+                child_pid.display(),
+            ),
+        )
+        .expect("write timeout script");
+        let mut permissions = fs::metadata(&script)
+            .expect("timeout script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).expect("chmod timeout script");
+        let state = test_state(script).await;
 
-        let err = wait_for_child(
-            &mut child,
-            Duration::from_millis(25),
-            "waiting for sleeping child",
+        let oversized_input = vec![b'x'; 1024 * 1024];
+        let err = run_gateway_command(
+            &state,
+            "timeout-test",
+            Some(&oversized_input),
+            Duration::from_millis(200),
         )
         .await
-        .expect_err("sleeping child should time out");
+        .expect_err("gateway process should time out");
 
         assert!(err.to_string().contains("timed out"), "{err}");
-        assert!(
-            child.try_wait().expect("inspect child status").is_some(),
-            "timed-out child must be reaped"
-        );
+        let parent = read_pid(&parent_pid);
+        let descendant = read_pid(&child_pid);
+        wait_until_process_gone(parent).await;
+        wait_until_process_gone(descendant).await;
+    }
+
+    fn read_pid(path: &std::path::Path) -> i32 {
+        fs::read_to_string(path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
+            .parse()
+            .unwrap_or_else(|err| panic!("parse {}: {err}", path.display()))
+    }
+
+    async fn wait_until_process_gone(pid: i32) {
+        for _ in 0..50 {
+            let exists = unsafe { libc::kill(pid, 0) } == 0;
+            if !exists {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        panic!("process {pid} survived gateway timeout");
     }
 
     #[tokio::test]
