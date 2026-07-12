@@ -5,7 +5,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use sqlx::{Row, SqlitePool};
+use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -372,6 +372,36 @@ pub async fn visual_asset_versions(
         .collect())
 }
 
+async fn visible_version_ids_on(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    asset_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<Vec<i64>> {
+    let ids = sqlx::query_scalar(
+        r#"WITH RECURSIVE active AS (
+              SELECT b.id AS branch_id,b.head_commit_id,b.fork_commit_id,b.created_at AS branch_created
+              FROM story_branches b WHERE b.id=? AND b.story_id=?
+           ), ancestors(id) AS (
+              SELECT head_commit_id FROM active
+              UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id
+              WHERE c.parent_commit_id IS NOT NULL
+           )
+           SELECT v.id FROM visual_asset_versions v CROSS JOIN active x
+           WHERE v.story_id=? AND v.asset_id=? AND v.source_commit_id IN (SELECT id FROM ancestors)
+             AND (v.branch_id=x.branch_id OR v.source_commit_id!=COALESCE(x.fork_commit_id,'')
+                  OR v.created_at<=x.branch_created)
+           ORDER BY v.id DESC"#,
+    )
+    .bind(branch_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(asset_id)
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(ids)
+}
+
 pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Result<()> {
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS visual_profile_revisions (
@@ -720,19 +750,30 @@ async fn ensure_visual_generation_job_schema(pool: &SqlitePool) -> anyhow::Resul
     Ok(())
 }
 
-async fn active_timeline_lineage(pool: &SqlitePool, story_id: &str) -> (String, String) {
+async fn active_timeline_lineage(
+    pool: &SqlitePool,
+    story_id: &str,
+) -> anyhow::Result<(String, String)> {
+    active_timeline_lineage_on(pool, story_id).await
+}
+
+async fn active_timeline_lineage_on<'e, E>(
+    executor: E,
+    story_id: &str,
+) -> anyhow::Result<(String, String)>
+where
+    E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
+{
     let row = sqlx::query(
         r#"SELECT s.active_branch_id AS branch_id, COALESCE(b.head_commit_id, '') AS commit_id
            FROM stories s LEFT JOIN story_branches b ON b.id = s.active_branch_id
            WHERE s.id = ?"#,
     )
     .bind(story_id)
-    .fetch_optional(pool)
-    .await;
-    match row {
-        Ok(Some(row)) => (row_string(&row, "branch_id"), row_string(&row, "commit_id")),
-        _ => (String::new(), String::new()),
-    }
+    .fetch_one(executor)
+    .await
+    .with_context(|| format!("loading active timeline lineage for {story_id}"))?;
+    Ok((row_string(&row, "branch_id"), row_string(&row, "commit_id")))
 }
 
 async fn recover_stale_visual_jobs(pool: &SqlitePool) -> anyhow::Result<u64> {
@@ -784,7 +825,7 @@ pub async fn update_asset_prompt(
     if update.prompt.trim().is_empty() {
         return Err(anyhow!("visual asset prompt must not be empty"));
     }
-    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await;
+    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await?;
     sqlx::query(
         r#"INSERT INTO visual_asset_branch_overrides
            (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,status_override,error_override)
@@ -815,20 +856,17 @@ pub async fn select_asset_version(
     asset_id: &str,
     version_id: i64,
 ) -> anyhow::Result<VisualAssetsResponse> {
-    ensure_asset_belongs_to_story(pool, story_id, asset_id).await?;
-    let versions = visual_asset_versions(pool, story_id, asset_id).await?;
-    if !versions.iter().any(|version| version.id == version_id) {
+    let mut tx = pool.begin().await?;
+    let (branch_id, source_commit_id) = active_timeline_lineage_on(&mut *tx, story_id).await?;
+    ensure_asset_visible_on(&mut *tx, story_id, asset_id, &branch_id).await?;
+    let versions = visible_version_ids_on(&mut *tx, story_id, asset_id, &branch_id).await?;
+    if !versions.contains(&version_id) {
         return Err(anyhow!("visual asset version not found"));
     }
-    let current = list_assets(pool, story_id)
-        .await?
-        .into_iter()
-        .find(|asset| asset.id == asset_id)
-        .and_then(|asset| asset.selected_version_id)
-        .or_else(|| versions.first().map(|version| version.id));
-    let (mut history, mut cursor) = exact_selection_state(pool, story_id, asset_id).await?;
+    let (mut history, mut cursor) =
+        exact_selection_state_on(&mut *tx, story_id, asset_id, &branch_id).await?;
     if history.is_empty() {
-        if let Some(current) = current {
+        if let Some(current) = versions.first().copied() {
             history.push(current);
         }
         cursor = history.len() as i64 - 1;
@@ -838,7 +876,17 @@ pub async fn select_asset_version(
         history.push(version_id);
     }
     cursor = history.len() as i64 - 1;
-    write_selection_state(pool, story_id, asset_id, &history, cursor).await?;
+    write_selection_state_on(
+        &mut *tx,
+        story_id,
+        asset_id,
+        &branch_id,
+        &source_commit_id,
+        &history,
+        cursor,
+    )
+    .await?;
+    tx.commit().await?;
     visual_assets(pool, story_id).await
 }
 
@@ -848,8 +896,11 @@ pub async fn step_asset_selection(
     asset_id: &str,
     direction: &str,
 ) -> anyhow::Result<VisualAssetsResponse> {
-    ensure_asset_belongs_to_story(pool, story_id, asset_id).await?;
-    let (history, cursor) = exact_selection_state(pool, story_id, asset_id).await?;
+    let mut tx = pool.begin().await?;
+    let (branch_id, source_commit_id) = active_timeline_lineage_on(&mut *tx, story_id).await?;
+    ensure_asset_visible_on(&mut *tx, story_id, asset_id, &branch_id).await?;
+    let (history, cursor) =
+        exact_selection_state_on(&mut *tx, story_id, asset_id, &branch_id).await?;
     if history.is_empty() {
         return Err(anyhow!("visual selection history not found"));
     }
@@ -860,23 +911,34 @@ pub async fn step_asset_selection(
         "redo" => return Err(anyhow!("no later visual selection")),
         _ => return Err(anyhow!("visual selection action must be undo or redo")),
     };
-    write_selection_state(pool, story_id, asset_id, &history, next).await?;
+    write_selection_state_on(
+        &mut *tx,
+        story_id,
+        asset_id,
+        &branch_id,
+        &source_commit_id,
+        &history,
+        next,
+    )
+    .await?;
+    tx.commit().await?;
     visual_assets(pool, story_id).await
 }
 
-async fn exact_selection_state(
-    pool: &SqlitePool,
+async fn exact_selection_state_on(
+    conn: &mut SqliteConnection,
     story_id: &str,
     asset_id: &str,
+    branch_id: &str,
 ) -> anyhow::Result<(Vec<i64>, i64)> {
     let row = sqlx::query(
         r#"SELECT history_json,cursor FROM visual_asset_selection_states
-           WHERE story_id=? AND asset_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)"#,
+           WHERE story_id=? AND asset_id=? AND branch_id=?"#,
     )
     .bind(story_id)
     .bind(asset_id)
-    .bind(story_id)
-    .fetch_optional(pool)
+    .bind(branch_id)
+    .fetch_optional(&mut *conn)
     .await?;
     let Some(row) = row else {
         return Ok((Vec::new(), -1));
@@ -890,10 +952,12 @@ async fn exact_selection_state(
     Ok((history, cursor))
 }
 
-async fn write_selection_state(
-    pool: &SqlitePool,
+async fn write_selection_state_on(
+    conn: &mut SqliteConnection,
     story_id: &str,
     asset_id: &str,
+    branch_id: &str,
+    source_commit_id: &str,
     history: &[i64],
     cursor: i64,
 ) -> anyhow::Result<()> {
@@ -901,7 +965,6 @@ async fn write_selection_state(
         .get(cursor.max(0) as usize)
         .copied()
         .ok_or_else(|| anyhow!("visual selection cursor is invalid"))?;
-    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await;
     sqlx::query(
         r#"INSERT INTO visual_asset_selection_states
            (asset_id,story_id,branch_id,source_commit_id,selected_version_id,history_json,cursor)
@@ -917,15 +980,21 @@ async fn write_selection_state(
     .bind(selected)
     .bind(serde_json::to_string(history)?)
     .bind(cursor)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     sqlx::query(
-        r#"UPDATE visual_asset_branch_overrides SET status_override='ready',error_override='',updated_at=CURRENT_TIMESTAMP
-           WHERE asset_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?)"#,
+        r#"INSERT INTO visual_asset_branch_overrides
+           (asset_id,story_id,branch_id,source_commit_id,status_override,error_override)
+           VALUES (?,?,?,?,'ready','')
+           ON CONFLICT(asset_id,branch_id) DO UPDATE SET
+             source_commit_id=excluded.source_commit_id,status_override='ready',error_override='',
+             updated_at=CURRENT_TIMESTAMP"#,
     )
     .bind(asset_id)
     .bind(story_id)
-    .execute(pool)
+    .bind(branch_id)
+    .bind(source_commit_id)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }
@@ -936,7 +1005,7 @@ pub async fn update_profile(
     update: VisualProfileUpdate,
 ) -> anyhow::Result<VisualAssetsResponse> {
     db::snapshot(pool, story_id).await?;
-    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await;
+    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await?;
     let world_style_prompt = update.world_style_prompt.trim();
     let character_style_prompt = update.character_style_prompt.trim();
     let negative_prompt = update.negative_prompt.trim();
@@ -1220,7 +1289,7 @@ pub async fn cancel_visual_generation_job(
         .into_iter()
         .find(|asset| asset.id == asset_id)
         .ok_or_else(|| anyhow!("visual asset not found"))?;
-    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await;
+    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await?;
     set_branch_asset_status(
         pool,
         &asset,
@@ -1444,18 +1513,13 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                     .await?;
                     continue;
                 }
-                let version_id = record_asset_version(&state.pool, &job, &generated, &config)
+                if let Err(err) = complete_generated_asset(&state.pool, &job, &generated, &config)
                     .await
-                    .with_context(|| format!("recording visual asset {} version", job.asset.id))?;
-                select_asset_version(&state.pool, &job.asset.story_id, &job.asset.id, version_id)
-                    .await
-                    .with_context(|| {
-                        format!("selecting generated visual asset {} version", job.asset.id)
-                    })?;
-                mark_asset_ready(&state.pool, &job, &config)
-                    .await
-                    .with_context(|| format!("marking visual asset {} ready", job.asset.id))?;
-                mark_generation_job_succeeded(&state.pool, job.id).await?;
+                    .with_context(|| format!("committing generated asset {}", job.asset.id))
+                {
+                    discard_generated_asset(&generated).await;
+                    return Err(err);
+                }
                 emit_visual_asset_event(
                     &state,
                     "asset.ready",
@@ -1615,19 +1679,11 @@ async fn enqueue_visual_generation_jobs(
         return Ok(queued);
     }
     let request_payload = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
+    let mut tx = pool.begin().await?;
     for asset in targets {
-        let (branch_id, source_commit_id) = active_timeline_lineage(pool, &asset.story_id).await;
-        set_branch_asset_status(
-            pool,
-            asset,
-            &branch_id,
-            &source_commit_id,
-            "queued",
-            "",
-            &provider_label(config),
-        )
-        .await
-        .with_context(|| format!("marking visual asset {} queued", asset.id))?;
+        let (branch_id, source_commit_id) =
+            active_timeline_lineage_on(&mut *tx, &asset.story_id).await?;
+        ensure_asset_visible_on(&mut *tx, &asset.story_id, &asset.id, &branch_id).await?;
 
         let inserted_job_id: Option<i64> = sqlx::query_scalar(
             r#"INSERT OR IGNORE INTO visual_generation_jobs (
@@ -1649,16 +1705,28 @@ async fn enqueue_visual_generation_jobs(
         .bind(&asset.form_id)
         .bind(&asset.appearance_fingerprint)
         .bind(&asset.profile_revision_id)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *tx)
         .await
         .with_context(|| format!("enqueueing visual generation job {}", asset.id))?;
         if let Some(job_id) = inserted_job_id {
+            set_branch_asset_status_on(
+                &mut *tx,
+                asset,
+                &branch_id,
+                &source_commit_id,
+                "queued",
+                "",
+                &provider_label(config),
+            )
+            .await
+            .with_context(|| format!("marking visual asset {} queued", asset.id))?;
             queued.push(QueuedVisualGenerationJob {
                 asset: asset.clone(),
                 job_id,
             });
         }
     }
+    tx.commit().await?;
     Ok(queued)
 }
 
@@ -1736,6 +1804,14 @@ async fn claim_visual_generation_job(
 }
 
 async fn visual_generation_job_publishable(pool: &SqlitePool, job_id: i64) -> anyhow::Result<bool> {
+    let mut conn = pool.acquire().await?;
+    visual_generation_job_publishable_on(&mut *conn, job_id).await
+}
+
+async fn visual_generation_job_publishable_on(
+    conn: &mut SqliteConnection,
+    job_id: i64,
+) -> anyhow::Result<bool> {
     let count: i64 = sqlx::query_scalar(
         r#"SELECT COUNT(*) FROM visual_generation_jobs j
            JOIN stories s ON s.id=j.story_id
@@ -1752,7 +1828,7 @@ async fn visual_generation_job_publishable(pool: &SqlitePool, job_id: i64) -> an
              AND COALESCE(a.profile_revision_id,'')=COALESCE(j.profile_revision_id,'')"#,
     )
     .bind(job_id)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(count == 1)
 }
@@ -1785,12 +1861,18 @@ async fn cancel_stale_lineage_job(
     Ok(())
 }
 
-async fn mark_generation_job_succeeded(pool: &SqlitePool, job_id: i64) -> anyhow::Result<()> {
-    mark_generation_job_terminal(pool, job_id, "succeeded", "").await
-}
-
 async fn mark_generation_job_terminal(
     pool: &SqlitePool,
+    job_id: i64,
+    status: &str,
+    error: &str,
+) -> anyhow::Result<()> {
+    let mut conn = pool.acquire().await?;
+    mark_generation_job_terminal_on(&mut *conn, job_id, status, error).await
+}
+
+async fn mark_generation_job_terminal_on(
+    conn: &mut SqliteConnection,
     job_id: i64,
     status: &str,
     error: &str,
@@ -1810,7 +1892,7 @@ async fn mark_generation_job_terminal(
     .bind(&now)
     .bind(&now)
     .bind(job_id)
-    .execute(pool)
+    .execute(&mut *conn)
     .await
     .with_context(|| format!("marking visual generation job {job_id} {status}"))?;
     Ok(())
@@ -1885,23 +1967,6 @@ async fn mark_asset_running(
     .await
 }
 
-async fn mark_asset_ready(
-    pool: &SqlitePool,
-    job: &VisualGenerationJob,
-    config: &ImageGenerationConfig,
-) -> anyhow::Result<()> {
-    set_branch_asset_status(
-        pool,
-        &job.asset,
-        &job.branch_id,
-        &job.source_commit_id,
-        "ready",
-        "",
-        &provider_label(config),
-    )
-    .await
-}
-
 async fn mark_asset_failed(
     pool: &SqlitePool,
     job: &VisualGenerationJob,
@@ -1940,6 +2005,28 @@ async fn set_branch_asset_status(
     error: &str,
     provider: &str,
 ) -> anyhow::Result<()> {
+    let mut conn = pool.acquire().await?;
+    set_branch_asset_status_on(
+        &mut *conn,
+        asset,
+        branch_id,
+        source_commit_id,
+        status,
+        error,
+        provider,
+    )
+    .await
+}
+
+async fn set_branch_asset_status_on(
+    conn: &mut SqliteConnection,
+    asset: &VisualAsset,
+    branch_id: &str,
+    source_commit_id: &str,
+    status: &str,
+    error: &str,
+    provider: &str,
+) -> anyhow::Result<()> {
     sqlx::query(
         r#"INSERT INTO visual_asset_branch_overrides
            (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,
@@ -1962,13 +2049,13 @@ async fn set_branch_asset_status(
     .bind(status)
     .bind(error)
     .bind(provider)
-    .execute(pool)
+    .execute(&mut *conn)
     .await?;
     Ok(())
 }
 
 async fn record_asset_version(
-    pool: &SqlitePool,
+    conn: &mut SqliteConnection,
     job: &VisualGenerationJob,
     generated: &GeneratedAsset,
     config: &ImageGenerationConfig,
@@ -2002,9 +2089,126 @@ async fn record_asset_version(
     .bind(&asset.appearance_fingerprint)
     .bind(&asset.profile_revision_id)
     .bind(&asset.canon_status)
-    .fetch_one(pool)
+    .fetch_one(&mut *conn)
     .await?;
     Ok(version_id)
+}
+
+async fn complete_generated_asset(
+    pool: &SqlitePool,
+    job: &VisualGenerationJob,
+    generated: &GeneratedAsset,
+    config: &ImageGenerationConfig,
+) -> anyhow::Result<i64> {
+    let mut tx = pool.begin().await?;
+    if !visual_generation_job_publishable_on(&mut *tx, job.id).await? {
+        return Err(anyhow!(
+            "visual generation job {} is no longer publishable",
+            job.id
+        ));
+    }
+    ensure_asset_visible_on(
+        &mut *tx,
+        &job.asset.story_id,
+        &job.asset.id,
+        &job.branch_id,
+    )
+    .await?;
+    let version_id = record_asset_version(&mut *tx, job, generated, config).await?;
+    select_generated_version_on(
+        &mut *tx,
+        &job.asset.story_id,
+        &job.asset.id,
+        &job.branch_id,
+        &job.source_commit_id,
+        version_id,
+    )
+    .await?;
+    set_branch_asset_status_on(
+        &mut *tx,
+        &job.asset,
+        &job.branch_id,
+        &job.source_commit_id,
+        "ready",
+        "",
+        &provider_label(config),
+    )
+    .await?;
+    mark_generation_job_succeeded_on(&mut *tx, job).await?;
+    tx.commit().await?;
+    Ok(version_id)
+}
+
+async fn select_generated_version_on(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    asset_id: &str,
+    branch_id: &str,
+    source_commit_id: &str,
+    version_id: i64,
+) -> anyhow::Result<()> {
+    let row = sqlx::query(
+        r#"SELECT history_json,cursor FROM visual_asset_selection_states
+           WHERE story_id=? AND asset_id=? AND branch_id=?"#,
+    )
+    .bind(story_id)
+    .bind(asset_id)
+    .bind(branch_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    let (mut history, cursor) = match row {
+        Some(row) => {
+            let history = serde_json::from_str::<Vec<i64>>(&row_string(&row, "history_json"))
+                .unwrap_or_default();
+            let cursor = row
+                .try_get::<i64, _>("cursor")
+                .unwrap_or(-1)
+                .clamp(-1, history.len() as i64 - 1);
+            (history, cursor)
+        }
+        None => (Vec::new(), -1),
+    };
+    history.truncate((cursor + 1).max(0) as usize);
+    if history.last().copied() != Some(version_id) {
+        history.push(version_id);
+    }
+    let cursor = history.len() as i64 - 1;
+    write_selection_state_on(
+        conn,
+        story_id,
+        asset_id,
+        branch_id,
+        source_commit_id,
+        &history,
+        cursor,
+    )
+    .await
+}
+
+async fn mark_generation_job_succeeded_on(
+    conn: &mut SqliteConnection,
+    job: &VisualGenerationJob,
+) -> anyhow::Result<()> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let result = sqlx::query(
+        r#"UPDATE visual_generation_jobs
+           SET status='succeeded',locked_until='',error='',finished_at=?,updated_at=?
+           WHERE id=? AND status='running' AND branch_id=? AND source_commit_id=?"#,
+    )
+    .bind(&now)
+    .bind(&now)
+    .bind(job.id)
+    .bind(&job.branch_id)
+    .bind(&job.source_commit_id)
+    .execute(&mut *conn)
+    .await?;
+    if result.rows_affected() != 1 {
+        return Err(anyhow!(
+            "visual generation job {} is no longer running on its original timeline",
+            job.id
+        ));
+    }
+    Ok(())
 }
 
 async fn generate_one_asset(
@@ -2548,7 +2752,8 @@ async fn ensure_profile(
     }
 
     let defaults = default_profile(snapshot);
-    let (branch_id, source_commit_id) = active_timeline_lineage(pool, &snapshot.story.id).await;
+    let (branch_id, source_commit_id) =
+        active_timeline_lineage(pool, &snapshot.story.id).await?;
     let fingerprint = visual_fingerprint(&[
         &defaults.world_style_prompt,
         &defaults.character_style_prompt,
@@ -3403,7 +3608,7 @@ async fn ensure_asset_rows(
     story_id: &str,
     specs: &[VisualSpec],
 ) -> anyhow::Result<()> {
-    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await;
+    let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await?;
     for spec in specs {
         let reachable: Option<String> = sqlx::query_scalar(
             r#"WITH RECURSIVE active AS (
@@ -3740,6 +3945,34 @@ async fn ensure_asset_belongs_to_story(
     exists
         .map(|_| ())
         .ok_or_else(|| anyhow!("visual asset not found"))
+}
+
+async fn ensure_asset_visible_on(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    asset_id: &str,
+    branch_id: &str,
+) -> anyhow::Result<()> {
+    let exists: Option<i64> = sqlx::query_scalar(
+        r#"WITH RECURSIVE active AS (
+             SELECT b.id AS branch_id,b.head_commit_id,b.fork_commit_id,b.created_at AS branch_created
+             FROM story_branches b WHERE b.id=? AND b.story_id=?
+           ), ancestors(id) AS (
+             SELECT head_commit_id FROM active
+             UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
+           ) SELECT 1 FROM visual_assets v CROSS JOIN active x WHERE v.story_id=? AND v.id=?
+             AND v.source_commit_id IN (SELECT id FROM ancestors)
+             AND (v.branch_id=x.branch_id OR v.source_commit_id!=COALESCE(x.fork_commit_id,'') OR v.created_at<=x.branch_created)"#,
+    )
+    .bind(branch_id)
+    .bind(story_id)
+    .bind(story_id)
+    .bind(asset_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    exists
+        .map(|_| ())
+        .ok_or_else(|| anyhow!("visual asset not found on active branch"))
 }
 
 fn asset_id(story_id: &str, kind: &str, subject: &str) -> String {
@@ -4749,6 +4982,88 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn duplicate_enqueue_does_not_downgrade_a_running_asset() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+        let asset = load_asset(&pool, "story", "asset-location")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = GenerateVisualAssetsRequest {
+            asset_ids: vec![asset.id.clone()],
+            force: false,
+            allow_silhouette: false,
+            limit: Some(1),
+        };
+        enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
+            .await
+            .unwrap();
+        let job = claim_visual_generation_job(&pool, &config)
+            .await
+            .unwrap()
+            .unwrap();
+        mark_asset_running(&pool, &job, &config).await.unwrap();
+
+        let duplicate =
+            enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
+                .await
+                .unwrap();
+        let status: String = sqlx::query_scalar(
+            "SELECT status_override FROM visual_asset_branch_overrides WHERE asset_id=? AND branch_id=?",
+        )
+        .bind(&asset.id)
+        .bind(&job.branch_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert!(duplicate.is_empty());
+        assert_eq!(status, "running");
+    }
+
+    #[tokio::test]
+    async fn enqueue_rolls_back_job_when_asset_status_cannot_be_written() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+        let asset = load_asset(&pool, "story", "asset-location")
+            .await
+            .unwrap()
+            .unwrap();
+        sqlx::query(
+            r#"CREATE TRIGGER reject_queued_asset_status
+               BEFORE INSERT ON visual_asset_branch_overrides
+               WHEN NEW.status_override='queued'
+               BEGIN SELECT RAISE(ABORT, 'status failure'); END"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let request = GenerateVisualAssetsRequest {
+            asset_ids: vec![asset.id.clone()],
+            force: false,
+            allow_silhouette: false,
+            limit: Some(1),
+        };
+
+        assert!(enqueue_visual_generation_jobs(
+            &pool,
+            std::slice::from_ref(&asset),
+            &request,
+            &config
+        )
+        .await
+        .is_err());
+        let jobs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_generation_jobs WHERE asset_id=? AND status IN ('queued','running')",
+        )
+        .bind(&asset.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(jobs, 0);
+    }
+
+    #[tokio::test]
     async fn ensure_asset_rows_does_not_touch_updated_at_when_nothing_changes() {
         let pool = visual_job_pool().await;
         sqlx::query("UPDATE visual_assets SET updated_at = 'fixed', turn = 3 WHERE id = ?")
@@ -4910,6 +5225,110 @@ mod tests {
             .unwrap();
         assert_eq!(asset.selected_version_id, None);
         assert_ne!(asset.prompt, "main-only prompt");
+    }
+
+    #[tokio::test]
+    async fn version_selection_rolls_back_when_ready_status_cannot_be_written() {
+        let pool = visual_job_pool().await;
+        let version_id: i64 = sqlx::query_scalar(
+            "INSERT INTO visual_asset_versions (asset_id,story_id,kind,subject,url,branch_id,source_commit_id,appearance_fingerprint) VALUES ('asset-location','story','location','Station','/version.png','branch-main','commit-main','base') RETURNING id",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"CREATE TRIGGER reject_ready_asset_status
+               BEFORE INSERT ON visual_asset_branch_overrides
+               WHEN NEW.status_override='ready'
+               BEGIN SELECT RAISE(ABORT, 'status failure'); END"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        assert!(select_asset_version(&pool, "story", "asset-location", version_id)
+            .await
+            .is_err());
+        let selections: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_asset_selection_states WHERE asset_id='asset-location'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(selections, 0);
+    }
+
+    #[tokio::test]
+    async fn generated_asset_completion_rolls_back_every_database_transition() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+        let asset = load_asset(&pool, "story", "asset-location")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = GenerateVisualAssetsRequest {
+            asset_ids: vec![asset.id.clone()],
+            force: false,
+            allow_silhouette: false,
+            limit: Some(1),
+        };
+        enqueue_visual_generation_jobs(&pool, std::slice::from_ref(&asset), &request, &config)
+            .await
+            .unwrap();
+        let job = claim_visual_generation_job(&pool, &config)
+            .await
+            .unwrap()
+            .unwrap();
+        mark_asset_running(&pool, &job, &config).await.unwrap();
+        sqlx::query(
+            r#"CREATE TRIGGER reject_succeeded_job
+               BEFORE UPDATE ON visual_generation_jobs
+               WHEN NEW.status='succeeded'
+               BEGIN SELECT RAISE(ABORT, 'completion failure'); END"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let generated = GeneratedAsset {
+            url: "/generated.png".into(),
+            file_path: "/tmp/generated.png".into(),
+            revised_prompt: "revised".into(),
+        };
+
+        assert!(complete_generated_asset(&pool, &job, &generated, &config)
+            .await
+            .is_err());
+        let versions: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_asset_versions WHERE asset_id='asset-location'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let selections: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_asset_selection_states WHERE asset_id='asset-location'",
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let job_status: String =
+            sqlx::query_scalar("SELECT status FROM visual_generation_jobs WHERE id=?")
+                .bind(job.id)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let asset_status: String = sqlx::query_scalar(
+            "SELECT status_override FROM visual_asset_branch_overrides WHERE asset_id=? AND branch_id=?",
+        )
+        .bind(&asset.id)
+        .bind(&job.branch_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+        assert_eq!(versions, 0);
+        assert_eq!(selections, 0);
+        assert_eq!(job_status, "running");
+        assert_eq!(asset_status, "running");
     }
 
     #[tokio::test]
