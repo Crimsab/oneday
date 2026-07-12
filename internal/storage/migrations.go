@@ -58,6 +58,7 @@ func (db *DB) migrate() error {
 		{35, migrationV35},
 		{36, migrationV36},
 		{37, migrationV37},
+		{38, migrationV38},
 	}
 
 	for _, m := range migrations {
@@ -1700,4 +1701,9 @@ CREATE INDEX IF NOT EXISTS idx_character_facts_retracts
 CREATE INDEX IF NOT EXISTS idx_character_facts_supersedes
 	ON character_facts(story_id,branch_id,supersedes_fact_id)
 	WHERE supersedes_fact_id IS NOT NULL;
+`
+
+const migrationV38 = `
+CREATE INDEX IF NOT EXISTS idx_turn_idempotency_retention
+	ON turn_idempotency(story_id,status,updated_at DESC);
 `

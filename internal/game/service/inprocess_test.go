@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -14,6 +15,23 @@ import (
 	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/storage"
 )
+
+func TestInProcessIdempotencyCacheUsesBoundedLRU(t *testing.T) {
+	svc := NewInProcessTurnService(config.Default(), nil, nil)
+	for index := 0; index < inProcessIdempotencyCacheLimit+5; index++ {
+		svc.cacheEventsByKey(fmt.Sprintf("story:key-%03d", index), []contracts.TurnEvent{{ID: fmt.Sprint(index)}})
+	}
+	if got := len(svc.idempotency); got != inProcessIdempotencyCacheLimit {
+		t.Fatalf("cache size = %d, want %d", got, inProcessIdempotencyCacheLimit)
+	}
+	if _, ok := svc.cachedEventsByKey("story:key-000"); ok {
+		t.Fatal("oldest cache entry was not evicted")
+	}
+	newest := fmt.Sprintf("story:key-%03d", inProcessIdempotencyCacheLimit+4)
+	if _, ok := svc.cachedEventsByKey(newest); !ok {
+		t.Fatal("newest cache entry was evicted")
+	}
+}
 
 type fakeTurnProvider struct {
 	mu    sync.Mutex

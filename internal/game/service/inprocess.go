@@ -31,10 +31,13 @@ type InProcessTurnService struct {
 	db     *storage.DB
 	router *ai.Router
 
-	mu          sync.Mutex
-	storyLocks  map[string]*sync.Mutex
-	idempotency map[string][]contracts.TurnEvent
+	mu               sync.Mutex
+	storyLocks       map[string]*sync.Mutex
+	idempotency      map[string][]contracts.TurnEvent
+	idempotencyOrder []string
 }
+
+const inProcessIdempotencyCacheLimit = 128
 
 func NewInProcessTurnService(cfg config.Config, db *storage.DB, router *ai.Router) *InProcessTurnService {
 	return &InProcessTurnService{
@@ -801,9 +804,7 @@ func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest, r
 	if key == "" {
 		return nil, false, nil
 	}
-	s.mu.Lock()
-	events, ok := s.idempotency[key]
-	s.mu.Unlock()
+	events, ok := s.cachedEventsByKey(key)
 	if ok {
 		return cloneEvents(events), true, nil
 	}
@@ -819,9 +820,7 @@ func (s *InProcessTurnService) cachedEvents(req contracts.SubmitActionRequest, r
 	if err := json.Unmarshal([]byte(eventsJSON), &stored); err != nil {
 		return nil, false, fmt.Errorf("decoding stored idempotency events: %w", err)
 	}
-	s.mu.Lock()
-	s.idempotency[key] = cloneEvents(stored)
-	s.mu.Unlock()
+	s.cacheEventsByKey(key, stored)
 	return stored, true, nil
 }
 
@@ -866,9 +865,43 @@ func (s *InProcessTurnService) cacheEvents(req contracts.SubmitActionRequest, ev
 	if key == "" {
 		return
 	}
+	s.cacheEventsByKey(key, events)
+}
+
+func (s *InProcessTurnService) cachedEventsByKey(key string) ([]contracts.TurnEvent, bool) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	events, ok := s.idempotency[key]
+	if !ok {
+		return nil, false
+	}
+	s.touchIdempotencyKeyLocked(key)
+	return cloneEvents(events), true
+}
+
+func (s *InProcessTurnService) cacheEventsByKey(key string, events []contracts.TurnEvent) {
+	if key == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.idempotency[key] = cloneEvents(events)
-	s.mu.Unlock()
+	s.touchIdempotencyKeyLocked(key)
+	for len(s.idempotencyOrder) > inProcessIdempotencyCacheLimit {
+		oldest := s.idempotencyOrder[0]
+		s.idempotencyOrder = s.idempotencyOrder[1:]
+		delete(s.idempotency, oldest)
+	}
+}
+
+func (s *InProcessTurnService) touchIdempotencyKeyLocked(key string) {
+	for index, existing := range s.idempotencyOrder {
+		if existing == key {
+			s.idempotencyOrder = append(s.idempotencyOrder[:index], s.idempotencyOrder[index+1:]...)
+			break
+		}
+	}
+	s.idempotencyOrder = append(s.idempotencyOrder, key)
 }
 
 func (s *InProcessTurnService) clearCachedEvents(storyID string) {
@@ -883,6 +916,13 @@ func (s *InProcessTurnService) clearCachedEvents(storyID string) {
 			delete(s.idempotency, key)
 		}
 	}
+	kept := s.idempotencyOrder[:0]
+	for _, key := range s.idempotencyOrder {
+		if !strings.HasPrefix(key, prefix) {
+			kept = append(kept, key)
+		}
+	}
+	s.idempotencyOrder = kept
 	s.mu.Unlock()
 }
 

@@ -3,6 +3,7 @@ package storage
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -94,6 +95,49 @@ func TestTurnIdempotencyClaimBlocksAndReclaimsExpiredOwner(t *testing.T) {
 		return first.Claim.CommitTx(tx, `[]`)
 	}); !errors.Is(err, ErrTurnIdempotencyLost) {
 		t.Fatalf("stale claim CommitTx err = %v, want ErrTurnIdempotencyLost", err)
+	}
+}
+
+func TestTurnIdempotencyPrunesExpiredAndBoundsCommittedRows(t *testing.T) {
+	db := openIdempotencyTestDB(t, "idempotency-retention.db")
+	createStoryFixture(t, db, "idem-retention")
+	if _, err := db.Conn().Exec(
+		`INSERT INTO turn_idempotency
+		 (story_id,idempotency_key,request_hash,events_json,status,owner,locked_until,created_at,updated_at,error)
+		 VALUES ('idem-retention','expired','expired-hash','[]','committed','','','2020-01-01','2020-01-01','')`,
+	); err != nil {
+		t.Fatalf("insert expired fixture: %v", err)
+	}
+	for index := 0; index < turnIdempotencyMaxPerStory+12; index++ {
+		key := fmt.Sprintf("key-%03d", index)
+		hash := fmt.Sprintf("hash-%03d", index)
+		result, err := db.ClaimTurnIdempotency("idem-retention", key, hash, "owner", time.Minute)
+		if err != nil {
+			t.Fatalf("claim %d: %v", index, err)
+		}
+		if err := db.WithTx(func(tx *sql.Tx) error {
+			return result.Claim.CommitTx(tx, `[]`)
+		}); err != nil {
+			t.Fatalf("commit %d: %v", index, err)
+		}
+	}
+	var count int
+	if err := db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM turn_idempotency WHERE story_id='idem-retention'`,
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != turnIdempotencyMaxPerStory {
+		t.Fatalf("retained rows = %d, want %d", count, turnIdempotencyMaxPerStory)
+	}
+	var expired int
+	if err := db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM turn_idempotency WHERE idempotency_key='expired'`,
+	).Scan(&expired); err != nil {
+		t.Fatal(err)
+	}
+	if expired != 0 {
+		t.Fatal("expired idempotency row was not pruned")
 	}
 }
 
