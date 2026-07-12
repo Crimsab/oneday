@@ -1,4 +1,6 @@
-use crate::{assets, db, engine, events::TurnStreamEvent, telemetry, AppState};
+use crate::{
+    assets, db, engine, events::TurnStreamEvent, gateway_protocol as protocol, telemetry, AppState,
+};
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
@@ -196,7 +198,7 @@ async fn start_minigame(
     State(state): State<Arc<AppState>>,
     Path(story_id): Path<String>,
     Json(payload): Json<engine::MiniGameStartEnvelope>,
-) -> Result<Json<engine::GatewayMiniGameResponse>, ApiError> {
+) -> Result<Json<protocol::MiniGameResponse>, ApiError> {
     Ok(Json(
         engine::start_minigame(state, &story_id, payload).await?,
     ))
@@ -205,7 +207,7 @@ async fn start_minigame(
 async fn active_minigame(
     State(state): State<Arc<AppState>>,
     Path(story_id): Path<String>,
-) -> Result<Json<engine::GatewayMiniGameResponse>, ApiError> {
+) -> Result<Json<protocol::MiniGameResponse>, ApiError> {
     Ok(Json(engine::active_minigame(state, &story_id).await?))
 }
 
@@ -213,7 +215,7 @@ async fn input_minigame(
     State(state): State<Arc<AppState>>,
     Path((story_id, instance_id)): Path<(String, String)>,
     Json(payload): Json<engine::MiniGameInputEnvelope>,
-) -> Result<Json<engine::GatewayMiniGameResponse>, ApiError> {
+) -> Result<Json<protocol::MiniGameResponse>, ApiError> {
     Ok(Json(
         engine::input_minigame(state, &story_id, &instance_id, payload).await?,
     ))

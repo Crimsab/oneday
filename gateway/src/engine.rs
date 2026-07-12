@@ -169,14 +169,6 @@ pub struct GatewayCommandDescriptorsResponse {
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
-pub struct GatewayMiniGameResponse {
-    #[serde(default)]
-    pub instance: Option<serde_json::Value>,
-    #[serde(default)]
-    pub error: String,
-}
-
-#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct GatewayAudioResponse {
     #[serde(default)]
     pub providers: Vec<serde_json::Value>,
@@ -578,11 +570,28 @@ pub async fn start_minigame(
     state: Arc<AppState>,
     story_id: &str,
     envelope: MiniGameStartEnvelope,
-) -> anyhow::Result<GatewayMiniGameResponse> {
+) -> anyhow::Result<protocol::MiniGameResponse> {
+    let definition = serde_json::from_value(envelope.definition)
+        .context("decoding minigame definition against gateway contract")?;
+    let selection = if envelope.selection.is_null() {
+        None
+    } else {
+        Some(
+            serde_json::from_value(envelope.selection)
+                .context("decoding minigame selection against gateway contract")?,
+        )
+    };
     call_minigame_gateway(
         state,
         "gateway-minigame-start",
-        serde_json::json!({"story_id": story_id, "definition": envelope.definition, "selection": envelope.selection}),
+        protocol::MiniGameRequest {
+            story_id: story_id.to_owned(),
+            instance_id: None,
+            kind: None,
+            definition: Some(definition),
+            input: None,
+            selection,
+        },
     )
     .await
 }
@@ -590,11 +599,18 @@ pub async fn start_minigame(
 pub async fn active_minigame(
     state: Arc<AppState>,
     story_id: &str,
-) -> anyhow::Result<GatewayMiniGameResponse> {
+) -> anyhow::Result<protocol::MiniGameResponse> {
     call_minigame_gateway(
         state,
         "gateway-minigame-get",
-        serde_json::json!({"story_id": story_id}),
+        protocol::MiniGameRequest {
+            story_id: story_id.to_owned(),
+            instance_id: None,
+            kind: None,
+            definition: None,
+            input: None,
+            selection: None,
+        },
     )
     .await
 }
@@ -604,11 +620,20 @@ pub async fn input_minigame(
     story_id: &str,
     instance_id: &str,
     envelope: MiniGameInputEnvelope,
-) -> anyhow::Result<GatewayMiniGameResponse> {
+) -> anyhow::Result<protocol::MiniGameResponse> {
+    let input = serde_json::from_value(envelope.input)
+        .context("decoding minigame input against gateway contract")?;
     call_minigame_gateway(
         state,
         "gateway-minigame-input",
-        serde_json::json!({"story_id": story_id, "instance_id": instance_id, "input": envelope.input}),
+        protocol::MiniGameRequest {
+            story_id: story_id.to_owned(),
+            instance_id: Some(instance_id.to_owned()),
+            kind: None,
+            definition: None,
+            input: Some(input),
+            selection: None,
+        },
     )
     .await
 }
@@ -616,12 +641,12 @@ pub async fn input_minigame(
 async fn call_minigame_gateway(
     state: Arc<AppState>,
     command: &str,
-    request: serde_json::Value,
-) -> anyhow::Result<GatewayMiniGameResponse> {
+    request: protocol::MiniGameRequest,
+) -> anyhow::Result<protocol::MiniGameResponse> {
     let (parsed, status_ok, stderr) =
-        call_gateway::<_, GatewayMiniGameResponse>(state, command, &request).await?;
-    if !parsed.error.trim().is_empty() {
-        return Err(anyhow!(parsed.error));
+        call_gateway::<_, protocol::MiniGameResponse>(state, command, &request).await?;
+    if let Some(error) = parsed.error.as_deref().filter(|error| !error.trim().is_empty()) {
+        return Err(anyhow!(error.to_owned()));
     }
     if !status_ok {
         return Err(anyhow!("{command} failed: {}", compact_stderr(&stderr)));
@@ -1269,7 +1294,7 @@ mod tests {
     #[tokio::test]
     async fn minigame_bridge_preserves_player_instance_contract() {
         let script = fake_oneday_input_script(&[
-            r#"{"instance":{"protocol_version":1,"id":"mini-1","definition":{"id":"deduction","kind":"deduction","difficulty":50},"runtime":{"phase":"active","revision":1}}}"#,
+            r#"{"instance":{"protocol_version":1,"id":"mini-1","turn":0,"seed":7,"definition":{"id":"deduction","kind":"deduction","difficulty":50},"runtime":{"phase":"active","revision":1}}}"#,
         ]);
         let state = test_state(script).await;
         let response = start_minigame(
@@ -1283,8 +1308,8 @@ mod tests {
         .await
         .expect("minigame bridge");
         let instance = response.instance.expect("instance");
-        assert_eq!(instance["id"], "mini-1");
-        assert_eq!(instance["runtime"]["phase"], "active");
+        assert_eq!(instance.id, "mini-1");
+        assert_eq!(instance.runtime.phase, "active");
     }
 
     #[tokio::test]
