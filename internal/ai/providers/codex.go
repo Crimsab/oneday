@@ -1,9 +1,11 @@
 package providers
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +22,11 @@ type Codex struct {
 	model     string
 	reasoning string
 }
+
+const (
+	maxCodexDiagnosticBytes = 1 << 20
+	maxCodexOutputBytes     = 16 << 20
+)
 
 // NewCodex creates a Codex CLI provider.
 func NewCodex(cfg config.CodexConfig) *Codex {
@@ -78,12 +85,16 @@ func (c *Codex) Complete(ctx context.Context, req ai.Request) (ai.Response, erro
 
 	cmd := exec.CommandContext(ctx, c.binary, args...)
 	cmd.Stdin = strings.NewReader(prompt)
-	output, err := cmd.CombinedOutput()
+	stdout := newBoundedBuffer(maxCodexDiagnosticBytes)
+	stderr := newBoundedBuffer(maxCodexDiagnosticBytes)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	err = cmd.Run()
 	if err != nil {
-		return ai.Response{}, fmt.Errorf("codex CLI exec: %w", codexCLIError(err, string(output)))
+		return ai.Response{}, fmt.Errorf("codex CLI exec: %w", codexCLIError(err, firstNonEmpty(stderr.String(), stdout.String())))
 	}
 
-	content, err := os.ReadFile(outputPath)
+	content, err := readCodexOutput(outputPath)
 	if err != nil {
 		return ai.Response{}, fmt.Errorf("reading codex output: %w", err)
 	}
@@ -94,6 +105,53 @@ func (c *Codex) Complete(ctx context.Context, req ai.Request) (ai.Response, erro
 		LatencyMs: time.Since(start).Milliseconds(),
 		Provider:  c.Name(),
 	}, nil
+}
+
+type boundedBuffer struct {
+	buffer    bytes.Buffer
+	remaining int
+	truncated bool
+}
+
+func newBoundedBuffer(limit int) *boundedBuffer {
+	return &boundedBuffer{remaining: limit}
+}
+
+func (buffer *boundedBuffer) Write(data []byte) (int, error) {
+	originalLength := len(data)
+	if len(data) > buffer.remaining {
+		data = data[:buffer.remaining]
+		buffer.truncated = true
+	}
+	if len(data) > 0 {
+		_, _ = buffer.buffer.Write(data)
+		buffer.remaining -= len(data)
+	}
+	return originalLength, nil
+}
+
+func (buffer *boundedBuffer) String() string {
+	value := buffer.buffer.String()
+	if buffer.truncated {
+		value += "\n[output truncated]"
+	}
+	return value
+}
+
+func readCodexOutput(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxCodexOutputBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(content) > maxCodexOutputBytes {
+		return nil, fmt.Errorf("Codex output exceeds %d MiB", maxCodexOutputBytes>>20)
+	}
+	return content, nil
 }
 
 func codexCLIError(err error, output string) error {
@@ -138,9 +196,16 @@ func (c *Codex) Stream(ctx context.Context, req ai.Request) (<-chan ai.StreamChu
 	go func() {
 		defer close(ch)
 		if resp.Content != "" {
-			ch <- ai.StreamChunk{Content: resp.Content, Model: resp.Model, Usage: resp.Usage}
+			select {
+			case ch <- ai.StreamChunk{Content: resp.Content, Model: resp.Model, Usage: resp.Usage}:
+			case <-ctx.Done():
+				return
+			}
 		}
-		ch <- ai.StreamChunk{Model: resp.Model, Usage: resp.Usage, Done: true}
+		select {
+		case ch <- ai.StreamChunk{Model: resp.Model, Usage: resp.Usage, Done: true}:
+		case <-ctx.Done():
+		}
 	}()
 	return ch, nil
 }
