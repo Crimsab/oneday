@@ -214,11 +214,7 @@ func SaveGameWithMetadata(
 		if currentHead.Branch.ID != head.Branch.ID || currentHead.Commit.ID != head.Commit.ID {
 			return storage.ErrStaleBranchHead
 		}
-		materialization, err := db.CaptureTimelineMaterializationTx(tx, story.ID, head.Branch.ID)
-		if err != nil {
-			return err
-		}
-		if err := db.SealTurnSnapshotTx(tx, head.Commit.ID, story.ID, materialization); err != nil {
+		if err := db.EnsureTurnSnapshotTx(tx, head.Commit.ID, story.ID, head.Branch.ID); err != nil {
 			return err
 		}
 		if err := db.CreateSaveTx(tx, snap); err != nil {

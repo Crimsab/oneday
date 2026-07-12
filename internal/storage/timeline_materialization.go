@@ -80,6 +80,27 @@ func (db *DB) CaptureTimelineMaterializationTx(tx *sql.Tx, storyID, branchID str
 	return captureMaterializationTx(tx, storyID, branchID, append(append([]timelineTableSpec{}, timelineTableSpecs...), canonicalTableSpecs...))
 }
 
+// EnsureTurnSnapshotTx seals a bootstrap commit only when its immutable
+// snapshot is still missing. The existence check deliberately precedes the
+// expensive full-story materialization.
+func (db *DB) EnsureTurnSnapshotTx(tx *sql.Tx, commitID, storyID, branchID string) error {
+	if tx == nil || commitID == "" || storyID == "" || branchID == "" {
+		return errors.New("transaction, commit, story, and branch are required")
+	}
+	var exists bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM turn_snapshots WHERE commit_id=?)`, commitID).Scan(&exists); err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	payload, err := db.CaptureTimelineMaterializationTx(tx, storyID, branchID)
+	if err != nil {
+		return err
+	}
+	return db.SealTurnSnapshotTx(tx, commitID, storyID, payload)
+}
+
 func (db *DB) CaptureCanonicalState(storyID, branchID string) (string, error) {
 	var payload string
 	err := db.WithTx(func(tx *sql.Tx) error {
