@@ -376,7 +376,7 @@ pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Story
     let panels = PanelsView {
         chapters: load_chapters(&mut *tx, story_id, &branch_id).await?,
         achievements: load_achievements(&mut *tx, story_id).await?,
-        npcs: load_npcs(&mut *tx, story_id).await?,
+        npcs: load_npcs(&mut *tx, story_id, &branch_id).await?,
         sessions: load_sessions(&mut *tx, story_id, &branch_id).await?,
         saves: load_saves(&mut *tx, story_id, &branch_id).await?,
     };
@@ -398,11 +398,10 @@ pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Story
 
 pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StoryVersion> {
     let mut tx = pool.begin().await?;
-    let branch_id: String =
-        sqlx::query_scalar("SELECT active_branch_id FROM stories WHERE id = ?")
-            .bind(story_id)
-            .fetch_one(&mut *tx)
-            .await?;
+    let branch_id: String = sqlx::query_scalar("SELECT active_branch_id FROM stories WHERE id = ?")
+        .bind(story_id)
+        .fetch_one(&mut *tx)
+        .await?;
     let version = story_version_for_branch(&mut *tx, story_id, &branch_id).await?;
     tx.commit().await?;
     Ok(version)
@@ -524,10 +523,7 @@ async fn retained_asset_files(pool: &SqlitePool, story_id: &str) -> anyhow::Resu
     Ok(files)
 }
 
-async fn load_character(
-    conn: &mut SqliteConnection,
-    story_id: &str,
-) -> anyhow::Result<RecordView> {
+async fn load_character(conn: &mut SqliteConnection, story_id: &str) -> anyhow::Result<RecordView> {
     let row = sqlx::query(
         r#"SELECT id, name, background, stats_json, traits_json, skills_json,
                 inventory_json, known_recipes_json, CAST(updated_at AS TEXT) AS updated_at
@@ -963,17 +959,22 @@ async fn load_achievements(
 async fn load_npcs(
     conn: &mut SqliteConnection,
     story_id: &str,
+    branch_id: &str,
 ) -> anyhow::Result<Vec<RecordView>> {
     let rows = sqlx::query(r#"SELECT id, COALESCE(NULLIF(canonical_entity_id,''),id) AS canonical_entity_id, name, role, appearance, personality_json, relationship_json,
                 discovery_json,
                 disposition, is_alive,
                 first_appeared_turn, last_seen_turn, can_help, CAST(updated_at AS TEXT) AS updated_at,
                 COALESCE((SELECT json_group_array(json_object('predicate',f.predicate,'value',json(f.object_json),'confidence',f.confidence))
-                  FROM character_facts f WHERE f.subject_entity_id=COALESCE(NULLIF(npcs.canonical_entity_id,''),npcs.id)
+                  FROM character_facts f WHERE f.story_id=npcs.story_id AND f.branch_id=?
+                    AND f.subject_entity_id=COALESCE(NULLIF(npcs.canonical_entity_id,''),npcs.id)
                     AND f.visibility IN ('public','player') AND f.retracts_fact_id IS NULL
-                    AND NOT EXISTS (SELECT 1 FROM character_facts newer WHERE newer.retracts_fact_id=f.id OR newer.supersedes_fact_id=f.id)),'[]') AS known_facts_json
+                    AND NOT EXISTS (SELECT 1 FROM character_facts newer
+                      WHERE newer.story_id=f.story_id AND newer.branch_id=f.branch_id
+                        AND (newer.retracts_fact_id=f.id OR newer.supersedes_fact_id=f.id))),'[]') AS known_facts_json
          FROM npcs WHERE story_id = ? ORDER BY last_seen_turn DESC, name ASC"#,
     )
+    .bind(branch_id)
     .bind(story_id)
     .fetch_all(&mut *conn)
     .await?;
@@ -1280,6 +1281,54 @@ mod tests {
         pool
     }
 
+    #[tokio::test]
+    async fn npc_facts_are_scoped_to_story_and_active_branch() {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("memory sqlite pool");
+        sqlx::query(
+            r#"CREATE TABLE npcs (
+                id TEXT PRIMARY KEY, story_id TEXT NOT NULL, canonical_entity_id TEXT NOT NULL,
+                name TEXT NOT NULL, role TEXT NOT NULL DEFAULT '', appearance TEXT NOT NULL DEFAULT '',
+                personality_json TEXT NOT NULL DEFAULT '{}', relationship_json TEXT NOT NULL DEFAULT '{}',
+                discovery_json TEXT NOT NULL DEFAULT '{}', disposition INTEGER NOT NULL DEFAULT 0,
+                is_alive INTEGER NOT NULL DEFAULT 1, first_appeared_turn INTEGER NOT NULL DEFAULT 0,
+                last_seen_turn INTEGER NOT NULL DEFAULT 0, can_help INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE character_facts (
+                id TEXT PRIMARY KEY, story_id TEXT NOT NULL, branch_id TEXT NOT NULL,
+                subject_entity_id TEXT NOT NULL, predicate TEXT NOT NULL, object_json TEXT NOT NULL,
+                confidence REAL NOT NULL, visibility TEXT NOT NULL, retracts_fact_id TEXT,
+                supersedes_fact_id TEXT
+            )"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("create NPC fact fixtures");
+        sqlx::query("INSERT INTO npcs (id,story_id,canonical_entity_id,name) VALUES ('npc-1','story-1','entity-1','Mara')")
+            .execute(&pool).await.expect("insert NPC");
+        sqlx::query("INSERT INTO character_facts VALUES ('fact-main','story-1','branch-main','entity-1','role','\"guide\"',1.0,'player',NULL,NULL)")
+            .execute(&pool).await.expect("insert main fact");
+        sqlx::query("INSERT INTO character_facts VALUES ('retract-other','story-2','branch-main','entity-1','role','\"other\"',1.0,'player','fact-main',NULL)")
+            .execute(&pool).await.expect("insert cross-story retraction");
+        sqlx::query("INSERT INTO character_facts VALUES ('supersede-alt','story-1','branch-alt','entity-1','role','\"alternate\"',1.0,'player',NULL,'fact-main')")
+            .execute(&pool).await.expect("insert alternate-branch supersession");
+
+        let mut conn = pool.acquire().await.expect("acquire connection");
+        let records = load_npcs(&mut conn, "story-1", "branch-main")
+            .await
+            .expect("load NPCs");
+        let facts = records[0].fields["known_facts"]
+            .as_array()
+            .expect("known facts array");
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0]["predicate"], "role");
+        assert_eq!(facts[0]["value"], "guide");
+    }
+
     async fn create_story_version_tables(pool: &SqlitePool) {
         for statement in [
             "CREATE TABLE world_state (story_id TEXT NOT NULL, current_turn INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL DEFAULT '')",
@@ -1320,10 +1369,8 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_transaction_keeps_branch_and_revision_consistent() {
-        let path = std::env::temp_dir().join(format!(
-            "oneday-snapshot-{}.db",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("oneday-snapshot-{}.db", uuid::Uuid::new_v4()));
         let database_url = format!("sqlite://{}?mode=rwc", path.display());
         let pool = SqlitePoolOptions::new()
             .max_connections(2)

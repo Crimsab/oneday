@@ -59,6 +59,27 @@ func TestOpenIdempotent(t *testing.T) {
 	}
 }
 
+func TestCharacterFactResolutionIndexes(t *testing.T) {
+	db, err := Open(filepath.Join(t.TempDir(), "facts.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	defer db.Close()
+
+	for _, index := range []string{
+		"idx_character_facts_visible",
+		"idx_character_facts_retracts",
+		"idx_character_facts_supersedes",
+	} {
+		var name string
+		if err := db.Conn().QueryRow(
+			`SELECT name FROM sqlite_master WHERE type='index' AND name=?`, index,
+		).Scan(&name); err != nil {
+			t.Fatalf("index %q not created: %v", index, err)
+		}
+	}
+}
+
 func TestForeignKeysEnabled(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "test.db")
