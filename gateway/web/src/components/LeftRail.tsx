@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Archive, ArchiveRestore, Check, MoreHorizontal, PanelLeftOpen, Pencil, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, Users, X } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import { asArray, compactText, displayTimestamp, entryLabel } from "../format";
 import type { ModuleTab, OverlayKind, StorySnapshot, StorySummary, StoryUpdatePayload } from "../types";
@@ -350,44 +350,6 @@ function StoryActionsMenu({
         document.body,
       )}
     </>
-  );
-}
-
-interface CollapsedLeftRailProps {
-  selectedTab: ModuleTab;
-  onSelectTab: (tab: ModuleTab) => void;
-  onExpand: () => void;
-  onOpen: (overlay: OverlayKind) => void;
-}
-
-export function CollapsedLeftRail({ selectedTab, onSelectTab, onExpand, onOpen }: CollapsedLeftRailProps) {
-  return (
-    <aside className="left-rail-collapsed" aria-label="Collapsed story rail">
-      <button type="button" className="rail-brand-compact" onClick={onExpand} title="Open stories sidebar ([)">
-        <img src="/brand/oneday-mark.png" alt="" />
-        <span className="sr-only">Open OneDay stories sidebar</span>
-      </button>
-      <button type="button" className="rail-icon-button" onClick={onExpand} title="Open stories sidebar ([)">
-        <PanelLeftOpen size={18} />
-      </button>
-      <button type="button" className="rail-icon-button" onClick={() => onOpen("new-story")} title="New story">
-        <Plus size={17} />
-      </button>
-      <div className="collapsed-module-stack">
-        {moduleSpecs.map(({ tab, label, hotkey, Icon }) => (
-          <button
-            type="button"
-            key={tab}
-            className={selectedTab === tab ? "active" : ""}
-            onClick={() => onSelectTab(tab)}
-            title={`${label} (${hotkey})`}
-          >
-            <Icon size={17} />
-            <kbd>{hotkey}</kbd>
-          </button>
-        ))}
-      </div>
-    </aside>
   );
 }
 
