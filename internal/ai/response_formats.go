@@ -29,11 +29,6 @@ func StoryDefinitionResponseFormat() *ResponseFormat {
 	return NewJSONSchemaResponseFormat("oneday_story_definition", storyDefinitionSchema())
 }
 
-// CharacterCreationResponseFormat is the final character payload schema.
-func CharacterCreationResponseFormat() *ResponseFormat {
-	return NewJSONSchemaResponseFormat("oneday_character_creation", characterCreationSchema())
-}
-
 // ChapterSummaryResponseFormat is the schema for chapter title+summary generation.
 func ChapterSummaryResponseFormat() *ResponseFormat {
 	return NewJSONSchemaResponseFormat("oneday_chapter_summary", chapterSummarySchema())
@@ -128,18 +123,6 @@ func storyDefinitionSchema() map[string]any {
 					"has_combat": boolSchema(),
 				},
 			},
-		},
-	}
-}
-
-func characterCreationSchema() map[string]any {
-	return map[string]any{
-		"type":                 "object",
-		"additionalProperties": false,
-		"required":             []string{"name", "background"},
-		"properties": map[string]any{
-			"name":       stringSchema(),
-			"background": stringSchema(),
 		},
 	}
 }
