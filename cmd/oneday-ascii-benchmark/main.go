@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
+	"github.com/crimsab/oneday/internal/ai/providers"
 	"github.com/crimsab/oneday/internal/buildinfo"
 )
 
@@ -685,7 +685,7 @@ func (c *asciiClient) complete(ctx context.Context, model string, bc asciiBenchm
 	defer resp.Body.Close()
 	duration := time.Since(start)
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := providers.ReadResponseBody(resp.Body)
 	if err != nil {
 		return "", "", asciiUsage{}, duration, err
 	}
