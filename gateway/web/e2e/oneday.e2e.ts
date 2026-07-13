@@ -130,7 +130,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       pronunciations = pronunciations.filter((item) => item.id !== id);
       return json(route, { pronunciations });
     }
-    if (path.endsWith("/audio/cleanup")) return json(route, { cleanup: { dry_run: request.postDataJSON().dry_run, files_scanned: 1, orphan_files: 0, files_removed: 0, invalid_cache_rows: 0 } });
+    if (path.endsWith("/audio/cleanup")) return json(route, { cleanup: { dry_run: request.postDataJSON().dry_run, files_scanned: 1, orphan_files: 0, files_removed: 0, invalid_cache_rows: 0, prunable_cache_rows: 0, cache_rows_removed: 0 } });
     if (path.endsWith("/audio/export")) return json(route, { export: { format: "oneday-audio-manifest-v1", filename: "oneday-audio-story-1.json", generated_at: now, story_id: story.id, settings: ttsSettings, providers: [], voices: [], assignments: [], pronunciations, assets: [], jobs: [] } });
     if (/\/messages\/\d+\/audio$/.test(path) && request.method() === "GET") return json(route, { assets: audioGenerated ? [{ id: "audio-2", story_id: story.id, source_message_id: 2, segment_index: 0, segment_kind: "narrator", status: "ready", duration_ms: 300, language_tag: "en" }] : [], jobs: [] });
     if (/\/messages\/\d+\/audio$/.test(path) && request.method() === "POST") {
@@ -214,9 +214,13 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     if (path.endsWith("/timeline") && request.method() === "GET") return json(route, currentTimeline);
     if (path.endsWith("/timeline") && request.method() === "POST") {
       const body = request.postDataJSON() as { action: string; branch_id?: string; from_commit_id?: string; name?: string };
-      if (body.action === "fork") {
+      if (body.action === "fork" || body.action === "fork_checkout") {
         const branch = { id: `branch-${currentTimeline.branches.length + 1}`, story_id: story.id, name: body.name || "alternate", fork_commit_id: body.from_commit_id || currentTimeline.head.parent_commit_id, head_commit_id: body.from_commit_id || currentTimeline.head.id, head_turn: Math.max(0, currentTimeline.head.canonical_turn - 1), created_at: now, updated_at: now };
-        currentTimeline = { ...currentTimeline, revision: currentTimeline.revision + 1, branches: [...currentTimeline.branches, branch] };
+        const nextTimeline = { ...currentTimeline, revision: currentTimeline.revision + 1, branches: [...currentTimeline.branches, branch] };
+        const forkCommit = currentTimeline.commits.find((commit) => commit.id === branch.head_commit_id);
+        currentTimeline = body.action === "fork_checkout"
+          ? { ...nextTimeline, active_branch_id: branch.id, head: { ...(forkCommit || currentTimeline.head), branch_id: branch.id } }
+          : nextTimeline;
       } else if (body.action === "checkout") {
         const branch = currentTimeline.branches.find((item) => item.id === body.branch_id) || currentTimeline.branches[0];
         currentTimeline = { ...currentTimeline, active_branch_id: branch.id, revision: currentTimeline.revision + 1, head: { ...currentTimeline.head, id: branch.head_commit_id, branch_id: branch.id, canonical_turn: branch.head_turn, parent_commit_id: branch.fork_commit_id || currentTimeline.head.parent_commit_id } };
@@ -230,7 +234,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     if (path.endsWith("/telemetry/export")) return json(route, { format: "jsonl", filename: "glass-archive-generation-telemetry.jsonl", content: "{\"run_id\":\"run-2\"}\n", count: 1, truncated: false });
     if (path.endsWith("/export")) {
       const format = url.searchParams.get("format") || "markdown";
-      if (format === "epub") return json(route, { format, filename: "glass-archive.epub", content: btoa("PK EPUB"), encoding: "base64", content_type: "application/epub+zip" });
+      if (format === "epub") return route.fulfill({ status: 200, contentType: "application/epub+zip", headers: { "content-disposition": 'attachment; filename="glass-archive.epub"' }, body: Buffer.from("PK EPUB") });
       if (format === "replay") return json(route, { format, filename: "glass-archive-replay.json", content: JSON.stringify({ format: "oneday-replay-v1", visual_assets: [], audio_assets: [] }), encoding: "utf-8", content_type: "application/json" });
       return json(route, { format: format === "json" ? "json" : "markdown", filename: "glass-archive-history.md", content: "# The Glass Archive\n\nCanonical export", encoding: "utf-8" });
     }
@@ -660,7 +664,7 @@ test("generates committed audio and exposes per-story and per-character voice co
   await dialog.getByRole("button", { name: "Add pronunciation" }).click();
   await expect(dialog.getByLabel("Pronunciation entries")).toContainText("Mira");
   await dialog.getByRole("button", { name: "Audit cache" }).click();
-  await expect(dialog.getByText("Audit: 1 audio files, 0 orphaned, 0 invalid cache rows.")).toBeVisible();
+  await expect(dialog.getByText("Audit: 1 audio files, 0 orphaned, 0 invalid and 0 expired cache rows.")).toBeVisible();
   const [audioDownload] = await Promise.all([
     page.waitForEvent("download"),
     dialog.getByRole("button", { name: "Export audio manifest" }).click(),
