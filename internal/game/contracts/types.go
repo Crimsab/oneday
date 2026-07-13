@@ -372,10 +372,6 @@ type TimelineCommitView struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-func validateStorySessionTurn(storyID, sessionID string, clientTurn, currentTurn int) error {
-	return validateStorySessionTurnRevision(storyID, sessionID, clientTurn, 0, currentTurn, -1)
-}
-
 func validateStorySessionTurnRevision(storyID, sessionID string, clientTurn int, clientRevision int64, currentTurn int, currentRevision int64) error {
 	if strings.TrimSpace(storyID) == "" {
 		return errors.New("story_id is required")
