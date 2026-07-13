@@ -62,6 +62,13 @@ interface ErrorPayload {
   code?: string;
 }
 
+interface RequestOptions extends RequestInit {
+	timeoutMs?: number;
+}
+
+const READ_TIMEOUT_MS = 30_000;
+const MUTATION_TIMEOUT_MS = 360_000;
+
 export class ApiRequestError extends Error {
   status: number;
   code: string;
@@ -76,8 +83,31 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, options);
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+	const { timeoutMs, signal: callerSignal, ...fetchOptions } = options;
+	const controller = new AbortController();
+	const timeout = globalThis.setTimeout(
+		() => controller.abort(new DOMException("Request timed out", "TimeoutError")),
+		timeoutMs ?? (fetchOptions.method && fetchOptions.method !== "GET" ? MUTATION_TIMEOUT_MS : READ_TIMEOUT_MS),
+	);
+	const abortFromCaller = () => controller.abort(callerSignal?.reason);
+	if (callerSignal?.aborted) {
+		abortFromCaller();
+	} else {
+		callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+	}
+	let response: Response;
+	try {
+		response = await fetch(path, { ...fetchOptions, signal: controller.signal });
+	} catch (error) {
+		if (controller.signal.aborted && !callerSignal?.aborted) {
+			throw new ApiRequestError("Gateway request timed out.", 408, { code: "request_timeout" });
+		}
+		throw error;
+	} finally {
+		globalThis.clearTimeout(timeout);
+		callerSignal?.removeEventListener("abort", abortFromCaller);
+	}
   const payload = (await response.json().catch(() => {
     if (response.ok) {
       throw new ApiRequestError("Gateway returned a non-JSON response.", response.status, {});

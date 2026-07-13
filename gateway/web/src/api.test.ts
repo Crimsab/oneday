@@ -27,6 +27,7 @@ const originalFetch = globalThis.fetch;
 
 describe("api request handling", () => {
   afterEach(() => {
+	vi.useRealTimers();
     globalThis.fetch = originalFetch;
   });
 
@@ -34,6 +35,16 @@ describe("api request handling", () => {
     mockFetch(new Response(JSON.stringify([{ id: "story", name: "Story" }]), { status: 200 }));
     await expect(getStories()).resolves.toMatchObject([{ id: "story", name: "Story" }]);
   });
+
+	it("aborts stalled reads with a typed timeout error", async () => {
+		vi.useFakeTimers();
+		globalThis.fetch = vi.fn((_path: RequestInfo | URL, options?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+			options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+		})) as typeof fetch;
+		const pending = getStories();
+		vi.advanceTimersByTime(30_000);
+		await expect(pending).rejects.toMatchObject({ code: "request_timeout", status: 408 });
+	});
 
   it("normalizes omitted empty audio collections", async () => {
     mockFetch(new Response(JSON.stringify({}), { status: 200 }));
@@ -178,13 +189,13 @@ describe("api request handling", () => {
     mockFetch(new Response(JSON.stringify({ story_id: "story-1", total_rows: 42, counts: [], retained_asset_files: [] }), { status: 200 }));
 
     await expect(getStoryDeletePlan("story-1")).resolves.toMatchObject({ story_id: "story-1", total_rows: 42 });
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/delete-plan", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/delete-plan", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("uses the branch timeline contract for reads and guarded mutations", async () => {
     mockFetch(new Response(JSON.stringify({ active_branch_id: "branch-main", revision: 7, branches: [] }), { status: 200 }));
     await expect(getTimeline("story/one")).resolves.toMatchObject({ active_branch_id: "branch-main", revision: 7 });
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/timeline", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/timeline", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     mockFetch(new Response(JSON.stringify({ timeline: { active_branch_id: "branch-alt" }, snapshot: { story: { id: "story/one" } } }), { status: 200 }));
     await updateTimeline("story/one", { action: "checkout", client_revision: 7, branch_id: "branch-alt" });
@@ -207,25 +218,25 @@ describe("api request handling", () => {
   it("requests branch-scoped paginated history, chapters, and exports", async () => {
     mockFetch(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
     await getHistory("story-1", 41, "glass seal");
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/history?limit=40&q=glass+seal&cursor=41", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/history?limit=40&q=glass+seal&cursor=41", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     mockFetch(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
     await getChapters("story-1", 3, "arrival");
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/chapters?limit=30&q=arrival&cursor=3", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/chapters?limit=30&q=arrival&cursor=3", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     mockFetch(new Response(JSON.stringify({ format: "json", filename: "history.json", content: "{}" }), { status: 200 }));
     await expect(getStoryExport("story-1", "json")).resolves.toMatchObject({ filename: "history.json" });
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/export?format=json", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/export?format=json", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("loads message diagnostics and redacted telemetry exports", async () => {
     mockFetch(new Response(JSON.stringify({ run_id: "run-1", attempts: [] }), { status: 200 }));
     await expect(getMessageDiagnostics("story/one", 42)).resolves.toMatchObject({ run_id: "run-1" });
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/messages/42/diagnostics", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/messages/42/diagnostics", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     mockFetch(new Response(JSON.stringify({ format: "jsonl", filename: "telemetry.jsonl", content: "", count: 0, truncated: false }), { status: 200 }));
     await expect(getTelemetryExport("story/one", 250)).resolves.toMatchObject({ format: "jsonl", count: 0 });
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/telemetry/export?limit=250", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/telemetry/export?limit=250", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("steps branch-local visual selection history", async () => {
@@ -240,7 +251,7 @@ describe("api request handling", () => {
   it("uses the branch-scoped minigame host endpoints", async () => {
     mockFetch(new Response(JSON.stringify({ instance: null }), { status: 200 }));
     await getActiveMiniGame("story/one");
-    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/minigames", {});
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story%2Fone/minigames", expect.objectContaining({ signal: expect.any(AbortSignal) }));
 
     mockFetch(new Response(JSON.stringify({ instance: { id: "mini-1" } }), { status: 200 }));
     await startMiniGame("story/one", "pattern");
