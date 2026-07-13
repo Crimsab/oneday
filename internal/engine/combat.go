@@ -911,17 +911,3 @@ func (ce *CombatEngine) combatLog() *storage.CombatLog {
 		SourceCommitID: ce.expectedHeadID,
 	}
 }
-
-// RandomEnemyStats creates a placeholder enemy for testing.
-// In production, enemies always come from AI.
-func RandomEnemyStats(name string) *EnemyStats {
-	rng := defaultRNGService()
-	return &EnemyStats{
-		Name:     name,
-		HP:       rng.Roll("combat.random_enemy.hp", 40).Raw + 9,
-		MaxHP:    0, // ValidateEnemy will set this
-		Attack:   rng.Roll("combat.random_enemy.attack", 10).Raw + 2,
-		Defense:  rng.Roll("combat.random_enemy.defense", 5).Raw - 1,
-		Behavior: BehaviorAggressive,
-	}
-}

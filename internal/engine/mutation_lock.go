@@ -60,13 +60,6 @@ func WithStoryMutationLease(ctx context.Context, db *storage.DB, storyID, scope,
 	return fn(lease)
 }
 
-func (l *StoryMutationLease) StoryID() string {
-	if l == nil || l.lock == nil {
-		return ""
-	}
-	return l.lock.StoryID()
-}
-
 func (l *StoryMutationLease) Lock() *storage.StoryTurnLock {
 	if l == nil {
 		return nil
