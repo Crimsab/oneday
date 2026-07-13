@@ -670,6 +670,12 @@
         "invalid_cache_rows": {
           "type": "integer"
         },
+        "prunable_cache_rows": {
+          "type": "integer"
+        },
+        "cache_rows_removed": {
+          "type": "integer"
+        },
         "errors": {
           "items": {
             "type": "string"
@@ -684,7 +690,9 @@
         "files_scanned",
         "orphan_files",
         "files_removed",
-        "invalid_cache_rows"
+        "invalid_cache_rows",
+        "prunable_cache_rows",
+        "cache_rows_removed"
       ]
     },
     "ClientCapabilities": {
