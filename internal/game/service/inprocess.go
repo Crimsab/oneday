@@ -1073,14 +1073,6 @@ func errorTurnEvent(req contracts.SubmitActionRequest, err error) contracts.Turn
 	return event
 }
 
-func reindexTurnEvents(events []contracts.TurnEvent, idempotencyKey string, startSeq int) []contracts.TurnEvent {
-	out := cloneEvents(events)
-	for i := range out {
-		out[i].ID = fmt.Sprintf("%s:%d", idempotencyKey, startSeq+i)
-	}
-	return out
-}
-
 func cloneEvents(events []contracts.TurnEvent) []contracts.TurnEvent {
 	if len(events) == 0 {
 		return nil
