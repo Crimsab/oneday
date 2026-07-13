@@ -22,6 +22,38 @@ func newTimelineStory(t *testing.T) (*DB, *Story) {
 	return db, s
 }
 
+func TestTimelineTableDeltaAppliesUpdatesInsertsAndDeletes(t *testing.T) {
+	columns := []string{"id", "value"}
+	before := timelineTable{Name: "example", Columns: columns, Rows: [][]timelineValue{
+		{{Kind: "text", Text: "one"}, {Kind: "text", Text: "old"}},
+		{{Kind: "text", Text: "two"}, {Kind: "text", Text: "remove"}},
+	}}
+	after := timelineTable{Name: "example", Columns: columns, Rows: [][]timelineValue{
+		{{Kind: "text", Text: "one"}, {Kind: "text", Text: "new"}},
+		{{Kind: "text", Text: "three"}, {Kind: "text", Text: "insert"}},
+	}}
+	change, err := diffTimelineTable(before, after, []string{"id"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(change.Upserts) != 2 || len(change.Deletes) != 1 {
+		t.Fatalf("delta upserts=%d deletes=%d", len(change.Upserts), len(change.Deletes))
+	}
+	resolved, err := applyTimelineSnapshotDeltas(
+		timelineMaterialization{FormatVersion: 1, StoryID: "story", BranchID: "main", Tables: []timelineTable{before}},
+		[]timelineSnapshotDelta{{FormatVersion: 2, StoryID: "story", BranchID: "alternate", BaseCommitID: "base", Tables: []timelineTableDelta{change}}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.BranchID != "alternate" || len(resolved.Tables) != 1 || len(resolved.Tables[0].Rows) != 2 {
+		t.Fatalf("resolved delta=%#v", resolved)
+	}
+	if resolved.Tables[0].Rows[0][1].Text != "new" || resolved.Tables[0].Rows[1][0].Text != "three" {
+		t.Fatalf("resolved rows=%#v", resolved.Tables[0].Rows)
+	}
+}
+
 func TestCreateStoryBootstrapsMainBranchAndRootCommit(t *testing.T) {
 	db, s := newTimelineStory(t)
 	defer db.Close()
@@ -213,6 +245,7 @@ func TestSiblingCheckoutRestoresExactStateWithoutDeletingDescendants(t *testing.
 	}
 	head, _ := db.GetActiveTimeline(s.ID)
 	var mainCommit *TurnCommit
+	var mainPayload string
 	err := db.WithTx(func(tx *sql.Tx) error {
 		rootPayload, err := db.CaptureTimelineMaterializationTx(tx, s.ID, head.Branch.ID)
 		if err != nil {
@@ -228,11 +261,23 @@ func TestSiblingCheckoutRestoresExactStateWithoutDeletingDescendants(t *testing.
 		if err != nil {
 			return err
 		}
+		mainPayload = payload
 		mainCommit, err = db.AppendTurnCommitTx(tx, AppendTurnCommitParams{StoryID: s.ID, BranchID: head.Branch.ID, ExpectedHeadID: head.Commit.ID, CanonicalTurn: 1, PayloadJSON: payload})
 		return err
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	var snapshotFormat int
+	var storedPayload string
+	if err := db.Conn().QueryRow(`SELECT format_version,payload_json FROM turn_snapshots WHERE commit_id=?`, mainCommit.ID).Scan(&snapshotFormat, &storedPayload); err != nil {
+		t.Fatal(err)
+	}
+	if snapshotFormat != deltaTurnSnapshotFormatVersion {
+		t.Fatalf("snapshot format=%d want delta format=%d", snapshotFormat, deltaTurnSnapshotFormatVersion)
+	}
+	if len(storedPayload) >= len(mainPayload) {
+		t.Fatalf("delta payload=%d bytes, full payload=%d bytes", len(storedPayload), len(mainPayload))
 	}
 	rev, _ := db.GetStoryRevision(s.ID)
 	left, err := db.ForkStoryBranch(s.ID, mainCommit.ID, "left", rev)
@@ -305,6 +350,26 @@ func TestSiblingCheckoutRestoresExactStateWithoutDeletingDescendants(t *testing.
 	}
 	if exists != 1 {
 		t.Fatal("left descendant was destroyed by sibling checkout")
+	}
+	rev, _ = db.GetStoryRevision(s.ID)
+	if _, err := db.CheckoutStoryBranch(s.ID, left.ID, rev); err != nil {
+		t.Fatal(err)
+	}
+	world, err = db.GetWorldState(s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if world.CurrentTurn != 2 || world.CurrentLocation != "Left future" {
+		t.Fatalf("left delta checkout state=%#v", world)
+	}
+	for _, table := range []string{"chat_messages", "chapters", "rag_chunks"} {
+		var count int
+		if err := db.Conn().QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE story_id=?`, s.ID).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("%s restored %d left-branch rows, want 1", table, count)
+		}
 	}
 	branches, _ := db.ListStoryBranches(s.ID)
 	if len(branches) != 3 {
