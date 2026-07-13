@@ -16,23 +16,14 @@ import (
 )
 
 type ImageProvider interface {
-	Name() string
 	Generate(ctx context.Context, job ImageJob) ([]byte, string, error)
 }
 
 type CommandImageProvider struct {
-	ProviderName string
-	Command      string
-	Args         []string
-	Extension    string
-	Timeout      time.Duration
-}
-
-func (p CommandImageProvider) Name() string {
-	if strings.TrimSpace(p.ProviderName) != "" {
-		return p.ProviderName
-	}
-	return "command-imagegen"
+	Command   string
+	Args      []string
+	Extension string
+	Timeout   time.Duration
 }
 
 func (p CommandImageProvider) Generate(ctx context.Context, job ImageJob) ([]byte, string, error) {
@@ -111,36 +102,6 @@ func (w ImageWorker) RunOnce(ctx context.Context) (bool, error) {
 		return true, err
 	}
 	return true, nil
-}
-
-func (w ImageWorker) Start(ctx context.Context, interval time.Duration) <-chan error {
-	if interval <= 0 {
-		interval = time.Second
-	}
-	errs := make(chan error, 1)
-	go func() {
-		defer close(errs)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			worked, err := w.RunOnce(ctx)
-			if err != nil {
-				select {
-				case errs <- err:
-				default:
-				}
-			}
-			if worked {
-				continue
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-			}
-		}
-	}()
-	return errs
 }
 
 type FileAssetStore struct {
