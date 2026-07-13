@@ -13,6 +13,7 @@ import {
   getActiveMiniGame,
   getStories,
   getStoryExport,
+	getStoryEpub,
   getTelemetryExport,
   getStoryDeletePlan,
   getTimeline,
@@ -228,6 +229,23 @@ describe("api request handling", () => {
     await expect(getStoryExport("story-1", "json")).resolves.toMatchObject({ filename: "history.json" });
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/stories/story-1/export?format=json", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
+
+	it("downloads EPUB as binary without base64 JSON expansion", async () => {
+		mockFetch(new Response(new Uint8Array([80, 75, 3, 4]), {
+			status: 200,
+			headers: {
+				"content-type": "application/epub+zip",
+				"content-disposition": 'attachment; filename="story.epub"',
+			},
+		}));
+		const result = await getStoryEpub("story-1");
+		expect(result.filename).toBe("story.epub");
+		expect(result.blob.size).toBe(4);
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"/api/stories/story-1/export?format=epub",
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+	});
 
   it("loads message diagnostics and redacted telemetry exports", async () => {
     mockFetch(new Response(JSON.stringify({ run_id: "run-1", attempts: [] }), { status: 200 }));

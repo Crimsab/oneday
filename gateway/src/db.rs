@@ -759,40 +759,13 @@ pub async fn export_story(
     story_id: &str,
     format: &str,
 ) -> anyhow::Result<StoryExport> {
-    let story = load_story(pool, story_id).await?;
-    let active_branch_id: String =
-        sqlx::query_scalar("SELECT active_branch_id FROM stories WHERE id=?")
-            .bind(story_id)
-            .fetch_one(pool)
-            .await?;
-    let mut messages = Vec::new();
-    let mut cursor = None;
-    loop {
-        let page = history_page(pool, story_id, cursor, 100, "").await?;
-        messages.extend(page.items);
-        if page.next_cursor.is_none() {
-            break;
-        }
-        cursor = page.next_cursor;
-    }
-    messages.sort_by_key(|message| message.id);
-    let mut chapters = Vec::new();
-    let mut chapter_cursor = None;
-    loop {
-        let page = chapter_page(pool, story_id, chapter_cursor, 100, "").await?;
-        chapters.extend(page.items);
-        if page.next_cursor.is_none() {
-            break;
-        }
-        chapter_cursor = page.next_cursor;
-    }
-    chapters.sort_by_key(|chapter| chapter.chapter_number);
-    let safe_name: String = story
-        .name
-        .chars()
-        .map(|c| if c.is_alphanumeric() { c } else { '-' })
-        .collect::<String>()
-        .to_lowercase();
+    let StoryExportSource {
+        story,
+        active_branch_id,
+        messages,
+        chapters,
+        safe_name,
+    } = load_story_export_source(pool, story_id).await?;
     if format.eq_ignore_ascii_case("json") {
         let payload = json!({"story": story, "active_branch_id": active_branch_id, "chapters": chapters, "messages": messages});
         return Ok(StoryExport {
@@ -834,6 +807,79 @@ pub async fn export_story(
     })
     .await
     .context("joining Markdown export renderer")
+}
+
+struct StoryExportSource {
+    story: StorySummary,
+    active_branch_id: String,
+    messages: Vec<MessageView>,
+    chapters: Vec<ChapterView>,
+    safe_name: String,
+}
+
+async fn load_story_export_source(
+    pool: &SqlitePool,
+    story_id: &str,
+) -> anyhow::Result<StoryExportSource> {
+    let story = load_story(pool, story_id).await?;
+    let active_branch_id: String =
+        sqlx::query_scalar("SELECT active_branch_id FROM stories WHERE id=?")
+            .bind(story_id)
+            .fetch_one(pool)
+            .await?;
+    let mut messages = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = history_page(pool, story_id, cursor, 100, "").await?;
+        messages.extend(page.items);
+        if page.next_cursor.is_none() {
+            break;
+        }
+        cursor = page.next_cursor;
+    }
+    messages.sort_by_key(|message| message.id);
+    let mut chapters = Vec::new();
+    let mut chapter_cursor = None;
+    loop {
+        let page = chapter_page(pool, story_id, chapter_cursor, 100, "").await?;
+        chapters.extend(page.items);
+        if page.next_cursor.is_none() {
+            break;
+        }
+        chapter_cursor = page.next_cursor;
+    }
+    chapters.sort_by_key(|chapter| chapter.chapter_number);
+    let safe_name: String = story
+        .name
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .to_lowercase();
+    Ok(StoryExportSource {
+        story,
+        active_branch_id,
+        messages,
+        chapters,
+        safe_name,
+    })
+}
+
+pub async fn export_story_epub(
+    pool: &SqlitePool,
+    story_id: &str,
+) -> anyhow::Result<(String, Vec<u8>)> {
+    let source = load_story_export_source(pool, story_id).await?;
+    tokio::task::spawn_blocking(move || {
+        let bytes = build_epub(
+            &source.story,
+            &source.active_branch_id,
+            &source.chapters,
+            &source.messages,
+        )?;
+        Ok((format!("{}.epub", source.safe_name), bytes))
+    })
+    .await
+    .context("joining binary EPUB renderer")?
 }
 
 fn build_markdown_export(
@@ -1677,6 +1723,12 @@ mod tests {
         assert_eq!(mimetype, "application/epub+zip");
         assert!(archive.by_name("OEBPS/content.opf").is_ok());
         assert!(archive.by_name("OEBPS/content.xhtml").is_ok());
+
+        let (binary_name, binary_epub) = export_story_epub(&pool, "story-1")
+            .await
+            .expect("binary EPUB export");
+        assert!(binary_name.ends_with(".epub"));
+        assert!(binary_epub.starts_with(b"PK"));
     }
 
     #[test]

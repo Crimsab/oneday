@@ -83,7 +83,7 @@ export class ApiRequestError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function fetchWithTimeout(path: string, options: RequestOptions = {}): Promise<Response> {
 	const { timeoutMs, signal: callerSignal, ...fetchOptions } = options;
 	const controller = new AbortController();
 	const timeout = globalThis.setTimeout(
@@ -108,6 +108,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 		globalThis.clearTimeout(timeout);
 		callerSignal?.removeEventListener("abort", abortFromCaller);
 	}
+	return response;
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+	const response = await fetchWithTimeout(path, options);
   const payload = (await response.json().catch(() => {
     if (response.ok) {
       throw new ApiRequestError("Gateway returned a non-JSON response.", response.status, {});
@@ -292,6 +297,16 @@ export function updateTimeline(storyId:string,payload:TimelineEnvelope):Promise<
 export function getHistory(storyId:string,cursor?:number,search="",signal?:AbortSignal):Promise<HistoryPage> { const query=new URLSearchParams({limit:"40",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<HistoryPage>(`/api/stories/${encodeURIComponent(storyId)}/history?${query}`,{signal}); }
 export function getChapters(storyId:string,cursor?:number,search="",signal?:AbortSignal):Promise<ChapterPage> { const query=new URLSearchParams({limit:"30",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<ChapterPage>(`/api/stories/${encodeURIComponent(storyId)}/chapters?${query}`,{signal}); }
 export function getStoryExport(storyId:string,format:"markdown"|"json"|"epub"|"replay"):Promise<StoryExport> { return request<StoryExport>(`/api/stories/${encodeURIComponent(storyId)}/export?format=${format}`); }
+export async function getStoryEpub(storyId:string):Promise<{filename:string;blob:Blob}> {
+	const response = await fetchWithTimeout(`/api/stories/${encodeURIComponent(storyId)}/export?format=epub`);
+	if (!response.ok) {
+		const payload = await response.json().catch(() => ({})) as ErrorPayload;
+		throw new ApiRequestError(typeof payload.error === "string" ? payload.error : response.statusText, response.status, payload);
+	}
+	const disposition = response.headers.get("content-disposition") ?? "";
+	const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? `${storyId}-history.epub`;
+	return { filename, blob: await response.blob() };
+}
 export function getMessageDiagnostics(storyId:string,messageId:number):Promise<GenerationDiagnostics> { return request<GenerationDiagnostics>(`/api/stories/${encodeURIComponent(storyId)}/messages/${encodeURIComponent(String(messageId))}/diagnostics`); }
 export function getTelemetryExport(storyId:string,limit=1000):Promise<TelemetryExport> { return request<TelemetryExport>(`/api/stories/${encodeURIComponent(storyId)}/telemetry/export?limit=${encodeURIComponent(String(limit))}`); }
 
