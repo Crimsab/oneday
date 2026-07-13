@@ -8,6 +8,12 @@ import (
 const maxProviderResponseBytes int64 = 16 << 20
 
 func readResponseBody(body io.Reader) ([]byte, error) {
+	return ReadResponseBody(body)
+}
+
+// ReadResponseBody reads a provider-compatible JSON response with the shared
+// memory bound used by production clients and benchmark tools.
+func ReadResponseBody(body io.Reader) ([]byte, error) {
 	limited := io.LimitReader(body, maxProviderResponseBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
