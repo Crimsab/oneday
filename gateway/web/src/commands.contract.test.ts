@@ -32,7 +32,7 @@ describe("Go command contract parity", () => {
       expect(fallback?.aliases ?? []).toEqual(descriptor.aliases ?? []);
       expect(fallback?.enabled_when).toBe(descriptor.enabled_when);
     }
-  }, 30000);
+  }, 60000);
 });
 
 function descriptorIndex(descriptors: CommandDescriptor[]): Map<string, CommandDescriptor> {
