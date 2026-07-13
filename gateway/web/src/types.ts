@@ -740,6 +740,10 @@ export interface StoryWizardEnvelope {
   state?: JsonValue;
   input?: string;
   action?: string;
+  world_style_prompt?: string;
+  character_style_prompt?: string;
+  negative_prompt?: string;
+  palette?: string;
   start: boolean;
 }
 

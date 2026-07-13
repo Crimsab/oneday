@@ -523,12 +523,18 @@ async fn story_wizard(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<engine::StoryWizardEnvelope>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    let visual_profile = story_wizard_visual_profile(&payload);
     let wizard = engine::story_wizard(state.clone(), payload).await?;
-    let wizard_story_id = wizard.story_id.as_deref().unwrap_or("");
+    let wizard_story_id = wizard.story_id.clone().unwrap_or_default();
     let snapshot = if wizard_story_id.trim().is_empty() {
         None
     } else {
-        Some(db::snapshot(&state.pool, wizard_story_id).await?)
+        if let Some(profile) = visual_profile {
+            assets::update_profile_with_defaults(&state.pool, &wizard_story_id, profile).await?;
+        }
+        let snapshot = db::snapshot(&state.pool, &wizard_story_id).await?;
+        assets::spawn_auto_generation(state.clone(), wizard_story_id);
+        Some(snapshot)
     };
     Ok(Json(json!({
         "wizard": wizard,
@@ -546,11 +552,36 @@ async fn story_enhance(
 fn story_create_visual_profile(
     payload: &engine::StoryCreateEnvelope,
 ) -> Option<assets::VisualProfileUpdate> {
+    visual_profile_update(
+        &payload.world_style_prompt,
+        &payload.character_style_prompt,
+        &payload.negative_prompt,
+        &payload.palette,
+    )
+}
+
+fn story_wizard_visual_profile(
+    payload: &engine::StoryWizardEnvelope,
+) -> Option<assets::VisualProfileUpdate> {
+    visual_profile_update(
+        &payload.world_style_prompt,
+        &payload.character_style_prompt,
+        &payload.negative_prompt,
+        &payload.palette,
+    )
+}
+
+fn visual_profile_update(
+    world_style_prompt: &str,
+    character_style_prompt: &str,
+    negative_prompt: &str,
+    palette: &str,
+) -> Option<assets::VisualProfileUpdate> {
     let update = assets::VisualProfileUpdate {
-        world_style_prompt: payload.world_style_prompt.trim().to_string(),
-        character_style_prompt: payload.character_style_prompt.trim().to_string(),
-        negative_prompt: payload.negative_prompt.trim().to_string(),
-        palette: payload.palette.trim().to_string(),
+        world_style_prompt: world_style_prompt.trim().to_string(),
+        character_style_prompt: character_style_prompt.trim().to_string(),
+        negative_prompt: negative_prompt.trim().to_string(),
+        palette: palette.trim().to_string(),
     };
     let has_visual_direction = !update.world_style_prompt.is_empty()
         || !update.character_style_prompt.is_empty()
@@ -1172,6 +1203,26 @@ mod tests {
             parse_story_reconciliation_interval(Some("999")),
             Duration::from_secs(300)
         );
+    }
+
+    #[test]
+    fn story_wizard_preserves_the_selected_visual_direction() {
+        let payload = engine::StoryWizardEnvelope {
+            state: None,
+            input: String::new(),
+            action: "create_story".to_string(),
+            world_style_prompt: "  physically grounded world  ".to_string(),
+            character_style_prompt: " real human characters ".to_string(),
+            negative_prompt: " plastic skin ".to_string(),
+            palette: " amber and smoke ".to_string(),
+            start: true,
+        };
+
+        let profile = story_wizard_visual_profile(&payload).expect("visual profile");
+        assert_eq!(profile.world_style_prompt, "physically grounded world");
+        assert_eq!(profile.character_style_prompt, "real human characters");
+        assert_eq!(profile.negative_prompt, "plastic skin");
+        assert_eq!(profile.palette, "amber and smoke");
     }
 
     fn story_snapshot() -> db::StorySnapshot {
