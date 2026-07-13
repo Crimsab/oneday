@@ -338,9 +338,3 @@ func (db *DB) ClearTurnIdempotencyTx(tx *sql.Tx, storyID string) error {
 	}
 	return nil
 }
-
-func (db *DB) ClearTurnIdempotency(storyID string) error {
-	return db.WithTx(func(tx *sql.Tx) error {
-		return db.ClearTurnIdempotencyTx(tx, storyID)
-	})
-}

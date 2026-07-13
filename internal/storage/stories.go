@@ -431,11 +431,6 @@ func (db *DB) DeleteStory(storyID string) error {
 	return nil
 }
 
-// InsertCombatLog records a combat encounter outcome.
-func (db *DB) InsertCombatLog(log *CombatLog) error {
-	return db.insertCombatLogExec(db.conn, log)
-}
-
 // InsertCombatLogTx records a combat encounter inside the caller's transaction.
 func (db *DB) InsertCombatLogTx(tx *sql.Tx, log *CombatLog) error {
 	return db.insertCombatLogExec(tx, log)
