@@ -2,7 +2,6 @@ package ai
 
 import (
 	"context"
-	"fmt"
 )
 
 // Role constants for chat messages.
@@ -115,18 +114,4 @@ type EmbeddingRequest struct {
 type EmbeddingResponse struct {
 	Embedding []float32 `json:"embedding"`
 	Model     string    `json:"model"`
-}
-
-// ProviderError wraps an error with the provider name that caused it.
-type ProviderError struct {
-	ProviderName string
-	Err          error
-}
-
-func (e *ProviderError) Error() string {
-	return fmt.Sprintf("provider %s: %s", e.ProviderName, e.Err)
-}
-
-func (e *ProviderError) Unwrap() error {
-	return e.Err
 }

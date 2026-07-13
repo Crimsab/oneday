@@ -180,30 +180,6 @@ Previous output to repair:
 Return the corrected full story definition as JSON only.`, validationError, blankPromptField(originalBrief), blankPromptField(previousDraftJSON), invalidOutput)
 }
 
-// CharacterCreationSystem builds the prompt after story creation,
-// asking for protagonist name and background in the story's chosen language.
-func CharacterCreationSystem(language, writingStyle, promptDirectives string) string {
-	authoringSection := authoringDirectionSection(language, writingStyle, promptDirectives)
-
-	return fmt.Sprintf(`The story world has been created. Now help the player create their protagonist.
-%s
-
-Ask for:
-1. Character name
-2. Optional brief background (1-2 sentences about who they are, where they're from, or why they're here)
-
-Be encouraging. Remind them that the character starts with minimal stats - everything is earned through gameplay.
-When they provide the name (and optionally background), output ONLY valid JSON with no prose before or after it:
-`+"```json"+`
-{
-  "name": "string",
-  "background": "string (can be empty)"
-}
-`+"```"+`
-
-Write the conversation and any clarifications in the configured story language above.`, authoringSection)
-}
-
 func blankPromptField(value string) string {
 	if value == "" {
 		return "(none)"
