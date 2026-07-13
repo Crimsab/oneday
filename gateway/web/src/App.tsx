@@ -44,7 +44,7 @@ import { Transcript } from "./components/Transcript";
 import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { restoreFailedDraft } from "./draftLifecycle";
-import { isCurrentAsyncSelection } from "./asyncState";
+import { coalesceRequest, isCurrentAsyncSelection } from "./asyncState";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
 import {
@@ -143,6 +143,8 @@ function App() {
   const pausedRef = useRef(paused);
   const snapshotRequestVersion = useRef(0);
   const timelineRequestVersion = useRef(0);
+	const snapshotRequests = useRef(new Map<string, ReturnType<typeof getSnapshot>>());
+	const timelineRequests = useRef(new Map<string, ReturnType<typeof getTimeline>>());
   const visualAssetsRequestVersion = useRef(0);
   const miniGameRequestVersion = useRef(0);
   storyIdRef.current = storyId;
@@ -230,7 +232,7 @@ function App() {
     const requestVersion = ++snapshotRequestVersion.current;
     setSync("Loading");
     try {
-      const nextSnapshot = await getSnapshot(nextStoryId);
+      const nextSnapshot = await coalesceRequest(snapshotRequests.current, nextStoryId, () => getSnapshot(nextStoryId));
       if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, snapshotRequestVersion.current)) return;
       setSnapshot(nextSnapshot);
       setSync(pausedRef.current ? "Paused" : "Live");
@@ -247,7 +249,7 @@ function App() {
     if (!nextStoryId) return;
     const requestVersion = ++timelineRequestVersion.current;
     try {
-      const nextTimeline = await getTimeline(nextStoryId);
+      const nextTimeline = await coalesceRequest(timelineRequests.current, nextStoryId, () => getTimeline(nextStoryId));
       if (!isCurrentAsyncSelection(nextStoryId, storyIdRef.current, requestVersion, timelineRequestVersion.current)) return;
       setTimeline(nextTimeline);
     } catch (error) {
@@ -329,9 +331,12 @@ function App() {
       if (storyId) setSync("Paused");
       return;
     }
-    const source = new EventSource(`/api/stories/${encodeURIComponent(storyId)}/events`);
-    source.addEventListener("open", () => setSync("Live"));
-    source.addEventListener("snapshot", (event) => {
+    let source: EventSource | null = null;
+    const connectTimer = window.setTimeout(() => {
+      const nextSource = new EventSource(`/api/stories/${encodeURIComponent(storyId)}/events`);
+      source = nextSource;
+      nextSource.addEventListener("open", () => setSync("Live"));
+      nextSource.addEventListener("snapshot", (event) => {
       const nextSnapshot = parseStorySnapshotEvent(event.data);
       if (!nextSnapshot) {
         setNotice("Received an unreadable live snapshot; keeping the current story state.");
@@ -344,7 +349,7 @@ function App() {
       void refreshTimeline(storyId);
       setSync("Live");
     });
-    source.addEventListener("turn", (event) => {
+      nextSource.addEventListener("turn", (event) => {
       let liveEvent: TurnStreamEvent;
       try {
         liveEvent = JSON.parse(event.data) as TurnStreamEvent;
@@ -389,8 +394,12 @@ function App() {
         setSync(paused ? "Paused" : "Sending");
       }
     });
-    source.addEventListener("error", () => setSync("Reconnecting"));
-    return () => source.close();
+      nextSource.addEventListener("error", () => setSync("Reconnecting"));
+    }, 0);
+    return () => {
+      window.clearTimeout(connectTimer);
+      source?.close();
+    };
   }, [paused, refreshTimeline, refreshVisualAssets, storyId]);
 
   useEffect(() => {
