@@ -412,6 +412,23 @@ test("keeps story branches inline and closes the menu outside or with escape", a
   await expect(page.locator("#branch-menu")).toHaveCount(0);
 });
 
+test("keeps modal focus contained and restores it after escape", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Options" });
+  await trigger.focus();
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Options" });
+  const close = dialog.getByRole("button", { name: "Close" });
+  await expect(dialog).toBeVisible();
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 test("does not render spoken audio controls while story speech is off", async ({ page }) => {
   await mockGateway(page, { ttsOff: true });
   const settingsLoaded = page.waitForResponse((response) => response.url().endsWith("/tts/settings"));
