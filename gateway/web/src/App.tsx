@@ -304,18 +304,11 @@ function App() {
     const name = `Turn ${Math.max(0, turn)} alternative ${siblingCount + 1}`;
     setStoryMutatingId(storyId);
     try {
-      const forked = await updateTimeline(storyId, {
-        action: "fork",
+      const checkedOut = await updateTimeline(storyId, {
+			action: "fork_checkout",
         client_revision: snapshot.version.revision,
         from_commit_id: fromCommitId,
         name,
-      });
-      const branch = forked.timeline.branches.find((item) => item.fork_commit_id === fromCommitId && item.name === name);
-      if (!branch) throw new Error("The alternative branch was created but could not be selected.");
-      const checkedOut = await updateTimeline(storyId, {
-        action: "checkout",
-        client_revision: forked.timeline.revision,
-        branch_id: branch.id,
       });
       setTimeline(checkedOut.timeline);
       setSnapshot(checkedOut.snapshot);

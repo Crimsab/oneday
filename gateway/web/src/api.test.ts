@@ -204,6 +204,16 @@ describe("api request handling", () => {
       "/api/stories/story%2Fone/timeline",
       expect.objectContaining({ method: "POST", body: expect.stringContaining('"client_revision":7') }),
     );
+
+    mockFetch(new Response(JSON.stringify({ timeline: { active_branch_id: "branch-fork" }, snapshot: { story: { id: "story/one" } } }), { status: 200 }));
+    await updateTimeline("story/one", { action: "fork_checkout", client_revision: 8, from_commit_id: "commit/one", name: "alternate" });
+    expect(globalThis.fetch).toHaveBeenLastCalledWith(
+      "/api/stories/story%2Fone/timeline",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ action: "fork_checkout", client_revision: 8, from_commit_id: "commit/one", name: "alternate" }),
+      }),
+    );
   });
 
   it("recovers timeline reads from transient server failures", async () => {

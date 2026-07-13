@@ -301,10 +301,11 @@ type BrowserDeleteSaveResponse struct {
 type TimelineAction string
 
 const (
-	TimelineList     TimelineAction = "list"
-	TimelineFork     TimelineAction = "fork"
-	TimelineRename   TimelineAction = "rename"
-	TimelineCheckout TimelineAction = "checkout"
+	TimelineList         TimelineAction = "list"
+	TimelineFork         TimelineAction = "fork"
+	TimelineForkCheckout TimelineAction = "fork_checkout"
+	TimelineRename       TimelineAction = "rename"
+	TimelineCheckout     TimelineAction = "checkout"
 )
 
 type BrowserTimelineRequest struct {
@@ -323,7 +324,7 @@ func (r BrowserTimelineRequest) Validate() error {
 	switch r.Action {
 	case TimelineList:
 		return nil
-	case TimelineFork:
+	case TimelineFork, TimelineForkCheckout:
 		if strings.TrimSpace(r.FromCommitID) == "" || strings.TrimSpace(r.Name) == "" {
 			return errors.New("fork requires from_commit_id and name")
 		}

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type timelineValue struct {
@@ -399,4 +401,85 @@ func (db *DB) CheckoutStoryBranch(storyID, branchID string, expectedRevision int
 		return nil
 	})
 	return out, err
+}
+
+// ForkAndCheckoutStoryBranch creates an alternate branch and restores its
+// source commit in one transaction. A failed restore cannot leave an orphaned
+// branch behind.
+func (db *DB) ForkAndCheckoutStoryBranch(storyID, fromCommitID, name string, expectedRevision int64) (*StoryBranch, error) {
+	name = strings.TrimSpace(name)
+	if storyID == "" || fromCommitID == "" || name == "" {
+		return nil, errors.New("story, source commit, and branch name are required")
+	}
+	var branch *StoryBranch
+	err := db.WithTx(func(tx *sql.Tx) error {
+		var existing StoryBranch
+		readErr := tx.QueryRow(
+			`SELECT id,story_id,name,COALESCE(fork_commit_id,''),COALESCE(head_commit_id,''),created_at,updated_at
+			 FROM story_branches WHERE story_id=? AND name=?`, storyID, name,
+		).Scan(&existing.ID, &existing.StoryID, &existing.Name, &existing.ForkCommitID, &existing.HeadCommitID, &existing.CreatedAt, &existing.UpdatedAt)
+		if readErr == nil {
+			if existing.ForkCommitID != fromCommitID {
+				return fmt.Errorf("branch name %q already exists", name)
+			}
+			branch = &existing
+		} else if !errors.Is(readErr, sql.ErrNoRows) {
+			return readErr
+		}
+
+		var activeBranchID string
+		if err := tx.QueryRow(`SELECT active_branch_id FROM stories WHERE id=?`, storyID).Scan(&activeBranchID); err != nil {
+			return err
+		}
+		if branch != nil && activeBranchID == branch.ID {
+			return nil
+		}
+		if err := db.RequireStoryRevisionTx(tx, storyID, expectedRevision); err != nil {
+			return err
+		}
+		var payload, payloadHash string
+		if err := tx.QueryRow(
+			`SELECT COALESCE(s.payload_json,''),c.payload_hash
+			 FROM turn_commits c LEFT JOIN turn_snapshots s ON s.commit_id=c.id
+			 WHERE c.id=? AND c.story_id=?`, fromCommitID, storyID,
+		).Scan(&payload, &payloadHash); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrCommitNotFound
+			}
+			return err
+		}
+		if payload == "" {
+			return ErrCommitSnapshotMissing
+		}
+
+		if branch == nil {
+			now := time.Now().UTC()
+			branch = &StoryBranch{
+				ID: uuid.NewString(), StoryID: storyID, Name: name,
+				ForkCommitID: fromCommitID, HeadCommitID: fromCommitID,
+				CreatedAt: now, UpdatedAt: now,
+			}
+			if _, err := tx.Exec(
+				`INSERT INTO story_branches (id,story_id,name,fork_commit_id,head_commit_id,created_at,updated_at)
+				 VALUES (?,?,?,?,?,?,?)`,
+				branch.ID, branch.StoryID, branch.Name, branch.ForkCommitID,
+				branch.HeadCommitID, branch.CreatedAt, branch.UpdatedAt,
+			); err != nil {
+				return fmt.Errorf("creating and checking out branch: %w", err)
+			}
+		}
+
+		if err := db.RestoreTimelineMaterializationTx(tx, storyID, branch.ID, payload, payloadHash); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE stories SET active_branch_id=? WHERE id=?`, branch.ID, storyID); err != nil {
+			return err
+		}
+		if err := db.ClearTurnIdempotencyTx(tx, storyID); err != nil {
+			return err
+		}
+		_, err := db.BumpStoryRevisionTx(tx, storyID)
+		return err
+	})
+	return branch, err
 }

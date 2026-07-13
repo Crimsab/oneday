@@ -845,6 +845,8 @@ func runGatewayTimeline(db *storage.DB, in io.Reader, out io.Writer) error {
 	switch req.Action {
 	case contracts.TimelineFork:
 		_, err = db.ForkStoryBranch(req.StoryID, req.FromCommitID, req.Name, req.ClientRevision)
+	case contracts.TimelineForkCheckout:
+		_, err = db.ForkAndCheckoutStoryBranch(req.StoryID, req.FromCommitID, req.Name, req.ClientRevision)
 	case contracts.TimelineRename:
 		err = db.RenameStoryBranch(req.StoryID, req.BranchID, req.Name, req.ClientRevision)
 	case contracts.TimelineCheckout:
