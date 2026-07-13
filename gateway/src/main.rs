@@ -13,7 +13,7 @@ mod telemetry;
 
 use anyhow::Context;
 use axum::body::Body;
-use axum::http::{HeaderName, Request};
+use axum::http::{header, HeaderName, HeaderValue, Request};
 use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::Router;
@@ -22,6 +22,7 @@ use std::net::SocketAddr;
 use std::process::Command;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Semaphore};
+use tower_http::compression::CompressionLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tower_http::LatencyUnit;
@@ -52,6 +53,29 @@ async fn scope_request_id(request: Request<Body>, next: Next) -> Response {
         .unwrap_or("-")
         .to_string();
     HTTP_REQUEST_ID.scope(request_id, next.run(request)).await
+}
+
+async fn static_cache_headers(request: Request<Body>, next: Next) -> Response {
+    let policy = cache_control_for_path(request.uri().path());
+    let mut response = next.run(request).await;
+    if response.status().is_success() {
+        if let Some(policy) = policy {
+            response
+                .headers_mut()
+                .insert(header::CACHE_CONTROL, HeaderValue::from_static(policy));
+        }
+    }
+    response
+}
+
+fn cache_control_for_path(path: &str) -> Option<&'static str> {
+    if path.starts_with("/assets/") {
+        return Some("public, max-age=31536000, immutable");
+    }
+    if !path.starts_with("/api/") && !path.starts_with("/generated/") {
+        return Some("no-cache");
+    }
+    None
 }
 
 #[tokio::main]
@@ -101,6 +125,8 @@ async fn main() -> anyhow::Result<()> {
     let request_id_header = HeaderName::from_static("x-request-id");
     let trace_request_id_header = request_id_header.clone();
     let app: Router = routes::router(state)
+        .layer(CompressionLayer::new())
+        .layer(middleware::from_fn(static_cache_headers))
         .layer(
             TraceLayer::new_for_http()
                 .make_span_with(move |request: &Request<Body>| {
@@ -135,6 +161,23 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("serving gateway")?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_policy_only_marks_fingerprinted_assets_immutable() {
+        assert_eq!(
+            cache_control_for_path("/assets/index-abc123.js"),
+            Some("public, max-age=31536000, immutable")
+        );
+        assert_eq!(cache_control_for_path("/"), Some("no-cache"));
+        assert_eq!(cache_control_for_path("/story/deep-link"), Some("no-cache"));
+        assert_eq!(cache_control_for_path("/api/stories"), None);
+        assert_eq!(cache_control_for_path("/generated/assets/image.png"), None);
+    }
 }
 
 fn run_schema_preflight(paths: &config::ResolvedPaths) -> anyhow::Result<()> {
