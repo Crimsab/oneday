@@ -59,6 +59,7 @@ func (db *DB) migrate() error {
 		{36, migrationV36},
 		{37, migrationV37},
 		{38, migrationV38},
+		{39, migrationV39},
 	}
 
 	for _, m := range migrations {
@@ -99,10 +100,24 @@ func (db *DB) applyMigration(version int, migrationSQL string) error {
 		return db.applyMigrationV33()
 	case 36:
 		return db.applyMigrationV36()
+	case 39:
+		return db.applyMigrationV39()
 	default:
 		_, err := db.conn.Exec(migrationSQL)
 		return err
 	}
+}
+
+func (db *DB) applyMigrationV39() error {
+	exists, err := db.columnExists("rag_chunks", "embedding_norm")
+	if err != nil {
+		return err
+	}
+	if exists {
+		return nil
+	}
+	_, err = db.conn.Exec(migrationV39)
+	return err
 }
 
 func (db *DB) applyMigrationV36() error {
@@ -1706,4 +1721,8 @@ CREATE INDEX IF NOT EXISTS idx_character_facts_supersedes
 const migrationV38 = `
 CREATE INDEX IF NOT EXISTS idx_turn_idempotency_retention
 	ON turn_idempotency(story_id,status,updated_at DESC);
+`
+
+const migrationV39 = `
+ALTER TABLE rag_chunks ADD COLUMN embedding_norm REAL NOT NULL DEFAULT 0;
 `

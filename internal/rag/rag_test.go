@@ -263,7 +263,7 @@ func TestVectorStoreCountAndLastTurn(t *testing.T) {
 	}
 }
 
-func TestVectorStoreInvalidatesCacheOnInsert(t *testing.T) {
+func TestVectorStoreReadsNewInsertsWithoutProcessCache(t *testing.T) {
 	db := openTestDB(t)
 	vs := NewVectorStore(db)
 	ctx := context.Background()
@@ -304,7 +304,7 @@ func TestVectorStoreInvalidatesCacheOnInsert(t *testing.T) {
 		t.Fatalf("second search: %v", err)
 	}
 	if len(results) != 1 || results[0].Chunk.Text != "new hot chunk" {
-		t.Fatalf("cache did not refresh after insert: %+v", results)
+		t.Fatalf("new insert was not visible: %+v", results)
 	}
 }
 
