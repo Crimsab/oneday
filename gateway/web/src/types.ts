@@ -103,6 +103,7 @@ export interface ImageGenerationSetting {
   base_url: string;
   api_key_configured: boolean;
   model: string;
+  map_icon_model: string;
   openclaw_bridge_url: string;
   default_size: string;
   location_size: string;
@@ -148,6 +149,7 @@ export interface ImageGenerationUpdate {
   provider?: string;
   base_url?: string;
   model?: string;
+  map_icon_model?: string;
   openclaw_bridge_url?: string;
   default_size?: string;
   location_size?: string;

@@ -1212,6 +1212,14 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
+          <span>Transparent map icon model</span>
+          <ModelInput
+            value={draft.imageGeneration.mapIconModel}
+            options={modelSettings.image_models}
+            onChange={(value) => updateImageGeneration({ mapIconModel: value })}
+          />
+        </label>
+        <label>
           <span>OpenClaw bridge URL</span>
           <input
             value={draft.imageGeneration.openClawBridgeUrl}

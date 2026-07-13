@@ -170,6 +170,7 @@ struct ImageGenerationConfig {
     base_url: String,
     api_key: String,
     model: String,
+    map_icon_model: String,
     provider: String,
     openclaw_bridge_url: String,
     default_size: String,
@@ -212,6 +213,7 @@ struct GatewayImageGenerationConfig {
     base_url: Option<String>,
     api_key: Option<String>,
     model: Option<String>,
+    map_icon_model: Option<String>,
     openclaw_bridge_url: Option<String>,
     default_size: Option<String>,
     location_size: Option<String>,
@@ -1438,6 +1440,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             tracing::warn!(asset_id = %job.asset.id, error = %err, "could not mark visual asset running");
             continue;
         }
+        let generation_model = generation_model(&config, &job.asset);
         let mut generation_trace = match crate::telemetry::start_image_generation(
             &state.pool,
             &job.asset.story_id,
@@ -1446,7 +1449,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             &job.asset.id,
             &job.asset.prompt,
             &config.provider,
-            &config.model,
+            &generation_model,
         )
         .await
         {
@@ -1485,7 +1488,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 }
                 if !visual_generation_job_publishable(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
-                        if let Err(err) = trace.succeed(&state.pool, &config.model).await {
+                        if let Err(err) = trace.succeed(&state.pool, &generation_model).await {
                             tracing::warn!(job_id = job.id, error = %err, "could not finish stale image generation telemetry");
                         }
                     }
@@ -1502,7 +1505,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                     continue;
                 }
                 if let Some(trace) = generation_trace.take() {
-                    if let Err(err) = trace.succeed(&state.pool, &config.model).await {
+                    if let Err(err) = trace.succeed(&state.pool, &generation_model).await {
                         tracing::warn!(job_id = job.id, error = %err, "could not finish image generation telemetry");
                     }
                 }
@@ -1709,7 +1712,7 @@ async fn enqueue_visual_generation_jobs(
         .bind(&asset.id)
         .bind(&asset.story_id)
         .bind(&request_payload)
-        .bind(provider_label(config))
+        .bind(provider_label(config, asset))
         .bind(&branch_id)
         .bind(&source_commit_id)
         .bind(&asset.canonical_entity_id)
@@ -1728,7 +1731,7 @@ async fn enqueue_visual_generation_jobs(
                 &source_commit_id,
                 "queued",
                 "",
-                &provider_label(config),
+                &provider_label(config, asset),
             )
             .await
             .with_context(|| format!("marking visual asset {} queued", asset.id))?;
@@ -1949,7 +1952,7 @@ async fn mark_generation_job_failed_or_retry(
         &job.source_commit_id,
         "queued",
         &message,
-        &provider_label(config),
+        &provider_label(config, &job.asset),
     )
     .await
     .with_context(|| format!("marking visual asset {} queued after retry", job.asset.id))?;
@@ -1974,7 +1977,7 @@ async fn mark_asset_running(
         &job.source_commit_id,
         "running",
         "",
-        &provider_label(config),
+        &provider_label(config, &job.asset),
     )
     .await
 }
@@ -2003,7 +2006,7 @@ async fn mark_asset_failed(
             "failed"
         },
         &compact_error(error),
-        &provider_label(config),
+        &provider_label(config, &job.asset),
     )
     .await
 }
@@ -2091,7 +2094,7 @@ async fn record_asset_version(
     .bind(&asset.prompt)
     .bind(&generated.revised_prompt)
     .bind(&asset.negative_prompt)
-    .bind(provider_label(config))
+    .bind(provider_label(config, asset))
     .bind(asset.turn)
     .bind(&job.branch_id)
     .bind(&job.source_commit_id)
@@ -2137,7 +2140,7 @@ async fn complete_generated_asset(
         &job.source_commit_id,
         "ready",
         "",
-        &provider_label(config),
+        &provider_label(config, &job.asset),
     )
     .await?;
     mark_generation_job_succeeded_on(&mut *tx, job).await?;
@@ -2230,7 +2233,7 @@ async fn generate_one_asset(
     let output_format = image_output_format(config);
     let prompt = final_prompt(asset, config);
     let mut payload = serde_json::json!({
-        "model": config.model,
+        "model": generation_model(config, asset),
         "prompt": prompt,
         "size": asset_size(config, asset),
         "output_format": output_format.clone(),
@@ -2239,8 +2242,9 @@ async fn generate_one_asset(
     if !config.quality.trim().is_empty() {
         payload["quality"] = Value::String(config.quality.trim().to_string());
     }
-    if !config.background.trim().is_empty() {
-        payload["background"] = Value::String(config.background.trim().to_string());
+    let background = generation_background(config, asset);
+    if !background.is_empty() {
+        payload["background"] = Value::String(background);
     }
 
     let endpoint = format!(
@@ -2307,36 +2311,7 @@ async fn generate_one_openclaw_asset(
     asset: &VisualAsset,
 ) -> anyhow::Result<GeneratedAsset> {
     let output_format = image_output_format(config);
-    let prompt = final_prompt(asset, config);
-    let mut payload = serde_json::json!({
-        "prompt": prompt,
-        "output_format": output_format.clone()
-    });
-    maybe_set_string(&mut payload, "size", Some(asset_size(config, asset)));
-    maybe_set_string(
-        &mut payload,
-        "resolution",
-        asset_generation_value(
-            &asset.kind,
-            &config.location_resolution,
-            &config.character_resolution,
-            &config.default_resolution,
-        ),
-    );
-    maybe_set_string(
-        &mut payload,
-        "aspect_ratio",
-        asset_generation_value(
-            &asset.kind,
-            &config.location_aspect_ratio,
-            &config.character_aspect_ratio,
-            &config.default_aspect_ratio,
-        ),
-    );
-    maybe_set_string(&mut payload, "background", Some(config.background.clone()));
-    if let Some(model) = openclaw_payload_model(config) {
-        maybe_set_string(&mut payload, "model", Some(model));
-    }
+    let payload = openclaw_generate_payload(config, asset);
     let response = client
         .post(&config.openclaw_bridge_url)
         .json(&payload)
@@ -2378,6 +2353,43 @@ async fn generate_one_openclaw_asset(
     let mut generated = persist_generated_asset(state, asset, bytes, &output_format).await?;
     generated.revised_prompt = response.revised_prompt.unwrap_or_default();
     Ok(generated)
+}
+
+fn openclaw_generate_payload(config: &ImageGenerationConfig, asset: &VisualAsset) -> Value {
+    let mut payload = serde_json::json!({
+        "prompt": final_prompt(asset, config),
+        "output_format": image_output_format(config)
+    });
+    maybe_set_string(&mut payload, "size", Some(asset_size(config, asset)));
+    maybe_set_string(
+        &mut payload,
+        "resolution",
+        asset_generation_value(
+            &asset.kind,
+            &config.location_resolution,
+            &config.character_resolution,
+            &config.default_resolution,
+        ),
+    );
+    maybe_set_string(
+        &mut payload,
+        "aspect_ratio",
+        asset_generation_value(
+            &asset.kind,
+            &config.location_aspect_ratio,
+            &config.character_aspect_ratio,
+            &config.default_aspect_ratio,
+        ),
+    );
+    maybe_set_string(
+        &mut payload,
+        "background",
+        Some(generation_background(config, asset)),
+    );
+    if let Some(model) = openclaw_payload_model(config, asset) {
+        maybe_set_string(&mut payload, "model", Some(model));
+    }
+    payload
 }
 
 async fn persist_generated_asset(
@@ -2528,12 +2540,30 @@ fn image_output_format(config: &ImageGenerationConfig) -> String {
     }
 }
 
-fn openclaw_payload_model(config: &ImageGenerationConfig) -> Option<String> {
-    let model = config.model.trim();
+fn generation_model(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
+    if asset.kind == "map_icon" {
+        clean_or(&config.map_icon_model, &config.model)
+    } else {
+        config.model.trim().to_string()
+    }
+}
+
+fn generation_background(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
+    if asset.kind == "map_icon" {
+        "transparent".to_string()
+    } else {
+        config.background.trim().to_string()
+    }
+}
+
+fn openclaw_payload_model(config: &ImageGenerationConfig, asset: &VisualAsset) -> Option<String> {
+    let selected = generation_model(config, asset);
+    let model = selected.trim();
     if model.is_empty() {
         return None;
     }
     match model {
+        "gpt-image-1" => Some("openai/gpt-image-1".to_string()),
         "gpt-image-2" => Some("openai/gpt-image-2".to_string()),
         _ => Some(model.to_string()),
     }
@@ -2571,11 +2601,15 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
     let model = first_env(&["ONEDAY_IMAGEGEN_MODEL", "ONEDAY_IMAGE_MODEL"])
         .or_else(|| image_config_string(image_generation, |config| &config.model))
         .unwrap_or_default();
+    let map_icon_model = first_env(&["ONEDAY_IMAGEGEN_MAP_ICON_MODEL"])
+        .or_else(|| image_config_string(image_generation, |config| &config.map_icon_model))
+        .unwrap_or_else(|| "openai/gpt-image-1".to_string());
 
     Ok(ImageGenerationConfig {
         base_url,
         api_key,
         model,
+        map_icon_model,
         provider: first_env(&["ONEDAY_IMAGEGEN_PROVIDER", "ONEDAY_IMAGE_PROVIDER"])
             .or_else(|| image_config_string(image_generation, |config| &config.provider))
             .unwrap_or_else(|| "openclaw-bridge".to_string()),
@@ -2676,8 +2710,8 @@ fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
     serde_yaml::from_str(&raw).with_context(|| format!("parsing {}", path.display()))
 }
 
-fn provider_label(config: &ImageGenerationConfig) -> String {
-    format!("{}:{}", config.provider, config.model)
+fn provider_label(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
+    format!("{}:{}", config.provider, generation_model(config, asset))
 }
 
 fn short_hash(bytes: &[u8]) -> String {
@@ -4122,6 +4156,7 @@ mod tests {
             base_url: "http://example.test/v1".to_string(),
             api_key: "key".to_string(),
             model: "test-image-model".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "test".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4621,6 +4656,7 @@ mod tests {
             base_url: "http://example.test/v1".to_string(),
             api_key: "key".to_string(),
             model: "test-image-model".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "test".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4686,6 +4722,7 @@ mod tests {
             base_url: "http://example.test/v1".to_string(),
             api_key: "key".to_string(),
             model: "test-image-model".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "test".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4794,6 +4831,7 @@ mod tests {
             base_url: String::new(),
             api_key: String::new(),
             model: "test-image-model".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "openclaw-bridge".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4822,6 +4860,7 @@ mod tests {
             base_url: String::new(),
             api_key: String::new(),
             model: "gpt-image-2".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "openclaw-bridge".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4842,7 +4881,7 @@ mod tests {
         };
 
         assert_eq!(
-            openclaw_payload_model(&config).as_deref(),
+            openclaw_payload_model(&config, &VisualAsset::default()).as_deref(),
             Some("openai/gpt-image-2")
         );
     }
@@ -4853,6 +4892,7 @@ mod tests {
             base_url: String::new(),
             api_key: String::new(),
             model: "openai/gpt-image-2".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "openclaw-bridge".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4873,9 +4913,31 @@ mod tests {
         };
 
         assert_eq!(
-            openclaw_payload_model(&config).as_deref(),
+            openclaw_payload_model(&config, &VisualAsset::default()).as_deref(),
             Some("openai/gpt-image-2")
         );
+    }
+
+    #[test]
+    fn map_icons_use_imagegen_one_with_real_transparency() {
+        let config = test_config();
+        let map_icon = VisualAsset {
+            kind: "map_icon".to_string(),
+            prompt: "A single archive landmark".to_string(),
+            ..VisualAsset::default()
+        };
+        let payload = openclaw_generate_payload(&config, &map_icon);
+        assert_eq!(payload["model"], "openai/gpt-image-1");
+        assert_eq!(payload["background"], "transparent");
+
+        let character = VisualAsset {
+            kind: "character".to_string(),
+            prompt: "A grounded portrait".to_string(),
+            ..VisualAsset::default()
+        };
+        let payload = openclaw_generate_payload(&config, &character);
+        assert_eq!(payload["model"], "test-image-model");
+        assert!(payload.get("background").is_none());
     }
 
     #[test]
@@ -4884,6 +4946,7 @@ mod tests {
             base_url: "http://example.test/v1".to_string(),
             api_key: String::new(),
             model: "test-image-model".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "openai-compatible".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4912,6 +4975,7 @@ mod tests {
             base_url: String::new(),
             api_key: "key".to_string(),
             model: "test-image-model".to_string(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "openai-compatible".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -4940,6 +5004,7 @@ mod tests {
             base_url: String::new(),
             api_key: String::new(),
             model: String::new(),
+            map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "openclaw-bridge".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             default_size: "1024x1024".to_string(),
@@ -5613,7 +5678,13 @@ mod tests {
         .bind("asset-location")
         .bind("story")
         .bind(stale)
-        .bind(provider_label(&config))
+        .bind(provider_label(
+            &config,
+            &VisualAsset {
+                kind: "location".to_string(),
+                ..VisualAsset::default()
+            },
+        ))
         .execute(&pool)
         .await
         .expect("insert stale job");

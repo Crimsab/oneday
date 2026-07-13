@@ -82,6 +82,7 @@ type ImageGenerationSetting struct {
 	BaseURL              string `json:"base_url"`
 	APIKeyConfigured     bool   `json:"api_key_configured"`
 	Model                string `json:"model"`
+	MapIconModel         string `json:"map_icon_model"`
 	OpenClawBridgeURL    string `json:"openclaw_bridge_url"`
 	DefaultSize          string `json:"default_size"`
 	LocationSize         string `json:"location_size"`
@@ -127,6 +128,7 @@ type ImageGenerationUpdate struct {
 	Provider             *string `json:"provider,omitempty"`
 	BaseURL              *string `json:"base_url,omitempty"`
 	Model                *string `json:"model,omitempty"`
+	MapIconModel         *string `json:"map_icon_model,omitempty"`
 	OpenClawBridgeURL    *string `json:"openclaw_bridge_url,omitempty"`
 	DefaultSize          *string `json:"default_size,omitempty"`
 	LocationSize         *string `json:"location_size,omitempty"`
@@ -265,7 +267,7 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 		NarrativeModels:    uniqueNonEmpty(providerModel(cfg, "codex"), providerModel(cfg, "litellm"), providerModel(cfg, "openrouter"), activeNarrative),
 		UtilityModels:      uniqueNonEmpty(cfg.AI.Generation.UtilityModel, activeNarrative, providerModel(cfg, "litellm"), providerModel(cfg, "openrouter")),
 		RepairModels:       uniqueNonEmpty(append([]string{cfg.AI.Generation.RepairModel, cfg.AI.Generation.UtilityModel}, cfg.AI.Generation.RepairFallbackModels...)...),
-		ImageModels:        uniqueNonEmpty(cfg.AI.ImageGeneration.Model),
+		ImageModels:        uniqueNonEmpty(cfg.AI.ImageGeneration.Model, cfg.AI.ImageGeneration.MapIconModel),
 		ASCIIModels:        uniqueNonEmpty(cfg.AI.ASCIIArt.Model, activeNarrative),
 		EmbeddingProviders: []string{"auto", "litellm", "openrouter", "local"},
 		ImageGeneration:    buildImageGenerationSetting(cfg.AI.ImageGeneration),
@@ -292,6 +294,7 @@ func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetti
 		BaseURL:              cfg.BaseURL,
 		APIKeyConfigured:     strings.TrimSpace(cfg.APIKey) != "",
 		Model:                cfg.Model,
+		MapIconModel:         cfg.MapIconModel,
 		OpenClawBridgeURL:    cfg.OpenClawBridgeURL,
 		DefaultSize:          cfg.DefaultSize,
 		LocationSize:         cfg.LocationSize,
@@ -430,6 +433,9 @@ func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerati
 	if update.Model != nil {
 		cfg.Model = cleanString(*update.Model)
 	}
+	if update.MapIconModel != nil {
+		cfg.MapIconModel = cleanString(*update.MapIconModel)
+	}
 	if update.OpenClawBridgeURL != nil {
 		cfg.OpenClawBridgeURL = cleanString(*update.OpenClawBridgeURL)
 	}
@@ -545,6 +551,9 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 			return setString(root, cfg.AI.ImageGeneration.BaseURL, "ai", "image_generation", "base_url")
 		},
 		func() error { return setString(root, cfg.AI.ImageGeneration.Model, "ai", "image_generation", "model") },
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.MapIconModel, "ai", "image_generation", "map_icon_model")
+		},
 		func() error {
 			return setString(root, cfg.AI.ImageGeneration.OpenClawBridgeURL, "ai", "image_generation", "openclaw_bridge_url")
 		},
