@@ -4463,8 +4463,10 @@ mod tests {
                 can_help INTEGER NOT NULL DEFAULT 0,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
-            r#"CREATE TABLE character_facts (
+			 r#"CREATE TABLE character_facts (
 				id TEXT PRIMARY KEY,
+				story_id TEXT NOT NULL DEFAULT 'story-1',
+				branch_id TEXT NOT NULL DEFAULT 'branch-main',
 				subject_entity_id TEXT NOT NULL,
 				predicate TEXT NOT NULL,
 				object_json TEXT NOT NULL DEFAULT 'null',
