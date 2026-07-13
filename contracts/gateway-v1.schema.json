@@ -1029,6 +1029,9 @@
         "model": {
           "type": "string"
         },
+        "map_icon_model": {
+          "type": "string"
+        },
         "openclaw_bridge_url": {
           "type": "string"
         },
@@ -1091,6 +1094,7 @@
         "base_url",
         "api_key_configured",
         "model",
+        "map_icon_model",
         "openclaw_bridge_url",
         "default_size",
         "location_size",
@@ -1120,6 +1124,9 @@
           "type": "string"
         },
         "model": {
+          "type": "string"
+        },
+        "map_icon_model": {
           "type": "string"
         },
         "openclaw_bridge_url": {
