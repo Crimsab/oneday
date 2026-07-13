@@ -551,10 +551,6 @@ func (sc *StoryCreator) generateDraft(ctx context.Context, brief string) (*Story
 	})
 }
 
-func (sc *StoryCreator) reviseDraft(ctx context.Context, section, feedback string) (*StoryDefinition, error) {
-	return sc.reviseDraftWithOptions(ctx, section, feedback, storyDefinitionParseOptions{})
-}
-
 func (sc *StoryCreator) reviseDraftWithOptions(ctx context.Context, section, feedback string, opts storyDefinitionParseOptions) (*StoryDefinition, error) {
 	if sc.definition == nil {
 		return nil, fmt.Errorf("no story draft to revise")
@@ -647,10 +643,6 @@ func (sc *StoryCreator) telemetryContext(ctx context.Context, stage, parentRunID
 		metadata.StoryID = sc.story.ID
 	}
 	return ai.WithTelemetry(ctx, metadata)
-}
-
-func (sc *StoryCreator) runRepairModels(ctx context.Context, req ai.Request) (*StoryDefinition, ai.Response, error) {
-	return sc.runRepairModelsWithOptions(ctx, req, storyDefinitionParseOptions{})
 }
 
 func (sc *StoryCreator) runRepairModelsWithOptions(ctx context.Context, req ai.Request, opts storyDefinitionParseOptions) (*StoryDefinition, ai.Response, error) {
@@ -968,10 +960,6 @@ func parseStoryDefinition(text string) (*StoryDefinition, error) {
 		return nil, err
 	}
 	return &def, nil
-}
-
-func parseStoryDefinitionWithFallback(text, brief string, previous *StoryDefinition) (*StoryDefinition, error) {
-	return parseStoryDefinitionWithFallbackWithOptions(text, brief, previous, storyDefinitionParseOptions{})
 }
 
 func parseStoryDefinitionWithFallbackWithOptions(text, brief string, previous *StoryDefinition, opts storyDefinitionParseOptions) (*StoryDefinition, error) {
@@ -1519,10 +1507,6 @@ func intFromAny(value any) (int, bool) {
 	}
 }
 
-func normalizeStoryDefinition(def *StoryDefinition, _ string, previous *StoryDefinition) {
-	normalizeStoryDefinitionWithOptions(def, "", previous, storyDefinitionParseOptions{})
-}
-
 func normalizeStoryDefinitionWithOptions(def *StoryDefinition, _ string, previous *StoryDefinition, opts storyDefinitionParseOptions) {
 	if def == nil {
 		return
@@ -1664,25 +1648,4 @@ func validateStatDefs(path string, defs []StatDef) error {
 		}
 	}
 	return nil
-}
-
-type charJSON struct {
-	Name       string `json:"name"`
-	Background string `json:"background"`
-}
-
-func extractCharacterJSON(text string) (string, string) {
-	raw, err := ai.ExtractJSONPayload(text)
-	if err != nil || raw == "" {
-		return "", ""
-	}
-	var c charJSON
-	if err := json.Unmarshal([]byte(raw), &c); err != nil {
-		return "", ""
-	}
-	c.Name = strings.TrimSpace(c.Name)
-	if c.Name == "" {
-		return "", ""
-	}
-	return c.Name, c.Background
 }

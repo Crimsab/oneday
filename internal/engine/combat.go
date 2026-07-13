@@ -20,7 +20,6 @@ type CombatEngine struct {
 	state            *CombatState
 	narrator         *Narrator
 	session          *GameSession
-	challenge        *ChallengeEngine
 	rng              *RNGService
 	expectedBranchID string
 	expectedHeadID   string
@@ -64,7 +63,6 @@ func NewCombatEngine(narrator *Narrator, enemy *EnemyStats) (*CombatEngine, erro
 		state:            state,
 		narrator:         narrator,
 		session:          narrator.session,
-		challenge:        NewChallengeEngine(),
 		rng:              NewDefaultRNGService(),
 		expectedBranchID: timeline.Branch.ID,
 		expectedHeadID:   timeline.Commit.ID,

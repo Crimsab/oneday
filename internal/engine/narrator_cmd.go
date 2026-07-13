@@ -346,12 +346,6 @@ func (nc *NarratorCommand) buildNPCContext(_ context.Context) string {
 	return strings.Join(parts, "\n---\n")
 }
 
-// logNarratorInteraction saves the /narrator interaction to the main session
-// history without incrementing the story turn.
-func (nc *NarratorCommand) logMetaInteraction(commandName, input, response string) error {
-	return nc.logMetaInteractionWithSideEffects(commandName, input, response, nil, ai.TelemetryRef{})
-}
-
 func (nc *NarratorCommand) logMetaInteractionWithSideEffects(commandName, input, response string, beforeCommit func(*sql.Tx) error, telemetry ai.TelemetryRef) error {
 	if nc.db == nil || nc.session == nil {
 		return nil

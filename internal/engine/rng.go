@@ -136,18 +136,6 @@ func defaultRNGService() *RNGService {
 	return defaultRNG
 }
 
-func setDefaultRNGForTest(seed int64) func() {
-	defaultRNGMu.Lock()
-	previous := defaultRNG
-	defaultRNG = NewRNGService(seed)
-	defaultRNGMu.Unlock()
-	return func() {
-		defaultRNGMu.Lock()
-		defaultRNG = previous
-		defaultRNGMu.Unlock()
-	}
-}
-
 // RollD100 rolls a 100-sided die. Returns a value in [1, 100].
 func RollD100() int {
 	return defaultRNGService().Roll("legacy.d100", 100).Raw
