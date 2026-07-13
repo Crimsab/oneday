@@ -2890,12 +2890,12 @@ fn default_profile(snapshot: &db::StorySnapshot) -> VisualProfile {
         branch_id: String::new(),
         source_commit_id: String::new(),
         world_style_prompt: format!(
-            "Polished cinematic concept art for a text RPG world. Base style: {style_basis}. Use real place texture, readable silhouettes, no UI text."
+            "Coherent cinematic narrative art derived from this world's own genre and tone: {style_basis}. Preserve canonical geography and material culture, use specific place texture, readable silhouettes, story-led atmosphere, and no UI text."
         ),
         character_style_prompt: format!(
-            "Painterly realistic RPG portraits for {genre}. Faces should feel specific, grounded, emotionally readable, and coherent with the world style."
+            "Character art derived from the visual language of {genre}. Preserve canonical identity, hairstyle, outfit silhouette, accessories, palette, and personality. Faces should feel specific, emotionally readable, and coherent with the world style."
         ),
-        negative_prompt: "no text, no logos, no watermark, no UI, no unreadable signage, no cartoon, no anime, no pure black".to_string(),
+        negative_prompt: "text, logos, watermark, UI, unreadable signage, generic composition, inconsistent identity, pure black".to_string(),
         palette: "charcoal, warm amber, smoke blue, restrained contrast".to_string(),
         updated_at: String::new(),
     }

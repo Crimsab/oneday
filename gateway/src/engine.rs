@@ -157,6 +157,14 @@ pub struct StoryWizardEnvelope {
     pub input: String,
     #[serde(default)]
     pub action: String,
+    #[serde(default)]
+    pub world_style_prompt: String,
+    #[serde(default)]
+    pub character_style_prompt: String,
+    #[serde(default)]
+    pub negative_prompt: String,
+    #[serde(default)]
+    pub palette: String,
     #[serde(default = "default_start_story")]
     pub start: bool,
 }

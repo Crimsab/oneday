@@ -65,6 +65,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let failAction = Boolean(options.failAction);
   let actionRequests = 0;
   let wizardRequests = 0;
+  const wizardBodies: Array<Record<string, unknown>> = [];
   let activeMiniGame: any = options.activeMiniGame ? automaticPatternMiniGame() : null;
   let visualCanUndo = true;
   let visualCanRedo = false;
@@ -148,7 +149,8 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     });
     if (path === "/api/story-wizard") {
       wizardRequests += 1;
-      const body = request.postDataJSON() as { action?: string; input?: string };
+      const body = request.postDataJSON() as Record<string, unknown> & { action?: string; input?: string };
+      wizardBodies.push(body);
       if (body.action === "preset_dark_fantasy" || body.input?.includes("Italian dark fantasy")) {
         return json(route, { wizard: { state: { stage: "review_world" }, phase: "conversation", stage: "review_world", stage_label: "Review world draft", placeholder: "Type how to change the world draft...", message: "World Draft\n\nStory: Bells Under Salt\nGenre: Dark fantasy", actions: [{ key: "accept_world", label: "Accept world" }], definition: { name: "Bells Under Salt", description: "A dangerous pilgrimage through melancholy ruins.", genre: "dark fantasy", tone: "melancholy", language: "Italian", setting: { world_name: "The Salt Marches" }, stats_schema: { has_combat: true } }, last_model: "gpt-5.4-mini", last_latency_ms: 2100 } });
       }
@@ -251,7 +253,11 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     }
     return json(route, {});
   });
-  return { actionRequests: () => actionRequests, wizardRequests: () => wizardRequests };
+  return {
+    actionRequests: () => actionRequests,
+    wizardRequests: () => wizardRequests,
+    lastWizardRequest: () => wizardBodies.at(-1),
+  };
 }
 
 test("submits once, clears optimistically, and renders stream/challenge lifecycle", async ({ page }) => {
@@ -323,6 +329,7 @@ test("reviews a story preset before starting structured generation", async ({ pa
   await page.getByRole("button", { name: "New Story" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Dark fantasy" })).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Visual style" })).toContainText("Photorealistic");
   expect(requests.wizardRequests()).toBe(1);
   await dialog.getByRole("button", { name: "Dark fantasy" }).click();
   await expect(dialog.getByRole("region", { name: "Confirm story preset" })).toContainText("Nothing has been generated or created yet");
@@ -331,6 +338,35 @@ test("reviews a story preset before starting structured generation", async ({ pa
   await dialog.getByRole("button", { name: "Generate draft" }).click();
   await expect(dialog.getByText("Review world draft", { exact: true }).first()).toBeVisible();
   expect(requests.wizardRequests()).toBe(2);
+  expect(requests.lastWizardRequest()).toMatchObject({
+    world_style_prompt: expect.stringContaining("physically real"),
+    character_style_prompt: expect.stringContaining("Photorealistic real-human"),
+    negative_prompt: expect.stringContaining("cosplay"),
+  });
+});
+
+test("sends a custom visual direction with the story draft", async ({ page }) => {
+  const requests = await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: /library/i }).click();
+  await page.getByRole("button", { name: "New Story" }).click();
+  const dialog = page.getByRole("dialog");
+
+  await dialog.getByRole("combobox", { name: "Visual style" }).click();
+  await page.getByRole("option", { name: "Custom prompt" }).click();
+  await dialog.getByLabel("World direction").fill("Charcoal diorama environments");
+  await dialog.getByLabel("Character direction").fill("Paper-cut portrait silhouettes");
+  await dialog.getByLabel("Avoid").fill("Glossy plastic");
+  await dialog.getByLabel("Palette").fill("Ash and copper");
+  await dialog.getByRole("button", { name: "Dark fantasy" }).click();
+  await dialog.getByRole("button", { name: "Generate draft" }).click();
+
+  expect(requests.lastWizardRequest()).toMatchObject({
+    world_style_prompt: "Charcoal diorama environments",
+    character_style_prompt: "Paper-cut portrait silhouettes",
+    negative_prompt: "Glossy plastic",
+    palette: "Ash and copper",
+  });
 });
 
 test("restores a failed draft, checks out a branch, and exposes searchable history/export", async ({ page, browserName }) => {

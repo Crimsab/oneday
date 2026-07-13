@@ -41,6 +41,13 @@ import type {
 import type { VisualCatalog } from "../visualAssets";
 import type { SpatialEdge } from "../spatialMap";
 import { readyAssetUrl } from "../visualAssets";
+import {
+  emptyProfile,
+  visualProfileForStyle,
+  visualStylePreset,
+  visualStylePresets,
+  type VisualStyleKey,
+} from "../visualStylePresets";
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
 import { CustomSelect } from "./CustomSelect";
@@ -1662,6 +1669,8 @@ function NewStoryContent({
   const [error, setError] = useState("");
   const [enhancing, setEnhancing] = useState(false);
   const [pendingPreset, setPendingPreset] = useState<StoryWizardAction | null>(null);
+  const [visualStyle, setVisualStyle] = useState<VisualStyleKey>("photorealistic");
+  const [customVisualProfile, setCustomVisualProfile] = useState<VisualProfileUpdate>(() => emptyProfile());
   const [operation, setOperation] = useState("");
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [log, setLog] = useState<Array<{ stage: string; message: string }>>([]);
@@ -1704,6 +1713,7 @@ function NewStoryContent({
       const response = await onRunStoryWizard({
         state: wizard?.state,
         ...payload,
+        ...visualProfileForStyle(visualStyle, customVisualProfile),
         start,
       });
       applyResponse(response);
@@ -1756,6 +1766,14 @@ function NewStoryContent({
   const phase = wizard?.phase ?? "conversation";
   const definition = storyDefinitionSummary(wizard?.definition);
   const step = wizardStep(stage);
+  const selectedVisualPreset = visualStylePreset(visualStyle);
+
+  const updateCustomVisualProfile = <K extends keyof VisualProfileUpdate>(
+    key: K,
+    value: VisualProfileUpdate[K],
+  ) => {
+    setCustomVisualProfile((current) => ({ ...current, [key]: value }));
+  };
 
   const enhanceInput = async () => {
     if (stage === "done" || enhancing) return;
@@ -1909,6 +1927,64 @@ function NewStoryContent({
         </div>
 
         <aside className="story-wizard-side">
+          <div className="story-wizard-card story-visual-style-card">
+            <span>Visual Style</span>
+            <CustomSelect
+              value={visualStyle}
+              ariaLabel="Visual style"
+              disabled={busy || stage === "done"}
+              onChange={(value) => setVisualStyle(value as VisualStyleKey)}
+              options={visualStylePresets.map((preset) => ({
+                value: preset.key,
+                label: preset.label,
+              }))}
+            />
+            <p>{selectedVisualPreset.description}</p>
+            {visualStyle === "custom" && (
+              <div className="story-visual-custom-fields">
+                <label>
+                  <span>World direction</span>
+                  <textarea
+                    value={customVisualProfile.world_style_prompt}
+                    onChange={(event) => updateCustomVisualProfile("world_style_prompt", event.target.value)}
+                    placeholder="Materials, lighting, environment style, camera language..."
+                    rows={4}
+                    disabled={busy}
+                  />
+                </label>
+                <label>
+                  <span>Character direction</span>
+                  <textarea
+                    value={customVisualProfile.character_style_prompt}
+                    onChange={(event) => updateCustomVisualProfile("character_style_prompt", event.target.value)}
+                    placeholder="Faces, anatomy, costume treatment, expression, rendering style..."
+                    rows={4}
+                    disabled={busy}
+                  />
+                </label>
+                <label>
+                  <span>Avoid</span>
+                  <textarea
+                    value={customVisualProfile.negative_prompt}
+                    onChange={(event) => updateCustomVisualProfile("negative_prompt", event.target.value)}
+                    placeholder="Unwanted styles, artifacts, or changes..."
+                    rows={3}
+                    disabled={busy}
+                  />
+                </label>
+                <label>
+                  <span>Palette</span>
+                  <input
+                    value={customVisualProfile.palette}
+                    onChange={(event) => updateCustomVisualProfile("palette", event.target.value)}
+                    placeholder="Color and contrast direction..."
+                    disabled={busy}
+                  />
+                </label>
+              </div>
+            )}
+            <small>Location symbols use a separate transparent map-icon pipeline.</small>
+          </div>
           <div className="story-wizard-card">
             <span>Draft Summary</span>
             {definition ? (
