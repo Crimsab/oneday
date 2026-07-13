@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -504,7 +505,9 @@ func runSetup(args []string) error {
 		fmt.Println("If Codex is not logged in yet, run: codex login")
 		fmt.Println("RAG: disabled, reason: no embedding-capable provider configured")
 	case "2":
-		ensureEnvFile()
+		if err := ensureEnvFile(); err != nil {
+			return err
+		}
 		if err := configureLiteLLM(reader, &cfg); err != nil {
 			return err
 		}
@@ -512,7 +515,9 @@ func runSetup(args []string) error {
 			return err
 		}
 	case "3":
-		ensureEnvFile()
+		if err := ensureEnvFile(); err != nil {
+			return err
+		}
 		if err := configureOpenRouter(reader, &cfg); err != nil {
 			return err
 		}
@@ -1339,9 +1344,14 @@ func firstLine(value string) string {
 	return line
 }
 
-func ensureEnvFile() {
-	if _, err := os.Stat(".env"); err == nil {
-		return
+func ensureEnvFile() error {
+	if info, err := os.Stat(".env"); err == nil {
+		if info.IsDir() {
+			return errors.New("creating .env: path is a directory")
+		}
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("checking .env: %w", err)
 	}
 	var lines []string
 	if os.Getenv("ONEDAY_LITELLM_API_KEY") == "" {
@@ -1351,8 +1361,11 @@ func ensureEnvFile() {
 		lines = append(lines, "ONEDAY_OPENROUTER_API_KEY=")
 	}
 	if len(lines) == 0 {
-		return
+		return nil
 	}
 	content := strings.Join(lines, "\n") + "\n"
-	_ = os.WriteFile(".env", []byte(content), 0600)
+	if err := os.WriteFile(".env", []byte(content), 0o600); err != nil {
+		return fmt.Errorf("creating .env: %w", err)
+	}
+	return nil
 }
