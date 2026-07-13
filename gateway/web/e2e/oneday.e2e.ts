@@ -417,6 +417,7 @@ test("does not render spoken audio controls while story speech is off", async ({
   const settingsLoaded = page.waitForResponse((response) => response.url().endsWith("/tts/settings"));
   await page.goto("/");
   await settingsLoaded;
+  await expect(page.locator(".transcript")).toHaveAttribute("data-speech-mode", "off");
   await expect(page.getByRole("region", { name: "Spoken audio" })).toHaveCount(0);
 });
 
@@ -643,6 +644,8 @@ test("generates committed audio and exposes per-story and per-character voice co
   await mockGateway(page);
   await page.goto("/");
   const message = page.locator("article.transcript-message").filter({ hasText: "Mira studies the fractured seal." });
+  await expect(page.locator(".transcript")).toHaveAttribute("data-speech-mode", "all");
+  await message.getByRole("button", { name: "Load spoken audio" }).click();
   await expect(message.getByText("Spoken audio")).toBeVisible();
   await message.getByRole("button", { name: "Generate" }).click();
   await expect(message.locator("audio")).toHaveCount(1);
