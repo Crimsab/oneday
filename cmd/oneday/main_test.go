@@ -336,3 +336,36 @@ func TestGatewayModelSettingsCommands(t *testing.T) {
 		t.Fatalf("stale ErrorCode = %q, want %q", resp.ErrorCode, config.ModelRoutingErrorStale)
 	}
 }
+
+func TestEnsureEnvFileCreatesPrivateTemplate(t *testing.T) {
+	t.Chdir(t.TempDir())
+	t.Setenv("ONEDAY_LITELLM_API_KEY", "")
+	t.Setenv("ONEDAY_OPENROUTER_API_KEY", "")
+	if err := ensureEnvFile(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(".env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "ONEDAY_LITELLM_API_KEY=\nONEDAY_OPENROUTER_API_KEY=\n" {
+		t.Fatalf("env template=%q", data)
+	}
+	info, err := os.Stat(".env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("env permissions=%#o want=0600", info.Mode().Perm())
+	}
+}
+
+func TestEnsureEnvFileReportsInvalidPath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.Mkdir(".env", 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureEnvFile(); err == nil {
+		t.Fatal("ensureEnvFile accepted a directory")
+	}
+}
