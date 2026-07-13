@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -678,12 +677,4 @@ func (db *DB) RebuildCompatibilityCanonTx(tx *sql.Tx, storyID string, npcs []NPC
 		}
 	}
 	return nil
-}
-
-func normalizedVisibility(v string) string {
-	v = strings.ToLower(strings.TrimSpace(v))
-	if v == "public" || v == "player" {
-		return v
-	}
-	return "private"
 }
