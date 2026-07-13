@@ -414,27 +414,86 @@ func (db *DB) GetActiveEntityFormID(storyID, entityID string) string {
 }
 
 func (db *DB) GetTTSCacheEntry(cacheKey string) (*TTSCacheEntry, error) {
-	var entry TTSCacheEntry
-	err := db.conn.QueryRow(`SELECT cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,style_json,speed,output_format,status,file_path,duration_ms,timings_json,error,created_at,updated_at FROM tts_cache_entries WHERE cache_key=?`, cacheKey).
-		Scan(&entry.CacheKey, &entry.Provider, &entry.Model, &entry.ProviderVoiceID, &entry.VoiceVersion, &entry.LanguageTag, &entry.TextHash, &entry.StyleHash, &entry.Style, &entry.Speed, &entry.OutputFormat, &entry.Status, &entry.FilePath, &entry.DurationMS, &entry.Timings, &entry.Error, &entry.CreatedAt, &entry.UpdatedAt)
+	entry, err := scanTTSCacheEntry(db.conn.QueryRow(`SELECT cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,CAST(style_json AS TEXT),speed,output_format,status,file_path,duration_ms,CAST(timings_json AS TEXT),error,created_at,updated_at FROM tts_cache_entries WHERE cache_key=?`, cacheKey))
 	return &entry, err
 }
 
 func (db *DB) ListReadyTTSCacheEntries() ([]TTSCacheEntry, error) {
-	rows, err := db.conn.Query(`SELECT cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,style_json,speed,output_format,status,file_path,duration_ms,timings_json,error,created_at,updated_at FROM tts_cache_entries WHERE status='ready' ORDER BY cache_key`)
+	rows, err := db.conn.Query(`SELECT cache_key,provider,model,provider_voice_id,voice_version,language_tag,text_hash,style_hash,CAST(style_json AS TEXT),speed,output_format,status,file_path,duration_ms,CAST(timings_json AS TEXT),error,created_at,updated_at FROM tts_cache_entries WHERE status='ready' ORDER BY cache_key`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	entries := []TTSCacheEntry{}
 	for rows.Next() {
-		var entry TTSCacheEntry
-		if err := rows.Scan(&entry.CacheKey, &entry.Provider, &entry.Model, &entry.ProviderVoiceID, &entry.VoiceVersion, &entry.LanguageTag, &entry.TextHash, &entry.StyleHash, &entry.Style, &entry.Speed, &entry.OutputFormat, &entry.Status, &entry.FilePath, &entry.DurationMS, &entry.Timings, &entry.Error, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+		entry, err := scanTTSCacheEntry(rows)
+		if err != nil {
 			return nil, err
 		}
 		entries = append(entries, entry)
 	}
 	return entries, rows.Err()
+}
+
+// ListPrunableTTSCacheEntries returns a bounded batch of cache rows that no
+// audio asset references and that exceed either the age or count retention
+// limit. Newest unreferenced rows within the TTL are retained.
+func (db *DB) ListPrunableTTSCacheEntries(cutoff time.Time, retain, limit int) ([]TTSCacheEntry, error) {
+	if retain < 0 {
+		retain = 0
+	}
+	if limit < 1 {
+		limit = 1
+	} else if limit > 1000 {
+		limit = 1000
+	}
+	rows, err := db.conn.Query(`SELECT c.cache_key,c.provider,c.model,c.provider_voice_id,c.voice_version,c.language_tag,c.text_hash,c.style_hash,CAST(c.style_json AS TEXT),c.speed,c.output_format,c.status,c.file_path,c.duration_ms,CAST(c.timings_json AS TEXT),c.error,c.created_at,c.updated_at
+		FROM tts_cache_entries c
+		WHERE NOT EXISTS (SELECT 1 FROM audio_assets a WHERE a.cache_key=c.cache_key)
+		  AND (c.updated_at < ? OR c.cache_key NOT IN (
+			SELECT c2.cache_key FROM tts_cache_entries c2
+			WHERE NOT EXISTS (SELECT 1 FROM audio_assets a2 WHERE a2.cache_key=c2.cache_key)
+			ORDER BY c2.updated_at DESC,c2.cache_key DESC LIMIT ?
+		  ))
+		ORDER BY c.updated_at,c.cache_key LIMIT ?`, cutoff.UTC().Format("2006-01-02 15:04:05"), retain, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []TTSCacheEntry{}
+	for rows.Next() {
+		entry, err := scanTTSCacheEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+type ttsCacheRowScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanTTSCacheEntry(row ttsCacheRowScanner) (TTSCacheEntry, error) {
+	var entry TTSCacheEntry
+	var styleJSON, timingsJSON string
+	err := row.Scan(&entry.CacheKey, &entry.Provider, &entry.Model, &entry.ProviderVoiceID, &entry.VoiceVersion, &entry.LanguageTag, &entry.TextHash, &entry.StyleHash, &styleJSON, &entry.Speed, &entry.OutputFormat, &entry.Status, &entry.FilePath, &entry.DurationMS, &timingsJSON, &entry.Error, &entry.CreatedAt, &entry.UpdatedAt)
+	entry.Style = json.RawMessage(styleJSON)
+	entry.Timings = json.RawMessage(timingsJSON)
+	return entry, err
+}
+
+// DeleteUnreferencedTTSCacheEntry removes a cache row only if no audio asset
+// acquired it since the pruning candidates were selected.
+func (db *DB) DeleteUnreferencedTTSCacheEntry(cacheKey string) (bool, error) {
+	result, err := db.conn.Exec(`DELETE FROM tts_cache_entries
+		WHERE cache_key=? AND NOT EXISTS (SELECT 1 FROM audio_assets a WHERE a.cache_key=tts_cache_entries.cache_key)`, strings.TrimSpace(cacheKey))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	return affected == 1, err
 }
 
 func (db *DB) InvalidateTTSCacheEntry(cacheKey, reason string) error {

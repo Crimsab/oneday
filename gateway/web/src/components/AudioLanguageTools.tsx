@@ -69,7 +69,7 @@ export function AudioLanguageTools({ storyId, language, revision }: { storyId: s
     finally { setBusy(false); }
   };
 
-  const removable = Boolean(audit && audit.orphan_files + audit.invalid_cache_rows > 0);
+  const removable = Boolean(audit && audit.orphan_files + audit.invalid_cache_rows + audit.prunable_cache_rows > 0);
   return (
     <div className="audio-language-tools">
       <div className="settings-section-head"><div><h4>Pronunciation lexicon</h4><p>Applies by language before synthesis and invalidates matching cache identities.</p></div></div>
@@ -92,8 +92,8 @@ export function AudioLanguageTools({ storyId, language, revision }: { storyId: s
 }
 
 function cleanupText(result: AudioCleanupResult): string {
-  if (result.dry_run) return `Audit: ${result.files_scanned} audio files, ${result.orphan_files} orphaned, ${result.invalid_cache_rows} invalid cache rows.`;
-  return `Cleanup: ${result.files_removed} orphaned files removed; ${result.invalid_cache_rows} invalid cache rows handled.`;
+  if (result.dry_run) return `Audit: ${result.files_scanned} audio files, ${result.orphan_files} orphaned, ${result.invalid_cache_rows} invalid and ${result.prunable_cache_rows} expired cache rows.`;
+  return `Cleanup: ${result.files_removed} files and ${result.cache_rows_removed} expired cache rows removed; ${result.invalid_cache_rows} invalid cache rows handled.`;
 }
 
 function errorText(cause: unknown): string { return cause instanceof Error ? cause.message : "Audio operation failed"; }

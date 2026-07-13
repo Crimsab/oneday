@@ -348,6 +348,8 @@ export interface AudioCleanupResult {
   orphan_files: number;
   files_removed: number;
   invalid_cache_rows: number;
+  prunable_cache_rows: number;
+  cache_rows_removed: number;
   errors?: string[];
 }
 

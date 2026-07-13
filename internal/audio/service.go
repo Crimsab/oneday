@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,13 +30,21 @@ type Service struct {
 }
 
 type CleanupResult struct {
-	DryRun           bool     `json:"dry_run"`
-	FilesScanned     int      `json:"files_scanned"`
-	OrphanFiles      int      `json:"orphan_files"`
-	FilesRemoved     int      `json:"files_removed"`
-	InvalidCacheRows int      `json:"invalid_cache_rows"`
-	Errors           []string `json:"errors,omitempty"`
+	DryRun            bool     `json:"dry_run"`
+	FilesScanned      int      `json:"files_scanned"`
+	OrphanFiles       int      `json:"orphan_files"`
+	FilesRemoved      int      `json:"files_removed"`
+	InvalidCacheRows  int      `json:"invalid_cache_rows"`
+	PrunableCacheRows int      `json:"prunable_cache_rows"`
+	CacheRowsRemoved  int      `json:"cache_rows_removed"`
+	Errors            []string `json:"errors,omitempty"`
 }
+
+const (
+	ttsCacheRetentionAge   = 30 * 24 * time.Hour
+	ttsCacheRetainedUnused = 256
+	ttsCachePruneBatch     = 128
+)
 
 func NewService(db *storage.DB, cfg config.TTSConfig) *Service {
 	timeout := time.Duration(cfg.TimeoutSeconds) * time.Second
@@ -190,7 +199,10 @@ func (service *Service) ResolveAudioFile(assetID string) (*storage.AudioAsset, s
 // CleanupAudioCache invalidates cache rows whose files are no longer safe and
 // removes only regular audio files that no ready cache row references.
 func (service *Service) CleanupAudioCache(dryRun bool) (CleanupResult, error) {
-	result := CleanupResult{DryRun: dryRun}
+	result, err := service.PruneAudioCache(dryRun)
+	if err != nil {
+		return result, err
+	}
 	entries, err := service.db.ListReadyTTSCacheEntries()
 	if err != nil {
 		return result, err
@@ -252,6 +264,52 @@ func (service *Service) CleanupAudioCache(dryRun bool) (CleanupResult, error) {
 		return nil
 	})
 	return result, err
+}
+
+// PruneAudioCache enforces bounded retention for cache entries that are no
+// longer referenced by any canonical audio asset. It never removes paths
+// outside the configured audio root.
+func (service *Service) PruneAudioCache(dryRun bool) (CleanupResult, error) {
+	result := CleanupResult{DryRun: dryRun}
+	root := service.cfg.OutputDir
+	if strings.TrimSpace(root) == "" {
+		root = "./oneday_data/audio"
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return result, err
+	}
+	entries, err := service.db.ListPrunableTTSCacheEntries(time.Now().UTC().Add(-ttsCacheRetentionAge), ttsCacheRetainedUnused, ttsCachePruneBatch)
+	if err != nil {
+		return result, err
+	}
+	result.PrunableCacheRows = len(entries)
+	if dryRun {
+		return result, nil
+	}
+	for _, entry := range entries {
+		removed, deleteErr := service.db.DeleteUnreferencedTTSCacheEntry(entry.CacheKey)
+		if deleteErr != nil {
+			result.Errors = appendBounded(result.Errors, deleteErr.Error())
+			continue
+		}
+		if !removed {
+			continue
+		}
+		result.CacheRowsRemoved++
+		pathAbs, pathErr := filepath.Abs(entry.FilePath)
+		rel, relErr := filepath.Rel(rootAbs, pathAbs)
+		insideRoot := pathErr == nil && relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+		if strings.TrimSpace(entry.FilePath) == "" || !insideRoot || !safeRegularFile(pathAbs) {
+			continue
+		}
+		if removeErr := os.Remove(pathAbs); removeErr != nil {
+			result.Errors = appendBounded(result.Errors, removeErr.Error())
+		} else {
+			result.FilesRemoved++
+		}
+	}
+	return result, nil
 }
 
 func appendBounded(values []string, value string) []string {
@@ -428,7 +486,15 @@ func (service *Service) ProcessJob(ctx context.Context, jobID string) error {
 	cache := storage.TTSCacheEntry{CacheKey: asset.CacheKey, Provider: asset.Provider, Model: asset.Model, ProviderVoiceID: asset.ProviderVoiceID, VoiceVersion: asset.VoiceVersion, LanguageTag: asset.LanguageTag, TextHash: asset.TextHash, Style: asset.Style, Speed: asset.Speed, OutputFormat: result.Format, Status: "ready"}
 	_, styleHash, _, _ := CacheIdentity(storage.VoiceProfile{Provider: asset.Provider, Model: asset.Model, ProviderVoiceID: asset.ProviderVoiceID, Version: asset.VoiceVersion}, asset.LanguageTag, asset.Text, asset.Style, asset.Speed, result.Format, asset.PronunciationRevision)
 	cache.StyleHash = styleHash
-	return service.db.CompleteTTSJob(job.ID, cache, filePath, result.DurationMS, result.Timings, run.ID)
+	if err := service.db.CompleteTTSJob(job.ID, cache, filePath, result.DurationMS, result.Timings, run.ID); err != nil {
+		return err
+	}
+	if prune, pruneErr := service.PruneAudioCache(false); pruneErr != nil {
+		log.Printf("audio cache pruning failed: %v", pruneErr)
+	} else if len(prune.Errors) > 0 {
+		log.Printf("audio cache pruning completed with %d errors", len(prune.Errors))
+	}
+	return nil
 }
 
 func (service *Service) startTTSRun(job storage.TTSJob, asset storage.AudioAsset) (*storage.GenerationRun, *storage.GenerationAttempt, time.Time, error) {

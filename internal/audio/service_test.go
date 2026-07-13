@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -275,6 +276,59 @@ func TestCleanupRetainsReferencedAudioAndRemovesOnlyOrphans(t *testing.T) {
 	}
 	if _, err := os.Stat(outside); err != nil {
 		t.Fatalf("cleanup deleted outside-root file: %v", err)
+	}
+}
+
+func TestPruneAudioCacheExpiresAndBoundsUnreferencedEntries(t *testing.T) {
+	db, service, _ := audioServiceFixture(t)
+	defer db.Close()
+	if err := os.MkdirAll(service.cfg.OutputDir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	expiredPath := filepath.Join(service.cfg.OutputDir, "expired.wav")
+	if err := os.WriteFile(expiredPath, []byte("RIFF-expired"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	insertCache := func(key, path, updatedAt string) {
+		t.Helper()
+		_, err := db.Conn().Exec(`INSERT INTO tts_cache_entries
+			(cache_key,provider,model,provider_voice_id,language_tag,text_hash,style_hash,output_format,status,file_path,updated_at)
+			VALUES (?, 'local', 'test', 'voice', 'en', ?, 'style', 'wav', 'ready', ?, ?)`, key, key, path, updatedAt)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	insertCache("expired", expiredPath, time.Now().UTC().Add(-31*24*time.Hour).Format("2006-01-02 15:04:05"))
+
+	dry, err := service.PruneAudioCache(true)
+	if err != nil || dry.PrunableCacheRows != 1 || dry.CacheRowsRemoved != 0 {
+		t.Fatalf("dry prune=%+v err=%v", dry, err)
+	}
+	if _, err := os.Stat(expiredPath); err != nil {
+		t.Fatalf("dry prune removed expired file: %v", err)
+	}
+	pruned, err := service.PruneAudioCache(false)
+	if err != nil || pruned.CacheRowsRemoved != 1 || pruned.FilesRemoved != 1 {
+		t.Fatalf("prune=%+v err=%v", pruned, err)
+	}
+	if _, err := os.Stat(expiredPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expired cache file still exists: %v", err)
+	}
+
+	now := time.Now().UTC()
+	for index := 0; index < ttsCacheRetainedUnused+2; index++ {
+		insertCache(fmt.Sprintf("bounded-%03d", index), "", now.Add(time.Duration(index)*time.Second).Format("2006-01-02 15:04:05"))
+	}
+	bounded, err := service.PruneAudioCache(false)
+	if err != nil || bounded.CacheRowsRemoved != 2 {
+		t.Fatalf("bounded prune=%+v err=%v", bounded, err)
+	}
+	var remaining int
+	if err := db.Conn().QueryRow(`SELECT COUNT(*) FROM tts_cache_entries WHERE cache_key LIKE 'bounded-%'`).Scan(&remaining); err != nil {
+		t.Fatal(err)
+	}
+	if remaining != ttsCacheRetainedUnused {
+		t.Fatalf("remaining unreferenced cache rows=%d want=%d", remaining, ttsCacheRetainedUnused)
 	}
 }
 
