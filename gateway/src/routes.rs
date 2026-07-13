@@ -315,7 +315,9 @@ async fn message_audio(
     Ok(Json(
         engine::audio(
             state,
-            audio_request(json!({"operation":"message-get","story_id":story_id,"message_id":message_id}))?,
+            audio_request(
+                json!({"operation":"message-get","story_id":story_id,"message_id":message_id}),
+            )?,
         )
         .await?,
     ))
@@ -328,7 +330,9 @@ async fn create_message_audio(
     Ok(Json(
         engine::audio(
             state,
-            audio_request(json!({"operation":"message-create","story_id":story_id,"message_id":message_id}))?,
+            audio_request(
+                json!({"operation":"message-create","story_id":story_id,"message_id":message_id}),
+            )?,
         )
         .await?,
     ))
@@ -408,7 +412,11 @@ async fn export_audio(
     Path(story_id): Path<String>,
 ) -> Result<Json<protocol::AudioResponse>, ApiError> {
     Ok(Json(
-        engine::audio(state, audio_request(json!({"operation":"export","story_id":story_id}))?).await?,
+        engine::audio(
+            state,
+            audio_request(json!({"operation":"export","story_id":story_id}))?,
+        )
+        .await?,
     ))
 }
 
@@ -920,7 +928,8 @@ async fn story_events(
             }
         }
 
-        let mut interval = tokio::time::interval(Duration::from_millis(750));
+        let mut interval = tokio::time::interval(story_reconciliation_interval());
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 _ = interval.tick() => {
@@ -979,6 +988,22 @@ async fn story_events(
             .interval(Duration::from_secs(10))
             .text("keepalive"),
     )
+}
+
+fn story_reconciliation_interval() -> Duration {
+    parse_story_reconciliation_interval(
+        std::env::var("ONEDAY_SSE_RECONCILE_SECONDS")
+            .ok()
+            .as_deref(),
+    )
+}
+
+fn parse_story_reconciliation_interval(value: Option<&str>) -> Duration {
+    let seconds = value
+        .and_then(|raw| raw.trim().parse::<u64>().ok())
+        .unwrap_or(15)
+        .clamp(2, 300);
+    Duration::from_secs(seconds)
 }
 
 fn serialize_snapshot(
@@ -1119,6 +1144,22 @@ mod tests {
     fn rejects_audio_assets_before_allocating_oversized_files() {
         assert!(validate_audio_asset_size(MAX_AUDIO_ASSET_BYTES).is_ok());
         assert!(validate_audio_asset_size(MAX_AUDIO_ASSET_BYTES + 1).is_err());
+    }
+
+    #[test]
+    fn external_story_reconciliation_is_slow_and_bounded() {
+        assert_eq!(
+            parse_story_reconciliation_interval(None),
+            Duration::from_secs(15)
+        );
+        assert_eq!(
+            parse_story_reconciliation_interval(Some("1")),
+            Duration::from_secs(2)
+        );
+        assert_eq!(
+            parse_story_reconciliation_interval(Some("999")),
+            Duration::from_secs(300)
+        );
     }
 
     fn story_snapshot() -> db::StorySnapshot {
