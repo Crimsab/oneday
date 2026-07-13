@@ -5,23 +5,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"math"
 	"sort"
-	"sync"
 	"time"
 )
 
 // VectorStore manages embedding storage and retrieval in SQLite.
 type VectorStore struct {
-	db      *sql.DB
-	cacheMu sync.RWMutex
-	cache   map[string][]cachedChunk
-	lineage bool
-}
-
-type cachedChunk struct {
-	chunk Chunk
-	norm  float64
+	db           *sql.DB
+	lineage      bool
+	durableNorms bool
 }
 
 // Chunk represents a stored text chunk with its embedding.
@@ -60,9 +54,9 @@ func (h *searchResultMinHeap) Pop() any {
 // NewVectorStore creates a VectorStore using the given DB connection.
 func NewVectorStore(db *sql.DB) *VectorStore {
 	return &VectorStore{
-		db:      db,
-		cache:   map[string][]cachedChunk{},
-		lineage: ragColumnExists(db, "branch_id") && ragColumnExists(db, "source_commit_id"),
+		db:           db,
+		lineage:      ragColumnExists(db, "branch_id") && ragColumnExists(db, "source_commit_id"),
+		durableNorms: ragColumnExists(db, "embedding_norm"),
 	}
 }
 
@@ -93,10 +87,20 @@ func (vs *VectorStore) Insert(ctx context.Context, chunk *Chunk) error {
 	}
 
 	blob := serializeEmbedding(chunk.Embedding)
+	norm := vectorNorm(chunk.Embedding)
 
 	var result sql.Result
 	var err error
-	if vs.lineage {
+	if vs.lineage && vs.durableNorms {
+		result, err = vs.db.ExecContext(ctx,
+			`INSERT INTO rag_chunks (story_id, text, chunk_type, turn_start, turn_end, embedding, embedding_norm, branch_id, source_commit_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?,
+		   COALESCE((SELECT active_branch_id FROM stories WHERE id=?), ''),
+		   COALESCE((SELECT b.head_commit_id FROM story_branches b JOIN stories s ON s.active_branch_id=b.id WHERE s.id=?), ''))`,
+			chunk.StoryID, chunk.Text, chunk.ChunkType,
+			chunk.TurnStart, chunk.TurnEnd, blob, norm, chunk.StoryID, chunk.StoryID,
+		)
+	} else if vs.lineage {
 		result, err = vs.db.ExecContext(ctx,
 			`INSERT INTO rag_chunks (story_id, text, chunk_type, turn_start, turn_end, embedding, branch_id, source_commit_id)
 		 VALUES (?, ?, ?, ?, ?, ?,
@@ -105,6 +109,10 @@ func (vs *VectorStore) Insert(ctx context.Context, chunk *Chunk) error {
 			chunk.StoryID, chunk.Text, chunk.ChunkType,
 			chunk.TurnStart, chunk.TurnEnd, blob, chunk.StoryID, chunk.StoryID,
 		)
+	} else if vs.durableNorms {
+		result, err = vs.db.ExecContext(ctx,
+			`INSERT INTO rag_chunks (story_id, text, chunk_type, turn_start, turn_end, embedding, embedding_norm) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			chunk.StoryID, chunk.Text, chunk.ChunkType, chunk.TurnStart, chunk.TurnEnd, blob, norm)
 	} else {
 		result, err = vs.db.ExecContext(ctx,
 			`INSERT INTO rag_chunks (story_id, text, chunk_type, turn_start, turn_end, embedding) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -119,69 +127,26 @@ func (vs *VectorStore) Insert(ctx context.Context, chunk *Chunk) error {
 		return fmt.Errorf("vectorstore insert last id: %w", err)
 	}
 	chunk.ID = id
-	vs.invalidateStoryCache(chunk.StoryID)
 	return nil
 }
 
 // Search returns the top-K most similar chunks to the query embedding for a story.
 // Uses brute-force cosine similarity — fast enough for <10K vectors per story.
 func (vs *VectorStore) Search(ctx context.Context, storyID string, queryEmbedding []float32, topK int) ([]SearchResult, error) {
-	chunks, err := vs.loadCachedChunks(ctx, storyID)
-	if err != nil {
-		return nil, err
-	}
-
 	queryNorm := vectorNorm(queryEmbedding)
-	if topK > 0 && topK < len(chunks) {
-		best := make(searchResultMinHeap, 0, topK)
-		for _, entry := range chunks {
-			result := SearchResult{
-				Chunk: entry.chunk,
-				Similarity: cosineSimilarityWithNorm(
-					queryEmbedding, queryNorm, entry.chunk.Embedding, entry.norm,
-				),
-			}
-			if len(best) < topK {
-				heap.Push(&best, result)
-			} else if result.Similarity > best[0].Similarity {
-				heap.Pop(&best)
-				heap.Push(&best, result)
-			}
-		}
-		results := []SearchResult(best)
-		sort.Slice(results, func(i, j int) bool {
-			return results[i].Similarity > results[j].Similarity
-		})
-		return results, nil
-	}
-
-	results := make([]SearchResult, 0, len(chunks))
-	for _, entry := range chunks {
-		sim := cosineSimilarityWithNorm(queryEmbedding, queryNorm, entry.chunk.Embedding, entry.norm)
-		results = append(results, SearchResult{Chunk: entry.chunk, Similarity: sim})
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Similarity > results[j].Similarity
-	})
-
-	return results, nil
-}
-
-func (vs *VectorStore) loadCachedChunks(ctx context.Context, storyID string) ([]cachedChunk, error) {
-	vs.cacheMu.RLock()
-	if chunks, ok := vs.cache[storyID]; ok {
-		vs.cacheMu.RUnlock()
-		return chunks, nil
-	}
-	vs.cacheMu.RUnlock()
-
 	selectSQL := `SELECT id, story_id, text, chunk_type, turn_start, turn_end, embedding, created_at FROM rag_chunks WHERE story_id = ? ORDER BY id ASC`
 	if vs.lineage {
 		selectSQL = `SELECT id, story_id, text, chunk_type, turn_start, turn_end, embedding, created_at, branch_id, source_commit_id
-		 FROM rag_chunks
-		 WHERE story_id = ?
-		 ORDER BY id ASC`
+		 FROM rag_chunks WHERE story_id = ? ORDER BY id ASC`
+	}
+	if vs.durableNorms {
+		if vs.lineage {
+			selectSQL = `SELECT id, story_id, text, chunk_type, turn_start, turn_end, embedding, created_at, branch_id, source_commit_id, embedding_norm
+			 FROM rag_chunks WHERE story_id = ? ORDER BY id ASC`
+		} else {
+			selectSQL = `SELECT id, story_id, text, chunk_type, turn_start, turn_end, embedding, created_at, embedding_norm
+			 FROM rag_chunks WHERE story_id = ? ORDER BY id ASC`
+		}
 	}
 	rows, err := vs.db.QueryContext(ctx, selectSQL, storyID)
 	if err != nil {
@@ -189,46 +154,81 @@ func (vs *VectorStore) loadCachedChunks(ctx context.Context, storyID string) ([]
 	}
 	defer rows.Close()
 
-	var chunks []cachedChunk
+	best := searchResultMinHeap{}
+	results := []SearchResult{}
+	missingNorms := map[int64]float64{}
 	for rows.Next() {
-		var c Chunk
+		var chunk Chunk
 		var blob []byte
 		var createdAt string
-		dest := []any{&c.ID, &c.StoryID, &c.Text, &c.ChunkType, &c.TurnStart, &c.TurnEnd, &blob, &createdAt}
+		var storedNorm float64
+		dest := []any{&chunk.ID, &chunk.StoryID, &chunk.Text, &chunk.ChunkType, &chunk.TurnStart, &chunk.TurnEnd, &blob, &createdAt}
 		if vs.lineage {
-			dest = append(dest, &c.BranchID, &c.SourceCommitID)
+			dest = append(dest, &chunk.BranchID, &chunk.SourceCommitID)
+		}
+		if vs.durableNorms {
+			dest = append(dest, &storedNorm)
 		}
 		if err := rows.Scan(dest...); err != nil {
 			return nil, fmt.Errorf("vectorstore search scan: %w", err)
 		}
-
-		c.Embedding = deserializeEmbedding(blob)
-
-		// Parse created_at (SQLite returns as string)
-		if t, err := time.Parse("2006-01-02 15:04:05", createdAt); err == nil {
-			c.CreatedAt = t
+		chunk.Embedding = deserializeEmbedding(blob)
+		if parsed, err := time.Parse("2006-01-02 15:04:05", createdAt); err == nil {
+			chunk.CreatedAt = parsed
 		}
-
-		chunks = append(chunks, cachedChunk{
-			chunk: c,
-			norm:  vectorNorm(c.Embedding),
-		})
+		if storedNorm <= 0 {
+			storedNorm = vectorNorm(chunk.Embedding)
+			if vs.durableNorms && storedNorm > 0 {
+				missingNorms[chunk.ID] = storedNorm
+			}
+		}
+		result := SearchResult{Chunk: chunk, Similarity: cosineSimilarityWithNorm(queryEmbedding, queryNorm, chunk.Embedding, storedNorm)}
+		if topK > 0 {
+			if len(best) < topK {
+				heap.Push(&best, result)
+			} else if result.Similarity > best[0].Similarity {
+				heap.Pop(&best)
+				heap.Push(&best, result)
+			}
+		} else {
+			results = append(results, result)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("vectorstore search rows: %w", err)
 	}
-
-	vs.cacheMu.Lock()
-	vs.cache[storyID] = chunks
-	vs.cacheMu.Unlock()
-
-	return chunks, nil
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("vectorstore closing search rows: %w", err)
+	}
+	if len(missingNorms) > 0 {
+		if err := vs.persistEmbeddingNorms(ctx, missingNorms); err != nil {
+			log.Printf("[rag] persisting embedding norms failed: %v", err)
+		}
+	}
+	if topK > 0 {
+		results = []SearchResult(best)
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Similarity > results[j].Similarity
+	})
+	return results, nil
 }
 
-func (vs *VectorStore) invalidateStoryCache(storyID string) {
-	vs.cacheMu.Lock()
-	delete(vs.cache, storyID)
-	vs.cacheMu.Unlock()
+func (vs *VectorStore) persistEmbeddingNorms(ctx context.Context, norms map[int64]float64) error {
+	tx, err := vs.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("vectorstore norm transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for id, norm := range norms {
+		if _, err := tx.ExecContext(ctx, `UPDATE rag_chunks SET embedding_norm=? WHERE id=? AND embedding_norm=0`, norm, id); err != nil {
+			return fmt.Errorf("vectorstore persist norm: %w", err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("vectorstore commit norms: %w", err)
+	}
+	return nil
 }
 
 // CountByStory returns the number of chunks stored for a story.
@@ -264,9 +264,6 @@ func (vs *VectorStore) PruneDimensionMismatches(ctx context.Context, storyID str
 	if err != nil {
 		return 0, fmt.Errorf("vectorstore prune rows affected: %w", err)
 	}
-	if removed > 0 {
-		vs.invalidateStoryCache(storyID)
-	}
 	return removed, nil
 }
 
@@ -282,9 +279,6 @@ func (vs *VectorStore) DeleteByStory(ctx context.Context, storyID string) (int64
 	removed, err := result.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("vectorstore delete rows affected: %w", err)
-	}
-	if removed > 0 {
-		vs.invalidateStoryCache(storyID)
 	}
 	return removed, nil
 }
