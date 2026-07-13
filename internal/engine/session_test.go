@@ -62,7 +62,6 @@ func TestFailedCombatTurnRestoresStateCharacterAndRNG(t *testing.T) {
 		state:            &CombatState{Enemy: EnemyStats{Name: "Warden", HP: 999, MaxHP: 999, Attack: 0, Defense: 30, Behavior: BehaviorAggressive}, PlayerHP: 100, PlayerMaxHP: 100, Turn: 1, Phase: "player_turn"},
 		narrator:         narrator,
 		session:          session,
-		challenge:        NewChallengeEngine(),
 		rng:              NewRNGService(4242),
 		expectedBranchID: timeline.Branch.ID,
 		expectedHeadID:   timeline.Commit.ID,
