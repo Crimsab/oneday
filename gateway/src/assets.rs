@@ -1468,7 +1468,9 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             Ok(generated) => {
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
-                        let _ = trace.cancel(&state.pool).await;
+                        if let Err(err) = trace.cancel(&state.pool).await {
+                            tracing::warn!(job_id = job.id, error = %err, "could not cancel image generation telemetry");
+                        }
                     }
                     discard_generated_asset(&generated).await;
                     emit_visual_asset_event(
@@ -1483,7 +1485,9 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 }
                 if !visual_generation_job_publishable(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
-                        let _ = trace.succeed(&state.pool, &config.model).await;
+                        if let Err(err) = trace.succeed(&state.pool, &config.model).await {
+                            tracing::warn!(job_id = job.id, error = %err, "could not finish stale image generation telemetry");
+                        }
                     }
                     discard_generated_asset(&generated).await;
                     cancel_stale_lineage_job(&state.pool, &job).await?;
@@ -1532,7 +1536,9 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             Err(err) => {
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
-                        let _ = trace.cancel(&state.pool).await;
+                        if let Err(telemetry_err) = trace.cancel(&state.pool).await {
+                            tracing::warn!(job_id = job.id, error = %telemetry_err, "could not cancel failed image generation telemetry");
+                        }
                     }
                     emit_visual_asset_event(
                         &state,
@@ -1546,12 +1552,15 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 }
                 if !visual_generation_job_publishable(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
-                        let _ = trace
+                        if let Err(telemetry_err) = trace
                             .fail(
                                 &state.pool,
                                 crate::telemetry::classify_image_error(&err.to_string()),
                             )
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(job_id = job.id, error = %telemetry_err, "could not fail stale image generation telemetry");
+                        }
                     }
                     cancel_stale_lineage_job(&state.pool, &job).await?;
                     continue;
@@ -1559,9 +1568,12 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 let terminal = job.attempts >= job.max_attempts;
                 let error = err.to_string();
                 if let Some(trace) = generation_trace.take() {
-                    let _ = trace
+                    if let Err(telemetry_err) = trace
                         .fail(&state.pool, crate::telemetry::classify_image_error(&error))
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(job_id = job.id, error = %telemetry_err, "could not fail image generation telemetry");
+                    }
                 }
                 mark_generation_job_failed_or_retry(&state.pool, &job, &error, &config).await?;
                 if terminal {
