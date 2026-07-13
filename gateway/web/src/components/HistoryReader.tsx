@@ -12,38 +12,44 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
   const [messageCursor, setMessageCursor] = useState<number | null>(null);
   const [chapterCursor, setChapterCursor] = useState<number | null>(null);
   const [query, setQuery] = useState("");
+	const [debouncedQuery, setDebouncedQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+	useEffect(() => {
+		const timer = globalThis.setTimeout(() => setDebouncedQuery(query), 250);
+		return () => globalThis.clearTimeout(timer);
+	}, [query]);
+
   useEffect(() => {
-    let cancelled = false;
+		const controller = new AbortController();
     setBusy(true);
     setError("");
     Promise.all([
-      getHistory(snapshot.story.id, undefined, query),
-      getChapters(snapshot.story.id, undefined, query),
+		getHistory(snapshot.story.id, undefined, debouncedQuery, controller.signal),
+		getChapters(snapshot.story.id, undefined, debouncedQuery, controller.signal),
     ])
       .then(([history, journal]) => {
-        if (cancelled) return;
+		if (controller.signal.aborted) return;
         setMessages(history.items);
         setMessageCursor(history.next_cursor ?? null);
         setChapters(journal.items);
         setChapterCursor(journal.next_cursor ?? null);
       })
       .catch((reason) => {
-        if (!cancelled) setError(errorText(reason));
+		if (!controller.signal.aborted) setError(errorText(reason));
       })
       .finally(() => {
-        if (!cancelled) setBusy(false);
+		if (!controller.signal.aborted) setBusy(false);
       });
-    return () => { cancelled = true; };
-  }, [snapshot.story.id, snapshot.version.revision, query]);
+		return () => controller.abort();
+	}, [snapshot.story.id, snapshot.version.revision, debouncedQuery]);
 
   const loadOlder = async () => {
     if (!messageCursor) return;
     setBusy(true);
     try {
-      const page = await getHistory(snapshot.story.id, messageCursor, query);
+		const page = await getHistory(snapshot.story.id, messageCursor, debouncedQuery);
       setMessages((items) => [...page.items, ...items]);
       setMessageCursor(page.next_cursor ?? null);
     } catch (reason) {
@@ -57,7 +63,7 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     if (!chapterCursor) return;
     setBusy(true);
     try {
-      const page = await getChapters(snapshot.story.id, chapterCursor, query);
+		const page = await getChapters(snapshot.story.id, chapterCursor, debouncedQuery);
       setChapters((items) => [...page.items, ...items]);
       setChapterCursor(page.next_cursor ?? null);
     } catch (reason) {
