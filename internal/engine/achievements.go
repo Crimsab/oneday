@@ -27,13 +27,6 @@ var validRarities = map[string]bool{
 	"legendary": true,
 }
 
-// ValidateAndPersistAchievement checks the AI-returned achievement data,
-// validates category/rarity, checks for duplicates, and persists to DB.
-// Returns the persisted Achievement or nil if invalid/duplicate.
-func ValidateAndPersistAchievement(db *storage.DB, storyID string, data *AchievementData) *storage.Achievement {
-	return validateAndPersistAchievement(db, nil, storyID, data)
-}
-
 func ValidateAndPersistAchievementTx(db *storage.DB, tx *sql.Tx, storyID string, data *AchievementData) *storage.Achievement {
 	return validateAndPersistAchievement(db, tx, storyID, data)
 }

@@ -255,14 +255,6 @@ func FormatNPCForContext(npc *storage.NPC) string {
 	return sb.String()
 }
 
-// UpdateNPCLastSeen checks narrativeText for mentions of known NPCs and updates
-// their last_seen_turn to currentTurn. Matching is case-insensitive on the full
-// name and on the first word of the name (first name). This is best-effort —
-// errors are swallowed so game flow is never interrupted.
-func UpdateNPCLastSeen(db *storage.DB, storyID string, narrativeText string, currentTurn int) error {
-	return updateNPCLastSeen(db, nil, storyID, narrativeText, currentTurn)
-}
-
 func UpdateNPCLastSeenTx(db *storage.DB, tx *sql.Tx, storyID string, narrativeText string, currentTurn int) error {
 	return updateNPCLastSeen(db, tx, storyID, narrativeText, currentTurn)
 }

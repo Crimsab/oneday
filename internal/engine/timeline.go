@@ -38,11 +38,6 @@ func CharacterTimelineSummary(timeline CharacterTimeline) string {
 	return formatCharacterTimelineSummary(timeline)
 }
 
-// RecentTimelineMilestonesSummary returns the last N milestone summaries.
-func RecentTimelineMilestonesSummary(timeline CharacterTimeline, limit int) string {
-	return formatRecentTimelineMilestones(timeline, limit)
-}
-
 func loadCharacterTimeline(world *storage.WorldState) CharacterTimeline {
 	if world == nil || strings.TrimSpace(world.CharacterTimelineJSON) == "" || strings.TrimSpace(world.CharacterTimelineJSON) == "{}" {
 		return CharacterTimeline{}

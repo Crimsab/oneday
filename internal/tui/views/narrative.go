@@ -1559,38 +1559,6 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 	return m, nil
 }
 
-// renderBar renders a progress bar of the given width using block characters.
-// filled = █, empty = ░. current and max define the fill ratio.
-func renderBar(current, max, width int) string {
-	if max <= 0 || width <= 0 {
-		return strings.Repeat("░", width)
-	}
-	filled := current * width / max
-	if filled > width {
-		filled = width
-	}
-	if filled < 0 {
-		filled = 0
-	}
-	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
-}
-
-// dispositionLabel returns a word label for an NPC disposition value.
-func dispositionLabel(d int) string {
-	switch {
-	case d >= 50:
-		return "Allied"
-	case d >= 15:
-		return "Friendly"
-	case d >= -14:
-		return "Neutral"
-	case d >= -49:
-		return "Unfriendly"
-	default:
-		return "Hostile"
-	}
-}
-
 // showStats opens the protagonist dossier inside the codex browser.
 func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
 	return m.openCodexBrowser("Character Sheet", "people", engine.ProtagonistCodexEntryID())
