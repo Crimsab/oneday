@@ -207,7 +207,7 @@ func Default() Config {
 			},
 			ImageGeneration: ImageGenerationConfig{
 				Provider:             "openclaw-bridge",
-				OpenClawBridgeURL:    "http://openclaw-imagegen:8099/generate",
+				OpenClawBridgeURL:    "http://example.com:8099/generate",
 				DefaultSize:          "1024x1024",
 				LocationSize:         "1536x1024",
 				CharacterSize:        "1024x1024",
