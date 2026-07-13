@@ -16,9 +16,36 @@ function settingsForStory(storyId: string): Promise<StoryTTSSettings> {
   return request;
 }
 
-export function AudioControls({ storyId, messageId, autoplay = false }: { storyId: string; messageId: number; autoplay?: boolean }) {
-  const [response, setResponse] = useState<MessageAudioResponse>({ assets: [], jobs: [] });
+export function useStoryTTSSettings(storyId: string): StoryTTSSettings | null {
   const [settings, setSettings] = useState<StoryTTSSettings | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setSettings(null);
+    if (!storyId) return () => { active = false; };
+
+    void settingsForStory(storyId).then((nextSettings) => {
+      if (active) setSettings(nextSettings);
+    }).catch(() => undefined);
+
+    const update = (event: Event) => {
+      const detail = (event as CustomEvent<{ storyId: string; settings: StoryTTSSettings }>).detail;
+      if (detail?.storyId !== storyId) return;
+      settingsRequests.set(storyId, Promise.resolve(detail.settings));
+      setSettings(detail.settings);
+    };
+    window.addEventListener("oneday:tts-settings", update);
+    return () => {
+      active = false;
+      window.removeEventListener("oneday:tts-settings", update);
+    };
+  }, [storyId]);
+
+  return settings;
+}
+
+export function AudioControls({ storyId, messageId, settings, autoplay = false }: { storyId: string; messageId: number; settings: StoryTTSSettings; autoplay?: boolean }) {
+  const [response, setResponse] = useState<MessageAudioResponse>({ assets: [], jobs: [] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
@@ -26,13 +53,9 @@ export function AudioControls({ storyId, messageId, autoplay = false }: { storyI
   const load = useCallback(async () => {
     const version = ++requestVersion.current;
     try {
-      const [audio, nextSettings] = await Promise.all([
-        getMessageAudio(storyId, messageId),
-        settingsForStory(storyId),
-      ]);
+      const audio = await getMessageAudio(storyId, messageId);
       if (version !== requestVersion.current) return;
       setResponse(audio);
-      setSettings(nextSettings);
       setError("");
     } catch (cause) {
       if (version !== requestVersion.current) return;
@@ -44,19 +67,6 @@ export function AudioControls({ storyId, messageId, autoplay = false }: { storyI
     void load();
     return () => { requestVersion.current += 1; };
   }, [load]);
-
-  useEffect(() => {
-    const update = (event: Event) => {
-      const detail = (event as CustomEvent<{ storyId: string; settings: StoryTTSSettings }>).detail;
-      if (detail?.storyId === storyId) {
-        requestVersion.current += 1;
-        settingsRequests.set(storyId, Promise.resolve(detail.settings));
-        setSettings(detail.settings);
-      }
-    };
-    window.addEventListener("oneday:tts-settings", update);
-    return () => window.removeEventListener("oneday:tts-settings", update);
-  }, [storyId]);
 
   const autoplayAsset = useMemo(() => firstReadyAudioAsset(response.assets), [response.assets]);
   useEffect(() => {

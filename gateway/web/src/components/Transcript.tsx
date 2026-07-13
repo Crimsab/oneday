@@ -2,10 +2,10 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compactText, readableStructuredText } from "../format";
 import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
-import { AudioControls } from "./AudioControls";
+import { AudioControls, useStoryTTSSettings } from "./AudioControls";
 import { MessageBranchControls } from "./MessageBranchControls";
 import { timelineControlPlacements } from "../messageAlternatives";
-import type { MessageView, PendingTurnView, TimelineResponse } from "../types";
+import type { MessageView, PendingTurnView, StoryTTSSettings, TimelineResponse } from "../types";
 
 interface TranscriptProps {
   storyId: string;
@@ -36,6 +36,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
     () => timelineControlPlacements(visibleMessages, timeline),
     [timeline, visibleMessages],
   );
+  const ttsSettings = useStoryTTSSettings(storyId);
   const autoplayMessageId = latestAutoplayMessageId(visibleMessages);
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
     <div
       ref={ref}
       className="transcript"
+      data-speech-mode={ttsSettings?.mode ?? "loading"}
       aria-live="polite"
       onScroll={(event) => {
         followLatest.current = isTranscriptNearBottom(event.currentTarget);
@@ -62,7 +64,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
           {messages.length ? "Transcript cleared locally. New canonical messages will appear here." : "Choose a story to load the canonical transcript."}
         </div>
       ) : (
-        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
+        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} ttsSettings={ttsSettings} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
     </div>
@@ -84,7 +86,7 @@ export function isTranscriptNearBottom(
   return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= threshold;
 }
 
-const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, autoplay, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
+const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, ttsSettings, autoplay, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; ttsSettings: StoryTTSSettings | null; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
   const [audioOpen, setAudioOpen] = useState(false);
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
@@ -101,9 +103,9 @@ const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, au
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={`Structured dialogue for turn ${message.turn}`}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || "Unknown speaker"}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
         <MessageDiagnostics message={message} />
-        {message.role === "assistant" && Boolean(message.source_commit_id) && (
+        {ttsSettings && ttsSettings.mode !== "off" && message.role === "assistant" && Boolean(message.source_commit_id) && (
           autoplay || audioOpen
-            ? <AudioControls storyId={storyId} messageId={message.id} autoplay={autoplay} />
+            ? <AudioControls storyId={storyId} messageId={message.id} settings={ttsSettings} autoplay={autoplay} />
             : <section className="message-audio" aria-label="Spoken audio"><div className="message-audio-head"><button type="button" onClick={() => setAudioOpen(true)}>Load spoken audio</button></div></section>
         )}
         {timelineControls && (
