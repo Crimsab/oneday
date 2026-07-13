@@ -1,7 +1,6 @@
 package views
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -232,21 +231,4 @@ func (m NarrativeModel) parseTalkCommand(args []string) parsedTalkCommand {
 		Target: strings.Join(args, " "),
 		Intent: intent,
 	}
-}
-
-func relationshipAxesSummary(raw string) string {
-	type axes struct {
-		Trust    int `json:"trust"`
-		Fear     int `json:"fear"`
-		Debt     int `json:"debt"`
-		Respect  int `json:"respect"`
-		Intimacy int `json:"intimacy"`
-	}
-
-	var decoded axes
-	if strings.TrimSpace(raw) == "" || strings.TrimSpace(raw) == "{}" || json.Unmarshal([]byte(raw), &decoded) != nil {
-		return "trust 0 · fear 0 · debt 0 · respect 0 · intimacy 0"
-	}
-	return fmt.Sprintf("trust %d · fear %d · debt %d · respect %d · intimacy %d",
-		decoded.Trust, decoded.Fear, decoded.Debt, decoded.Respect, decoded.Intimacy)
 }

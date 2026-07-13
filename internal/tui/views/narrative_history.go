@@ -437,22 +437,6 @@ func (h *historyBrowserModel) syncViewportToCursor() {
 	}
 }
 
-func (h *historyBrowserModel) syncCursorToViewport() {
-	if h == nil || len(h.headerLines) == 0 {
-		h.cursor = 0
-		return
-	}
-	offset := h.viewport.YOffset
-	cursor := 0
-	for idx, line := range h.headerLines {
-		if line > offset {
-			break
-		}
-		cursor = idx
-	}
-	h.cursor = cursor
-}
-
 func (h *historyBrowserModel) renderViewportContent() (string, []int) {
 	if len(h.filteredGroups) == 0 {
 		return theme.MutedText.Render("No history entries matched the current search."), []int{0}
