@@ -1218,7 +1218,7 @@ function ModelRoutingSettings({
             onChange={(event) =>
               updateImageGeneration({ openClawBridgeUrl: event.target.value })
             }
-            placeholder="http://openclaw-imagegen:8099/generate"
+            placeholder="http://homelab.local:8099/generate"
           />
         </label>
         <label>
