@@ -700,9 +700,15 @@ pub async fn history_page(
 ) -> anyhow::Result<HistoryPage> {
     let limit = limit.clamp(1, 100);
     let cursor = cursor.unwrap_or(i64::MAX);
-    let pattern = format!("%{}%", search.trim());
-    let rows = sqlx::query(r#"SELECT id,session_id,story_id,turn,role,content,message_type,metadata_json,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chat_messages WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND id<? AND (?='' OR content LIKE ?) ORDER BY id DESC LIMIT ?"#)
-		.bind(story_id).bind(story_id).bind(cursor).bind(search.trim()).bind(pattern).bind(limit + 1).fetch_all(pool).await?;
+    let search = search.trim();
+    let rows = if search.is_empty() {
+        sqlx::query(r#"SELECT id,session_id,story_id,turn,role,content,message_type,metadata_json,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chat_messages WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND id<? ORDER BY id DESC LIMIT ?"#)
+            .bind(story_id).bind(story_id).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else {
+        let pattern = format!("%{search}%");
+        sqlx::query(r#"SELECT m.id,m.session_id,m.story_id,m.turn,m.role,m.content,m.message_type,m.metadata_json,CAST(m.created_at AS TEXT) AS created_at,m.branch_id,m.source_commit_id FROM chat_messages m JOIN chat_messages_fts ON chat_messages_fts.rowid=m.id WHERE m.story_id=? AND m.branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND m.id<? AND chat_messages_fts.content LIKE ? ORDER BY m.id DESC LIMIT ?"#)
+            .bind(story_id).bind(story_id).bind(cursor).bind(pattern).bind(limit + 1).fetch_all(pool).await?
+    };
     let has_more = rows.len() as i64 > limit;
     let mut items: Vec<MessageView> = rows
         .into_iter()
@@ -727,9 +733,15 @@ pub async fn chapter_page(
 ) -> anyhow::Result<ChapterPage> {
     let limit = limit.clamp(1, 100);
     let cursor = cursor.unwrap_or(i64::MAX);
-    let pattern = format!("%{}%", search.trim());
-    let rows = sqlx::query(r#"SELECT id,chapter_number,title,summary,start_turn,end_turn,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chapters WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND chapter_number<? AND (?='' OR title LIKE ? OR summary LIKE ?) ORDER BY chapter_number DESC LIMIT ?"#)
-		.bind(story_id).bind(story_id).bind(cursor).bind(search.trim()).bind(&pattern).bind(&pattern).bind(limit + 1).fetch_all(pool).await?;
+    let search = search.trim();
+    let rows = if search.is_empty() {
+        sqlx::query(r#"SELECT id,chapter_number,title,summary,start_turn,end_turn,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chapters WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND chapter_number<? ORDER BY chapter_number DESC LIMIT ?"#)
+            .bind(story_id).bind(story_id).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else {
+        let pattern = format!("%{search}%");
+        sqlx::query(r#"SELECT c.id,c.chapter_number,c.title,c.summary,c.start_turn,c.end_turn,CAST(c.created_at AS TEXT) AS created_at,c.branch_id,c.source_commit_id FROM chapters c JOIN chapters_fts ON chapters_fts.rowid=c.id WHERE c.story_id=? AND c.branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND c.chapter_number<? AND (chapters_fts.title LIKE ? OR chapters_fts.summary LIKE ?) ORDER BY c.chapter_number DESC LIMIT ?"#)
+            .bind(story_id).bind(story_id).bind(cursor).bind(&pattern).bind(&pattern).bind(limit + 1).fetch_all(pool).await?
+    };
     let has_more = rows.len() as i64 > limit;
     let mut items = Vec::new();
     for row in rows.into_iter().take(limit as usize) {
@@ -1654,6 +1666,17 @@ mod tests {
         .execute(&pool)
         .await
         .expect("create full chapters fixture");
+        for statement in [
+            "CREATE VIRTUAL TABLE chat_messages_fts USING fts5(content,content='chat_messages',content_rowid='id',tokenize='trigram')",
+            "CREATE TRIGGER chat_messages_fts_insert AFTER INSERT ON chat_messages BEGIN INSERT INTO chat_messages_fts(rowid,content) VALUES (new.id,new.content); END",
+            "CREATE VIRTUAL TABLE chapters_fts USING fts5(title,summary,content='chapters',content_rowid='id',tokenize='trigram')",
+            "CREATE TRIGGER chapters_fts_insert AFTER INSERT ON chapters BEGIN INSERT INTO chapters_fts(rowid,title,summary) VALUES (new.id,new.title,new.summary); END",
+        ] {
+            sqlx::query(statement)
+                .execute(&pool)
+                .await
+                .expect("create search fixture");
+        }
         for (turn, content, branch) in [
             (1_i64, "first main message", "branch-main"),
             (2_i64, "needle in the archive", "branch-main"),

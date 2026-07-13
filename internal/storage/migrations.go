@@ -60,6 +60,7 @@ func (db *DB) migrate() error {
 		{37, migrationV37},
 		{38, migrationV38},
 		{39, migrationV39},
+		{40, migrationV40},
 	}
 
 	for _, m := range migrations {
@@ -1725,4 +1726,45 @@ CREATE INDEX IF NOT EXISTS idx_turn_idempotency_retention
 
 const migrationV39 = `
 ALTER TABLE rag_chunks ADD COLUMN embedding_norm REAL NOT NULL DEFAULT 0;
+`
+
+const migrationV40 = `
+CREATE VIRTUAL TABLE IF NOT EXISTS chat_messages_fts USING fts5(
+	content,
+	content='chat_messages',
+	content_rowid='id',
+	tokenize='trigram'
+);
+CREATE VIRTUAL TABLE IF NOT EXISTS chapters_fts USING fts5(
+	title,
+	summary,
+	content='chapters',
+	content_rowid='id',
+	tokenize='trigram'
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_chat_messages_fts_insert AFTER INSERT ON chat_messages BEGIN
+	INSERT INTO chat_messages_fts(rowid,content) VALUES (new.id,new.content);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_chat_messages_fts_delete AFTER DELETE ON chat_messages BEGIN
+	INSERT INTO chat_messages_fts(chat_messages_fts,rowid,content) VALUES ('delete',old.id,old.content);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_chat_messages_fts_update AFTER UPDATE OF content ON chat_messages BEGIN
+	INSERT INTO chat_messages_fts(chat_messages_fts,rowid,content) VALUES ('delete',old.id,old.content);
+	INSERT INTO chat_messages_fts(rowid,content) VALUES (new.id,new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_chapters_fts_insert AFTER INSERT ON chapters BEGIN
+	INSERT INTO chapters_fts(rowid,title,summary) VALUES (new.id,new.title,new.summary);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_chapters_fts_delete AFTER DELETE ON chapters BEGIN
+	INSERT INTO chapters_fts(chapters_fts,rowid,title,summary) VALUES ('delete',old.id,old.title,old.summary);
+END;
+CREATE TRIGGER IF NOT EXISTS trg_chapters_fts_update AFTER UPDATE OF title,summary ON chapters BEGIN
+	INSERT INTO chapters_fts(chapters_fts,rowid,title,summary) VALUES ('delete',old.id,old.title,old.summary);
+	INSERT INTO chapters_fts(rowid,title,summary) VALUES (new.id,new.title,new.summary);
+END;
+
+INSERT INTO chat_messages_fts(chat_messages_fts) VALUES ('rebuild');
+INSERT INTO chapters_fts(chapters_fts) VALUES ('rebuild');
 `
