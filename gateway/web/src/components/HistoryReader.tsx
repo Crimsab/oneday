@@ -1,6 +1,6 @@
 import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useId, useState } from "react";
-import { getChapters, getHistory, getStoryExport, getTelemetryExport } from "../api";
+import { getChapters, getHistory, getStoryEpub, getStoryExport, getTelemetryExport } from "../api";
 import { readableStructuredText } from "../format";
 import type { ChapterView, MessageView, StorySnapshot } from "../types";
 import { MarkdownText } from "./MarkdownText";
@@ -76,6 +76,16 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
   const exportAs = async (format: "markdown" | "json" | "epub" | "replay") => {
     setBusy(true);
     try {
+		if (format === "epub") {
+			const result = await getStoryEpub(snapshot.story.id);
+			const url = URL.createObjectURL(result.blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = result.filename;
+			link.click();
+			URL.revokeObjectURL(url);
+			return;
+		}
       const result = await getStoryExport(snapshot.story.id, format);
       const bytes = result.encoding === "base64" ? Uint8Array.from(atob(result.content), (character) => character.charCodeAt(0)) : result.content;
       const url = URL.createObjectURL(new Blob([bytes], { type: result.content_type || (format === "json" || format === "replay" ? "application/json" : "text/markdown") }));

@@ -3,7 +3,7 @@ use crate::{
 };
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::{header, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
@@ -644,10 +644,22 @@ async fn export_story(
     State(state): State<Arc<AppState>>,
     Path(story_id): Path<String>,
     Query(query): Query<PageQuery>,
-) -> Result<Json<db::StoryExport>, ApiError> {
-    Ok(Json(
-        db::export_story(&state.pool, &story_id, &query.format).await?,
-    ))
+) -> Result<Response, ApiError> {
+    if query.format.eq_ignore_ascii_case("epub") {
+        let (filename, bytes) = db::export_story_epub(&state.pool, &story_id).await?;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::CONTENT_TYPE,
+            HeaderValue::from_static("application/epub+zip"),
+        );
+        headers.insert(
+            header::CONTENT_DISPOSITION,
+            HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+                .map_err(anyhow::Error::from)?,
+        );
+        return Ok((headers, bytes).into_response());
+    }
+    Ok(Json(db::export_story(&state.pool, &story_id, &query.format).await?).into_response())
 }
 
 async fn message_diagnostics(
