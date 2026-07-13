@@ -624,7 +624,10 @@ test("drills through canonical region and sub-location map scopes", async ({ pag
   await page.goto("/");
   await page.getByPlaceholder("What do you want to try?").fill("/map");
   await page.getByRole("button", { name: "Send action" }).click();
-  await page.getByRole("button", { name: "Open Map in a larger view" }).click();
+  if (page.viewportSize()!.width > 1240) {
+    await page.getByRole("button", { name: "Open Map in a larger view" }).click();
+  }
+  await expect(page.getByRole("dialog")).toBeVisible();
   const mapShell = page.getByRole("dialog").locator(".canonical-map");
   await expect(mapShell.locator(".canonical-map-breadcrumbs")).toContainText("WorldVharrowPort District");
   const map = mapShell.locator('svg[role="img"]');
