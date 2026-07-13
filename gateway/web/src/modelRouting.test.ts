@@ -28,6 +28,7 @@ describe("model routing helpers", () => {
     expect(draft.imageGeneration).toMatchObject({
       provider: "openclaw-bridge",
       model: "test-image-model",
+      mapIconModel: "openai/gpt-image-1",
       openClawBridgeUrl: "http://openclaw-imagegen:8099/generate",
     });
   });
@@ -72,6 +73,7 @@ describe("model routing helpers", () => {
       image_generation: expect.objectContaining({
         provider: "openclaw-bridge",
         model: "test-image-model",
+        map_icon_model: "openai/gpt-image-1",
         location_size: "1792x1024",
         auto_generate: true,
       }),
@@ -140,7 +142,7 @@ const settings: ModelSettings = {
   narrative_models: ["test-codex-model", "test-openrouter-model"],
   utility_models: ["test-utility-model"],
   repair_models: ["test-repair-model", "test-repair-fallback"],
-  image_models: ["test-image-model"],
+  image_models: ["test-image-model", "openai/gpt-image-1"],
   ascii_models: ["test-ascii-model"],
   embedding_providers: ["auto", "litellm", "openrouter", "local"],
   image_generation: {
@@ -148,6 +150,7 @@ const settings: ModelSettings = {
     base_url: "",
     api_key_configured: false,
     model: "test-image-model",
+    map_icon_model: "openai/gpt-image-1",
     openclaw_bridge_url: "http://openclaw-imagegen:8099/generate",
     default_size: "1024x1024",
     location_size: "1536x1024",

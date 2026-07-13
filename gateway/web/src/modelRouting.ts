@@ -28,6 +28,7 @@ export interface ImageGenerationDraft {
   provider: string;
   baseUrl: string;
   model: string;
+  mapIconModel: string;
   openClawBridgeUrl: string;
   defaultSize: string;
   locationSize: string;
@@ -143,6 +144,9 @@ export function modelRoutingIssues(
     if (!draft.imageGeneration.model.trim()) {
       issues.push("Image generation model is required when auto-generate is enabled.");
     }
+    if (!draft.imageGeneration.mapIconModel.trim()) {
+      issues.push("Transparent map icon model is required when auto-generate is enabled.");
+    }
     if (draft.imageGeneration.timeoutSeconds <= 0) {
       issues.push("Image generation timeout must be positive.");
     }
@@ -175,6 +179,7 @@ function imageGenerationDraft(
     provider: settings.provider,
     baseUrl: settings.base_url,
     model: settings.model,
+    mapIconModel: settings.map_icon_model,
     openClawBridgeUrl: settings.openclaw_bridge_url,
     defaultSize: settings.default_size,
     locationSize: settings.location_size,
@@ -201,6 +206,7 @@ function imageGenerationUpdate(
     provider: draft.provider.trim(),
     base_url: draft.baseUrl.trim(),
     model: draft.model.trim(),
+    map_icon_model: draft.mapIconModel.trim(),
     openclaw_bridge_url: draft.openClawBridgeUrl.trim(),
     default_size: draft.defaultSize.trim(),
     location_size: draft.locationSize.trim(),

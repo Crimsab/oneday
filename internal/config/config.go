@@ -111,6 +111,7 @@ type ImageGenerationConfig struct {
 	BaseURL              string `yaml:"base_url"`
 	APIKey               string `yaml:"api_key"`
 	Model                string `yaml:"model"`
+	MapIconModel         string `yaml:"map_icon_model"`
 	OpenClawBridgeURL    string `yaml:"openclaw_bridge_url"`
 	DefaultSize          string `yaml:"default_size"`
 	LocationSize         string `yaml:"location_size"`
@@ -207,6 +208,7 @@ func Default() Config {
 			},
 			ImageGeneration: ImageGenerationConfig{
 				Provider:             "openclaw-bridge",
+				MapIconModel:         "openai/gpt-image-1",
 				OpenClawBridgeURL:    "http://homelab.local:8099/generate",
 				DefaultSize:          "1024x1024",
 				LocationSize:         "1536x1024",
@@ -357,6 +359,9 @@ func (c *Config) Validate() error {
 		}
 		if strings.TrimSpace(c.AI.ImageGeneration.Model) == "" {
 			return fmt.Errorf("ai.image_generation.model must not be empty when auto_generate is enabled")
+		}
+		if strings.TrimSpace(c.AI.ImageGeneration.MapIconModel) == "" {
+			return fmt.Errorf("ai.image_generation.map_icon_model must not be empty when auto_generate is enabled")
 		}
 		if c.AI.ImageGeneration.TimeoutSeconds <= 0 {
 			return fmt.Errorf("ai.image_generation.timeout_seconds must be positive when auto_generate is enabled")

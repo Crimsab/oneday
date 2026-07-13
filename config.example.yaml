@@ -82,6 +82,7 @@ ai:
     base_url: ""
     api_key: ""
     model: "openai/gpt-image-2"
+    map_icon_model: "openai/gpt-image-1"
     openclaw_bridge_url: "http://homelab.local:8099/generate"
     default_size: "1024x1024"
     location_size: "1536x1024"
