@@ -4,7 +4,7 @@ mod config;
 mod db;
 mod engine;
 mod events;
-#[allow(dead_code)]
+#[allow(dead_code, clippy::derivable_impls)]
 mod gateway_protocol {
     include!(concat!(env!("OUT_DIR"), "/gateway_protocol.rs"));
 }
@@ -163,23 +163,6 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn cache_policy_only_marks_fingerprinted_assets_immutable() {
-        assert_eq!(
-            cache_control_for_path("/assets/index-abc123.js"),
-            Some("public, max-age=31536000, immutable")
-        );
-        assert_eq!(cache_control_for_path("/"), Some("no-cache"));
-        assert_eq!(cache_control_for_path("/story/deep-link"), Some("no-cache"));
-        assert_eq!(cache_control_for_path("/api/stories"), None);
-        assert_eq!(cache_control_for_path("/generated/assets/image.png"), None);
-    }
-}
-
 fn run_schema_preflight(paths: &config::ResolvedPaths) -> anyhow::Result<()> {
     let output = Command::new(&paths.oneday_bin)
         .arg("gateway-schema-preflight")
@@ -200,4 +183,21 @@ fn run_schema_preflight(paths: &config::ResolvedPaths) -> anyhow::Result<()> {
 
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cache_policy_only_marks_fingerprinted_assets_immutable() {
+        assert_eq!(
+            cache_control_for_path("/assets/index-abc123.js"),
+            Some("public, max-age=31536000, immutable")
+        );
+        assert_eq!(cache_control_for_path("/"), Some("no-cache"));
+        assert_eq!(cache_control_for_path("/story/deep-link"), Some("no-cache"));
+        assert_eq!(cache_control_for_path("/api/stories"), None);
+        assert_eq!(cache_control_for_path("/generated/assets/image.png"), None);
+    }
 }

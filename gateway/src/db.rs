@@ -367,18 +367,18 @@ pub async fn story_delete_plan(
 
 pub async fn snapshot(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StorySnapshot> {
     let mut tx = pool.begin().await?;
-    let (story, branch_id) = load_snapshot_story(&mut *tx, story_id).await?;
-    let character = load_character(&mut *tx, story_id).await?;
-    let world = load_world(&mut *tx, story_id, &branch_id).await?;
-    let active_session = load_active_session(&mut *tx, story_id, &branch_id).await?;
-    let messages = load_messages(&mut *tx, story_id, &branch_id, 120).await?;
+    let (story, branch_id) = load_snapshot_story(&mut tx, story_id).await?;
+    let character = load_character(&mut tx, story_id).await?;
+    let world = load_world(&mut tx, story_id, &branch_id).await?;
+    let active_session = load_active_session(&mut tx, story_id, &branch_id).await?;
+    let messages = load_messages(&mut tx, story_id, &branch_id, 120).await?;
     let choices = latest_choices(&messages, &active_session.id, world.current_turn);
     let panels = PanelsView {
-        chapters: load_chapters(&mut *tx, story_id, &branch_id).await?,
-        achievements: load_achievements(&mut *tx, story_id).await?,
-        npcs: load_npcs(&mut *tx, story_id, &branch_id).await?,
-        sessions: load_sessions(&mut *tx, story_id, &branch_id).await?,
-        saves: load_saves(&mut *tx, story_id, &branch_id).await?,
+        chapters: load_chapters(&mut tx, story_id, &branch_id).await?,
+        achievements: load_achievements(&mut tx, story_id).await?,
+        npcs: load_npcs(&mut tx, story_id, &branch_id).await?,
+        sessions: load_sessions(&mut tx, story_id, &branch_id).await?,
+        saves: load_saves(&mut tx, story_id, &branch_id).await?,
     };
     let version = story_version_for_branch(&mut *tx, story_id, &branch_id).await?;
     let snapshot = StorySnapshot {
@@ -1493,7 +1493,7 @@ mod tests {
             .expect("insert main save");
 
         let mut read_tx = pool.begin().await.expect("begin snapshot transaction");
-        let (_, branch_id) = load_snapshot_story(&mut *read_tx, "story-1")
+        let (_, branch_id) = load_snapshot_story(&mut read_tx, "story-1")
             .await
             .expect("load snapshot context");
         assert_eq!(branch_id, "branch-main");
@@ -1524,7 +1524,7 @@ mod tests {
         assert_eq!(during.active_session_id, "session-main");
         assert_eq!(during.last_message_id, 1);
         assert_eq!(during.save_count, 1);
-        let saves = load_saves(&mut *read_tx, "story-1", &branch_id)
+        let saves = load_saves(&mut read_tx, "story-1", &branch_id)
             .await
             .expect("branch-scoped saves inside snapshot transaction");
         assert_eq!(saves.len(), 1);

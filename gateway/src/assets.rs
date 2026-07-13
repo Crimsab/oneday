@@ -860,13 +860,13 @@ pub async fn select_asset_version(
 ) -> anyhow::Result<VisualAssetsResponse> {
     let mut tx = pool.begin().await?;
     let (branch_id, source_commit_id) = active_timeline_lineage_on(&mut *tx, story_id).await?;
-    ensure_asset_visible_on(&mut *tx, story_id, asset_id, &branch_id).await?;
-    let versions = visible_version_ids_on(&mut *tx, story_id, asset_id, &branch_id).await?;
+    ensure_asset_visible_on(&mut tx, story_id, asset_id, &branch_id).await?;
+    let versions = visible_version_ids_on(&mut tx, story_id, asset_id, &branch_id).await?;
     if !versions.contains(&version_id) {
         return Err(anyhow!("visual asset version not found"));
     }
     let (mut history, mut cursor) =
-        exact_selection_state_on(&mut *tx, story_id, asset_id, &branch_id).await?;
+        exact_selection_state_on(&mut tx, story_id, asset_id, &branch_id).await?;
     if history.is_empty() {
         if let Some(current) = versions.first().copied() {
             history.push(current);
@@ -879,7 +879,7 @@ pub async fn select_asset_version(
     }
     cursor = history.len() as i64 - 1;
     write_selection_state_on(
-        &mut *tx,
+        &mut tx,
         story_id,
         asset_id,
         &branch_id,
@@ -900,9 +900,9 @@ pub async fn step_asset_selection(
 ) -> anyhow::Result<VisualAssetsResponse> {
     let mut tx = pool.begin().await?;
     let (branch_id, source_commit_id) = active_timeline_lineage_on(&mut *tx, story_id).await?;
-    ensure_asset_visible_on(&mut *tx, story_id, asset_id, &branch_id).await?;
+    ensure_asset_visible_on(&mut tx, story_id, asset_id, &branch_id).await?;
     let (history, cursor) =
-        exact_selection_state_on(&mut *tx, story_id, asset_id, &branch_id).await?;
+        exact_selection_state_on(&mut tx, story_id, asset_id, &branch_id).await?;
     if history.is_empty() {
         return Err(anyhow!("visual selection history not found"));
     }
@@ -914,7 +914,7 @@ pub async fn step_asset_selection(
         _ => return Err(anyhow!("visual selection action must be undo or redo")),
     };
     write_selection_state_on(
-        &mut *tx,
+        &mut tx,
         story_id,
         asset_id,
         &branch_id,
@@ -1698,7 +1698,7 @@ async fn enqueue_visual_generation_jobs(
     for asset in targets {
         let (branch_id, source_commit_id) =
             active_timeline_lineage_on(&mut *tx, &asset.story_id).await?;
-        ensure_asset_visible_on(&mut *tx, &asset.story_id, &asset.id, &branch_id).await?;
+        ensure_asset_visible_on(&mut tx, &asset.story_id, &asset.id, &branch_id).await?;
 
         let inserted_job_id: Option<i64> = sqlx::query_scalar(
             r#"INSERT OR IGNORE INTO visual_generation_jobs (
@@ -1725,7 +1725,7 @@ async fn enqueue_visual_generation_jobs(
         .with_context(|| format!("enqueueing visual generation job {}", asset.id))?;
         if let Some(job_id) = inserted_job_id {
             set_branch_asset_status_on(
-                &mut *tx,
+                &mut tx,
                 asset,
                 &branch_id,
                 &source_commit_id,
@@ -1820,7 +1820,7 @@ async fn claim_visual_generation_job(
 
 async fn visual_generation_job_publishable(pool: &SqlitePool, job_id: i64) -> anyhow::Result<bool> {
     let mut conn = pool.acquire().await?;
-    visual_generation_job_publishable_on(&mut *conn, job_id).await
+    visual_generation_job_publishable_on(&mut conn, job_id).await
 }
 
 async fn visual_generation_job_publishable_on(
@@ -1883,7 +1883,7 @@ async fn mark_generation_job_terminal(
     error: &str,
 ) -> anyhow::Result<()> {
     let mut conn = pool.acquire().await?;
-    mark_generation_job_terminal_on(&mut *conn, job_id, status, error).await
+    mark_generation_job_terminal_on(&mut conn, job_id, status, error).await
 }
 
 async fn mark_generation_job_terminal_on(
@@ -2022,7 +2022,7 @@ async fn set_branch_asset_status(
 ) -> anyhow::Result<()> {
     let mut conn = pool.acquire().await?;
     set_branch_asset_status_on(
-        &mut *conn,
+        &mut conn,
         asset,
         branch_id,
         source_commit_id,
@@ -2116,16 +2116,16 @@ async fn complete_generated_asset(
     config: &ImageGenerationConfig,
 ) -> anyhow::Result<i64> {
     let mut tx = pool.begin().await?;
-    if !visual_generation_job_publishable_on(&mut *tx, job.id).await? {
+    if !visual_generation_job_publishable_on(&mut tx, job.id).await? {
         return Err(anyhow!(
             "visual generation job {} is no longer publishable",
             job.id
         ));
     }
-    ensure_asset_visible_on(&mut *tx, &job.asset.story_id, &job.asset.id, &job.branch_id).await?;
-    let version_id = record_asset_version(&mut *tx, job, generated, config).await?;
+    ensure_asset_visible_on(&mut tx, &job.asset.story_id, &job.asset.id, &job.branch_id).await?;
+    let version_id = record_asset_version(&mut tx, job, generated, config).await?;
     select_generated_version_on(
-        &mut *tx,
+        &mut tx,
         &job.asset.story_id,
         &job.asset.id,
         &job.branch_id,
@@ -2134,7 +2134,7 @@ async fn complete_generated_asset(
     )
     .await?;
     set_branch_asset_status_on(
-        &mut *tx,
+        &mut tx,
         &job.asset,
         &job.branch_id,
         &job.source_commit_id,
@@ -2143,7 +2143,7 @@ async fn complete_generated_asset(
         &provider_label(config, &job.asset),
     )
     .await?;
-    mark_generation_job_succeeded_on(&mut *tx, job).await?;
+    mark_generation_job_succeeded_on(&mut tx, job).await?;
     tx.commit().await?;
     Ok(version_id)
 }
@@ -4498,7 +4498,7 @@ mod tests {
                 can_help INTEGER NOT NULL DEFAULT 0,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )"#,
-			 r#"CREATE TABLE character_facts (
+            r#"CREATE TABLE character_facts (
 				id TEXT PRIMARY KEY,
 				story_id TEXT NOT NULL DEFAULT 'story-1',
 				branch_id TEXT NOT NULL DEFAULT 'branch-main',
