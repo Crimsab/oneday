@@ -154,7 +154,11 @@ func (db *DB) AppendTurnCommitTx(tx *sql.Tx, p AppendTurnCommitParams) (*TurnCom
 	if err := tx.QueryRow(`SELECT revision FROM stories WHERE id=? AND active_branch_id=?`, p.StoryID, p.BranchID).Scan(&revision); err != nil {
 		return nil, fmt.Errorf("branch is not active for story: %w", err)
 	}
-	sum := sha256.Sum256([]byte(p.PayloadJSON))
+	snapshotPayload, snapshotFormat, err := db.encodeTurnSnapshotTx(tx, currentHead, p.PayloadJSON)
+	if err != nil {
+		return nil, fmt.Errorf("encoding turn snapshot: %w", err)
+	}
+	sum := sha256.Sum256([]byte(snapshotPayload))
 	hash := fmt.Sprintf("sha256:%x", sum[:])
 	now := time.Now().UTC()
 	commitID := p.CommitID
@@ -168,7 +172,7 @@ func (db *DB) AppendTurnCommitTx(tx *sql.Tx, p AppendTurnCommitParams) (*TurnCom
 	if _, err := tx.Exec(`INSERT INTO turn_commits (id, story_id, branch_id, parent_commit_id, canonical_turn, story_revision, payload_hash, kind, message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, commit.ID, commit.StoryID, commit.BranchID, commit.ParentCommitID, commit.CanonicalTurn, commit.StoryRevision, commit.PayloadHash, commit.Kind, commit.Message, commit.CreatedAt); err != nil {
 		return nil, fmt.Errorf("inserting turn commit: %w", err)
 	}
-	if _, err := tx.Exec(`INSERT INTO turn_snapshots (commit_id, story_id, format_version, payload_json, payload_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)`, commit.ID, commit.StoryID, CurrentTurnSnapshotFormatVersion, p.PayloadJSON, hash, now); err != nil {
+	if _, err := tx.Exec(`INSERT INTO turn_snapshots (commit_id, story_id, format_version, payload_json, payload_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)`, commit.ID, commit.StoryID, snapshotFormat, snapshotPayload, hash, now); err != nil {
 		return nil, fmt.Errorf("inserting turn snapshot: %w", err)
 	}
 	for i, event := range p.Events {

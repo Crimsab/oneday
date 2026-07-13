@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -31,6 +33,32 @@ type timelineMaterialization struct {
 	StoryID       string          `json:"story_id"`
 	BranchID      string          `json:"branch_id"`
 	Tables        []timelineTable `json:"tables"`
+}
+
+const deltaTurnSnapshotFormatVersion = 2
+
+type timelineTableDelta struct {
+	Name       string            `json:"name"`
+	Columns    []string          `json:"columns,omitempty"`
+	KeyColumns []string          `json:"key_columns,omitempty"`
+	Upserts    [][]timelineValue `json:"upserts,omitempty"`
+	Deletes    [][]timelineValue `json:"deletes,omitempty"`
+	Replace    *timelineTable    `json:"replace,omitempty"`
+}
+
+type timelineSnapshotDelta struct {
+	FormatVersion int                  `json:"format_version"`
+	StoryID       string               `json:"story_id"`
+	BranchID      string               `json:"branch_id"`
+	BaseCommitID  string               `json:"base_commit_id"`
+	Tables        []timelineTableDelta `json:"tables"`
+}
+
+type timelineTableState struct {
+	columns    []string
+	keyColumns []string
+	rows       map[string][]timelineValue
+	order      []string
 }
 
 type timelineTableSpec struct {
@@ -134,6 +162,326 @@ func captureMaterializationTx(tx *sql.Tx, storyID, branchID string, specs []time
 		return "", fmt.Errorf("marshaling timeline materialization: %w", err)
 	}
 	return string(payload), nil
+}
+
+// encodeTurnSnapshotTx stores row-level changes against the immutable parent
+// snapshot when that representation is smaller than another full copy. The
+// caller still captures one coherent materialization; only durable storage and
+// later reconstruction change.
+func (db *DB) encodeTurnSnapshotTx(tx *sql.Tx, parentCommitID, payloadJSON string) (string, int, error) {
+	var current timelineMaterialization
+	if err := json.Unmarshal([]byte(payloadJSON), &current); err != nil || current.FormatVersion != CurrentTurnSnapshotFormatVersion || current.StoryID == "" || len(current.Tables) == 0 {
+		return payloadJSON, CurrentTurnSnapshotFormatVersion, nil
+	}
+	var parentPayload, parentHash string
+	if err := tx.QueryRow(`SELECT payload_json,payload_hash FROM turn_snapshots WHERE commit_id=? AND story_id=?`, parentCommitID, current.StoryID).Scan(&parentPayload, &parentHash); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return payloadJSON, CurrentTurnSnapshotFormatVersion, nil
+		}
+		return "", 0, err
+	}
+	parent, err := db.resolveTimelineMaterializationTx(tx, current.StoryID, parentPayload, parentHash)
+	if err != nil {
+		return "", 0, fmt.Errorf("resolving parent turn snapshot: %w", err)
+	}
+	delta, err := buildTimelineSnapshotDeltaTx(tx, parentCommitID, parent, current)
+	if err != nil {
+		return "", 0, err
+	}
+	encoded, err := json.Marshal(delta)
+	if err != nil {
+		return "", 0, fmt.Errorf("marshaling timeline delta: %w", err)
+	}
+	if len(encoded) >= len(payloadJSON) {
+		return payloadJSON, CurrentTurnSnapshotFormatVersion, nil
+	}
+	return string(encoded), deltaTurnSnapshotFormatVersion, nil
+}
+
+func buildTimelineSnapshotDeltaTx(tx *sql.Tx, baseCommitID string, parent, current timelineMaterialization) (timelineSnapshotDelta, error) {
+	delta := timelineSnapshotDelta{
+		FormatVersion: deltaTurnSnapshotFormatVersion,
+		StoryID:       current.StoryID,
+		BranchID:      current.BranchID,
+		BaseCommitID:  baseCommitID,
+	}
+	parentByName := make(map[string]timelineTable, len(parent.Tables))
+	for _, table := range parent.Tables {
+		parentByName[table.Name] = table
+	}
+	for _, table := range current.Tables {
+		before, ok := parentByName[table.Name]
+		if !ok || !reflect.DeepEqual(before.Columns, table.Columns) {
+			replacement := table
+			delta.Tables = append(delta.Tables, timelineTableDelta{Name: table.Name, Replace: &replacement})
+			continue
+		}
+		keyColumns, err := timelinePrimaryKeyColumns(tx, table.Name, table.Columns)
+		if err != nil {
+			return timelineSnapshotDelta{}, err
+		}
+		change, err := diffTimelineTable(before, table, keyColumns)
+		if err != nil {
+			return timelineSnapshotDelta{}, err
+		}
+		if len(change.Upserts) > 0 || len(change.Deletes) > 0 {
+			delta.Tables = append(delta.Tables, change)
+		}
+	}
+	return delta, nil
+}
+
+func timelinePrimaryKeyColumns(tx *sql.Tx, table string, fallback []string) ([]string, error) {
+	quoted := strings.ReplaceAll(table, `"`, `""`)
+	rows, err := tx.Query(fmt.Sprintf(`PRAGMA table_info("%s")`, quoted))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	type primaryColumn struct {
+		name     string
+		position int
+	}
+	var primary []primaryColumn
+	for rows.Next() {
+		var cid, notNull, position int
+		var name, columnType string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &position); err != nil {
+			return nil, err
+		}
+		if position > 0 {
+			primary = append(primary, primaryColumn{name: name, position: position})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(primary) == 0 {
+		return append([]string(nil), fallback...), nil
+	}
+	sort.Slice(primary, func(i, j int) bool { return primary[i].position < primary[j].position })
+	columns := make([]string, len(primary))
+	for i := range primary {
+		columns[i] = primary[i].name
+	}
+	return columns, nil
+}
+
+func diffTimelineTable(before, after timelineTable, keyColumns []string) (timelineTableDelta, error) {
+	change := timelineTableDelta{Name: after.Name, Columns: after.Columns, KeyColumns: keyColumns}
+	beforeRows := make(map[string][]timelineValue, len(before.Rows))
+	for _, row := range before.Rows {
+		key, _, err := timelineRowKey(before.Columns, keyColumns, row)
+		if err != nil {
+			return timelineTableDelta{}, fmt.Errorf("indexing parent %s: %w", before.Name, err)
+		}
+		beforeRows[key] = row
+	}
+	afterKeys := make(map[string]struct{}, len(after.Rows))
+	for _, row := range after.Rows {
+		key, _, err := timelineRowKey(after.Columns, keyColumns, row)
+		if err != nil {
+			return timelineTableDelta{}, fmt.Errorf("indexing current %s: %w", after.Name, err)
+		}
+		afterKeys[key] = struct{}{}
+		if previous, ok := beforeRows[key]; !ok || !reflect.DeepEqual(previous, row) {
+			change.Upserts = append(change.Upserts, row)
+		}
+	}
+	for _, row := range before.Rows {
+		key, values, err := timelineRowKey(before.Columns, keyColumns, row)
+		if err != nil {
+			return timelineTableDelta{}, err
+		}
+		if _, ok := afterKeys[key]; !ok {
+			change.Deletes = append(change.Deletes, values)
+		}
+	}
+	return change, nil
+}
+
+func timelineRowKey(columns, keyColumns []string, row []timelineValue) (string, []timelineValue, error) {
+	if len(columns) != len(row) || len(keyColumns) == 0 {
+		return "", nil, errors.New("timeline row has no usable key")
+	}
+	index := make(map[string]int, len(columns))
+	for i, column := range columns {
+		index[column] = i
+	}
+	values := make([]timelineValue, len(keyColumns))
+	for i, column := range keyColumns {
+		position, ok := index[column]
+		if !ok {
+			return "", nil, fmt.Errorf("timeline key column %s is missing", column)
+		}
+		values[i] = row[position]
+	}
+	encoded, err := json.Marshal(values)
+	return string(encoded), values, err
+}
+
+func (db *DB) resolveTimelineMaterializationTx(tx *sql.Tx, storyID, payloadJSON, expectedHash string) (timelineMaterialization, error) {
+	currentPayload, currentHash := payloadJSON, expectedHash
+	deltas := []timelineSnapshotDelta{}
+	seen := map[string]bool{}
+	for {
+		if currentHash != "" {
+			sum := sha256.Sum256([]byte(currentPayload))
+			if got := fmt.Sprintf("sha256:%x", sum[:]); got != currentHash {
+				return timelineMaterialization{}, errors.New("turn snapshot checksum does not match its payload")
+			}
+		}
+		var header struct {
+			FormatVersion int `json:"format_version"`
+		}
+		if err := json.Unmarshal([]byte(currentPayload), &header); err != nil {
+			return timelineMaterialization{}, fmt.Errorf("decoding turn snapshot header: %w", err)
+		}
+		switch header.FormatVersion {
+		case CurrentTurnSnapshotFormatVersion:
+			var base timelineMaterialization
+			if err := json.Unmarshal([]byte(currentPayload), &base); err != nil {
+				return timelineMaterialization{}, fmt.Errorf("decoding full turn snapshot: %w", err)
+			}
+			if base.StoryID != storyID {
+				return timelineMaterialization{}, errors.New("turn snapshot story does not match")
+			}
+			return applyTimelineSnapshotDeltas(base, deltas)
+		case deltaTurnSnapshotFormatVersion:
+			var delta timelineSnapshotDelta
+			if err := json.Unmarshal([]byte(currentPayload), &delta); err != nil {
+				return timelineMaterialization{}, fmt.Errorf("decoding turn snapshot delta: %w", err)
+			}
+			if delta.StoryID != storyID || delta.BaseCommitID == "" {
+				return timelineMaterialization{}, errors.New("turn snapshot delta identity is incompatible")
+			}
+			if seen[delta.BaseCommitID] {
+				return timelineMaterialization{}, errors.New("turn snapshot delta chain contains a cycle")
+			}
+			seen[delta.BaseCommitID] = true
+			deltas = append(deltas, delta)
+			if len(deltas) > 10000 {
+				return timelineMaterialization{}, errors.New("turn snapshot delta chain is too deep")
+			}
+			if err := tx.QueryRow(`SELECT payload_json,payload_hash FROM turn_snapshots WHERE commit_id=? AND story_id=?`, delta.BaseCommitID, storyID).Scan(&currentPayload, &currentHash); err != nil {
+				return timelineMaterialization{}, fmt.Errorf("loading base turn snapshot %s: %w", delta.BaseCommitID, err)
+			}
+		default:
+			return timelineMaterialization{}, fmt.Errorf("unsupported turn snapshot format %d", header.FormatVersion)
+		}
+	}
+}
+
+func applyTimelineSnapshotDeltas(base timelineMaterialization, newestFirst []timelineSnapshotDelta) (timelineMaterialization, error) {
+	states := make(map[string]*timelineTableState, len(base.Tables))
+	order := make([]string, 0, len(base.Tables))
+	for _, table := range base.Tables {
+		copyTable := table
+		states[table.Name] = &timelineTableState{columns: copyTable.Columns, rows: map[string][]timelineValue{}, order: nil}
+		states[table.Name].reset(copyTable)
+		order = append(order, table.Name)
+	}
+	for index := len(newestFirst) - 1; index >= 0; index-- {
+		delta := newestFirst[index]
+		for _, change := range delta.Tables {
+			if change.Replace != nil {
+				state, exists := states[change.Name]
+				if !exists {
+					state = &timelineTableState{}
+					states[change.Name] = state
+					order = append(order, change.Name)
+				}
+				state.reset(*change.Replace)
+				continue
+			}
+			state := states[change.Name]
+			if state == nil {
+				return timelineMaterialization{}, fmt.Errorf("turn snapshot delta references missing table %s", change.Name)
+			}
+			if err := state.apply(change); err != nil {
+				return timelineMaterialization{}, fmt.Errorf("applying %s delta: %w", change.Name, err)
+			}
+		}
+		base.StoryID = delta.StoryID
+		base.BranchID = delta.BranchID
+	}
+	base.Tables = make([]timelineTable, 0, len(order))
+	for _, name := range order {
+		base.Tables = append(base.Tables, states[name].table(name))
+	}
+	return base, nil
+}
+
+func (state *timelineTableState) reset(table timelineTable) {
+	state.columns = append([]string(nil), table.Columns...)
+	state.keyColumns = nil
+	state.rows = make(map[string][]timelineValue, len(table.Rows))
+	state.order = make([]string, len(table.Rows))
+	for i, row := range table.Rows {
+		key := fmt.Sprintf("row:%d", i)
+		state.rows[key] = row
+		state.order[i] = key
+	}
+}
+
+func (state *timelineTableState) apply(change timelineTableDelta) error {
+	if !reflect.DeepEqual(state.columns, change.Columns) {
+		return errors.New("timeline table columns changed without replacement")
+	}
+	if len(change.KeyColumns) == 0 {
+		return errors.New("timeline delta has no key columns")
+	}
+	if !reflect.DeepEqual(state.keyColumns, change.KeyColumns) {
+		rows := make(map[string][]timelineValue, len(state.rows))
+		order := make([]string, 0, len(state.order))
+		for _, oldKey := range state.order {
+			row, ok := state.rows[oldKey]
+			if !ok {
+				continue
+			}
+			key, _, err := timelineRowKey(state.columns, change.KeyColumns, row)
+			if err != nil {
+				return err
+			}
+			if _, duplicate := rows[key]; duplicate {
+				return errors.New("timeline table contains duplicate row keys")
+			}
+			rows[key] = row
+			order = append(order, key)
+		}
+		state.rows = rows
+		state.order = order
+		state.keyColumns = append([]string(nil), change.KeyColumns...)
+	}
+	for _, values := range change.Deletes {
+		encoded, err := json.Marshal(values)
+		if err != nil {
+			return err
+		}
+		delete(state.rows, string(encoded))
+	}
+	for _, row := range change.Upserts {
+		key, _, err := timelineRowKey(state.columns, state.keyColumns, row)
+		if err != nil {
+			return err
+		}
+		if _, exists := state.rows[key]; !exists {
+			state.order = append(state.order, key)
+		}
+		state.rows[key] = row
+	}
+	return nil
+}
+
+func (state *timelineTableState) table(name string) timelineTable {
+	table := timelineTable{Name: name, Columns: append([]string(nil), state.columns...)}
+	for _, key := range state.order {
+		if row, ok := state.rows[key]; ok {
+			table.Rows = append(table.Rows, row)
+		}
+	}
+	return table
 }
 
 func (db *DB) RestoreCanonicalStateTx(tx *sql.Tx, storyID, branchID, payloadJSON string) error {
@@ -252,15 +600,9 @@ func decodeTimelineValue(value timelineValue) (any, error) {
 }
 
 func (db *DB) RestoreTimelineMaterializationTx(tx *sql.Tx, storyID, branchID, payloadJSON, expectedHash string) error {
-	if expectedHash != "" {
-		sum := sha256.Sum256([]byte(payloadJSON))
-		if got := fmt.Sprintf("sha256:%x", sum[:]); got != expectedHash {
-			return errors.New("turn snapshot checksum does not match its payload")
-		}
-	}
-	var m timelineMaterialization
-	if err := json.Unmarshal([]byte(payloadJSON), &m); err != nil {
-		return fmt.Errorf("decoding turn snapshot: %w", err)
+	m, err := db.resolveTimelineMaterializationTx(tx, storyID, payloadJSON, expectedHash)
+	if err != nil {
+		return err
 	}
 	if m.FormatVersion != CurrentTurnSnapshotFormatVersion || m.StoryID != storyID {
 		return errors.New("turn snapshot identity or format is incompatible")
