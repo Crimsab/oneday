@@ -158,6 +158,49 @@ func TestSiblingBranchesShareParentAndAreIdempotentByName(t *testing.T) {
 	}
 }
 
+func TestForkAndCheckoutIsAtomic(t *testing.T) {
+	db, story := newTimelineStory(t)
+	defer db.Close()
+	head, err := db.GetActiveTimeline(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.WithTx(func(tx *sql.Tx) error {
+		return db.EnsureTurnSnapshotTx(tx, head.Commit.ID, story.ID, head.Branch.ID)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	revision, _ := db.GetStoryRevision(story.ID)
+	branch, err := db.ForkAndCheckoutStoryBranch(story.ID, head.Commit.ID, "atomic alternate", revision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := db.GetStory(story.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.ActiveBranchID != branch.ID {
+		t.Fatalf("active branch = %q, want %q", updated.ActiveBranchID, branch.ID)
+	}
+	retry, err := db.ForkAndCheckoutStoryBranch(story.ID, head.Commit.ID, "atomic alternate", revision)
+	if err != nil {
+		t.Fatalf("idempotent retry: %v", err)
+	}
+	if retry.ID != branch.ID {
+		t.Fatalf("idempotent retry returned %q, want %q", retry.ID, branch.ID)
+	}
+
+	before, _ := db.ListStoryBranches(story.ID)
+	revision, _ = db.GetStoryRevision(story.ID)
+	if _, err := db.ForkAndCheckoutStoryBranch(story.ID, "missing-commit", "must rollback", revision); !errors.Is(err, ErrCommitNotFound) {
+		t.Fatalf("missing source error = %v", err)
+	}
+	after, _ := db.ListStoryBranches(story.ID)
+	if len(after) != len(before) {
+		t.Fatalf("failed atomic fork left %d branches, had %d", len(after), len(before))
+	}
+}
+
 func TestSiblingCheckoutRestoresExactStateWithoutDeletingDescendants(t *testing.T) {
 	db, s := newTimelineStory(t)
 	defer db.Close()

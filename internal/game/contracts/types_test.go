@@ -68,6 +68,9 @@ func TestBrowserTimelineRequestRequiresSafeMutationInputs(t *testing.T) {
 	if err := (BrowserTimelineRequest{StoryID: "story-1", Action: TimelineCheckout, ClientRevision: 2, BranchID: "branch-2"}).Validate(); err != nil {
 		t.Fatalf("valid checkout rejected: %v", err)
 	}
+	if err := (BrowserTimelineRequest{StoryID: "story-1", Action: TimelineForkCheckout, ClientRevision: 2, FromCommitID: "commit-1", Name: "alternate"}).Validate(); err != nil {
+		t.Fatalf("fork_checkout validation: %v", err)
+	}
 	if err := (BrowserTimelineRequest{StoryID: "story-1", Action: TimelineRename, ClientRevision: 2, BranchID: "branch-2", Name: "what if"}).Validate(); err != nil {
 		t.Fatalf("valid rename rejected: %v", err)
 	}

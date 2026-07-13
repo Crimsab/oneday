@@ -444,7 +444,7 @@ export interface ChapterView {
 export interface TimelineBranchView { id:string; story_id:string; name:string; fork_commit_id?:string; head_commit_id:string; head_turn:number; created_at:string; updated_at:string }
 export interface TimelineCommitView { id:string; branch_id:string; parent_commit_id?:string; canonical_turn:number; kind:string; message?:string; created_at:string }
 export interface TimelineResponse { active_branch_id:string; revision:number; branches:TimelineBranchView[]; head?:TimelineCommitView; commits:TimelineCommitView[] }
-export interface TimelineEnvelope { action:"fork"|"rename"|"checkout"; client_revision:number; branch_id?:string; from_commit_id?:string; name?:string }
+export interface TimelineEnvelope { action:"fork"|"fork_checkout"|"rename"|"checkout"; client_revision:number; branch_id?:string; from_commit_id?:string; name?:string }
 export interface TimelineMutationResponse { timeline:TimelineResponse; snapshot:StorySnapshot }
 export interface HistoryPage { items:MessageView[]; next_cursor?:number|null }
 export interface ChapterPage { items:ChapterView[]; next_cursor?:number|null }
