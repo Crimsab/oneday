@@ -816,15 +816,33 @@ pub async fn export_story(
         });
     }
     if format.eq_ignore_ascii_case("epub") {
-        let bytes = build_epub(&story, &active_branch_id, &chapters, &messages)?;
-        return Ok(StoryExport {
-            format: "epub".into(),
-            filename: format!("{safe_name}.epub"),
-            content: BASE64.encode(bytes),
-            encoding: "base64".into(),
-            content_type: "application/epub+zip".into(),
-        });
+        return tokio::task::spawn_blocking(move || {
+            let bytes = build_epub(&story, &active_branch_id, &chapters, &messages)?;
+            Ok(StoryExport {
+                format: "epub".into(),
+                filename: format!("{safe_name}.epub"),
+                content: BASE64.encode(bytes),
+                encoding: "base64".into(),
+                content_type: "application/epub+zip".into(),
+            })
+        })
+        .await
+        .context("joining EPUB export renderer")?;
     }
+    tokio::task::spawn_blocking(move || {
+        build_markdown_export(story, active_branch_id, chapters, messages, safe_name)
+    })
+    .await
+    .context("joining Markdown export renderer")
+}
+
+fn build_markdown_export(
+    story: StorySummary,
+    active_branch_id: String,
+    chapters: Vec<ChapterView>,
+    messages: Vec<MessageView>,
+    safe_name: String,
+) -> StoryExport {
     let mut content = format!("# {}\n\nBranch: `{}`\n\n", story.name, active_branch_id);
     if !chapters.is_empty() {
         content.push_str("## Chapters\n\n");
@@ -847,13 +865,13 @@ pub async fn export_story(
             message.turn, message.role, message.content
         ));
     }
-    Ok(StoryExport {
+    StoryExport {
         format: "markdown".into(),
         filename: format!("{safe_name}-history.md"),
         content,
         encoding: "utf-8".into(),
         content_type: "text/markdown".into(),
-    })
+    }
 }
 
 fn build_epub(
