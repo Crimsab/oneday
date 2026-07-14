@@ -78,9 +78,6 @@ pub fn resolve_paths(args: &Args) -> anyhow::Result<ResolvedPaths> {
     };
     let visual_asset_dir = data_dir.join("visual_assets");
 
-    if !db_path.exists() {
-        return Err(anyhow!("database does not exist: {}", db_path.display()));
-    }
     if !oneday_bin.exists() {
         return Err(anyhow!(
             "oneday binary does not exist: {}",
@@ -127,5 +124,36 @@ fn absolute_path_relative(root: &Path, path: &Path) -> anyhow::Result<PathBuf> {
         Ok(path.to_path_buf())
     } else {
         Ok(root.join(path))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resolves_a_missing_database_for_first_run_migrations() {
+        let root =
+            std::env::temp_dir().join(format!("oneday-gateway-config-{}", uuid::Uuid::new_v4()));
+        let static_dir = root.join("gateway/web/dist");
+        std::fs::create_dir_all(&static_dir).expect("create static directory");
+        std::fs::write(root.join("oneday"), b"").expect("create engine placeholder");
+        std::fs::write(static_dir.join("index.html"), b"").expect("create index placeholder");
+        std::fs::write(root.join("config.yaml"), "data_dir: ./fresh-data\n")
+            .expect("create config");
+
+        let paths = resolve_paths(&Args {
+            addr: "127.0.0.1:0".to_string(),
+            oneday_root: root.clone(),
+            config_path: None,
+            db_path: None,
+            oneday_bin: None,
+            static_dir: None,
+        })
+        .expect("missing first-run database should be accepted");
+
+        assert_eq!(paths.db_path, root.join("fresh-data/oneday.db"));
+        assert!(!paths.db_path.exists());
+        std::fs::remove_dir_all(root).expect("clean test directory");
     }
 }

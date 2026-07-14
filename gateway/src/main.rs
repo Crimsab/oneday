@@ -87,6 +87,10 @@ async fn main() -> anyhow::Result<()> {
     let args = config::Args::parse_args();
     let paths = config::resolve_paths(&args).context("resolving OneDay gateway paths")?;
     let addr: SocketAddr = args.addr.parse().context("parsing --addr")?;
+    if let Some(parent) = paths.db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating data directory {}", parent.display()))?;
+    }
     run_schema_preflight(&paths).context("running OneDay schema preflight")?;
     std::fs::create_dir_all(&paths.visual_asset_dir).with_context(|| {
         format!(
