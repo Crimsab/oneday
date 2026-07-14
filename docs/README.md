@@ -13,10 +13,11 @@ Use this index to find the shortest path for what you are trying to do.
 
 - [Architecture](architecture.md) — Go engine, Rust gateway, React client, SQLite, and request flow.
 - [Development](development.md) — toolchains, test gates, repository layout, and contribution workflow.
+- [Testing](testing.md) — local verification, CI coverage, browser checks, and release confidence.
+- [Benchmarks](benchmarks/README.md) — reproducible model, ASCII, and schema reliability comparisons.
+- [Project roadmap](project-roadmap.md) — current improvement themes and contribution opportunities.
 - [Releases](releases.md) — Conventional Commits, automated changelog PRs, tags, and artifacts.
 - [Browser gateway contract](browser-gateway.md) — canonical state and browser/TUI parity rules.
-- [QA matrix](qa-matrix.md) — high-risk regression coverage.
 
-Historical design and benchmark material remains available under `docs/design.md` and
-`docs/benchmarks/`. Those documents provide context; the guides above describe the
-current supported setup.
+The guides in this directory describe the supported public setup. Historical planning,
+private deployment notes, and generated benchmark runs are intentionally excluded.

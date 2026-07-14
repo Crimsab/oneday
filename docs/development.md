@@ -53,6 +53,9 @@ bunx playwright install --with-deps chromium
 bun run test:e2e
 ```
 
+See [Testing](testing.md) for the complete CI matrix, focused regression sweep,
+and manual release checks.
+
 ## Generated contracts
 
 If Go gateway protocol types change, regenerate and verify the checked-in schema

@@ -29,12 +29,10 @@ game state.
 
 ## Runtime Requirements
 
-- The Docker service mounts the host Codex CLI and Codex OAuth config read-only.
-  This keeps browser gameplay compatible with terminal stories configured for
-  the `codex` provider without baking auth material into the image.
-- If the host Codex installation moves, update the compose mount for
-  `/usr/local/bin/codex` and verify with `docker exec oneday-gateway codex login
-  status`.
+- The public Docker service does not mount host CLI binaries or authentication
+  directories. Use an HTTP provider in the standard container setup. Advanced
+  operators may add a private Compose override for a local CLI integration,
+  but credentials must remain read-only and outside the repository.
 - Browser visual asset generation supports
   `ONEDAY_IMAGEGEN_PROVIDER=openclaw-bridge` and calls the configured
   `ONEDAY_IMAGEGEN_OPENCLAW_URL` (for example a bridge on
