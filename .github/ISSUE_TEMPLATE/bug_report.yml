@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible OneDay problem
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, config.yaml, .env, databases, auth files, or private story content.
+  - type: input
+    id: version
+    attributes:
+      label: OneDay version
+      description: Output of `oneday --version` or the commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Browser / Docker
+        - Terminal client
+        - Both
+        - Build / CI / documentation
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Minimal steps from a clean or clearly described state.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: OS/architecture, provider type, and redacted `doctor --json` output.
+      render: shell
