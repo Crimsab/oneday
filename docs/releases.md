@@ -14,7 +14,13 @@ OneDay uses Release Please in manifest mode. The source-controlled files are:
    approval-only run created by GitHub when `GITHUB_TOKEN` opens a pull request.
 4. The PR contains the next version and generated changelog entry.
 5. Merging it creates the `vX.Y.Z` tag and GitHub Release.
-6. The workflow runs the release gates, builds Linux/Windows archives, and uploads them to the release.
+6. The workflow runs the release gates, builds Linux/Windows archives, uploads
+   them to the release, and publishes the versioned container image to GHCR.
+
+Container releases use the tags `X.Y.Z`, `X.Y`, `X`, and `latest`. The image
+includes OCI source metadata, a software bill of materials, and BuildKit
+provenance. Public-repository releases also receive a GitHub artifact
+attestation.
 
 The manifest tracks the latest released version, and every release tag points to
 the matching commit on the `main` lineage. Together these prevent Release Please

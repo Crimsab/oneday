@@ -8,9 +8,15 @@ on:
 
 permissions:
   actions: write
+  attestations: write
   contents: write
+  id-token: write
   issues: write
+  packages: write
   pull-requests: write
+
+env:
+  REGISTRY: ghcr.io
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -72,14 +78,22 @@ jobs:
           bun-version: 1.3.14
 
       - name: Compute build metadata
+        id: build_metadata
         if: steps.release.outputs.release_created == 'true'
         run: |
+          tag="${{ steps.release.outputs.tag_name }}"
+          image_version="${tag#v}"
+
           {
-            echo "VERSION=${{ steps.release.outputs.tag_name }}"
+            echo "VERSION=$tag"
             echo "COMMIT=${GITHUB_SHA}"
             echo "BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
             echo "DIRTY=false"
             echo "LDFLAGS=$(bash ./scripts/build-ldflags.sh)"
+            echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}"
+            echo "IMAGE_VERSION=$image_version"
+            echo "IMAGE_MINOR=${image_version%.*}"
+            echo "IMAGE_MAJOR=${image_version%%.*}"
           } >> "$GITHUB_ENV"
 
       - name: Run release gate
@@ -133,3 +147,59 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "${{ steps.release.outputs.tag_name }}" release/* --clobber
+
+      - name: Set up Docker Buildx
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GitHub Container Registry
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate container metadata
+        id: docker_metadata
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ env.IMAGE_VERSION }}
+            type=raw,value=${{ env.IMAGE_MINOR }}
+            type=raw,value=${{ env.IMAGE_MAJOR }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=OneDay
+            org.opencontainers.image.description=Persistent AI storytelling engine with browser and terminal clients.
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and publish container image
+        id: docker_publish
+        if: steps.release.outputs.release_created == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: .
+          file: gateway/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.docker_metadata.outputs.tags }}
+          labels: ${{ steps.docker_metadata.outputs.labels }}
+          annotations: ${{ steps.docker_metadata.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Attest the public container image
+        if: steps.release.outputs.release_created == 'true' && github.event.repository.private == false
+        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.docker_publish.outputs.digest }}
+          push-to-registry: true

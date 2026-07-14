@@ -1,0 +1,6 @@
+services:
+  oneday-gateway:
+    image: ${ONEDAY_BUILD_IMAGE:-oneday-gateway:local}
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile

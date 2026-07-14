@@ -77,7 +77,8 @@ cp .env.example .env
 Enable a provider in `config.yaml`, add its key to `.env`, then start the stack:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 curl -fsS http://localhost:8788/api/health
 ```
 
@@ -101,7 +102,8 @@ go run ./cmd/oneday
 ```
 
 Release archives with Linux and Windows binaries are available on the
-[Releases page](https://github.com/Crimsab/oneday/releases).
+[Releases page](https://github.com/Crimsab/oneday/releases). The complete browser
+stack is also published as `ghcr.io/crimsab/oneday:latest`.
 
 Read the full [getting-started guide](docs/getting-started.md) for provider,
 Docker-host networking, RAG, and verification details.
@@ -184,7 +186,7 @@ upgrade and review the [changelog](CHANGELOG.md) for migration-sensitive changes
 
 Release Please turns Conventional Commits into a release PR, updates the
 changelog, creates the semantic version tag, and publishes Linux/Windows
-archives after the release gates pass.
+archives plus the versioned GHCR image after the release gates pass.
 
 ## Community and security
 

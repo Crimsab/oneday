@@ -5,12 +5,17 @@ The public `compose.yaml` is portable and has no host-specific paths or networks
 
 ## Start
 
+Release images are published for `linux/amd64` as
+`ghcr.io/crimsab/oneday`. Pulling `latest` tracks the newest stable release;
+pin a version such as `1.8.0` for reproducible deployments.
+
 ```bash
 cp config.example.yaml config.yaml
 cp .env.example .env
 $EDITOR config.yaml
 $EDITOR .env
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 The service listens on `${ONEDAY_PORT:-8788}` and exposes `/api/health`.
@@ -35,11 +40,23 @@ ai:
 
 The Compose file supplies the Linux `host-gateway` mapping automatically.
 
+## Build from source
+
+The default Compose file consumes the published image. Contributors can build
+the current checkout with the development overlay:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
+
+This produces `oneday-gateway:local` without changing the release-oriented
+defaults in `.env` or `compose.yaml`.
+
 ## Update
 
 ```bash
 git pull --ff-only
-docker compose build --pull oneday-gateway
+docker compose pull oneday-gateway
 docker compose up -d oneday-gateway
 curl -fsS http://localhost:${ONEDAY_PORT:-8788}/api/health
 ```

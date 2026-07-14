@@ -65,10 +65,11 @@ cp .env.example .env
 ```
 
 Edit `config.yaml` so at least one provider is enabled and set its key in `.env`.
-Then build and start the complete Go + Rust + React image:
+Then pull and start the complete Go + Rust + React image:
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 curl -fsS http://localhost:8788/api/health
 ```
 
@@ -82,6 +83,12 @@ override that mounts the relevant CLI binary and its authentication files.
 If a provider or image bridge runs on the Docker host, use
 `host.docker.internal` rather than `127.0.0.1` from `config.yaml`; the supplied
 Compose file maps that hostname on Linux as well as Docker Desktop.
+
+To build the current checkout instead of pulling a release image, use:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
+```
 
 ## Verify the installation
 
