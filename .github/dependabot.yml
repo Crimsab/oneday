@@ -41,12 +41,12 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+          - version-update:semver-minor
     groups:
-      rust-minor-and-patch:
+      rust-patches:
         patterns:
           - "*"
         update-types:
-          - minor
           - patch
 
   - package-ecosystem: bun
