@@ -2,59 +2,45 @@ name: oneday
 
 services:
   oneday-gateway:
-    image: homelab/oneday-gateway:2026-07-10
+    image: ${ONEDAY_IMAGE:-oneday-gateway:local}
     build:
-      context: /opt/lab/docker/oneday
+      context: .
       dockerfile: gateway/Dockerfile
-    container_name: oneday-gateway
     restart: unless-stopped
     init: true
-    working_dir: /opt/oneday
+    working_dir: /app
     ports:
-      - "8788:8788"
+      - "${ONEDAY_PORT:-8788}:8788"
     healthcheck:
       test: ["CMD-SHELL", "ss -ltn | grep -q ':8788 '"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
-    env_file:
-      - /opt/lab/data/secrets/oneday/app.env
     environment:
-      TZ: Europe/Rome
-      ONEDAY_IMAGEGEN_OPENCLAW_URL: http://homelab.local:8099/generate
-      ONEDAY_IMAGEGEN_CONCURRENCY: "3"
+      TZ: ${TZ:-UTC}
+      ONEDAY_ROOT: /app
+      ONEDAY_GATEWAY_ADDR: 0.0.0.0:8788
+      ONEDAY_GATEWAY_STATIC_DIR: /usr/local/share/oneday-gateway/web
+      ONEDAY_LITELLM_API_KEY: ${ONEDAY_LITELLM_API_KEY:-}
+      ONEDAY_OPENROUTER_API_KEY: ${ONEDAY_OPENROUTER_API_KEY:-}
+      ONEDAY_IMAGEGEN_PROVIDER: ${ONEDAY_IMAGEGEN_PROVIDER:-}
+      ONEDAY_IMAGEGEN_BASE_URL: ${ONEDAY_IMAGEGEN_BASE_URL:-}
+      ONEDAY_IMAGEGEN_API_KEY: ${ONEDAY_IMAGEGEN_API_KEY:-}
+      ONEDAY_IMAGEGEN_OPENCLAW_URL: ${ONEDAY_IMAGEGEN_OPENCLAW_URL:-}
+      ONEDAY_IMAGEGEN_MODEL: ${ONEDAY_IMAGEGEN_MODEL:-}
+      ONEDAY_IMAGEGEN_MAP_ICON_MODEL: ${ONEDAY_IMAGEGEN_MAP_ICON_MODEL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - type: bind
-        source: /opt/lab/docker/oneday
-        target: /opt/oneday
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /usr/local/bin/codex
-        target: /usr/local/bin/codex
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /root/.codex/auth.json
-        target: /root/.codex/auth.json
-        read_only: true
-        bind:
-          create_host_path: false
-      - type: bind
-        source: /root/.codex/config.toml
-        target: /root/.codex/config.toml
-        read_only: true
-        bind:
-          create_host_path: false
+        source: ./config.yaml
+        target: /app/config.yaml
+      - type: volume
+        source: oneday_data
+        target: /app/oneday_data
     security_opt:
       - no-new-privileges:true
-    dns:
-      - 192.168.50.157
-    networks:
-      - homelab_network
 
-networks:
-  homelab_network:
-    external: true
+volumes:
+  oneday_data:
