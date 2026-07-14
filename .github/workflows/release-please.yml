@@ -35,6 +35,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           branch="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
             --base main \
             --state open \
             --json headRefName \
@@ -45,7 +46,7 @@ jobs:
             exit 1
           fi
 
-          gh workflow run ci.yml --ref "$branch"
+          gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
 
       - name: Check out release tag
         if: steps.release.outputs.release_created == 'true'
