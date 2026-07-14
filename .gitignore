@@ -37,6 +37,7 @@ release/
 *.log
 tmp/
 temp/
+/docs/benchmarks/runs/
 
 # Go
 vendor/

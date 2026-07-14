@@ -1,8 +1,7 @@
 # OneDay ASCII Benchmark Review
 
-Run directory:
-
-- [`2026-04-09-024455-oneday-ascii-benchmark-json_schema.md`](./runs/2026-04-09-024455-oneday-ascii-benchmark-json_schema.md)
+This document preserves the summarized results of the April 2026 benchmark.
+Raw run artifacts are generated locally and intentionally excluded from Git.
 
 ## Setup
 

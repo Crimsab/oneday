@@ -1,10 +1,7 @@
 # OneDay Benchmark Review
 
-Run directory:
-
-- [`2026-04-08-221946-oneday-benchmark-prompt.md`](./runs/2026-04-08-221946-oneday-benchmark-prompt.md)
-- [`2026-04-08-222328-oneday-benchmark-json_object.md`](./runs/2026-04-08-222328-oneday-benchmark-json_object.md)
-- [`2026-04-08-222716-oneday-benchmark-json_schema.md`](./runs/2026-04-08-222716-oneday-benchmark-json_schema.md)
+This document preserves the summarized results of the April 2026 benchmark.
+Raw run artifacts are generated locally and intentionally excluded from Git.
 
 ## Setup
 
