@@ -1,202 +1,193 @@
+<div align="center">
+
 # OneDay
 
-An AI-driven text RPG with a terminal client and a full browser interface.
+<p><strong>Persistent AI stories that remember, branch, and evolve</strong></p>
 
-Stories are infinite, AI-generated, and deeply personalized. Every NPC has personality, desires, and opinions about you. Every choice matters. Every story is unique.
+[![CI](https://github.com/Crimsab/oneday/actions/workflows/ci.yml/badge.svg)](https://github.com/Crimsab/oneday/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Crimsab/oneday?display_name=tag&sort=semver)](https://github.com/Crimsab/oneday/releases/latest)
+[![Go](https://img.shields.io/github/go-mod/go-version/Crimsab/oneday)](go.mod)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docs/docker.md)
 
-## Features
+<!-- Logo slot: add docs/assets/oneday-logo.svg above the title. -->
+<!-- Hero slot: add docs/assets/oneday-hero.webp here when the final artwork is ready. -->
 
-- **AI-Powered Narrative** — stories are generated and continued by AI models (Claude, GPT, Gemini, etc.) via configurable provider chain
-- **Dynamic Everything** — stats, skills, NPCs, items, locations, objectives, achievements are all generated at runtime. Nothing is hardcoded
-- **Deep Character System** — start from nothing, earn everything. Traits emerge from your actions, skills from your practice, titles from your deeds
-- **Living NPCs** — each NPC has personality, speech patterns, quirks, private thoughts about you, and hidden desires that drive their behavior
-- **Always Free Action** — you can always type your own action, not just pick from a list. Talk to the boss instead of fighting. Craft something absurd. Try anything
-- **Turn-Based Combat** — narrative-driven with stat checks, dice rolls, and creative solutions. Chat is always present, even mid-fight
-- **AI Crafting** — no hardcoded recipes. Describe what you want to build, the AI evaluates if it makes sense with your materials and skills
-- **Challenge System** — dice rolls, stat checks, skill checks, rock-paper-scissors, and other mini-games. The engine rolls, not the AI
-- **AI Achievements** — no predefined list. The AI recognizes noteworthy moments and awards unique achievements
-- **Persistent Memory** — full chat history saved, RAG-powered long-term context. Stories can be infinite
-- **Multiple Genres** — fantasy, cyberpunk, horror, slice-of-life, anything. Each genre defines its own stat system and rules
-- **Per-Story Authoring Control** — each story can lock its own language, prose style, and reusable prompt directives so narration stays consistent across turns, combat, crafting, summaries, and GM meta commands
-- **Guided Story Setup** — `New Story` now uses a review-first wizard with quick choices for world draft, rules, factions, dangers, and stats, while still allowing free text edits at every step
+OneDay is a local-first narrative RPG with a browser interface and terminal
+client. The AI writes the story; the engine preserves causality, resolves
+mechanics, tracks the world, and keeps every branch coherent in SQLite.
 
-## Tech Stack
+[Get started](#quick-start) · [Documentation](docs/README.md) ·
+[Releases](https://github.com/Crimsab/oneday/releases) ·
+[Report a bug](https://github.com/Crimsab/oneday/issues/new/choose)
 
-- **Go** + Bubbletea/Bubbles/Lipgloss (TUI)
-- **Rust** + Axum/SQLx (browser gateway, typed Go bridge, SSE streaming)
-- **React** + TypeScript + Vite, built and tested with **Bun** (browser UI)
-- **SQLite** + embedding BLOBs + cosine similarity in Go (RAG, no `sqlite-vec`)
-- AI via **Codex OAuth** / **LiteLLM** / **OpenRouter** / **Claude Code** (configurable fallback chain)
+</div>
 
-## Quick Start
+## Why OneDay
+
+- **One world, not a disposable chat.** Characters, locations, factions,
+  investigations, projects, achievements, inventory, and consequences persist.
+- **Real player agency.** Pick a suggested choice or write any action in your
+  own words; the story is not limited to a dialogue tree.
+- **Branch without losing canon.** Fork decisions, explore alternate paths,
+  restore snapshots, and navigate history with branch-aware world state.
+- **Deterministic mechanics.** The engine owns checks, challenges, combat,
+  crafting outcomes, and atomic state changes instead of trusting free-form prose.
+- **Long-term memory.** RAG summaries and embeddings keep long-running stories
+  grounded without treating the entire transcript as one prompt.
+- **Optional generated media.** Scene art, character portraits, transparent map
+  symbols, ambient ASCII, and spoken audio remain subordinate to canonical text.
+
+## A story system, not only a narrator
+
+| Narrative layer | Canonical engine |
+| --- | --- |
+| Any genre, tone, language, and prose style | Versioned SQLite state shared by browser and TUI |
+| Free actions, dialogue, choices, and GM guidance | Atomic turn commits, idempotency, saves, and branches |
+| Persistent NPC voice, motives, relationships, and reputation | Deterministic challenges, combat, crafting, and rewards |
+| Model routing with fallbacks and repair passes | Typed Go ↔ Rust contracts and migration gates |
+| Story-specific visual direction and generated assets | Branch-aware asset lineage and failure-safe background jobs |
+
+## Interfaces
+
+### Browser
+
+The React interface is served by a Rust/Axum gateway over the same Go engine and
+database as the terminal client. It includes the transcript, story library,
+free-action composer, command palette, history and branches, canonical state
+inspectors, maps, challenges, model settings, audio, and visual asset workflows.
+
+### Terminal
+
+The Bubble Tea client provides the complete narrative loop, guided story
+creation, slash commands, choices and free actions, combat/crafting surfaces,
+history, saves, diagnostics, and local CLI provider integrations.
+
+## Quick start
+
+### Browser with Docker
 
 ```bash
-# Copy local config
+git clone https://github.com/Crimsab/oneday.git
+cd oneday
 cp config.example.yaml config.yaml
-
-# Configure provider keys / endpoints.
-# Prefer env vars so secrets do not live in config.yaml.
-export ONEDAY_LITELLM_API_KEY="..."
-export ONEDAY_OPENROUTER_API_KEY="..."
-$EDITOR config.yaml
-
-# Or run the first-time setup helper
-go run ./cmd/oneday setup
-
-# Re-open setup when config.yaml already exists
-go run ./cmd/oneday setup --reconfigure
-
-# Check local tools, provider auth, model smoke, and RAG readiness
-go run ./cmd/oneday doctor
-
-# Machine-readable diagnostics for scripts/CI/support
-go run ./cmd/oneday doctor --json
-
-# Inspect effective config without secrets
-go run ./cmd/oneday config show --safe
-
-# Check local/remote embedding readiness and latency
-go run ./cmd/oneday rag benchmark
-
-# Clear stale embeddings after changing models/dimensions
-go run ./cmd/oneday rag reindex --story <story-id>
-
-# List available story pack files
-go run ./cmd/oneday story-packs list
-
-# Create a clean share/release handoff directory
-go run ./cmd/oneday export
-
-# Run tests
-go test ./...
-
-# Test and build the browser UI
-cd gateway/web
-bun install --frozen-lockfile
-bun run test
-bun run build
-cd ../..
-
-# Build and run the complete browser gateway stack
-docker compose build oneday-gateway
-docker compose up -d oneday-gateway
-
-# Run the reusable verification sweep (tests + vet + QA matrix)
-make verify
-
-# Generate Go and browser coverage baselines
-make coverage
-
-# Run the game
-go run ./cmd/oneday
-
-# Refresh the repo-root binary used by ./oneday
-make build
-
-# Check which build you are actually running
-./oneday --version
-
-# Run the stricter pre-release gate from a clean worktree
-make release-check
-
-# Build the benchmark tool
-make build-bench
-
-# Build the ASCII benchmark tool
-make build-ascii-bench
-
-# Linux amd64
-GOOS=linux GOARCH=amd64 go build -o build/oneday-linux-amd64 ./cmd/oneday
-
-# Windows amd64
-GOOS=windows GOARCH=amd64 go build -o build/oneday-windows-amd64.exe ./cmd/oneday
-
-# Or use the Makefile helper
-make all
+cp .env.example .env
 ```
 
-The production container builds the Go engine, Rust gateway, and React UI into
-one image. It listens on port `8788`, exposes `/api/health`, returns an
-`X-Request-Id` response header, and emits structured request status/latency
-logs. The Compose service includes a runtime healthcheck.
+Enable a provider in `config.yaml`, add its key to `.env`, then start the stack:
 
-## Configuration
+```bash
+docker compose up -d --build
+curl -fsS http://localhost:8788/api/health
+```
 
-Config lives in two places:
+Open [http://localhost:8788](http://localhost:8788). The first start creates and
+migrates the persistent database automatically.
 
-- **inside the code**: `internal/config/config.go` contains safe defaults via `config.Default()`
-- **outside the code**: `config.yaml` is the local runtime override loaded by `cmd/oneday/main.go`
+Docker does not bundle host Codex or Claude CLI credentials. The standard
+container path is LiteLLM/OpenRouter; advanced users can add private CLI mounts
+through a Compose override.
 
-Practical rules:
+### Terminal from source
 
-- `config.example.yaml` is the tracked template for the repo
-- release archives also include `config.example.yaml` next to the binaries
-- `config.yaml` is ignored by git and is where local secrets / endpoints go
-- `${ENV_VAR}` placeholders in `config.yaml` are expanded at load time, so prefer environment variables for API keys
-- `.env` is loaded automatically when present and does not overwrite already-exported variables
-- the binary looks for `config.yaml` in the current working directory first, then next to the executable itself
-- if `config.yaml` is missing, the app falls back to the built-in defaults
-- `./oneday --version` prints the binary's version, commit, build date, and dirty-state so you can confirm you rebuilt after source changes
+Requires Go 1.25 or newer:
 
-Current default provider strategy:
+```bash
+git clone https://github.com/Crimsab/oneday.git
+cd oneday
+go run ./cmd/oneday setup
+go run ./cmd/oneday doctor
+go run ./cmd/oneday
+```
 
-- primary: `litellm` via `http://lite.homelab.local/v1` with `gpt-5.4-mini`
-- `openrouter` is available but disabled by default until you provide a real API key
-- optional experimental `codex` provider shells out to the local Codex CLI after `codex login`, defaulting to `gpt-5.4-mini` with reasoning `off`
-- ancillary repair/validation work can use `ai.generation.utility_model`, defaulting to `gpt-5.4-mini` when no dedicated repair model is configured
-- final fallback: `claude-code` if enabled
-- optional ambient ASCII art uses `ai.ascii_art.*` and can target a different model from the main narrator
+Release archives with Linux and Windows binaries are available on the
+[Releases page](https://github.com/Crimsab/oneday/releases).
 
-RAG / embeddings note:
+Read the full [getting-started guide](docs/getting-started.md) for provider,
+Docker-host networking, RAG, and verification details.
 
-- embeddings are stored in SQLite as raw BLOB vectors
-- retrieval uses cosine similarity in Go
-- the default embedding model is `text-embedding-3-small`
-- Codex is generation-only, but it can be paired with local RAG embeddings
-- remote RAG can use LiteLLM/OpenRouter with `text-embedding-3-small`
-- local RAG can use Ollama or a custom local HTTP embedding server without API keys
-- recommended local default: `bge-m3` for multilingual/Italian-friendly retrieval
-- alternatives: `nomic-embed-text` for fast/light local use, `mxbai-embed-large` for English retrieval quality, `qwen3-embedding` for heavier quality-oriented setups where available
-- this project does **not** use `sqlite-vec`
+## AI providers and media
 
-Setup behavior:
+| Integration | Use |
+| --- | --- |
+| Codex CLI | Local generation through an existing `codex login` |
+| Claude Code | Optional local CLI fallback |
+| LiteLLM / OpenAI-compatible | Self-hosted or managed model gateway |
+| OpenRouter | Direct hosted model routing |
+| Ollama / custom HTTP | Local RAG embeddings |
+| OpenClaw bridge / OpenAI-compatible image API | Non-blocking story visuals |
 
-- `oneday setup` preserves an existing `config.yaml` and prints the reconfigure command
-- `oneday setup --reconfigure` or `oneday setup --force` opens the wizard again and can rewrite local config
-- Ollama is optional: choose it for the easiest local model download/run path, or choose a custom local endpoint if you already run Python, llama.cpp, ONNX, or another embedding service
+Narrative, utility, repair, embedding, ASCII, image, map-icon, and TTS paths can
+use separate models. General visuals default to `openai/gpt-image-2`; transparent
+map symbols can use `openai/gpt-image-1` independently.
 
-Safe sharing:
+During story creation, visual direction can be Auto, Photorealistic, Cinematic
+Fantasy, Illustrated Fantasy, Anime, or a custom prompt. The selected direction
+is persisted with the story for consistent later assets.
 
-- share `config.example.yaml`, `.env.example`, and source files, not local `config.yaml`, `.env`, `oneday_data/`, databases, or binaries
-- run `oneday setup` on a friend's machine so provider choice and local auth are generated there
-- run `oneday doctor` after setup; 401/403 errors should point at the exact env key to fix
-- `oneday export` is always safe-by-default; it excludes local config, env files, story data, databases, generated binaries, and secrets
+See [Configuration](docs/configuration.md) for the complete model, RAG, media,
+storage, and secret-handling reference.
 
-## CI / Release
+## How it works
 
-GitHub Actions is configured to:
+```text
+Terminal client ─┐
+                 ├─ Go story engine + provider router ─ SQLite
+React browser ─ Rust gateway ─ typed JSON bridge ┘
+                 └─ SSE events + generated media
+```
 
-- run `go test ./...` and `go vet ./...`
-- build `oneday` and `oneday-benchmark`
-- cross-compile Linux amd64 and Windows amd64 artifacts
-- open or update a release PR through `release-please`
-- publish the GitHub Release after that release PR is merged
+The Go engine owns narrative prompts, mechanics, persistence, migrations, and
+canonical mutations. The Rust gateway owns HTTP, SSE, media jobs, and the typed
+bridge. React renders canonical state but never invents a second game state.
 
-Workflow files:
+Read [Architecture](docs/architecture.md) and the
+[browser gateway contract](docs/browser-gateway.md) for the full turn flow and
+component boundaries.
 
-- `.github/workflows/build-release.yml` for CI and tag-based release builds
-- `.github/workflows/release-please.yml` for automated release PRs, tags, and release asset upload
-- `Makefile` for local `./oneday`, benchmark, and cross-platform builds
-- `docs/qa-matrix.md` plus `scripts/qa-matrix.sh` for the high-risk cross-system sweep
+## Documentation
 
-Recommended local ship flow:
+| Guide | Covers |
+| --- | --- |
+| [Getting started](docs/getting-started.md) | Native and Docker installation |
+| [Configuration](docs/configuration.md) | Providers, RAG, visuals, game settings, and secrets |
+| [Docker](docs/docker.md) | Networking, persistence, updates, backups, and operations |
+| [Architecture](docs/architecture.md) | Components, contracts, turn flow, and canonical state |
+| [Troubleshooting](docs/troubleshooting.md) | Provider, RAG, media, browser, and CI failures |
+| [Development](docs/development.md) | Toolchains, layout, tests, and generated contracts |
+| [Releases](docs/releases.md) | Changelog automation, versioning, tags, and artifacts |
 
-1. `make release-check`
-2. verify `./oneday --version` matches the commit you intend to ship
-3. only then publish or upload artifacts
+## Development
 
-CI now uses the same `make verify` gate before normal builds, and release automation runs `make release-check` before packaging release assets.
+The repository uses Go 1.25, Rust 1.97, React 19, TypeScript, Vite, and Bun.
 
-## License
+```bash
+make verify
+cargo test --manifest-path gateway/Cargo.toml
+cd gateway/web && bun install --frozen-lockfile && bun run test && bun run build
+```
 
-Personal project.
+CI runs Go verification and cross-compilation, Rust tests and Clippy, web unit
+and Playwright gates, a complete Docker build, workflow linting, and a Gitleaks
+source scan. Public pull requests run only on GitHub-hosted runners.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+## Releases and project status
+
+OneDay is under active development. Back up persistent story data before an
+upgrade and review the [changelog](CHANGELOG.md) for migration-sensitive changes.
+
+Release Please turns Conventional Commits into a release PR, updates the
+changelog, creates the semantic version tag, and publishes Linux/Windows
+archives after the release gates pass.
+
+## Community and security
+
+- [Support](SUPPORT.md)
+- [Security policy](SECURITY.md)
+- [Code of conduct](CODE_OF_CONDUCT.md)
+- [Contributing](CONTRIBUTING.md)
+
+OneDay is local/self-hosted software. If you expose it to an untrusted network,
+you are responsible for authentication, TLS, network policy, backups, and
+protecting provider credentials.
