@@ -8,6 +8,7 @@
 [![Release](https://img.shields.io/github/v/release/Crimsab/oneday?display_name=tag&sort=semver)](https://github.com/Crimsab/oneday/releases/latest)
 [![Go](https://img.shields.io/github/go-mod/go-version/Crimsab/oneday)](go.mod)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docs/docker.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <!-- Logo slot: add docs/assets/oneday-logo.svg above the title. -->
 <!-- Hero slot: add docs/assets/oneday-hero.webp here when the final artwork is ready. -->
@@ -154,6 +155,9 @@ component boundaries.
 | [Architecture](docs/architecture.md) | Components, contracts, turn flow, and canonical state |
 | [Troubleshooting](docs/troubleshooting.md) | Provider, RAG, media, browser, and CI failures |
 | [Development](docs/development.md) | Toolchains, layout, tests, and generated contracts |
+| [Testing](docs/testing.md) | Automated gates, browser coverage, and manual release checks |
+| [Benchmarks](docs/benchmarks/README.md) | Reproducible model, ASCII, and schema reliability comparisons |
+| [Roadmap](docs/project-roadmap.md) | Current priorities and contribution directions |
 | [Releases](docs/releases.md) | Changelog automation, versioning, tags, and artifacts |
 
 ## Development
@@ -191,3 +195,7 @@ archives after the release gates pass.
 OneDay is local/self-hosted software. If you expose it to an untrusted network,
 you are responsible for authentication, TLS, network policy, backups, and
 protecting provider credentials.
+
+## License
+
+OneDay is available under the [MIT License](LICENSE).
