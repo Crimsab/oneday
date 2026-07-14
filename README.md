@@ -170,9 +170,10 @@ cargo test --manifest-path gateway/Cargo.toml
 cd gateway/web && bun install --frozen-lockfile && bun run test && bun run build
 ```
 
-CI runs Go verification and cross-compilation, Rust tests and Clippy, web unit
-and Playwright gates, a complete Docker build, workflow linting, and a Gitleaks
-source scan. Public pull requests run only on GitHub-hosted runners.
+CI runs Go verification, reachable vulnerability scanning, and
+cross-compilation; Rust tests and Clippy; web unit and Playwright gates; a
+complete Docker build; workflow linting; and a Gitleaks source scan. Public
+pull requests run only on GitHub-hosted runners.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 

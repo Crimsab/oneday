@@ -45,8 +45,9 @@ The `CI` workflow runs:
 
 - workflow syntax validation with Actionlint;
 - a Gitleaks scan of tracked content;
-- Go verification, migration compatibility, command smoke checks, and Linux and
-  Windows cross-compilation;
+- Go verification, reachable vulnerability scanning with `govulncheck`,
+  migration compatibility, command smoke checks, and Linux and Windows
+  cross-compilation;
 - Rust formatting, tests, Clippy, and a debug build;
 - frontend unit tests, production build, and Playwright desktop/mobile gates;
 - a complete gateway Docker image build.

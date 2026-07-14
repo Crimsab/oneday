@@ -59,6 +59,9 @@ jobs:
       - name: Run verification gate
         run: make verify
 
+      - name: Scan Go dependencies for reachable vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...
+
       - name: Run non-live command smoke checks
         run: |
           go run ./cmd/oneday config show --safe
