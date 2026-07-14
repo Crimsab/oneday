@@ -674,7 +674,7 @@ func (c *asciiClient) complete(ctx context.Context, model string, bc asciiBenchm
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("HTTP-Referer", "https://example.com/oneday-ascii-benchmark")
+	req.Header.Set("HTTP-Referer", "https://github.com/Crimsab/oneday")
 	req.Header.Set("X-Title", "OneDay ASCII Benchmark")
 
 	start := time.Now()

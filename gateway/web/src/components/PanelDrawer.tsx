@@ -1233,7 +1233,7 @@ function ModelRoutingSettings({
             onChange={(event) =>
               updateImageGeneration({ openClawBridgeUrl: event.target.value })
             }
-            placeholder="http://example.com:8099/generate"
+            placeholder="http://127.0.0.1:8099/generate"
           />
         </label>
         <label>
@@ -1243,7 +1243,7 @@ function ModelRoutingSettings({
             onChange={(event) =>
               updateImageGeneration({ baseUrl: event.target.value })
             }
-            placeholder="http://llm.example.com/v1"
+            placeholder="http://127.0.0.1:4000/v1"
           />
         </label>
         <label>
