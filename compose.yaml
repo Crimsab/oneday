@@ -36,6 +36,8 @@ services:
       - type: bind
         source: ./config.yaml
         target: /app/config.yaml
+        bind:
+          create_host_path: false
       - type: volume
         source: oneday_data
         target: /app/oneday_data
