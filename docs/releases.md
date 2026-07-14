@@ -10,16 +10,15 @@ OneDay uses Release Please in manifest mode. The source-controlled files are:
 
 1. Conventional Commits land on `main`.
 2. `.github/workflows/release-please.yml` opens or updates one release PR.
-3. The PR contains the next version and generated changelog entry.
-4. Merging it creates the `vX.Y.Z` tag and GitHub Release.
-5. The workflow runs the release gates, builds Linux/Windows archives, and uploads them to the release.
+3. The workflow explicitly dispatches CI on the release branch. This avoids the
+   approval-only run created by GitHub when `GITHUB_TOKEN` opens a pull request.
+4. The PR contains the next version and generated changelog entry.
+5. Merging it creates the `vX.Y.Z` tag and GitHub Release.
+6. The workflow runs the release gates, builds Linux/Windows archives, and uploads them to the release.
 
-The manifest currently tracks the actual latest tag, preventing Release Please
-from restarting at `1.0.0` when configuration changes.
-
-`last-release-sha` temporarily anchors the `1.8.0` changelog to the `1.7.0`
-release merge on the current `main` lineage. Remove that override after `v1.8.0`
-is published; the new tag will then be the normal release marker.
+The manifest tracks the latest released version, and every release tag points to
+the matching commit on the `main` lineage. Together these prevent Release Please
+from restarting at `1.0.0` or including changes from an already published version.
 
 ## Version rules
 

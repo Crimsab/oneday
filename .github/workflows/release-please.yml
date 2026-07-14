@@ -7,6 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
   issues: write
   pull-requests: write
@@ -27,6 +28,24 @@ jobs:
         uses: googleapis/release-please-action@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Dispatch CI for the release pull request
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="$(gh pr list \
+            --base main \
+            --state open \
+            --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("release-please--branches--main"))][0].headRefName // empty')"
+
+          if [[ -z "$branch" ]]; then
+            echo "Release Please reported a pull request but no release branch was found" >&2
+            exit 1
+          fi
+
+          gh workflow run ci.yml --ref "$branch"
 
       - name: Check out release tag
         if: steps.release.outputs.release_created == 'true'
