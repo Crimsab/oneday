@@ -13,6 +13,10 @@ updates:
       - dependencies
     commit-message:
       prefix: chore(deps)
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       go-minor-and-patch:
         patterns:
@@ -33,12 +37,16 @@ updates:
       - dependencies
     commit-message:
       prefix: chore(deps)
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
     groups:
-      rust-minor-and-patch:
+      rust-patches:
         patterns:
           - "*"
         update-types:
-          - minor
           - patch
 
   - package-ecosystem: bun
@@ -53,6 +61,10 @@ updates:
       - dependencies
     commit-message:
       prefix: chore(deps)
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       web-minor-and-patch:
         patterns:
@@ -73,6 +85,15 @@ updates:
       - dependencies
     commit-message:
       prefix: chore(deps)
+    ignore:
+      # Keep the Docker builder aligned with go.mod and CI. Toolchain minor
+      # upgrades are reviewed as deliberate project-wide migrations.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+      - dependency-name: golang
+        update-types:
+          - version-update:semver-minor
     groups:
       docker-minor-and-patch:
         patterns:
@@ -93,6 +114,10 @@ updates:
       - dependencies
     commit-message:
       prefix: chore(deps)
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
     groups:
       actions-minor-and-patch:
         patterns:
