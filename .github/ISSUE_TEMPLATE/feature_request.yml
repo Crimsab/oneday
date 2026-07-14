@@ -1,0 +1,36 @@
+name: Feature request
+description: Propose a focused improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or developer problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe behavior and constraints, not only an implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      options:
+        - Shared engine / storage
+        - Browser
+        - Terminal client
+        - Provider / RAG / media integration
+        - Documentation / tooling
+    validations:
+      required: true
