@@ -10,10 +10,8 @@ config.*.yaml
 *.p12
 *.pfx
 
-# Local planning and agent instructions
+# Local planning and deployment overrides
 /.planning/
-/AGENTS.md
-/CLAUDE.md
 /compose.homelab.yaml
 
 # Binary

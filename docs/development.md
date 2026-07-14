@@ -70,8 +70,10 @@ Scopes such as `web`, `gateway`, `engine`, `imagegen`, or `ci` keep the automate
 changelog readable.
 
 Do not commit local configuration, `.env`, story databases, generated benchmark
-runs, build output, or agent/planning metadata. Run `make friend-safe-check`
-before handing source to someone else.
+runs, build output, or private planning and deployment metadata. Repository-wide
+agent guidance belongs in the tracked `AGENTS.md`; `CLAUDE.md` remains its
+symbolic link. Run `make friend-safe-check` before handing source to someone
+else.
 
 See [CONTRIBUTING.md](../CONTRIBUTING.md) for the pull request checklist and
 [Releases](releases.md) for automation details.
