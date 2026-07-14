@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1@sha256:3a1dd6010466c1cf591607a75c6e144ba9f099e7f3790d595c6a611a9c78f387 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1@sha256:978393666bb054d0cb135a39b36cbdac82b5c0fb5553942e0ae7b0aa631f0e54 AS chef
 WORKDIR /app
 
 FROM oven/bun:1@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS web-builder
