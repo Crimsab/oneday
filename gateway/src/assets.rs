@@ -2618,7 +2618,7 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
             "ONEDAY_OPENCLAW_IMAGEGEN_URL",
         ])
         .or_else(|| image_config_string(image_generation, |config| &config.openclaw_bridge_url))
-        .unwrap_or_else(|| "http://homelab.local:8099/generate".to_string()),
+        .unwrap_or_else(|| "http://127.0.0.1:8099/generate".to_string()),
         default_size: first_env(&["ONEDAY_IMAGEGEN_SIZE", "ONEDAY_IMAGE_SIZE"])
             .or_else(|| image_config_string(image_generation, |config| &config.default_size))
             .unwrap_or_else(|| "1024x1024".to_string()),

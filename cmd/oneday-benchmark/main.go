@@ -993,7 +993,7 @@ func (c *client) complete(ctx context.Context, model string, bc benchmarkCase, m
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("HTTP-Referer", "https://homelab.local/oneday-benchmark")
+	req.Header.Set("HTTP-Referer", "https://github.com/Crimsab/oneday")
 	req.Header.Set("X-Title", "OneDay Benchmark")
 
 	start := time.Now()

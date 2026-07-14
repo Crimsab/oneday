@@ -22,7 +22,7 @@ The benchmark exercises the same stack used by the game:
 ## Command
 
 ```bash
-cd /opt/lab/docker/oneday
+cd /path/to/oneday
 go run ./cmd/oneday-schema-benchmark
 ```
 

@@ -33,9 +33,8 @@ ai:
   # LiteLLM / OpenAI-compatible endpoint
   litellm:
     enabled: true
-    # Host-native default. If you run OneDay inside Docker on the homelab network,
-    # use http://ai-proxy:4000/v1 instead.
-    base_url: "http://lite.homelab.local/v1"
+    # Default for a LiteLLM proxy running on the same machine.
+    base_url: "http://127.0.0.1:4000/v1"
     api_key: "${ONEDAY_LITELLM_API_KEY}"
     default_model: "gpt-5.4-mini"
 
@@ -83,7 +82,7 @@ ai:
     api_key: ""
     model: "openai/gpt-image-2"
     map_icon_model: "openai/gpt-image-1"
-    openclaw_bridge_url: "http://homelab.local:8099/generate"
+    openclaw_bridge_url: "http://127.0.0.1:8099/generate"
     default_size: "1024x1024"
     location_size: "1536x1024"
     character_size: "1024x1024"

@@ -24,8 +24,8 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.ProviderPriority[0] != "litellm" {
 		t.Errorf("ProviderPriority[0] = %q, want %q", cfg.AI.ProviderPriority[0], "litellm")
 	}
-	if cfg.AI.LiteLLM.BaseURL != "http://lite.homelab.local/v1" {
-		t.Errorf("LiteLLM.BaseURL = %q, want %q", cfg.AI.LiteLLM.BaseURL, "http://lite.homelab.local/v1")
+	if cfg.AI.LiteLLM.BaseURL != "http://127.0.0.1:4000/v1" {
+		t.Errorf("LiteLLM.BaseURL = %q, want %q", cfg.AI.LiteLLM.BaseURL, "http://127.0.0.1:4000/v1")
 	}
 	if cfg.AI.LiteLLM.Enabled {
 		t.Error("LiteLLM.Enabled = true, want false by default")
@@ -509,7 +509,7 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 	fallbacks := []string{"test-fallback-one", "test-fallback-two"}
 	image := "test-image-model"
 	imageProvider := "openai-compatible"
-	imageBaseURL := "http://lite.homelab.local/v1"
+	imageBaseURL := "http://127.0.0.1:4000/v1"
 	imageLocationSize := "1792x1024"
 	imageTimeout := 240
 	ascii := "test-ascii-model"

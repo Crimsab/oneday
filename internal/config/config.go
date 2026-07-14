@@ -185,7 +185,7 @@ func Default() Config {
 			},
 			LiteLLM: LiteLLMConfig{
 				Enabled: false,
-				BaseURL: "http://lite.homelab.local/v1",
+				BaseURL: "http://127.0.0.1:4000/v1",
 			},
 			OpenRouter: OpenRouterConfig{
 				Enabled: false,
@@ -209,7 +209,7 @@ func Default() Config {
 			ImageGeneration: ImageGenerationConfig{
 				Provider:             "openclaw-bridge",
 				MapIconModel:         "openai/gpt-image-1",
-				OpenClawBridgeURL:    "http://homelab.local:8099/generate",
+				OpenClawBridgeURL:    "http://127.0.0.1:8099/generate",
 				DefaultSize:          "1024x1024",
 				LocationSize:         "1536x1024",
 				CharacterSize:        "1024x1024",
