@@ -204,6 +204,8 @@ jobs:
         id: docker_metadata
         if: steps.release_target.outputs.release_created == 'true'
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -212,6 +214,15 @@ jobs:
             type=raw,value=${{ env.IMAGE_MAJOR }}
             type=raw,value=latest
           labels: |
+            org.opencontainers.image.title=OneDay
+            org.opencontainers.image.description=Persistent AI storytelling engine with browser and terminal clients.
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.revision=${{ env.COMMIT }}
+            org.opencontainers.image.created=${{ env.BUILD_DATE }}
+          annotations: |
             org.opencontainers.image.title=OneDay
             org.opencontainers.image.description=Persistent AI storytelling engine with browser and terminal clients.
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
