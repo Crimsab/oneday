@@ -10,6 +10,11 @@ config.*.yaml
 *.p12
 *.pfx
 
+# Local planning and agent instructions
+/.planning/
+/AGENTS.md
+/CLAUDE.md
+
 # Binary
 /oneday
 /oneday.exe
