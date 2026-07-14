@@ -58,7 +58,8 @@ update their contracts and tests in the same commit.
 
 Use the tool versions documented in [Development](docs/development.md):
 
-- Go 1.25 or newer.
+- Go 1.25.12 or newer; keep the `toolchain` directive on a supported security
+  patch.
 - Rust 1.97 with `rustfmt` and `clippy`.
 - Bun 1.3.14 or newer for frontend dependencies and scripts.
 - Docker Compose v2 where container validation is required.

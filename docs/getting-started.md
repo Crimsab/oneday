@@ -7,7 +7,7 @@ surfaces use the same Go story engine and SQLite data.
 
 | Runtime | Best for | Requirements |
 | --- | --- | --- |
-| Terminal client | Local play, Codex OAuth, Claude Code, development | Go 1.25+ or a release binary |
+| Terminal client | Local play, Codex OAuth, Claude Code, development | Go 1.25.12+ or a release binary |
 | Browser with Docker | Self-hosting and the complete React interface | Docker Engine with Compose v2 |
 
 At least one narrative provider must be configured. OneDay supports Codex CLI,
@@ -15,6 +15,9 @@ Claude Code, LiteLLM-compatible endpoints, and OpenRouter. RAG embeddings are
 optional and can be remote or local through Ollama/custom HTTP.
 
 ## Terminal client
+
+Use Go 1.25.12 or newer. The repository's `toolchain` directive records the
+minimum security-patched toolchain used by CI and release builds.
 
 Clone the repository and enter it:
 

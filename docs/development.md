@@ -2,7 +2,7 @@
 
 ## Toolchains
 
-- Go 1.25+
+- Go 1.25.12+ (the `toolchain` directive pins the minimum secure patch)
 - Rust 1.97 with `rustfmt` and `clippy`
 - Bun 1.3.14+
 - Docker with Compose v2 for the production image and browser E2E environment

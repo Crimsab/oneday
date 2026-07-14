@@ -11,7 +11,7 @@ COPY contracts /app/contracts
 RUN bun install --frozen-lockfile
 RUN bun run build
 
-FROM golang:1.25-bookworm@sha256:a9c020ee3d1508c7be5435c262434e3d3fc1d0e76a11afeb9ddae7d60bc86aa4 AS go-builder
+FROM golang:1.25.12-bookworm@sha256:102fc956f6f6d98594cfe3cb6cd77b3d2699b6e914ab3ad6e819f3d8e83ebfac AS go-builder
 WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download

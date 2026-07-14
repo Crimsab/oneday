@@ -91,7 +91,7 @@ through a Compose override.
 
 ### Terminal from source
 
-Requires Go 1.25 or newer:
+Requires Go 1.25.12 or newer:
 
 ```bash
 git clone https://github.com/Crimsab/oneday.git
@@ -164,7 +164,7 @@ component boundaries.
 
 ## Development
 
-The repository uses Go 1.25, Rust 1.97, React 19, TypeScript, Vite, and Bun.
+The repository uses Go 1.25.12, Rust 1.97, React 19, TypeScript, Vite, and Bun.
 
 ```bash
 make verify
