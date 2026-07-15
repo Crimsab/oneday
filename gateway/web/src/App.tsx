@@ -24,6 +24,7 @@ import {
   inputMiniGame,
   loadSave,
   runStoryWizard,
+  runVisualAssetOperation,
   selectVisualAssetVersion,
   stepVisualAssetSelection,
   submitAction,
@@ -87,11 +88,13 @@ import type {
   VisualAssetsResponse,
   GenerateVisualAssetsRequest,
   VisualAssetPromptUpdate,
+  VisualAssetOperationRequest,
   VisualAssetVersion,
   VisualProfileUpdate,
 } from "./types";
 import { visualCatalog } from "./visualAssets";
 import { visualPollingDelayMs } from "./visualJobs";
+import { effectiveRouteCapabilities } from "./imageOperations";
 import type { SpatialEdge } from "./spatialMap";
 import { turnEventMessage } from "./presentation";
 
@@ -1224,6 +1227,25 @@ function App() {
     }
   }, [storyId, t]);
 
+  const runImageOperation = useCallback(async (assetId: string, payload: VisualAssetOperationRequest) => {
+    if (!storyId) return;
+    setVisualGenerationBusy(true);
+    setNotice("");
+    try {
+      const nextAssets = await runVisualAssetOperation(storyId, assetId, payload);
+      setVisualAssets(nextAssets);
+      setVisualAssetsError("");
+      setNotice(i18n.t("image_editing:queued"));
+      return nextAssets;
+    } catch (error) {
+      setVisualAssetsError(errorMessage(error));
+      setNotice(errorMessage(error));
+      throw error;
+    } finally {
+      setVisualGenerationBusy(false);
+    }
+  }, [storyId]);
+
   const openVisualAssetEditor = useCallback((assetId: string) => {
     setVisualAssetFocusId(assetId);
     setOverlay("options");
@@ -1399,6 +1421,17 @@ function App() {
         visualProfile={visualAssets?.profile ?? null}
         visualAssets={visuals.assets}
         visualJobs={visualAssets?.jobs ?? []}
+        visualOperationCapabilities={
+          effectiveRouteCapabilities(
+            visualAssets?.operation_capabilities
+              ?? modelSettings?.image_providers.find(
+                (provider) => provider.id === modelSettings.image_generation.provider,
+              )?.capabilities.operations
+              ?? [],
+            modelSettings?.image_generation.available ?? false,
+          )
+        }
+        visualOperations={visualAssets?.operations ?? []}
         visuals={visuals}
         visualAssetFocusId={visualAssetFocusId}
         visualProfileError={visualAssetsError}
@@ -1421,6 +1454,7 @@ function App() {
         onVisualAssetPromptSave={saveVisualAssetPrompt}
         onVisualAssetVersionSelect={chooseVisualAssetVersion}
         onVisualAssetSelectionStep={stepVisualSelection}
+        onVisualAssetOperation={runImageOperation}
         onOpenVisualAsset={openVisualAssetEditor}
         onMapTravel={handleMapTravel}
         onRunStoryWizard={(payload) => runBrowserStoryWizard(payload)}

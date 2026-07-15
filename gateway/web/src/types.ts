@@ -158,6 +158,55 @@ export interface ImageProviderCapabilities {
   qualities: string[];
   output_formats: string[];
   supports_transparency: boolean;
+  /** Structured operation support. Optional while older gateways still return booleans. */
+  operations?: ImageOperationCapability[];
+}
+
+export type ImageOperation =
+  | "generate"
+  | "edit"
+  | "inpaint"
+  | "image_transform"
+  | "variation"
+  | "reference_generate"
+  | "outpaint";
+
+export type ImageOperationAvailability =
+  | "available"
+  | "unavailable"
+  | "deprecated"
+  | "requires_configuration"
+  | "unknown";
+
+export interface ImageOperationCapability {
+  operation: ImageOperation;
+  supported: boolean;
+  availability: ImageOperationAvailability;
+  source_images?: {
+    min: number;
+    max: number;
+    roles?: Array<"source" | "style" | "subject" | "composition">;
+  };
+  mask?: {
+    required: boolean;
+    kind: "raster";
+    accepted_formats?: string[];
+    soft_values?: "supported" | "thresholded" | "unsupported";
+    provider_semantics?: "transparent_is_edit" | "white_is_edit" | "model_specific";
+    adherence?: "best_effort" | "region_constrained";
+  };
+  controls?: {
+    negative_prompt?: boolean;
+    strength?: boolean;
+    seed?: boolean;
+    quality_values?: string[];
+    output_formats?: string[];
+  };
+  provenance?: {
+    kind: "static_verified" | "provider_schema" | "runtime_probe";
+    verified_at: string;
+    schema_hash?: string;
+  };
 }
 
 export interface ImageProviderCatalogEntry {
@@ -696,6 +745,8 @@ export interface VisualAsset {
   can_redo_selection: boolean;
   inherited: boolean;
   updated_at: string;
+  /** Asset/model-specific descriptors take precedence over provider defaults. */
+  operation_capabilities?: ImageOperationCapability[];
 }
 
 export interface VisualAssetVersion {
@@ -748,6 +799,40 @@ export interface VisualAssetsResponse {
   profile: VisualProfile;
   assets: VisualAsset[];
   jobs: VisualGenerationJobView[];
+  /** Recent asynchronous edits; omitted by gateways predating native image editing. */
+  operations?: ImageOperationView[];
+  /** Effective descriptors for the currently configured image route. */
+  operation_capabilities?: ImageOperationCapability[];
+}
+
+export interface ImageOperationView {
+  id: string;
+  asset_id?: string;
+  operation: ImageOperation;
+  status: "queued" | "running" | "succeeded" | "failed" | "cancelled" | string;
+  provider: string;
+  model: string;
+  endpoint_id: string;
+  source_version_id?: number | null;
+  mask_id: string;
+  result_version_id?: number | null;
+  branch_id: string;
+  error_code: string;
+  error_summary: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VisualAssetOperationRequest {
+  operation: Extract<ImageOperation, "edit" | "inpaint" | "image_transform">;
+  source_version_id: number;
+  prompt: string;
+  negative_prompt?: string;
+  mask_png_base64?: string;
+  fallback: {
+    mode: "forbid";
+  };
+  idempotency_key: string;
 }
 
 export interface VisualAssetCleanupRequest {

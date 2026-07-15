@@ -32,8 +32,12 @@ import type {
   StoryWizardResponse,
   StoryWizardResult,
   GenerateVisualAssetsRequest,
+  ImageOperationCapability,
+  ImageOperationView,
   VisualAsset,
   VisualAssetPromptUpdate,
+  VisualAssetOperationRequest,
+  VisualAssetsResponse,
   VisualAssetVersion,
   VisualGenerationJobView,
   VisualProfile,
@@ -61,6 +65,7 @@ import { buildProviderConfigUpdates } from "./settings/imageGenerationDraft";
 import { CustomSelect } from "./CustomSelect";
 import { visualGateReason } from "../presentation";
 import i18n from "../i18n";
+import { VisualAssetOperationEditor } from "./VisualAssetOperationEditor";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -73,6 +78,8 @@ interface PanelDrawerProps {
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
   visualJobs: VisualGenerationJobView[];
+  visualOperationCapabilities: ImageOperationCapability[];
+  visualOperations: ImageOperationView[];
   visuals: VisualCatalog;
   visualAssetFocusId: string | null;
   visualProfileError: string;
@@ -106,6 +113,10 @@ interface PanelDrawerProps {
     assetId: string,
     action: "undo" | "redo",
   ) => Promise<void>;
+  onVisualAssetOperation: (
+    assetId: string,
+    payload: VisualAssetOperationRequest,
+  ) => Promise<VisualAssetsResponse | void>;
   onOpenVisualAsset: (assetId: string) => void;
   onMapTravel: (locationName: string, route: SpatialEdge | null) => void;
   onRunStoryWizard: (
@@ -132,6 +143,8 @@ export function PanelDrawer({
   visualProfile,
   visualAssets,
   visualJobs,
+  visualOperationCapabilities,
+  visualOperations,
   visuals,
   visualAssetFocusId,
   visualProfileError,
@@ -154,6 +167,7 @@ export function PanelDrawer({
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
   onVisualAssetSelectionStep,
+  onVisualAssetOperation,
   onOpenVisualAsset,
   onMapTravel,
   onRunStoryWizard,
@@ -246,6 +260,8 @@ export function PanelDrawer({
             visualProfile={visualProfile}
             visualAssets={visualAssets}
             visualJobs={visualJobs}
+            visualOperationCapabilities={visualOperationCapabilities}
+            visualOperations={visualOperations}
             visualAssetFocusId={visualAssetFocusId}
             visualProfileError={visualProfileError}
             visualProfileBusy={visualProfileBusy}
@@ -261,6 +277,7 @@ export function PanelDrawer({
             onVisualAssetPromptSave={onVisualAssetPromptSave}
             onVisualAssetVersionSelect={onVisualAssetVersionSelect}
             onVisualAssetSelectionStep={onVisualAssetSelectionStep}
+            onVisualAssetOperation={onVisualAssetOperation}
           />
         )}
         {overlay === "saves" && (
@@ -336,6 +353,8 @@ function OptionsContent({
   visualProfile,
   visualAssets,
   visualJobs,
+  visualOperationCapabilities,
+  visualOperations,
   visualAssetFocusId,
   visualProfileError,
   visualProfileBusy,
@@ -351,6 +370,7 @@ function OptionsContent({
   onVisualAssetPromptSave,
   onVisualAssetVersionSelect,
   onVisualAssetSelectionStep,
+  onVisualAssetOperation,
 }: {
   snapshot: StorySnapshot | null;
   preferences: AppPreferences;
@@ -360,6 +380,8 @@ function OptionsContent({
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
   visualJobs: VisualGenerationJobView[];
+  visualOperationCapabilities: ImageOperationCapability[];
+  visualOperations: ImageOperationView[];
   visualAssetFocusId: string | null;
   visualProfileError: string;
   visualProfileBusy: boolean;
@@ -386,6 +408,10 @@ function OptionsContent({
     assetId: string,
     action: "undo" | "redo",
   ) => Promise<void>;
+  onVisualAssetOperation: (
+    assetId: string,
+    payload: VisualAssetOperationRequest,
+  ) => Promise<VisualAssetsResponse | void>;
 }) {
   const { t } = useTranslation(["options", "common", "drawer"]);
   const mapBackground = visualAssets.find((asset) => asset.kind === "map_background");
@@ -416,7 +442,7 @@ function OptionsContent({
           <div><strong>{t("drawer:mapArt.title")}</strong><p>{t("drawer:mapArt.desc")}</p></div>
           <span className="settings-status">{mapBackground?.status === "ready" ? t("drawer:mapArt.ready") : mapBackground?.generation_eligible ? t("drawer:mapArt.queued") : t("drawer:mapArt.waiting")} · {t("drawer:mapArt.icons", { ready: readyMapIcons, total: mapIcons.length })}</span>
         </article>
-        <div data-setting-id="visual-profile"><VisualDirectionSettings profile={visualProfile} assets={visualAssets} jobs={visualJobs} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} /></div>
+        <div data-setting-id="visual-profile"><VisualDirectionSettings profile={visualProfile} assets={visualAssets} jobs={visualJobs} operations={visualOperations} routeOperationCapabilities={visualOperationCapabilities} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} onAssetOperation={onVisualAssetOperation} /></div>
       </div>,
     },
     {
@@ -436,6 +462,8 @@ function VisualDirectionSettings({
   profile,
   assets,
   jobs,
+  operations,
+  routeOperationCapabilities,
   focusedAssetId,
   error,
   busy,
@@ -448,10 +476,13 @@ function VisualDirectionSettings({
   onAssetPromptSave,
   onVersionSelect,
   onSelectionStep,
+  onAssetOperation,
 }: {
   profile: VisualProfile | null;
   assets: VisualAsset[];
   jobs: VisualGenerationJobView[];
+  operations: ImageOperationView[];
+  routeOperationCapabilities: ImageOperationCapability[];
   focusedAssetId: string | null;
   error: string;
   busy: boolean;
@@ -467,6 +498,10 @@ function VisualDirectionSettings({
   ) => Promise<void>;
   onVersionSelect: (assetId: string, versionId: number) => Promise<void>;
   onSelectionStep: (assetId: string, action: "undo" | "redo") => Promise<void>;
+  onAssetOperation: (
+    assetId: string,
+    payload: VisualAssetOperationRequest,
+  ) => Promise<VisualAssetsResponse | void>;
 }) {
   const { t } = useTranslation(["server", "common", "drawer"]);
   const [draft, setDraft] = useState<VisualProfileUpdate>(() =>
@@ -913,6 +948,19 @@ function VisualDirectionSettings({
                   </button>
                 </div>
               </div>
+              {activeVersion && (activeVersion.url || selectedImageUrl) && (
+                <VisualAssetOperationEditor
+                  asset={selectedAsset}
+                  sourceVersionId={activeVersion.id}
+                  sourceUrl={activeVersion.url || selectedImageUrl}
+                  prompt={assetDraft.prompt}
+                  negativePrompt={assetDraft.negative_prompt}
+                  routeCapabilities={routeOperationCapabilities}
+                  operations={operations}
+                  disabled={busy || selectedJobActive}
+                  onRun={(payload) => onAssetOperation(selectedAsset.id, payload)}
+                />
+              )}
             </div>
           )}
           <div className="model-actions">

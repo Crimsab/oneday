@@ -29,6 +29,28 @@ describe("visual job helpers", () => {
     expect(hasActiveVisualGeneration(response)).toBe(false);
     expect(visualPollingDelayMs(response)).toBe(0);
   });
+
+  it("keeps polling while a native image operation is queued", () => {
+    const response = visualResponse({});
+    response.operations = [{
+      id: "op-1",
+      asset_id: "asset-1",
+      operation: "inpaint",
+      status: "queued",
+      provider: "openai",
+      model: "gpt-image-2",
+      endpoint_id: "/images/edits",
+      source_version_id: 1,
+      mask_id: "mask-1",
+      result_version_id: null,
+      branch_id: "main",
+      error_code: "",
+      error_summary: "",
+      created_at: "",
+      updated_at: "",
+    }];
+    expect(visualPollingDelayMs(response)).toBe(2500);
+  });
 });
 
 function visualResponse({

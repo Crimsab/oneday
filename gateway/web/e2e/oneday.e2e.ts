@@ -166,9 +166,17 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let visualStatus = "ready";
   let visualSelectedVersion = 21;
   let visualGenerationQueued = false;
+  let imageOperations: any[] = [];
   let visualVersions = [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }];
   const currentVisualResponse = () => {
     const response: any = visualResponse(visualCanUndo, visualCanRedo);
+    response.operation_capabilities = [
+      { operation: "edit", supported: true, availability: "available", controls: { negative_prompt: false } },
+      { operation: "inpaint", supported: true, availability: "available", mask: { required: true, kind: "raster", soft_values: "supported", adherence: "best_effort" }, controls: { negative_prompt: false } },
+      { operation: "image_transform", supported: true, availability: "available", controls: { negative_prompt: false } },
+      { operation: "variation", supported: false, availability: "unavailable" },
+    ];
+    response.operations = imageOperations;
     response.assets[0] = {
       ...response.assets[0],
       prompt: visualPrompt,
@@ -260,6 +268,13 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, visualVersions);
     if (path.endsWith("/visual-assets/asset-mira-new") && request.method() === "PUT") {
       visualPrompt = request.postDataJSON().prompt;
+      return json(route, currentVisualResponse());
+    }
+    if (path.endsWith("/visual-assets/asset-mira-new/operations") && request.method() === "POST") {
+      const body = request.postDataJSON();
+      imageOperations = [{ id: "image-operation-1", asset_id: "asset-mira-new", operation: body.operation, status: "queued", provider: "mock", model: "mock-image", endpoint_id: "/images/edits", source_version_id: body.source_version_id, mask_id: "mask-1", result_version_id: null, branch_id: "branch-main", error_code: "", error_summary: "", created_at: now, updated_at: now }];
+      visualGenerationQueued = true;
+      visualStatus = "queued";
       return json(route, currentVisualResponse());
     }
     if (path.endsWith("/visual-assets/generate") && request.method() === "POST") {
@@ -714,6 +729,50 @@ test("opens a codex image directly in its editable visual asset workspace", asyn
   await expect(dialog.getByRole("heading", { name: "Options" })).toBeVisible();
   await expect(dialog.getByLabel("Asset prompt")).toHaveValue("Mira restored portrait");
   await expect(dialog.getByText("Mira", { exact: true }).first()).toBeVisible();
+});
+
+test("paints a full-resolution mask and submits inpainting without fallback", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Options" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByPlaceholder("Search options").fill("known location icons");
+  await dialog.getByRole("button", { name: /Map art/ }).click();
+
+  await expect(dialog.getByRole("radio", { name: /Directed edit/ })).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: /Paint an area/ })).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: /Transform/ })).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: /Variation/ })).toHaveCount(0);
+  await dialog.getByRole("radio", { name: /Paint an area/ }).click();
+
+  const canvas = dialog.getByRole("application", { name: "Paint the image area that may change" });
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.move(box!.x + box!.width * 0.35, box!.y + box!.height * 0.45);
+  await page.mouse.down();
+  await page.mouse.move(box!.x + box!.width * 0.58, box!.y + box!.height * 0.55, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(dialog.getByRole("button", { name: "Undo stroke" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Undo stroke" }).click();
+  await expect(dialog.getByRole("button", { name: "Redo stroke" })).toBeEnabled();
+  await dialog.getByRole("button", { name: "Redo stroke" }).click();
+
+  const operationRequest = page.waitForRequest((request) => request.url().endsWith("/visual-assets/asset-mira-new/operations"));
+  await dialog.getByRole("button", { name: "Create inpainted version" }).click();
+  const payload = (await operationRequest).postDataJSON();
+  expect(payload).toMatchObject({
+    operation: "inpaint",
+    source_version_id: 21,
+    prompt: "Mira restored portrait",
+    fallback: { mode: "forbid" },
+  });
+  expect(payload.idempotency_key).toEqual(expect.any(String));
+  expect(payload.mask_png_base64).toMatch(/^[A-Za-z0-9+/]+=*$/);
+  await expect(page.getByText("The image operation was queued as a new version.")).toBeVisible();
+  await expect(dialog.getByText("Queued", { exact: true }).last()).toBeVisible();
+  await expect(dialog.getByText("mock · mock-image")).toBeVisible();
 });
 
 test("uses the dedicated inventory-aware crafting conversation and separates achievements", async ({ page }) => {

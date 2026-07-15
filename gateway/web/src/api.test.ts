@@ -22,6 +22,7 @@ import {
   stepVisualAssetSelection,
   startMiniGame,
   inputMiniGame,
+  runVisualAssetOperation,
   updateTimeline,
   updateStory,
 } from "./api";
@@ -140,6 +141,34 @@ describe("api request handling", () => {
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/stories/story-1/visual-assets/jobs/12/cancel",
       expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("submits exact visual operations with fallback forbidden", async () => {
+    mockFetch(new Response(JSON.stringify({ profile: {}, assets: [], jobs: [] }), { status: 200 }));
+
+    await runVisualAssetOperation("story/one", "asset one", {
+      operation: "inpaint",
+      source_version_id: 17,
+      prompt: "Replace the lantern",
+      mask_png_base64: "cG5n",
+      fallback: { mode: "forbid" },
+      idempotency_key: "operation-1",
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/stories/story%2Fone/visual-assets/asset%20one/operations",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          operation: "inpaint",
+          source_version_id: 17,
+          prompt: "Replace the lantern",
+          mask_png_base64: "cG5n",
+          fallback: { mode: "forbid" },
+          idempotency_key: "operation-1",
+        }),
+      }),
     );
   });
 

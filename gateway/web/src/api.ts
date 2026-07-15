@@ -43,6 +43,7 @@ import type {
   VisualAssetCleanupResponse,
   VisualAssetPromptUpdate,
   VisualAssetVersion,
+  VisualAssetOperationRequest,
   VisualProfileUpdate,
   TTSCatalogResponse,
   TTSSettingsResponse,
@@ -419,6 +420,21 @@ export function stepVisualAssetSelection(storyId: string, assetId: string, actio
   return request<VisualAssetsResponse>(
     `/api/stories/${encodeURIComponent(storyId)}/visual-assets/${encodeURIComponent(assetId)}/selection/${action}`,
     { method: "POST" },
+  );
+}
+
+export function runVisualAssetOperation(
+  storyId: string,
+  assetId: string,
+  payload: VisualAssetOperationRequest,
+): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(
+    `/api/stories/${encodeURIComponent(storyId)}/visual-assets/${encodeURIComponent(assetId)}/operations`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    },
   );
 }
 

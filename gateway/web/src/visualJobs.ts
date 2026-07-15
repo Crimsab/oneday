@@ -13,6 +13,9 @@ export function hasActiveVisualGeneration(
   if (!visualAssets) return false;
   return (
     visualAssets.jobs.some(isActiveVisualJob) ||
+    (visualAssets.operations ?? []).some((operation) =>
+      ACTIVE_VISUAL_JOB_STATUSES.has(operation.status),
+    ) ||
     visualAssets.assets.some((asset) =>
       ACTIVE_VISUAL_ASSET_STATUSES.has(asset.status),
     )
