@@ -73,11 +73,11 @@ func (m *NarrativeModel) closeTalkMode(status string) {
 
 func (m NarrativeModel) showHooks() (NarrativeModel, tea.Cmd) {
 	if m.narrator == nil || m.narrator.Story() == nil {
-		m.errMsg = "Tracker unavailable: no active story."
+		m.errMsg = m.loc.T("front.unavailable")
 		return m, nil
 	}
 
-	tracker := NewFrontTrackerModel("Fronts & Fallout", engine.LoadFrontTrackerBoard(m.narrator.World()), m.width, m.height)
+	tracker := NewFrontTrackerModel(m.loc.T("front.title"), engine.LoadFrontTrackerBoard(m.narrator.World()), m.width, m.height, m.loc)
 	m.frontTracker = &tracker
 	m.historyReturnInputFocus = m.inputFocus
 	m.inputFocus = false
@@ -87,57 +87,49 @@ func (m NarrativeModel) showHooks() (NarrativeModel, tea.Cmd) {
 
 func (m NarrativeModel) handleTalkCommand(args []string) (NarrativeModel, tea.Cmd) {
 	if len(args) == 0 {
-		m.showOverlay("Nearby NPCs", m.nearbyNPCOverlayText())
+		m.showOverlay(m.loc.T("talk.nearby_title"), m.nearbyNPCOverlayText())
 		return m, nil
 	}
 
 	if len(args) == 1 {
 		switch strings.ToLower(strings.TrimSpace(args[0])) {
 		case "off", "exit", "stop":
-			m.closeTalkMode("Talk mode closed")
+			m.closeTalkMode(m.loc.T("talk.closed"))
 			return m, nil
 		}
 	}
 
 	parsed := m.parseTalkCommand(args)
 	if parsed.Target == "" {
-		m.errMsg = "Usage: /talk <npc> [ask|probe|bond|bargain|threaten|promise|lie|confess]"
+		m.errMsg = m.loc.T("talk.usage")
 		return m, nil
 	}
 
 	npc, err := m.narrator.DB().GetNPCByName(m.narrator.Story().ID, parsed.Target)
 	if err != nil || npc == nil {
-		m.errMsg = fmt.Sprintf("No known NPC named %q. Use /talk to see nearby candidates.", parsed.Target)
+		m.errMsg = m.loc.T("talk.unknown_npc", parsed.Target)
 		return m, nil
 	}
 
 	if parsed.Message != "" {
-		m.SetStatusMsg(fmt.Sprintf("Talking to %s [%s]", npc.Name, parsed.Intent))
+		m.SetStatusMsg(m.loc.T("talk.speaking", npc.Name, parsed.Intent))
 		return m, m.sendRawAction(formatTalkAction(npc.Name, parsed.Intent, parsed.Message))
 	}
 
 	m.talkTarget = npc.Name
 	m.talkIntent = parsed.Intent
-	m.statusMsg = fmt.Sprintf("Talk mode: %s [%s]", npc.Name, m.activeTalkIntent())
+	m.statusMsg = m.loc.T("talk.mode", npc.Name, m.activeTalkIntent())
 	m.statusExpiry = time.Now().Add(3 * time.Second)
 	return m, nil
 }
 
 func (m NarrativeModel) handleDowntimeCommand(args []string) (NarrativeModel, tea.Cmd) {
 	if len(args) == 0 {
-		help := `Downtime lets you ask for a lower-intensity scene without railroading the story.
-
-Examples:
-  /downtime rest by the fire
-  /downtime write a letter home
-  /downtime browse the market
-  /downtime train with a companion
-  /downtime confess something to Lyanna`
-		m.showOverlay("Downtime", help)
+		m.showOverlay(m.loc.T("downtime.title"), m.loc.T("downtime.help"))
 		return m, nil
 	}
 
-	m.statusMsg = "Requesting downtime scene..."
+	m.statusMsg = m.loc.T("downtime.requesting")
 	m.statusExpiry = time.Now().Add(3 * time.Second)
 	return m, m.sendAction("[Downtime Scene] " + strings.Join(args, " "))
 }
@@ -145,13 +137,13 @@ Examples:
 func (m NarrativeModel) nearbyNPCOverlayText() string {
 	npcs, err := engine.NearbyNPCs(m.narrator.DB(), m.narrator.Story().ID, m.narrator.Turn(), 6)
 	if err != nil || len(npcs) == 0 {
-		return "No nearby NPCs stand out right now.\n\nUsage:\n  /talk <npc>\n  /talk <npc> promise\n  /talk <npc> ask <question>\n  /talk off"
+		return m.loc.T("talk.no_nearby")
 	}
 
 	var lines []string
-	lines = append(lines, "Use /talk <npc> [intent] to enter a scoped conversation flow.")
+	lines = append(lines, m.loc.T("talk.flow_help"))
 	lines = append(lines, "")
-	lines = append(lines, "Nearby candidates:")
+	lines = append(lines, m.loc.T("talk.nearby_candidates"))
 	for _, npc := range npcs {
 		label := npc.Name
 		if npc.Role != "" {
@@ -160,9 +152,9 @@ func (m NarrativeModel) nearbyNPCOverlayText() string {
 		lines = append(lines, "  - "+label)
 	}
 	lines = append(lines, "")
-	lines = append(lines, "Intents: ask, probe, bond, bargain, threaten, promise, lie, confess")
+	lines = append(lines, m.loc.T("talk.intents"))
 	lines = append(lines, "")
-	lines = append(lines, "Examples:")
+	lines = append(lines, m.loc.T("field.examples"))
 	lines = append(lines, "  /talk "+npcs[0].Name)
 	lines = append(lines, "  /talk "+npcs[0].Name+" promise")
 	lines = append(lines, "  /talk "+npcs[0].Name+" ask What did you see?")

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { MiniGameInput, MiniGameInstance, MiniGameKind } from "../types";
 import { CustomSelect } from "./CustomSelect";
 
@@ -13,6 +14,7 @@ export function MiniGameHost({
   error: string;
   onInput: (input: MiniGameInput) => Promise<void>;
 }) {
+  const { t } = useTranslation("flow");
   const [value, setValue] = useState("");
   const [support, setSupport] = useState("");
   const phase = instance.runtime.phase;
@@ -30,10 +32,10 @@ export function MiniGameHost({
     });
 
   return (
-    <section className="minigame-host" aria-label="Challenge host">
+    <section className="minigame-host" aria-label={t("challengeHost")}>
       <div className="minigame-host-head">
         <div>
-          <span>Challenge Host</span>
+          <span>{t("challengeHost")}</span>
           <strong>{instance.definition.kind}</strong>
         </div>
         <small>{phase} · rev {instance.runtime.revision} · turn {instance.turn}</small>
@@ -58,11 +60,11 @@ export function MiniGameHost({
           )}
           <div className="minigame-actions">
             {phase === "paused" ? (
-              <button type="button" disabled={busy} onClick={() => void onInput({ action: "resume" })}>Resume</button>
+              <button type="button" disabled={busy} onClick={() => void onInput({ action: "resume" })}>{t("resume")}</button>
             ) : (
-              <button type="button" disabled={busy} onClick={() => void onInput({ action: "pause" })}>Pause</button>
+              <button type="button" disabled={busy} onClick={() => void onInput({ action: "pause" })}>{t("pause")}</button>
             )}
-            <button type="button" className="primary-action" disabled={busy || phase === "paused" || !value.trim()} onClick={() => void submit()}>Resolve challenge</button>
+            <button type="button" className="primary-action" disabled={busy || phase === "paused" || !value.trim()} onClick={() => void submit()}>{t("resolveChallenge")}</button>
           </div>
         </div>
       )}
@@ -74,7 +76,7 @@ export function MiniGameHost({
         </div>
       )}
       {instance.definition.rules?.selection_reason && (
-        <small className="minigame-selection-reason">Selected because: {instance.definition.rules.selection_reason}</small>
+        <small className="minigame-selection-reason">{t("selectedBecause", { reason: instance.definition.rules.selection_reason })}</small>
       )}
       {error && <p className="model-error">{error}</p>}
     </section>

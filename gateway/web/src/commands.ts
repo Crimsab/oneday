@@ -1,5 +1,6 @@
 import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Hammer, MapPin, Search, Trophy } from "lucide-react";
 import type { CommandDescriptor, MetaCommand, ModuleTab, OverlayKind } from "./types";
+import i18n from "./i18n";
 
 export interface CommandResult {
   handled?: boolean;
@@ -245,7 +246,7 @@ export function commandSuggestions(
 }
 
 export function commandDescriptors(descriptors?: CommandDescriptor[]): CommandDescriptor[] {
-  if (!descriptors || descriptors.length === 0) return fallbackCommandDescriptors;
+  if (!descriptors || descriptors.length === 0) return fallbackCommandDescriptors.map(localizedFallbackDescriptor);
 
   const fallbackByID = new Map(fallbackCommandDescriptors.map((descriptor) => [descriptor.id, descriptor]));
   const seen = new Set<string>();
@@ -262,9 +263,13 @@ export function commandDescriptors(descriptors?: CommandDescriptor[]): CommandDe
     };
   });
   for (const fallback of fallbackCommandDescriptors) {
-    if (!seen.has(fallback.id) && fallback.parity === "browser_only") merged.push(fallback);
+    if (!seen.has(fallback.id) && fallback.parity === "browser_only") merged.push(localizedFallbackDescriptor(fallback));
   }
   return merged;
+}
+
+function localizedFallbackDescriptor(descriptor: CommandDescriptor): CommandDescriptor {
+  return { ...descriptor, title: i18n.t(`command_fallback:${descriptor.id}.0`, { defaultValue: descriptor.title }), description: i18n.t(`command_fallback:${descriptor.id}.1`, { defaultValue: descriptor.description }) };
 }
 
 export function isCommandEnabled(descriptor: CommandDescriptor, context: CommandSuggestionContext = {}): boolean {
@@ -286,7 +291,7 @@ export function groupCommandSuggestions(items: SlashCommandItem[]): CommandSugge
     .sort(([left], [right]) => groupIndex(left) - groupIndex(right))
     .map(([key, groupedItems]) => ({
       key,
-      label: commandGroupLabels[key] ?? titleCase(key),
+      label: i18n.t(`commands:${key}`, { defaultValue: commandGroupLabels[key] ?? titleCase(key) }),
       items: groupedItems,
     }));
 }
@@ -302,7 +307,7 @@ export function commandDescriptorsToSlashCommands(descriptors: CommandDescriptor
       value,
       group: item.group,
       kind: "command",
-      badge: item.parity === "browser_only" ? "Browser" : item.parity === "terminal_only" ? "Terminal" : undefined,
+      badge: item.parity === "browser_only" ? i18n.t("controls:commandPalette.browser") : item.parity === "terminal_only" ? i18n.t("controls:commandPalette.terminal") : undefined,
       descriptor: item,
     };
   });
@@ -325,7 +330,7 @@ function talkCompletionSuggestions(
         group: "talk",
         name,
         value: `/talk ${name} `,
-        hint: "Set talk target, then add intent and message.",
+        hint: i18n.t("command_ui:targetHint"),
         badge: "NPC",
       }));
   }
@@ -341,8 +346,8 @@ function talkCompletionSuggestions(
       group: "talk",
       name: intent,
       value: `/talk ${matched.name} ${intent} `,
-      hint: `Talk to ${matched.name} with ${intent} intent.`,
-      badge: "Intent",
+      hint: i18n.t("command_ui:intentHint", { name: matched.name, intent }),
+      badge: i18n.t("command_ui:badgeIntent"),
     }));
 }
 
@@ -356,8 +361,8 @@ function saveCompletionSuggestions(command: CommandDescriptor, argsText: string,
       group: "save",
       name,
       value: `/${stripSlash(command.id)} ${name}`,
-      hint: command.behavior === "save_delete" ? "Filter saves for deletion confirmation." : "Filter or load this saved snapshot.",
-      badge: "Save",
+      hint: command.behavior === "save_delete" ? i18n.t("command_ui:deleteHint") : i18n.t("command_ui:loadHint"),
+      badge: i18n.t("command_ui:badgeSave"),
     }));
 }
 
@@ -368,12 +373,12 @@ function recentCommandSuggestions(query: string, recentCommands: string[]): Slas
     .slice(0, 5)
     .map((command) => ({
       name: command,
-      hint: "Reuse recent command.",
+      hint: i18n.t("command_ui:recentHint"),
       aliases: [],
       value: command,
       group: "recent",
       kind: "recent" as const,
-      badge: "Recent",
+      badge: i18n.t("command_ui:badgeRecent"),
     }));
 }
 
@@ -415,7 +420,7 @@ function submitActionCommandToAction(canonical: string, argsText: string, contex
   if (canonical === "advance") return { text: buildAdvanceSceneAction(argsText) };
   if (canonical === "timeskip") return { text: buildTimeSkipAction(argsText) };
   if (canonical === "downtime") {
-    if (!argsText) return { handled: true, notice: "Usage: /downtime <focus>" };
+    if (!argsText) return { handled: true, notice: i18n.t("command_ui:downtimeUsage") };
     return { text: `[Downtime Scene] ${argsText}` };
   }
   if (canonical === "talk") return talkCommandToAction(argsText, context);
@@ -427,7 +432,7 @@ function localCommandToAction(canonical: string, id: string): CommandResult {
     return { handled: true, overlay: "help" };
   }
   if (canonical === "quit" || id === "quit") {
-    return { handled: true, notice: "Quit remains a terminal session-menu action. Browser realtime sync stays connected." };
+    return { handled: true, notice: i18n.t("command_ui:quitBrowser") };
   }
   return { handled: true };
 }
@@ -435,20 +440,20 @@ function localCommandToAction(canonical: string, id: string): CommandResult {
 function disabledCommandNotice(command: CommandDescriptor): string {
   const name = slashName(command);
   if (command.enabled_when === "visible_private_thoughts") {
-    return `${name} is disabled in player-safe browser mode. Enable visible_private_thoughts only for debug runs.`;
+    return i18n.t("command_ui:privateDisabled", { name });
   }
   if (command.enabled_when === "nearby_npcs") {
-    return `${name} needs at least one known nearby character. Open Codex or continue the scene first.`;
+    return i18n.t("command_ui:nearbyRequired", { name });
   }
   if (command.enabled_when === "saves") {
-    return `${name} needs a saved snapshot. Use /save <name> first.`;
+    return i18n.t("command_ui:saveRequired", { name });
   }
-  return `${name} is not available in the current browser state.`;
+  return i18n.t("commands:disabled", { name: stripSlash(name) });
 }
 
 function unknownCommandNotice(name: string, descriptors: CommandDescriptor[]): string {
   if (!name.trim()) {
-    return "Type a command after /. Press Ctrl+K or use /help to browse available commands.";
+    return i18n.t("command_ui:commandRequired");
   }
 
   const commandName = `/${stripSlash(name)}`;
@@ -457,14 +462,14 @@ function unknownCommandNotice(name: string, descriptors: CommandDescriptor[]): s
     .slice(0, 3)
     .map((item) => item.name);
   if (suggestions.length > 0) {
-    return `Unknown command ${commandName}. Did you mean ${suggestions.join(", ")}?`;
+    return i18n.t("command_ui:didYouMean", { name: commandName, suggestions: suggestions.join(", ") });
   }
-  return `Unknown command ${commandName}. Press Ctrl+K or use /help to browse available commands.`;
+  return i18n.t("commands:unknown", { name: stripSlash(name) });
 }
 
 function talkCommandToAction(argsText: string, context: CommandContext): CommandResult {
   if (!argsText) {
-    return { handled: true, tab: "codex", notice: "Use /talk <npc> [intent] [message]. Known NPCs are in Codex." };
+    return { handled: true, tab: "codex", notice: i18n.t("command_ui:talkUsage") };
   }
 
   const matched = matchKnownName(argsText, context.npcNames ?? []);
@@ -478,7 +483,7 @@ function talkCommandToAction(argsText: string, context: CommandContext): Command
   }
 
   if (!rest) {
-    return { handled: true, tab: "codex", notice: `Talk target set: ${target} (${intent}). Add a message to send it.` };
+    return { handled: true, tab: "codex", notice: i18n.t("command_ui:talkTarget", { target, intent }) };
   }
   return { text: `[Talk to ${target} | intent:${intent}] ${rest}` };
 }
@@ -615,9 +620,9 @@ function uniqueNames(values: string[]): string[] {
 }
 
 function metaUsage(kind: MetaCommand["kind"]): string {
-  if (kind === "btw") return "Usage: /btw <quick question about the current story>";
-  if (kind === "guide") return "Usage: /guide <future beat or chapter wish>";
-  return "Usage: /n <narrator instruction or canon correction>";
+  if (kind === "btw") return i18n.t("command_ui:btwUsage");
+  if (kind === "guide") return i18n.t("command_ui:guideUsage");
+  return i18n.t("command_ui:narratorUsage");
 }
 
 function descriptor(

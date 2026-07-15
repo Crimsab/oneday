@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 )
 
 func TestRenderNarrativeResponseFallsBackForPlainResumePayload(t *testing.T) {
@@ -46,18 +47,22 @@ func TestRenderTurnDeltaMarkdownAddsSystemNavigationHints(t *testing.T) {
 		},
 	}
 
-	rendered := renderTurnDeltaMarkdown(delta)
+	rendered := renderTurnDeltaMarkdown(delta, appi18n.New(appi18n.English))
 	for _, want := range []string{"`/fronts`", "`/projects`", "`/investigations`", "`/codex`"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("turn delta markdown missing %q:\n%s", want, rendered)
 		}
 	}
-	for _, want := range []string{"Sono cambiati fronti, progetti e indagini.", "per vedere meglio i dettagli"} {
+	for _, want := range []string{"Fronts, projects, and investigations changed.", "for details"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("turn delta markdown missing %q:\n%s", want, rendered)
 		}
 	}
-	if callout := turnDeltaStatusCallout(delta); !strings.Contains(callout, "Premi F, P o I") {
+	italian := renderTurnDeltaMarkdown(delta, appi18n.New(appi18n.Italian))
+	if !strings.Contains(italian, "Fronti, progetti e indagini sono cambiati.") || !strings.Contains(italian, "per vedere i dettagli") {
+		t.Fatalf("Italian turn delta navigation was not localized:\n%s", italian)
+	}
+	if callout := turnDeltaStatusCallout(delta, appi18n.New(appi18n.Italian)); !strings.Contains(callout, "Premi F, P o I") {
 		t.Fatalf("status callout = %q, want combined systems hint", callout)
 	}
 }

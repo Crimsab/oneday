@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/rendering"
 )
@@ -31,7 +32,7 @@ func (m *NarrativeModel) renderNarrativeResponse(nr *engine.NarrativeResponse) s
 	}
 
 	sections := []string{strings.TrimSpace(renderedMarkdown)}
-	if delta := renderTurnDeltaMarkdown(nr.TurnDelta); delta != "" {
+	if delta := renderTurnDeltaMarkdown(nr.TurnDelta, m.loc); delta != "" {
 		sections = append(sections, delta)
 	}
 
@@ -44,12 +45,12 @@ func (m *NarrativeModel) renderNarrativeResponse(nr *engine.NarrativeResponse) s
 	return components.RenderMarkdown(strings.Join(nonEmpty, "\n\n"))
 }
 
-func renderTurnDeltaMarkdown(delta *engine.TurnDelta) string {
+func renderTurnDeltaMarkdown(delta *engine.TurnDelta, loc appi18n.Localizer) string {
 	if delta == nil || len(delta.Items) == 0 {
 		return ""
 	}
 
-	lines := []string{"### What changed this turn?"}
+	lines := []string{"### " + loc.T("turn_delta.title")}
 	for _, item := range delta.Items {
 		label := strings.TrimSpace(item.Label)
 		detail := strings.TrimSpace(item.Detail)
@@ -65,7 +66,7 @@ func renderTurnDeltaMarkdown(delta *engine.TurnDelta) string {
 	if len(lines) == 1 {
 		return ""
 	}
-	if inspect := turnDeltaNavigationMarkdown(delta); inspect != "" {
+	if inspect := turnDeltaNavigationMarkdown(delta, loc); inspect != "" {
 		lines = append(lines, "", inspect)
 	}
 	return strings.Join(lines, "\n")
@@ -77,14 +78,14 @@ type turnDeltaSystemTargets struct {
 	investigations bool
 }
 
-func turnDeltaNavigationMarkdown(delta *engine.TurnDelta) string {
+func turnDeltaNavigationMarkdown(delta *engine.TurnDelta, loc appi18n.Localizer) string {
 	targets := turnDeltaTargets(delta)
 	if !targets.fronts && !targets.projects && !targets.investigations {
 		return ""
 	}
 
 	commands := make([]string, 0, 4)
-	context := "Si e mosso qualcosa nel mondo."
+	contextKey := "turn_delta.context_generic"
 	if targets.fronts {
 		commands = append(commands, "`/fronts`")
 	}
@@ -96,41 +97,41 @@ func turnDeltaNavigationMarkdown(delta *engine.TurnDelta) string {
 	}
 	switch {
 	case targets.fronts && targets.projects && targets.investigations:
-		context = "Sono cambiati fronti, progetti e indagini."
+		contextKey = "turn_delta.context_all"
 	case targets.fronts && targets.projects:
-		context = "Sono cambiati fronti e progetti."
+		contextKey = "turn_delta.context_fronts_projects"
 	case targets.fronts && targets.investigations:
-		context = "Sono cambiati fronti e indagini."
+		contextKey = "turn_delta.context_fronts_investigations"
 	case targets.projects && targets.investigations:
-		context = "Sono cambiati progetti e indagini."
+		contextKey = "turn_delta.context_projects_investigations"
 	case targets.fronts:
-		context = "Si e mosso il sistema di fronti e fallout."
+		contextKey = "turn_delta.context_fronts"
 	case targets.projects:
-		context = "Si e aggiornato un progetto."
+		contextKey = "turn_delta.context_projects"
 	case targets.investigations:
-		context = "Ci sono novita nelle indagini."
+		contextKey = "turn_delta.context_investigations"
 	}
 	commands = append(commands, "`/codex`")
-	return "> " + context + " Apri " + strings.Join(commands, " · ") + " per vedere meglio i dettagli."
+	return "> " + loc.T("turn_delta.navigation", loc.T(contextKey), strings.Join(commands, " · "))
 }
 
-func turnDeltaStatusCallout(delta *engine.TurnDelta) string {
+func turnDeltaStatusCallout(delta *engine.TurnDelta, loc appi18n.Localizer) string {
 	targets := turnDeltaTargets(delta)
 	switch {
 	case targets.fronts && targets.projects && targets.investigations:
-		return "Fronti, progetti e indagini sono cambiati. Premi F, P o I per controllarli."
+		return loc.T("turn_delta.status_all")
 	case targets.fronts && targets.projects:
-		return "Fronti e progetti sono cambiati. Premi F o P per controllarli."
+		return loc.T("turn_delta.status_fronts_projects")
 	case targets.fronts && targets.investigations:
-		return "Fronti e indagini sono cambiati. Premi F o I per controllarli."
+		return loc.T("turn_delta.status_fronts_investigations")
 	case targets.projects && targets.investigations:
-		return "Progetti e indagini sono cambiati. Premi P o I per controllarli."
+		return loc.T("turn_delta.status_projects_investigations")
 	case targets.fronts:
-		return "Si e mosso qualcosa nei fronti. Premi F o usa /fronts."
+		return loc.T("turn_delta.status_fronts")
 	case targets.projects:
-		return "Un progetto si e aggiornato. Premi P o usa /projects."
+		return loc.T("turn_delta.status_projects")
 	case targets.investigations:
-		return "Le indagini hanno novita. Premi I o usa /investigations."
+		return loc.T("turn_delta.status_investigations")
 	default:
 		return ""
 	}

@@ -1,4 +1,5 @@
 import { ChevronRight, DoorOpen, FileSearch, MessageSquare, PackageSearch, Search, Users } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import type { ChoiceView, StorySnapshot } from "../types";
 import { compactText } from "../format";
 import { choicePresentation, type ChoicePresentation } from "../choicePresentation";
@@ -15,6 +16,7 @@ interface SuggestedActionsProps {
 const choiceIcons = [MessageSquare, FileSearch, Search, PackageSearch, Users, DoorOpen];
 
 export function SuggestedActions({ choices, snapshot, disabled = false, showDetails = false, onChoice, onDraft }: SuggestedActionsProps) {
+  const { t } = useTranslation("story");
   const fallback = fallbackActions(snapshot);
   const visibleChoices = choices.slice(0, 3);
   return (
@@ -36,7 +38,7 @@ export function SuggestedActions({ choices, snapshot, disabled = false, showDeta
                   disabled={disabled}
                   key={choice.id}
                   onClick={() => onChoice(choice)}
-                  title={metadataTitle || "Suggested action"}
+                  title={metadataTitle || t("suggested")}
                 >
                   <span className="choice-index" aria-label={`Choice ${choice.id}`}>
                     <kbd>{choice.id}</kbd>

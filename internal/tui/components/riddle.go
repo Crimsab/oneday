@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -25,12 +26,14 @@ type RiddleModel struct {
 	result    *engine.ChallengeResult
 	width     int
 	height    int
+	loc       appi18n.Localizer
 }
 
 // NewRiddleModel creates a riddle challenge.
-func NewRiddleModel(challenge *engine.RiddleChallenge, width, height int) RiddleModel {
+func NewRiddleModel(challenge *engine.RiddleChallenge, width, height int, localizers ...appi18n.Localizer) RiddleModel {
+	loc := componentLocalizer(localizers)
 	ti := textinput.New()
-	ti.Placeholder = "Type your answer..."
+	ti.Placeholder = loc.T("minigame.riddle_answer")
 	ti.Width = 30
 	ti.Focus()
 
@@ -40,6 +43,7 @@ func NewRiddleModel(challenge *engine.RiddleChallenge, width, height int) Riddle
 		phase:     "riddle",
 		width:     width,
 		height:    height,
+		loc:       loc,
 	}
 }
 
@@ -64,7 +68,7 @@ func (r RiddleModel) Update(msg tea.Msg) (RiddleModel, tea.Cmd) {
 				// Skip = fail.
 				r.result = &engine.ChallengeResult{
 					Passed: false,
-					Detail: "Riddle: skipped → FAIL",
+					Detail: r.loc.T("minigame.riddle_skipped"),
 				}
 				r.phase = "result"
 				r.input.Blur()
@@ -97,7 +101,7 @@ func (r RiddleModel) View() string {
 	var lines []string
 
 	titleStyle := lipgloss.NewStyle().Foreground(theme.RiddleCyan).Bold(true)
-	lines = append(lines, titleStyle.Render("🔮  RIDDLE"))
+	lines = append(lines, titleStyle.Render("🔮  "+r.loc.T("minigame.riddle_title")))
 	lines = append(lines, "")
 
 	// Wrap riddle text.
@@ -110,21 +114,21 @@ func (r RiddleModel) View() string {
 
 	switch r.phase {
 	case "riddle":
-		lines = append(lines, "  Your answer:")
+		lines = append(lines, "  "+r.loc.T("minigame.answer"))
 		lines = append(lines, "  > "+r.input.View())
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  Enter to submit, Esc to skip"))
+		lines = append(lines, theme.MutedText.Render("  "+r.loc.T("minigame.submit")))
 
 	case "result":
 		if r.result != nil && r.result.Passed {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  ✓ Correct!"))
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  ✓ "+r.loc.T("minigame.riddle_correct")))
 		} else {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Danger).Bold(true).Render("  ✗ Wrong!"))
-			lines = append(lines, fmt.Sprintf("  The answer was: %s",
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Danger).Bold(true).Render("  ✗ "+r.loc.T("minigame.riddle_wrong")))
+			lines = append(lines, fmt.Sprintf("  "+r.loc.T("minigame.riddle_solution"),
 				lipgloss.NewStyle().Foreground(theme.Accent).Render(r.challenge.Answer)))
 		}
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  Press any key to continue"))
+		lines = append(lines, theme.MutedText.Render("  "+r.loc.T("challenge.continue")))
 	}
 
 	inner := strings.Join(lines, "\n")

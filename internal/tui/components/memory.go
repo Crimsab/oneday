@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -31,6 +32,7 @@ type MemoryModel struct {
 	wrongAt     int  // index of wrong input
 	width       int
 	height      int
+	loc         appi18n.Localizer
 }
 
 var memorySymbols = map[string]string{
@@ -41,13 +43,14 @@ var memorySymbols = map[string]string{
 }
 
 // NewMemoryModel creates a memory sequence challenge.
-func NewMemoryModel(challenge *engine.MemoryChallenge, width, height int) MemoryModel {
+func NewMemoryModel(challenge *engine.MemoryChallenge, width, height int, localizers ...appi18n.Localizer) MemoryModel {
 	return MemoryModel{
 		challenge: challenge,
 		phase:     "show",
 		showIndex: -1, // starts at -1, first tick advances to 0
 		width:     width,
 		height:    height,
+		loc:       componentLocalizer(localizers),
 	}
 }
 
@@ -122,13 +125,13 @@ func (m MemoryModel) View() string {
 	var lines []string
 
 	titleStyle := lipgloss.NewStyle().Foreground(theme.MemoryTeal).Bold(true)
-	lines = append(lines, titleStyle.Render("🧠  MEMORY SEQUENCE"))
+	lines = append(lines, titleStyle.Render("🧠  "+m.loc.T("minigame.memory_title")))
 	lines = append(lines, "")
 
 	switch m.phase {
 	case "show":
 		if m.showIndex < 0 || m.showIndex >= len(m.challenge.Sequence) {
-			lines = append(lines, "  Get ready...")
+			lines = append(lines, "  "+m.loc.T("minigame.ready"))
 		} else {
 			sym := m.challenge.Sequence[m.showIndex]
 			display := memorySymbols[sym]
@@ -139,15 +142,15 @@ func (m MemoryModel) View() string {
 				Render(fmt.Sprintf("       %s", display))
 			lines = append(lines, large)
 			lines = append(lines, "")
-			lines = append(lines, fmt.Sprintf("  Showing %d / %d...", m.showIndex+1, len(m.challenge.Sequence)))
+			lines = append(lines, "  "+m.loc.T("minigame.showing", m.showIndex+1, len(m.challenge.Sequence)))
 		}
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  Watch carefully!"))
+		lines = append(lines, theme.MutedText.Render("  "+m.loc.T("minigame.watch")))
 
 	case "input":
 		total := len(m.challenge.Sequence)
 		current := len(m.playerInput)
-		lines = append(lines, fmt.Sprintf("  Your turn! Step %d / %d", current+1, total))
+		lines = append(lines, "  "+m.loc.T("minigame.your_turn", current+1, total))
 		lines = append(lines, "")
 		// Show progress bar of entered symbols.
 		var progress strings.Builder
@@ -169,11 +172,11 @@ func (m MemoryModel) View() string {
 		}
 		lines = append(lines, progress.String())
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  ↑ ↓ ← → to input sequence"))
+		lines = append(lines, theme.MutedText.Render("  "+m.loc.T("minigame.input_sequence")))
 
 	case "result":
 		if m.result != nil && m.result.Passed {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  ✓ CORRECT! Well done!"))
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  ✓ "+m.loc.T("minigame.correct")))
 		} else {
 			// Show correct vs wrong.
 			var progress strings.Builder
@@ -194,12 +197,12 @@ func (m MemoryModel) View() string {
 				}
 				progress.WriteString(" ")
 			}
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Danger).Bold(true).Render("  ✗ Wrong sequence!"))
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Danger).Bold(true).Render("  ✗ "+m.loc.T("minigame.wrong")))
 			lines = append(lines, "")
-			lines = append(lines, "  Correct: "+progress.String())
+			lines = append(lines, "  "+m.loc.T("minigame.correct_sequence")+" "+progress.String())
 		}
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  Press any key to continue"))
+		lines = append(lines, theme.MutedText.Render("  "+m.loc.T("challenge.continue")))
 	}
 
 	inner := strings.Join(lines, "\n")

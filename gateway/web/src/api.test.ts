@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { setInterfaceLocale } from "./i18n";
 import {
   ApiRequestError,
   cancelVisualGenerationJob,
@@ -7,6 +8,7 @@ import {
   deleteStory,
   generateVisualAssets,
   getChapters,
+  getCommandDescriptors,
   getHistory,
   getMessageAudio,
   getMessageDiagnostics,
@@ -27,14 +29,27 @@ import {
 const originalFetch = globalThis.fetch;
 
 describe("api request handling", () => {
-  afterEach(() => {
+  afterEach(async () => {
 	vi.useRealTimers();
+    await setInterfaceLocale("en");
     globalThis.fetch = originalFetch;
   });
 
   it("returns JSON payloads from the gateway", async () => {
     mockFetch(new Response(JSON.stringify([{ id: "story", name: "Story" }]), { status: 200 }));
     await expect(getStories()).resolves.toMatchObject([{ id: "story", name: "Story" }]);
+  });
+
+  it("requests localized command presentation while preserving stable command tokens", async () => {
+    globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
+      const locale = new URL(String(input), "http://oneday.test").searchParams.get("locale");
+      return Promise.resolve(new Response(JSON.stringify([{ id: "save", canonical: "save", aliases: ["s"], title: locale === "it" ? "Salva" : "Save", description: locale === "it" ? "Crea un salvataggio." : "Create a save." }] ), { status: 200 }));
+    }) as typeof fetch;
+    const english = await getCommandDescriptors("en");
+    const italian = await getCommandDescriptors("it");
+    expect([english[0].title, italian[0].title]).toEqual(["Save", "Salva"]);
+    expect([english[0].description, italian[0].description]).toEqual(["Create a save.", "Crea un salvataggio."]);
+    expect({ canonical: italian[0].canonical, aliases: italian[0].aliases }).toEqual({ canonical: english[0].canonical, aliases: english[0].aliases });
   });
 
 	it("aborts stalled reads with a typed timeout error", async () => {
@@ -302,14 +317,34 @@ describe("api request handling", () => {
     await expect(getStories()).rejects.toMatchObject({
       name: "ApiRequestError",
       status: 200,
-      message: "Gateway returned a non-JSON response.",
+      message: "The gateway returned an unreadable response.",
     });
   });
 
   it("keeps non-JSON error responses controlled", async () => {
     mockFetch(new Response("", { status: 502, statusText: "Bad Gateway" }));
     await expect(getStories()).rejects.toBeInstanceOf(ApiRequestError);
-    await expect(getStories()).rejects.toMatchObject({ status: 502, message: "Bad Gateway" });
+    await expect(getStories()).rejects.toMatchObject({ status: 502, message: "Something went wrong. Try again." });
+  });
+
+  it("localizes stable API error codes without exposing server prose", async () => {
+    await setInterfaceLocale("it");
+    mockFetch(new Response(JSON.stringify({ code: "stale_config", error: "raw server detail" }), { status: 409 }));
+    await expect(getStories()).rejects.toMatchObject({ code: "stale_config", message: "La configurazione è cambiata. Aggiorna e riprova." });
+  });
+
+  it("maps public audio and challenge validation codes", async () => {
+    await setInterfaceLocale("it");
+    mockFetch(new Response(JSON.stringify({ code: "invalid_audio_request" }), { status: 400 }));
+    await expect(getStories()).rejects.toMatchObject({ message: "Controlla le impostazioni dell’audio parlato e riprova." });
+    mockFetch(new Response(JSON.stringify({ code: "invalid_minigame_request" }), { status: 400 }));
+    await expect(getStories()).rejects.toMatchObject({ message: "L’azione della sfida non è valida. Controlla la scelta e riprova." });
+  });
+
+  it("uses a safe localized fallback for unknown client errors", async () => {
+    await setInterfaceLocale("it");
+    mockFetch(new Response(JSON.stringify({ code: "future_error", error: "sensitive internal detail" }), { status: 422 }));
+    await expect(getStories()).rejects.toMatchObject({ code: "future_error", message: "Impossibile completare la richiesta. Controlla i dati e riprova." });
   });
 });
 

@@ -29,6 +29,7 @@ Use this index to find the shortest path for what you are trying to do.
 - [Project roadmap](project-roadmap.md) — current improvement themes and contribution opportunities.
 - [Releases](releases.md) — Conventional Commits, automated changelog PRs, tags, and artifacts.
 - [Browser gateway contract](browser-gateway.md) — canonical state and browser/TUI parity rules.
+- [Localization](localization.md) — interface catalogs, locale fallback, language boundaries, and contributor checks.
 
 The guides in this directory describe the supported public setup. Historical planning,
 private deployment notes, and generated benchmark runs are intentionally excluded.

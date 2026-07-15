@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { RefreshCw, Volume2 } from "lucide-react";
 import { cancelAudioJob, createMessageAudio, getMessageAudio, getTTSSettings, retryAudioJob } from "../api";
 import type { AudioAsset, MessageAudioResponse, StoryTTSSettings } from "../types";
@@ -45,6 +46,7 @@ export function useStoryTTSSettings(storyId: string): StoryTTSSettings | null {
 }
 
 export function AudioControls({ storyId, messageId, settings, autoplay = false }: { storyId: string; messageId: number; settings: StoryTTSSettings; autoplay?: boolean }) {
+  const { t } = useTranslation(["audio", "common"]);
   const [response, setResponse] = useState<MessageAudioResponse>({ assets: [], jobs: [] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -127,14 +129,14 @@ export function AudioControls({ storyId, messageId, settings, autoplay = false }
   if (!settings || settings.mode === "off") return null;
 
   return (
-    <section className="message-audio" aria-label="Spoken audio">
+    <section className="message-audio" aria-label={t("audio:title")}>
       <div className="message-audio-head">
-        <span><Volume2 size={15} aria-hidden="true" /> Spoken audio</span>
+        <span><Volume2 size={15} aria-hidden="true" /> {t("audio:title")}</span>
         <button type="button" disabled={busy || active} onClick={generate}>
           {failed ? <RefreshCw size={14} aria-hidden="true" /> : <Volume2 size={14} aria-hidden="true" />}
           {busy ? "Generating…" : failed ? "Retry" : ready.length ? "Regenerate" : "Generate"}
         </button>
-        {active && <button type="button" disabled={busy} onClick={cancel}>Cancel</button>}
+        {active && <button type="button" disabled={busy} onClick={cancel}>{t("common:cancel")}</button>}
       </div>
       {ready.map((asset) => (
         <audio key={asset.id} controls preload="none" src={assetUrl(asset)}>
@@ -142,7 +144,7 @@ export function AudioControls({ storyId, messageId, settings, autoplay = false }
         </audio>
       ))}
       <div className="message-audio-status" aria-live="polite">
-        {active ? "Speech synthesis is in progress." : failed?.error || error}
+        {active ? t("audio:progress") : failed?.error || error}
       </div>
     </section>
   );

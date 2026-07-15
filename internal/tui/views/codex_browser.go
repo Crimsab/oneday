@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -24,6 +25,7 @@ type CodexBrowserBackMsg struct{}
 
 // CodexBrowserModel renders a stacked codex / dossier inspector.
 type CodexBrowserModel struct {
+	loc            appi18n.Localizer
 	title          string
 	index          *engine.CodexIndex
 	width          int
@@ -37,9 +39,10 @@ type CodexBrowserModel struct {
 	viewport       viewport.Model
 }
 
-func NewCodexBrowserModel(title string, index *engine.CodexIndex, width, height int, initialCategory, initialEntryID string) *CodexBrowserModel {
+func NewCodexBrowserModel(title string, index *engine.CodexIndex, width, height int, initialCategory, initialEntryID string, localizers ...appi18n.Localizer) *CodexBrowserModel {
 	browser := &CodexBrowserModel{
 		title:       title,
+		loc:         viewLocalizer(localizers),
 		index:       index,
 		visible:     true,
 		entryCursor: map[string]int{},
@@ -312,8 +315,8 @@ func (m CodexBrowserModel) rootView() string {
 	lines = append(lines, "")
 
 	if m.index == nil || len(m.index.Categories) == 0 {
-		lines = append(lines, theme.MutedText.Render("No codex entries available yet."))
-		lines = append(lines, "", theme.MutedText.Render("P projects · I investigations · F fronts · Esc close"))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("codex.empty")))
+		lines = append(lines, "", theme.MutedText.Render(m.loc.T("codex.navigation_empty")))
 		return strings.Join(lines, "\n")
 	}
 
@@ -332,7 +335,7 @@ func (m CodexBrowserModel) rootView() string {
 
 	entryIDs := m.currentEntryIDs()
 	if len(entryIDs) == 0 {
-		lines = append(lines, theme.MutedText.Render("No entries in this category yet."))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("codex.category_empty")))
 	} else {
 		cursor := m.entryCursor[m.currentCategory()]
 		if cursor < 0 || cursor >= len(entryIDs) {
@@ -360,7 +363,7 @@ func (m CodexBrowserModel) rootView() string {
 		}
 	}
 
-	lines = append(lines, "", theme.MutedText.Render("↑↓ entries · ←→ categories · Enter open · P projects · I investigations · F fronts · Esc close"))
+	lines = append(lines, "", theme.MutedText.Render(m.loc.T("codex.navigation")))
 	return strings.Join(lines, "\n")
 }
 
@@ -383,7 +386,7 @@ func (m CodexBrowserModel) detailView() string {
 
 	lines = append(lines, "")
 	if len(entry.Related) > 0 {
-		lines = append(lines, theme.Title.Render("Related"))
+		lines = append(lines, theme.Title.Render(m.loc.T("codex.related")))
 		for i, link := range entry.Related {
 			prefix := "  "
 			style := theme.MutedText
@@ -396,11 +399,11 @@ func (m CodexBrowserModel) detailView() string {
 		lines = append(lines, "")
 	}
 
-	hint := "↑↓ scroll · Tab links · Backspace back · Esc close"
+	hint := m.loc.T("codex.detail_navigation_links")
 	if len(entry.Related) == 0 {
-		hint = "↑↓ scroll · Backspace back · Esc close"
+		hint = m.loc.T("codex.detail_navigation")
 	}
-	hint += " · P projects · I investigations · F fronts"
+	hint += m.loc.T("codex.workspace_navigation")
 	lines = append(lines, theme.MutedText.Render(hint))
 	return strings.Join(lines, "\n")
 }

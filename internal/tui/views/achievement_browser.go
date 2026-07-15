@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
@@ -32,6 +33,7 @@ type AchievementBrowserBackMsg struct{}
 
 // AchievementBrowserModel renders story-scoped achievement browsing with story accordions.
 type AchievementBrowserModel struct {
+	loc         appi18n.Localizer
 	title       string
 	stories     []engine.StoryArchiveSummary
 	expanded    map[string]bool
@@ -44,20 +46,24 @@ type AchievementBrowserModel struct {
 	detail      components.OverlayModel
 }
 
-func NewAchievementBrowserModel(title string, stories []engine.StoryArchiveSummary, width, height int) AchievementBrowserModel {
+func NewAchievementBrowserModel(title string, stories []engine.StoryArchiveSummary, width, height int, localizers ...appi18n.Localizer) AchievementBrowserModel {
+	loc := viewLocalizer(localizers)
 	model := AchievementBrowserModel{
 		title:    title,
+		loc:      loc,
 		stories:  stories,
 		expanded: map[string]bool{},
 		visible:  true,
+		detail:   components.NewOverlay(loc),
 	}
 	model.SetSize(width, height)
 	model.rebuildRows()
 	return model
 }
 
-func NewSingleStoryAchievementBrowser(story engine.StoryArchiveSummary, width, height int) AchievementBrowserModel {
-	model := NewAchievementBrowserModel("Achievements", []engine.StoryArchiveSummary{story}, width, height)
+func NewSingleStoryAchievementBrowser(story engine.StoryArchiveSummary, width, height int, localizers ...appi18n.Localizer) AchievementBrowserModel {
+	loc := viewLocalizer(localizers)
+	model := NewAchievementBrowserModel(loc.CommandPresentation("achievements", "title", "Achievements"), []engine.StoryArchiveSummary{story}, width, height, loc)
 	model.singleStory = true
 	model.expanded[story.Story.ID] = true
 	model.rebuildRows()
@@ -171,7 +177,7 @@ func (m AchievementBrowserModel) Update(msg tea.Msg) (AchievementBrowserModel, t
 
 			story := m.stories[row.storyIndex]
 			achievement := story.Achievements[row.achievementIndex]
-			m.detail.Show(achievement.Name, formatAchievementDetail(story, achievement))
+			m.detail.Show(achievement.Name, formatAchievementDetail(story, achievement, m.loc))
 			return m, nil
 		}
 	}
@@ -201,9 +207,9 @@ func (m AchievementBrowserModel) View() string {
 	lines = append(lines, "")
 
 	if len(m.rows) == 0 {
-		lines = append(lines, theme.MutedText.Render("No achievements unlocked yet."))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("achievement.empty")))
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("Esc close"))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("browser.close")))
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Render(strings.Join(lines, "\n")))
 	}
 
@@ -230,10 +236,10 @@ func (m AchievementBrowserModel) View() string {
 				meta = append(meta, story.CurrentLocation)
 			}
 			if story.CurrentTurn > 0 {
-				meta = append(meta, fmt.Sprintf("turn %d", story.CurrentTurn))
+				meta = append(meta, m.loc.T("achievement.turn", story.CurrentTurn))
 			}
 			if story.Story.IsArchived {
-				meta = append(meta, "archived")
+				meta = append(meta, m.loc.T("achievement.archived"))
 			}
 			label := fmt.Sprintf("%s %s", marker, story.Story.Name)
 			if len(meta) > 0 {
@@ -250,32 +256,33 @@ func (m AchievementBrowserModel) View() string {
 
 	lines = append(lines, "")
 	if m.singleStory {
-		lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter detail · Esc close"))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("achievement.navigation_single")))
 	} else {
-		lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter expand/detail · ←/→ collapse/expand · Esc close"))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("achievement.navigation_archive")))
 	}
 
 	content := strings.Join(lines, "\n")
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Height(boxHeight).Render(content))
 }
 
-func formatAchievementDetail(story engine.StoryArchiveSummary, achievement storage.Achievement) string {
+func formatAchievementDetail(story engine.StoryArchiveSummary, achievement storage.Achievement, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	lines := []string{
-		fmt.Sprintf("Story: %s", story.Story.Name),
-		fmt.Sprintf("Category: %s", strings.Title(strings.ToLower(achievement.Category))),
-		fmt.Sprintf("Rarity: %s", strings.Title(strings.ToLower(achievement.Rarity))),
+		fmt.Sprintf("%s: %s", loc.T("field.story"), story.Story.Name),
+		fmt.Sprintf("%s: %s", loc.T("field.category"), strings.Title(strings.ToLower(achievement.Category))),
+		fmt.Sprintf("%s: %s", loc.T("field.rarity"), strings.Title(strings.ToLower(achievement.Rarity))),
 	}
 	if story.ProtagonistName != "" {
-		lines = append(lines, fmt.Sprintf("Protagonist: %s", story.ProtagonistName))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.protagonist"), story.ProtagonistName))
 	}
 	if !achievement.EarnedAt.IsZero() {
-		lines = append(lines, fmt.Sprintf("Earned: %s", achievement.EarnedAt.Format(time.RFC822)))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.earned"), achievement.EarnedAt.Format(time.RFC822)))
 	}
 	if achievement.Context != "" {
-		lines = append(lines, "", "Context:", achievement.Context)
+		lines = append(lines, "", loc.T("field.context"), achievement.Context)
 	}
 	if achievement.Description != "" {
-		lines = append(lines, "", "Description:", achievement.Description)
+		lines = append(lines, "", loc.T("field.description"), achievement.Description)
 	}
 	return strings.Join(lines, "\n")
 }

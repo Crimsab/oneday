@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
@@ -29,6 +30,7 @@ type socialDuelRoundResolvedMsg struct {
 	PlayerAction engine.SocialAction
 	NPCAction    engine.SocialAction
 	PlayerNote   string
+	Loc          appi18n.Localizer
 }
 
 type socialDuelResultPayload struct {
@@ -58,6 +60,7 @@ type socialDuelResultPayload struct {
 
 // SocialDuelView renders a dedicated round-based high-stakes dialogue mode.
 type SocialDuelView struct {
+	loc    appi18n.Localizer
 	cue    *engine.SocialDuelCue
 	state  *engine.SocialDuelState
 	engine *engine.SocialDuelEngine
@@ -74,14 +77,16 @@ type SocialDuelView struct {
 	errMsg string
 }
 
-func NewSocialDuelView(cue *engine.SocialDuelCue, state *engine.SocialDuelState, char *storage.Character, npc *storage.NPC, width, height int) *SocialDuelView {
+func NewSocialDuelView(cue *engine.SocialDuelCue, state *engine.SocialDuelState, char *storage.Character, npc *storage.NPC, width, height int, localizers ...appi18n.Localizer) *SocialDuelView {
+	loc := viewLocalizer(localizers)
 	note := textinput.New()
-	note.Placeholder = "Optional line or tactic to flavor this exchange..."
+	note.Placeholder = loc.T("social.placeholder")
 	note.CharLimit = 140
 	note.Width = maxInt(24, minInt(width-16, 64))
 	note.Blur()
 
 	return &SocialDuelView{
+		loc:     loc,
 		cue:     cue,
 		state:   state,
 		engine:  engine.NewSocialDuelEngine(),
@@ -167,34 +172,34 @@ func (v *SocialDuelView) View() string {
 
 	innerWidth := minInt(maxInt(v.width-12, 48), 84)
 	lines := []string{
-		theme.Title.Render("Social Duel"),
+		theme.Title.Render(v.loc.T("social.title")),
 		"",
-		fmt.Sprintf("%s vs %s", v.charName(), strings.TrimSpace(v.state.NPCName)),
-		fmt.Sprintf("Objective: %s", firstNonEmptyString(v.cueObjective(), v.state.Objective)),
+		v.loc.T("social.versus", v.charName(), v.npcName()),
+		fmt.Sprintf("%s: %s", v.loc.T("social.objective"), firstNonEmptyString(v.cueObjective(), v.state.Objective)),
 	}
 
 	if stakes := firstNonEmptyString(v.cueStakes(), v.state.Stakes); stakes != "" {
-		lines = append(lines, "Stakes: "+stakes)
+		lines = append(lines, v.loc.T("social.stakes")+": "+stakes)
 	}
 	if pressure := strings.TrimSpace(v.cuePressure()); pressure != "" {
-		lines = append(lines, "Pressure: "+pressure)
+		lines = append(lines, v.loc.T("social.pressure")+": "+pressure)
 	}
 	if opening := strings.TrimSpace(v.cueOpening()); opening != "" {
 		lines = append(lines, "", opening)
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, fmt.Sprintf("Tempo: %s", socialTempoLabel(v.state.Tempo)))
-	lines = append(lines, fmt.Sprintf("Your composure %d | patience %d", v.state.PlayerComposure, v.state.PlayerPatience))
-	lines = append(lines, fmt.Sprintf("Their composure %d | patience %d", v.state.NPCComposure, v.state.NPCPatience))
-	lines = append(lines, fmt.Sprintf("Stance: %s", socialStanceLabel(v.state.PlayerStance)))
+	lines = append(lines, fmt.Sprintf("%s: %s", v.loc.T("social.tempo"), localizedSocialTempo(v.loc, v.state.Tempo)))
+	lines = append(lines, v.loc.T("social.your_composure", v.state.PlayerComposure, v.state.PlayerPatience))
+	lines = append(lines, v.loc.T("social.their_composure", v.state.NPCComposure, v.state.NPCPatience))
+	lines = append(lines, fmt.Sprintf("%s: %s", v.loc.T("field.status"), localizedSocialStance(v.loc, v.state.PlayerStance)))
 
 	if leverage := socialDuelLeverageSummary(v.state.PlayerLeverage); leverage != "" {
-		lines = append(lines, "Leverage: "+leverage)
+		lines = append(lines, v.loc.T("social.leverage")+": "+leverage)
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, theme.MutedText.Render("Choose your next move"))
+	lines = append(lines, theme.MutedText.Render(v.loc.T("social.choose")))
 	for i, action := range v.actions {
 		prefix := "  "
 		style := theme.UnselectedItem
@@ -202,15 +207,15 @@ func (v *SocialDuelView) View() string {
 			prefix = "▸ "
 			style = theme.SelectedItem
 		}
-		lines = append(lines, fmt.Sprintf("%s%d. %s", prefix, i+1, style.Render(socialActionLabel(action))))
-		lines = append(lines, fmt.Sprintf("   %s", theme.MutedText.Render(socialActionHint(action))))
+		lines = append(lines, fmt.Sprintf("%s%d. %s", prefix, i+1, style.Render(localizedSocialAction(v.loc, action))))
+		lines = append(lines, fmt.Sprintf("   %s", theme.MutedText.Render(localizedSocialActionHint(v.loc, action))))
 	}
 
 	lines = append(lines, "")
 	if v.focus == socialDuelFocusNote {
-		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Highlight).Bold(true).Render("Approach note:")+" "+v.note.View())
+		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Highlight).Bold(true).Render(v.loc.T("social.approach_note"))+" "+v.note.View())
 	} else {
-		lines = append(lines, theme.MutedText.Render("Approach note:")+" "+v.note.View())
+		lines = append(lines, theme.MutedText.Render(v.loc.T("social.approach_note"))+" "+v.note.View())
 	}
 
 	if strings.TrimSpace(v.errMsg) != "" {
@@ -218,7 +223,7 @@ func (v *SocialDuelView) View() string {
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, theme.MutedText.Render("Up/Down choose move  Tab note  [ ] stance  Enter resolve  Esc withdraw"))
+	lines = append(lines, theme.MutedText.Render(v.loc.T("social.help")))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -277,7 +282,7 @@ func (v *SocialDuelView) resolveCurrentAction(action engine.SocialAction) tea.Cm
 	npcAction := v.engine.ChooseNPCAction(v.state)
 	result, err := v.engine.ResolveRound(v.state, v.char, v.resolvedNPC(), action, npcAction)
 	if err != nil {
-		v.errMsg = fmt.Sprintf("Could not resolve exchange: %v", err)
+		v.errMsg = v.loc.T("social.resolve_failed", err)
 		return nil
 	}
 
@@ -290,6 +295,7 @@ func (v *SocialDuelView) resolveCurrentAction(action engine.SocialAction) tea.Cm
 			PlayerAction: action,
 			NPCAction:    npcAction,
 			PlayerNote:   playerNote,
+			Loc:          v.loc,
 		}
 	}
 }
@@ -309,7 +315,15 @@ func (v *SocialDuelView) charName() string {
 	if v.char != nil && strings.TrimSpace(v.char.Name) != "" {
 		return v.char.Name
 	}
-	return "You"
+	return v.loc.T("social.you")
+}
+
+func (v *SocialDuelView) npcName() string {
+	name := strings.TrimSpace(v.state.NPCName)
+	if name == "" || name == "Opponent" {
+		return v.loc.T("social.opponent")
+	}
+	return name
 }
 
 func (v *SocialDuelView) cueObjective() string {
@@ -381,12 +395,12 @@ func (m *NarrativeModel) beginPendingSocialDuel() tea.Cmd {
 
 	state, npc, err := m.ensureSocialDuelState(cue)
 	if err != nil {
-		m.errMsg = fmt.Sprintf("Could not start social duel: %v", err)
+		m.errMsg = m.loc.T("social.start_failed", err)
 		m.pendingSocialDuel = nil
 		return nil
 	}
 
-	m.socialDuelView = NewSocialDuelView(cue, state, m.narrator.Character(), npc, m.width, m.height)
+	m.socialDuelView = NewSocialDuelView(cue, state, m.narrator.Character(), npc, m.width, m.height, m.loc)
 	m.inSocialDuel = true
 	m.pendingSocialDuel = nil
 	return nil
@@ -532,22 +546,26 @@ func buildSocialDuelResultInput(msg socialDuelRoundResolvedMsg, aftermath *engin
 }
 
 func renderSocialDuelRoundNote(msg socialDuelRoundResolvedMsg, aftermath *engine.SocialDuelAftermath) string {
+	loc := msg.Loc
+	if loc.Locale() == "" {
+		loc = appi18n.New(appi18n.English)
+	}
 	if msg.State == nil || msg.Round == nil {
-		return components.RenderMarkdown("\n*[Social duel exchange resolved.]*\n")
+		return components.RenderMarkdown("\n*[" + loc.T("social.round_resolved") + "]*\n")
 	}
 
 	lines := []string{
-		fmt.Sprintf("**[Social Duel]** %s", msg.Round.ExchangeLabel),
-		fmt.Sprintf("Tempo: %s", socialTempoLabel(msg.State.Tempo)),
+		fmt.Sprintf("**[%s]** %s", loc.T("social.round_title"), msg.Round.ExchangeLabel),
+		fmt.Sprintf("%s: %s", loc.T("social.tempo"), localizedSocialTempo(loc, msg.State.Tempo)),
 	}
 	if msg.Round.NPCDamage > 0 {
-		lines = append(lines, fmt.Sprintf("You shake %s's composure by %d.", msg.State.NPCName, msg.Round.NPCDamage))
+		lines = append(lines, loc.T("social.composure_damage", msg.State.NPCName, msg.Round.NPCDamage))
 	}
 	if msg.Round.PlayerDamage > 0 {
-		lines = append(lines, fmt.Sprintf("You lose %d composure.", msg.Round.PlayerDamage))
+		lines = append(lines, loc.T("social.composure_lost", msg.Round.PlayerDamage))
 	}
 	if strings.TrimSpace(msg.PlayerNote) != "" {
-		lines = append(lines, fmt.Sprintf("Your angle: \"%s\"", strings.TrimSpace(msg.PlayerNote)))
+		lines = append(lines, loc.T("social.your_angle", strings.TrimSpace(msg.PlayerNote)))
 	}
 	if msg.Round.FailForward != nil {
 		lines = append(lines, fmt.Sprintf("%s: %s", msg.Round.FailForward.Title, msg.Round.FailForward.Detail))
@@ -565,20 +583,20 @@ func (m NarrativeModel) socialDuelPreludeView() string {
 	}
 
 	lines := []string{
-		theme.Title.Render("Social Duel"),
+		theme.Title.Render(m.loc.T("social.title")),
 		"",
-		fmt.Sprintf("Objective: %s", firstNonEmptyString(strings.TrimSpace(cue.Objective), stateField(m.activeSocialDuel, func(s *engine.SocialDuelState) string { return s.Objective }))),
+		fmt.Sprintf("%s: %s", m.loc.T("social.objective"), firstNonEmptyString(strings.TrimSpace(cue.Objective), stateField(m.activeSocialDuel, func(s *engine.SocialDuelState) string { return s.Objective }))),
 	}
 	if stakes := firstNonEmptyString(strings.TrimSpace(cue.Stakes), stateField(m.activeSocialDuel, func(s *engine.SocialDuelState) string { return s.Stakes })); stakes != "" {
-		lines = append(lines, "Stakes: "+stakes)
+		lines = append(lines, m.loc.T("social.stakes")+": "+stakes)
 	}
 	if pressure := strings.TrimSpace(cue.Pressure); pressure != "" {
-		lines = append(lines, "Pressure: "+pressure)
+		lines = append(lines, m.loc.T("social.pressure")+": "+pressure)
 	}
 	if summary := firstNonEmptyString(strings.TrimSpace(cue.ExchangeSummary), strings.TrimSpace(cue.Opening)); summary != "" {
 		lines = append(lines, "", summary)
 	}
-	lines = append(lines, "", theme.MutedText.Render("Press Enter or Space to enter the exchange"))
+	lines = append(lines, "", theme.MutedText.Render(m.loc.T("social.enter")))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -629,71 +647,48 @@ func hasActiveLeverage(items []engine.SocialLeverage) bool {
 	return false
 }
 
-func socialActionLabel(action engine.SocialAction) string {
+func localizedSocialAction(loc appi18n.Localizer, action engine.SocialAction) string {
+	key := "social.action." + string(action)
 	switch action {
-	case engine.SocialActionAppeal:
-		return "Appeal"
-	case engine.SocialActionPressure:
-		return "Pressure"
-	case engine.SocialActionDeceive:
-		return "Deceive"
-	case engine.SocialActionConcede:
-		return "Concede"
-	case engine.SocialActionExpose:
-		return "Expose"
-	case engine.SocialActionWithdraw:
-		return "Withdraw"
-	case engine.SocialActionEscalate:
-		return "Escalate"
+	case engine.SocialActionAppeal, engine.SocialActionPressure, engine.SocialActionDeceive, engine.SocialActionConcede, engine.SocialActionExpose, engine.SocialActionWithdraw, engine.SocialActionEscalate:
+		return loc.T(key)
 	default:
 		return strings.Title(string(action))
 	}
 }
 
-func socialActionHint(action engine.SocialAction) string {
+func localizedSocialActionHint(loc appi18n.Localizer, action engine.SocialAction) string {
 	switch action {
-	case engine.SocialActionAppeal:
-		return "Lean on trust, empathy, debt, or shared cause."
-	case engine.SocialActionPressure:
-		return "Push the other side toward a mistake or costly concession."
-	case engine.SocialActionDeceive:
-		return "Bluff, conceal, or redirect attention."
-	case engine.SocialActionConcede:
-		return "Give ground now to preserve patience and shape the next beat."
-	case engine.SocialActionExpose:
-		return "Reveal leverage, proof, or a secret when timing matters."
-	case engine.SocialActionWithdraw:
-		return "Exit before you break, accepting a playable cost."
-	case engine.SocialActionEscalate:
-		return "Raise the stakes and dare them to blink first."
+	case engine.SocialActionAppeal, engine.SocialActionPressure, engine.SocialActionDeceive, engine.SocialActionConcede, engine.SocialActionExpose, engine.SocialActionWithdraw, engine.SocialActionEscalate:
+		return loc.T("social.hint." + string(action))
 	default:
-		return "Play the exchange."
+		return loc.T("social.hint.default")
 	}
 }
 
-func socialTempoLabel(tempo int) string {
+func localizedSocialTempo(loc appi18n.Localizer, tempo int) string {
 	switch {
 	case tempo >= 3:
-		return "strongly in your favor"
+		return loc.T("social.tempo.strong")
 	case tempo >= 1:
-		return "leaning your way"
+		return loc.T("social.tempo.leaning")
 	case tempo <= -3:
-		return "dangerously against you"
+		return loc.T("social.tempo.danger")
 	case tempo <= -1:
-		return "slipping away from you"
+		return loc.T("social.tempo.slipping")
 	default:
-		return "balanced"
+		return loc.T("social.tempo.balanced")
 	}
 }
 
-func socialStanceLabel(stance engine.SocialStance) string {
+func localizedSocialStance(loc appi18n.Localizer, stance engine.SocialStance) string {
 	switch stance {
 	case engine.SocialStanceBold:
-		return "Bold"
+		return loc.T("social.stance.bold")
 	case engine.SocialStanceGuarded:
-		return "Guarded"
+		return loc.T("social.stance.guarded")
 	default:
-		return "Measured"
+		return loc.T("social.stance.measured")
 	}
 }
 

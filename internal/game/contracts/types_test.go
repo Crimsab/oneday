@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/crimsab/oneday/internal/i18n"
+	"reflect"
 )
 
 func TestCanonicalChallengeFixtureUsesCurrentProtocol(t *testing.T) {
@@ -160,5 +163,21 @@ func TestCommandAliasRegistryExcludesBrowserOnlyCommands(t *testing.T) {
 	}
 	if got := registry["delete-save"]; got != "" {
 		t.Fatalf("delete-save alias = %q, want excluded browser-only command", got)
+	}
+}
+
+func TestItalianCommandPresentationPreservesProtocol(t *testing.T) {
+	english := CommandDescriptors()
+	italian := CommandDescriptors(i18n.New(i18n.Italian))
+	if len(english) != len(italian) {
+		t.Fatalf("descriptor count changed")
+	}
+	for index := range english {
+		if english[index].ID != italian[index].ID || english[index].Canonical != italian[index].Canonical || !reflect.DeepEqual(english[index].Aliases, italian[index].Aliases) || english[index].Behavior != italian[index].Behavior {
+			t.Fatalf("protocol changed for %q", english[index].ID)
+		}
+	}
+	if italian[0].Title != "Inventario" || italian[0].Description == english[0].Description {
+		t.Fatalf("Italian presentation not applied: %+v", italian[0])
 	}
 }

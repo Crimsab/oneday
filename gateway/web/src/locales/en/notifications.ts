@@ -1,0 +1,21 @@
+export const notifications = {
+  sync: { idle: "Idle", loading: "Loading", paused: "Paused", live: "Live", error: "Error", reconnecting: "Reconnecting", saving: "Saving", sending: "Sending", connection: "Connection: {{status}}" },
+  health: { starting: "Gateway starting", stories_one: "{{formattedCount}} story", stories_other: "{{formattedCount}} stories" },
+  branch: { active: "Active branch: {{name}}.", updated: "updated", previousDecision: "Back at the previous decision on {{name}}.", navigatorOpened: "Story branch navigator opened in the sidebar.", forkUsage: "Usage: /fork <branch name>", renameUsage: "Usage: /branch-rename <name>", notFound: "Branch not found: {{name}}", missingName: "(missing name)" },
+  story: { archived: "Archived {{name}}.", updated: "Updated {{name}}.", deletePrompt: "Delete “{{name}}”?", rowsAffected_one: "Database row affected: {{formattedCount}}", rowsAffected_other: "Database rows affected: {{formattedCount}}", retainedFiles_one: "Generated image file retained on disk: {{formattedCount}}", retainedFiles_other: "Generated image files retained on disk: {{formattedCount}}", noGeneratedFiles: "No generated image files are linked.", deleted: "Story deleted." },
+  meta: { answered: "{{title}} answered.", completed: "Meta command completed." },
+  challenge: { resolved: "Challenge resolved", continuationRetry: "The challenge was resolved, but narrative continuation needs a retry." },
+  save: { saved: "Saved {{name}}.", loadConfirm: "Load “{{name}}” from turn {{turn}}? Current progress will roll back to that snapshot.", legacyLoaded: "Legacy save {{name}} loaded with partial rollback.", legacyLoadedWithDetail: "Legacy save {{name}} loaded with partial rollback: {{detail}}", loaded: "Loaded {{name}}.", deleteConfirm: "Delete “{{name}}” from turn {{turn}}? This removes only the saved snapshot.", deleted: "Deleted {{name}}." },
+  request: { alreadyRunning: "Another OneDay request is already running." },
+  wizard: { createdStartFailed: "{{name}} was created, but the first turn did not start: {{error}}", createdStarted: "{{name}} was created and started.", created: "{{name}} was created.", updated: "Story wizard updated." },
+  enhance: { withModel: "Enhanced text with {{model}}.", completed: "Enhanced text." },
+  action: { resolvingChoice: "Resolving your selected choice...", resolvingAction: "Resolving your action...", stale: "The story advanced elsewhere. Review the latest choices before sending again." },
+  model: { saved: "Model routing saved. Active provider: {{provider}}.", none: "none" },
+  visual: {
+    profileSaved: "Visual profile saved. New missing assets will use the updated prompt direction.", generationQueued: "Visual generation queued. {{summary}}.",
+    ready_one: "{{formattedCount}} ready", ready_other: "{{formattedCount}} ready", active_one: "{{formattedCount}} queued or running", active_other: "{{formattedCount}} queued or running", failed_one: "{{formattedCount}} failed", failed_other: "{{formattedCount}} failed",
+    jobCancelled: "Visual generation job {{jobId}} cancelled.", cleanupPreview_one: "Visual cleanup preview: {{formattedCount}} stale file can be removed.", cleanupPreview_other: "Visual cleanup preview: {{formattedCount}} stale files can be removed.", cleanupRemoved_one: "Visual cleanup removed {{formattedCount}} stale file.", cleanupRemoved_other: "Visual cleanup removed {{formattedCount}} stale files.",
+    promptSaved: "Image prompt saved. Regenerate the asset to create a new version from this prompt.", versionSelected: "Visual version selected.", selectionUndone: "Visual selection undone.", selectionRestored: "Visual selection restored.",
+  },
+  surface: { yourStory: "Your story", suggestedActions: "Suggested actions" },
+} as const;

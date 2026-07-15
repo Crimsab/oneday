@@ -12,8 +12,8 @@ import (
 
 func TestDefault(t *testing.T) {
 	cfg := Default()
-	if cfg.ConfigVersion != 2 {
-		t.Errorf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
+	if cfg.ConfigVersion != 3 {
+		t.Errorf("ConfigVersion = %d, want 3", cfg.ConfigVersion)
 	}
 
 	if cfg.DataDir != "./oneday_data" {
@@ -129,8 +129,8 @@ func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
 
 	cfg.Migrate()
 
-	if cfg.ConfigVersion != 2 {
-		t.Fatalf("ConfigVersion = %d, want 2", cfg.ConfigVersion)
+	if cfg.ConfigVersion != 3 {
+		t.Fatalf("ConfigVersion = %d, want 3", cfg.ConfigVersion)
 	}
 	if cfg.AI.Embedding.Local.Type != "ollama" || cfg.AI.Embedding.Local.Model != "" || cfg.AI.Embedding.Local.Dimensions != 1024 {
 		t.Fatalf("local embedding defaults not migrated: %#v", cfg.AI.Embedding.Local)

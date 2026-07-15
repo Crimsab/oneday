@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -24,21 +25,23 @@ type HostMiniGameModel struct {
 	width    int
 	height   int
 	error    string
+	loc      appi18n.Localizer
 }
 
-func NewHostMiniGameModel(definition engine.MiniGameDefinition, seed int64, width, height int) (HostMiniGameModel, error) {
+func NewHostMiniGameModel(definition engine.MiniGameDefinition, seed int64, width, height int, localizers ...appi18n.Localizer) (HostMiniGameModel, error) {
+	loc := componentLocalizer(localizers)
 	host := engine.NewMiniGameHost()
 	instance := engine.NewMiniGameInstance("tui-"+definition.ID, "", "", 0, seed, definition)
 	if err := host.Start(&instance); err != nil {
 		return HostMiniGameModel{}, err
 	}
 	input := textinput.New()
-	input.Placeholder = "Type a response"
+	input.Placeholder = loc.T("wizard.placeholder_response")
 	input.Width = 28
 	if len(definition.Options) == 0 {
 		input.Focus()
 	}
-	return HostMiniGameModel{host: host, instance: instance, input: input, width: width, height: height}, nil
+	return HostMiniGameModel{host: host, instance: instance, input: input, width: width, height: height, loc: loc}, nil
 }
 
 func (model HostMiniGameModel) Update(msg tea.Msg) (HostMiniGameModel, tea.Cmd) {
@@ -79,7 +82,7 @@ func (model HostMiniGameModel) Update(msg tea.Msg) (HostMiniGameModel, tea.Cmd) 
 			value = options[model.cursor]
 		}
 		if value == "" {
-			model.error = "A response is required."
+			model.error = model.loc.T("minigame.response_required")
 			return model, nil
 		}
 		if err := model.host.Apply(&model.instance, engine.MiniGameInput{Action: "submit", Value: value}); err != nil {
@@ -98,13 +101,13 @@ func (model HostMiniGameModel) Update(msg tea.Msg) (HostMiniGameModel, tea.Cmd) 
 func (model HostMiniGameModel) View() string {
 	definition := model.instance.Definition
 	lines := []string{
-		lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render("CHALLENGE HOST · " + strings.ToUpper(string(definition.Kind))),
+		lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render(model.loc.T("minigame.host") + " · " + strings.ToUpper(string(definition.Kind))),
 		"", "  " + definition.Prompt, "",
 	}
 	if model.instance.Runtime.Phase == engine.MiniGamePaused {
-		lines = append(lines, theme.MutedText.Render("  Paused · press P to resume"))
+		lines = append(lines, theme.MutedText.Render("  "+model.loc.T("minigame.paused")))
 	} else if result := model.instance.Runtime.Result; result != nil {
-		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  "+strings.ToUpper(strings.ReplaceAll(string(result.Outcome.Degree), "_", " "))), "", "  "+result.Detail, "", theme.MutedText.Render("  Press any key to continue"))
+		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  "+model.loc.T("outcome."+string(result.Outcome.Degree))), "", "  "+result.Detail, "", theme.MutedText.Render("  "+model.loc.T("challenge.continue")))
 	} else if len(definition.Options) > 0 {
 		for index, option := range definition.Options {
 			prefix := "  "
@@ -113,9 +116,9 @@ func (model HostMiniGameModel) View() string {
 			}
 			lines = append(lines, prefix+option)
 		}
-		lines = append(lines, "", theme.MutedText.Render("  ↑/↓ select · Enter resolve · P pause"))
+		lines = append(lines, "", theme.MutedText.Render("  "+model.loc.T("minigame.select_help")))
 	} else {
-		lines = append(lines, "  > "+model.input.View(), "", theme.MutedText.Render("  Enter resolve · P pause"))
+		lines = append(lines, "  > "+model.input.View(), "", theme.MutedText.Render("  "+model.loc.T("minigame.input_help")))
 	}
 	if model.error != "" {
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(theme.Danger).Render("  "+model.error))

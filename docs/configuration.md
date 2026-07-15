@@ -11,6 +11,8 @@ Options workspace.
 - Environment variables are the right place for API keys and bridge credentials.
 - The CLI first looks for `config.yaml` in the current directory, then beside the executable.
 - `oneday config show --safe` prints the effective non-secret configuration.
+- `oneday config locale en|it|auto` saves the terminal interface language;
+  `auto` follows `LC_ALL`, `LC_MESSAGES`, then `LANG`.
 - `oneday setup --reconfigure` recreates the main provider/RAG choices interactively.
 
 Never commit `config.yaml`, `.env`, database files, or the `oneday_data/` directory.
@@ -131,6 +133,11 @@ the data privacy boundary.
 
 ## Game and storage
 
+- `interface.locale` controls terminal presentation only. Supported saved values
+  are `en` and `it`; omit it or use `oneday config locale auto` to follow the OS.
+  Browser interface language is stored separately in browser preferences.
+- Interface locale never changes canonical story language or per-story TTS and
+  voice-assignment language tags.
 - `data_dir` contains `oneday.db`, generated visual/audio assets, and story data.
 - `game.autosave_every` controls automatic save frequency.
 - `game.typewriter_effect` and `typewriter_speed` affect terminal presentation.

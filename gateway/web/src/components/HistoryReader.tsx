@@ -1,5 +1,6 @@
 import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getChapters, getHistory, getStoryEpub, getStoryExport, getTelemetryExport } from "../api";
 import { readableStructuredText } from "../format";
 import type { ChapterView, MessageView, StorySnapshot } from "../types";
@@ -18,6 +19,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
+  const { t } = useTranslation(["flow", "surfaces"]);
   const id = useId();
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [chapters, setChapters] = useState<ChapterView[]>([]);
@@ -122,48 +124,48 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     <div className="history-reader">
       <label className="history-search">
         <Search size={14} />
-        <span className="sr-only">Search branch history</span>
-        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search this branch" />
+        <span className="sr-only">{t("historySearch")}</span>
+        <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("historySearch")} />
       </label>
       <details className="history-export-menu">
-        <summary>Export this branch</summary>
+        <summary>{t("exportBranch")}</summary>
         <div className="history-export">
-          <button type="button" disabled={busy} onClick={() => void exportAs("markdown")}>Export Markdown</button>
-          <button type="button" disabled={busy} onClick={() => void exportAs("json")}>Export JSON</button>
-          <button type="button" disabled={busy} onClick={() => void exportAs("epub")}>Export EPUB</button>
+          <button type="button" disabled={busy} onClick={() => void exportAs("markdown")}>{t("surfaces:history.markdown")}</button>
+          <button type="button" disabled={busy} onClick={() => void exportAs("json")}>{t("surfaces:history.json")}</button>
+          <button type="button" disabled={busy} onClick={() => void exportAs("epub")}>{t("surfaces:history.epub")}</button>
           <details className="history-technical-export">
-            <summary>Technical exports</summary>
+            <summary>{t("surfaces:history.technical")}</summary>
             <div>
-              <button type="button" disabled={busy} onClick={() => void exportAs("replay")}>Export media replay</button>
-              <button type="button" disabled={busy} onClick={() => void exportTelemetry()}>Export telemetry</button>
+              <button type="button" disabled={busy} onClick={() => void exportAs("replay")}>{t("surfaces:history.replay")}</button>
+              <button type="button" disabled={busy} onClick={() => void exportTelemetry()}>{t("surfaces:history.telemetry")}</button>
             </div>
           </details>
         </div>
       </details>
       {error && <p className="inline-error" role="alert">{error}</p>}
       <section aria-labelledby={`${id}-messages`}>
-        <h3 id={`${id}-messages`}>Transcript</h3>
+        <h3 id={`${id}-messages`}>{t("transcript")}</h3>
         {messages.length === 0 && !busy ? (
-          <p className="empty-copy">No matching messages on this branch.</p>
+          <p className="empty-copy">{t("noMessages")}</p>
         ) : (
           <div className="history-entries">
             {messages.map((message) => <HistoryMessage key={message.id} message={message} />)}
           </div>
         )}
-        {messageCursor && <button type="button" disabled={busy} onClick={() => void loadOlder()}>Load older messages</button>}
+        {messageCursor && <button type="button" disabled={busy} onClick={() => void loadOlder()}>{t("olderMessages")}</button>}
       </section>
       <section aria-labelledby={`${id}-chapters`}>
-        <h3 id={`${id}-chapters`}>Chapters</h3>
+        <h3 id={`${id}-chapters`}>{t("chapters")}</h3>
         <div className="history-chapters">
           {chapters.map((chapter) => (
             <article key={chapter.id}>
-              <strong>{chapter.title || `Chapter ${chapter.chapter_number}`}</strong>
-              <span>Turns {chapter.start_turn}–{chapter.end_turn ?? "current"}</span>
-              <p>{chapter.summary || "No summary yet."}</p>
+              <strong>{chapter.title || t("surfaces:history.chapter", { number: chapter.chapter_number })}</strong>
+              <span>{t("surfaces:history.turns", { start: chapter.start_turn, end: chapter.end_turn ?? t("surfaces:history.current") })}</span>
+              <p>{chapter.summary || t("surfaces:history.noSummary")}</p>
             </article>
           ))}
         </div>
-        {chapterCursor && <button type="button" disabled={busy} onClick={() => void loadOlderChapters()}>Load older chapters</button>}
+        {chapterCursor && <button type="button" disabled={busy} onClick={() => void loadOlderChapters()}>{t("olderChapters")}</button>}
       </section>
     </div>
   );
@@ -173,18 +175,19 @@ const COLLAPSE_AFTER_WORDS = 90;
 const PREVIEW_WORDS = 56;
 
 function HistoryMessage({ message }: { message: MessageView }) {
+  const { t } = useTranslation("surfaces");
   const [expanded, setExpanded] = useState(false);
-  const content = readableStructuredText(message.content, "(empty)");
+  const content = readableStructuredText(message.content, t("history.empty"));
   const words = content.trim().split(/\s+/);
   const collapsible = words.length > COLLAPSE_AFTER_WORDS;
   const preview = collapsible && !expanded ? `${words.slice(0, PREVIEW_WORDS).join(" ")}…` : content;
-  const role = message.role === "user" ? "You" : message.role === "system" ? "System" : "Narrator";
+  const role = message.role === "user" ? t("history.you") : message.role === "system" ? t("history.system") : t("history.narrator");
 
   return (
     <article className={`history-message ${message.role}-entry`} data-message-role={message.role}>
       <header className="history-message-header">
         <strong>{role}</strong>
-        <span className="history-message-turn">Turn {message.turn}</span>
+        <span className="history-message-turn">{t("history.turn", { turn: message.turn })}</span>
       </header>
       <div className="history-message-body">
         <div className={!expanded && collapsible ? "history-message-preview" : undefined}>
@@ -192,7 +195,7 @@ function HistoryMessage({ message }: { message: MessageView }) {
         </div>
         {collapsible && (
           <button type="button" className="history-message-toggle" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
-            {expanded ? "Show less" : `Show full message · ${words.length} words`}
+            {expanded ? t("history.less") : t("history.full", { count: words.length })}
             <ChevronDown size={16} aria-hidden="true" />
           </button>
         )}

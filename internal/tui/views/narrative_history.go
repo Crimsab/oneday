@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wrap"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -24,6 +25,7 @@ const (
 )
 
 type historyBrowserModel struct {
+	loc            appi18n.Localizer
 	title          string
 	storyName      string
 	width          int
@@ -53,11 +55,12 @@ type historySessionGroup struct {
 	LastMessage  time.Time
 }
 
-func newHistoryBrowser(storyName string, messages []storage.ChatMessage, sessions []storage.Session, initialQuery string, width, height int) *historyBrowserModel {
+func newHistoryBrowser(storyName string, messages []storage.ChatMessage, sessions []storage.Session, initialQuery string, width, height int, localizers ...appi18n.Localizer) *historyBrowserModel {
+	loc := viewLocalizer(localizers)
 	search := textinput.New()
-	search.Placeholder = "Search by text, type, turn, npc, clue..."
+	search.Placeholder = loc.T("history.search_placeholder")
 	search.CharLimit = 120
-	search.Prompt = "Search > "
+	search.Prompt = loc.T("history.search_prompt")
 	search.SetValue(strings.TrimSpace(initialQuery))
 	search.Blur()
 
@@ -66,7 +69,8 @@ func newHistoryBrowser(storyName string, messages []storage.ChatMessage, session
 	vp.MouseWheelDelta = 4
 
 	browser := &historyBrowserModel{
-		title:     "Story History",
+		loc:       loc,
+		title:     loc.T("history.title"),
 		storyName: strings.TrimSpace(storyName),
 		visible:   true,
 		viewport:  vp,
@@ -264,27 +268,27 @@ func (h historyBrowserModel) View() string {
 		return ""
 	}
 
-	searchLabel := theme.MutedText.Render("Find")
+	searchLabel := theme.MutedText.Render(h.loc.T("history.find"))
 	if h.focus == historyFocusSearch {
-		searchLabel = theme.SelectedItem.Render("Find")
+		searchLabel = theme.SelectedItem.Render(h.loc.T("history.find"))
 	}
 
-	storyLine := theme.MutedText.Render("Search, expand sessions, and inspect the full run.")
+	storyLine := theme.MutedText.Render(h.loc.T("history.subtitle"))
 	if h.storyName != "" {
-		storyLine = theme.MutedText.Render("Story: " + h.storyName)
+		storyLine = theme.MutedText.Render(h.loc.T("history.story", h.storyName))
 	}
 
-	summary := fmt.Sprintf("%d sessions · %d matching entries", len(h.filteredGroups), h.matchCount)
+	summary := h.loc.T("history.matches_summary", len(h.filteredGroups), h.matchCount)
 	if strings.TrimSpace(h.search.Value()) == "" {
 		totalEntries := 0
 		for _, group := range h.groups {
 			totalEntries += len(group.Entries)
 		}
-		summary = fmt.Sprintf("%d sessions · %d entries", len(h.groups), totalEntries)
+		summary = h.loc.T("history.entries_summary", len(h.groups), totalEntries)
 	}
 
 	separator := theme.MutedText.Render(strings.Repeat("─", historyMaxInt(1, h.viewport.Width)))
-	footer := theme.MutedText.Render("Mouse wheel scrolls only here · ↑/↓ or j/k select sessions · ←/→ fold · PgUp/PgDn scroll timeline · Tab search · Esc close")
+	footer := theme.MutedText.Render(h.loc.T("history.footer"))
 
 	searchRow := lipgloss.JoinHorizontal(lipgloss.Left, searchLabel, "  ", h.search.View())
 	inner := lipgloss.JoinVertical(lipgloss.Left,
@@ -439,7 +443,7 @@ func (h *historyBrowserModel) syncViewportToCursor() {
 
 func (h *historyBrowserModel) renderViewportContent() (string, []int) {
 	if len(h.filteredGroups) == 0 {
-		return theme.MutedText.Render("No history entries matched the current search."), []int{0}
+		return theme.MutedText.Render(h.loc.T("history.empty_search")), []int{0}
 	}
 
 	lines := make([]string, 0, 128)
@@ -450,7 +454,7 @@ func (h *historyBrowserModel) renderViewportContent() (string, []int) {
 
 	for idx, group := range h.filteredGroups {
 		headerLines = append(headerLines, lineCount)
-		header := renderHistorySessionHeader(group, idx == h.cursor, h.isExpanded(group))
+		header := renderHistorySessionHeader(group, idx == h.cursor, h.isExpanded(group), h.loc)
 		lines = append(lines, header)
 		lineCount++
 
@@ -458,13 +462,13 @@ func (h *historyBrowserModel) renderViewportContent() (string, []int) {
 			currentTurn := -1
 			for _, entry := range group.Entries {
 				if entry.Turn != currentTurn {
-					turnLine := renderHistoryTurnDivider(entry.Turn, entry.CreatedAt)
+					turnLine := renderHistoryTurnDivider(entry.Turn, entry.CreatedAt, h.loc)
 					lines = append(lines, turnLine)
 					lineCount++
 					currentTurn = entry.Turn
 				}
 
-				rendered := renderHistoryMessage(entry, bodyWidth)
+				rendered := renderHistoryMessage(entry, bodyWidth, h.loc)
 				parts := strings.Split(rendered, "\n")
 				lines = append(lines, parts...)
 				lineCount += len(parts)
@@ -492,24 +496,24 @@ func (h historyBrowserModel) isMouseInViewport(msg tea.MouseMsg) bool {
 func (m NarrativeModel) showHistory(args []string) (NarrativeModel, tea.Cmd) {
 	query := strings.TrimSpace(strings.Join(args, " "))
 	if m.narrator == nil || m.narrator.DB() == nil || m.narrator.Story() == nil {
-		m.errMsg = "No story history available yet."
+		m.errMsg = m.loc.T("history.unavailable")
 		return m, nil
 	}
 
 	storyID := m.narrator.Story().ID
 	msgs, err := m.narrator.DB().GetStoryMessages(storyID)
 	if err != nil {
-		m.errMsg = fmt.Sprintf("History error: %v", err)
+		m.errMsg = m.loc.T("history.error", err)
 		return m, nil
 	}
 
 	sessions, err := m.narrator.DB().ListSessions(storyID)
 	if err != nil {
-		m.errMsg = fmt.Sprintf("History error: %v", err)
+		m.errMsg = m.loc.T("history.error", err)
 		return m, nil
 	}
 
-	m.historyBrowser = newHistoryBrowser(m.narrator.Story().Name, msgs, sessions, query, m.width, m.height)
+	m.historyBrowser = newHistoryBrowser(m.narrator.Story().Name, msgs, sessions, query, m.width, m.height, m.loc)
 	m.historyReturnInputFocus = m.inputFocus
 	m.inputFocus = false
 	m.input.Blur()
@@ -601,7 +605,8 @@ func historyMessageMatchesQuery(msg storage.ChatMessage, query string) bool {
 	return strings.Contains(joined, query)
 }
 
-func renderHistorySessionHeader(group historySessionGroup, selected, expanded bool) string {
+func renderHistorySessionHeader(group historySessionGroup, selected, expanded bool, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	cursor := "  "
 	if selected {
 		cursor = "▸ "
@@ -612,18 +617,15 @@ func renderHistorySessionHeader(group historySessionGroup, selected, expanded bo
 		fold = "▾"
 	}
 
-	label := "Session"
+	label := loc.T("history.session")
 	if !group.Session.StartedAt.IsZero() {
-		label = "Session · " + group.Session.StartedAt.Format("02 Jan 2006 15:04")
+		label = loc.T("history.session_date", group.Session.StartedAt.Format("02 Jan 2006 15:04"))
 	}
 	if group.Session.EndedAt == nil {
-		label += " · active"
+		label += " · " + loc.T("status.active")
 	}
 
-	count := fmt.Sprintf("%d msgs", len(group.Entries))
-	if len(group.Entries) == 1 {
-		count = "1 msg"
-	}
+	count := loc.Plural("history.message_count", len(group.Entries), len(group.Entries))
 
 	style := lipgloss.NewStyle().Foreground(theme.Text)
 	if selected {
@@ -639,18 +641,18 @@ func renderHistorySessionHeader(group historySessionGroup, selected, expanded bo
 	return line + "  " + metaStyle.Render(count)
 }
 
-func renderHistoryTurnDivider(turn int, createdAt time.Time) string {
-	label := fmt.Sprintf("  Turn %d", turn)
+func renderHistoryTurnDivider(turn int, createdAt time.Time, localizers ...appi18n.Localizer) string {
+	label := "  " + viewLocalizer(localizers).T("history.turn", turn)
 	if !createdAt.IsZero() {
 		label += " · " + createdAt.Format("15:04")
 	}
 	return lipgloss.NewStyle().Foreground(theme.Secondary).Render(label)
 }
 
-func renderHistoryMessage(msg storage.ChatMessage, wrapWidth int) string {
-	roleBadge := historyRoleBadge(msg.Role)
+func renderHistoryMessage(msg storage.ChatMessage, wrapWidth int, localizers ...appi18n.Localizer) string {
+	roleBadge := historyRoleBadge(msg.Role, localizers...)
 	metaBits := []string{roleBadge}
-	if typeBadge := historyTypeBadge(msg.MessageType); typeBadge != "" {
+	if typeBadge := historyTypeBadge(msg.MessageType, localizers...); typeBadge != "" {
 		metaBits = append(metaBits, typeBadge)
 	}
 	if !msg.CreatedAt.IsZero() {
@@ -666,8 +668,8 @@ func renderHistoryMessage(msg storage.ChatMessage, wrapWidth int) string {
 	return header + "\n" + strings.Join(bodyLines, "\n")
 }
 
-func historyRoleBadge(role string) string {
-	label := historyRoleLabel(role)
+func historyRoleBadge(role string, localizers ...appi18n.Localizer) string {
+	label := historyRoleLabel(role, localizers...)
 	style := lipgloss.NewStyle().
 		Foreground(theme.Text).
 		Background(lipgloss.Color("#2C2620")).
@@ -686,8 +688,8 @@ func historyRoleBadge(role string) string {
 	return style.Render(label)
 }
 
-func historyTypeBadge(messageType string) string {
-	label := historyMessageTypeLabel(messageType)
+func historyTypeBadge(messageType string, localizers ...appi18n.Localizer) string {
+	label := historyMessageTypeLabel(messageType, localizers...)
 	if label == "" {
 		return ""
 	}
@@ -696,7 +698,7 @@ func historyTypeBadge(messageType string) string {
 		Background(lipgloss.Color("#202020")).
 		Padding(0, 1)
 
-	switch label {
+	switch strings.ToLower(strings.TrimSpace(messageType)) {
 	case "combat":
 		style = style.Foreground(theme.CombatRed).Background(lipgloss.Color("#2A1C1C"))
 	case "crafting":
@@ -710,36 +712,38 @@ func historyTypeBadge(messageType string) string {
 	return style.Render(label)
 }
 
-func historyRoleLabel(role string) string {
+func historyRoleLabel(role string, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	switch strings.ToLower(strings.TrimSpace(role)) {
 	case "assistant":
-		return "Narrator"
+		return loc.T("history.role_narrator")
 	case "user":
-		return "Player"
+		return loc.T("history.role_player")
 	case "system":
-		return "System"
+		return loc.T("history.role_system")
 	default:
 		if role == "" {
-			return "Unknown"
+			return loc.T("history.role_unknown")
 		}
 		return strings.ToUpper(role[:1]) + role[1:]
 	}
 }
 
-func historyMessageTypeLabel(messageType string) string {
+func historyMessageTypeLabel(messageType string, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	switch strings.ToLower(strings.TrimSpace(messageType)) {
 	case "", "narrative":
 		return ""
 	case "combat":
-		return "combat"
+		return loc.T("history.type_combat")
 	case "crafting":
-		return "crafting"
+		return loc.T("history.type_crafting")
 	case "dialogue":
-		return "dialogue"
+		return loc.T("history.type_dialogue")
 	case "narrator":
-		return "meta"
+		return loc.T("history.type_meta")
 	case "combat_summary":
-		return "combat summary"
+		return loc.T("history.type_combat_summary")
 	default:
 		return strings.TrimSpace(messageType)
 	}

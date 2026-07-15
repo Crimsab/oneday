@@ -1,8 +1,13 @@
 # OneDay Configuration
-config_version: 2
+config_version: 3
 
 # Data directory for stories, saves, and database
 data_dir: "./oneday_data"
+
+# Interface language only. Leave empty for OS locale detection, or set en/it.
+# This never changes a story's language or spoken-audio language.
+interface:
+  locale: ""
 
 # AI Provider configuration
 ai:

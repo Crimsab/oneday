@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -42,10 +43,12 @@ type NewStoryModel struct {
 	height     int
 	inputFocus bool
 	actions    []engine.CreationAction
+	loc        appi18n.Localizer
 }
 
 // NewNewStoryModel creates the story creation view.
-func NewNewStoryModel(creator *engine.StoryCreator) NewStoryModel {
+func NewNewStoryModel(creator *engine.StoryCreator, localizers ...appi18n.Localizer) NewStoryModel {
+	loc := viewLocalizer(localizers)
 	ta := newGameTextarea("Type your response...", storyInputHeight)
 	ta.Focus()
 
@@ -63,6 +66,7 @@ func NewNewStoryModel(creator *engine.StoryCreator) NewStoryModel {
 		spinner:    sp,
 		history:    &strings.Builder{},
 		inputFocus: false,
+		loc:        loc,
 	}
 	m.syncInputPlaceholder()
 	m.refreshActions()
@@ -101,12 +105,12 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 	case aiResponseMsg:
 		m.waiting = false
 		if msg.err != nil {
-			m.errMsg = fmt.Sprintf("AI Error: %v (press any key to retry)", msg.err)
+			m.errMsg = m.loc.T("wizard.ai_error", msg.err)
 			return m, nil
 		}
 		m.errMsg = ""
 		// Append AI response to history
-		m.history.WriteString(theme.Subtitle.Render("Story Guide") + "\n")
+		m.history.WriteString(theme.Subtitle.Render(m.loc.T("wizard.guide")) + "\n")
 		m.history.WriteString(components.RenderMarkdown(msg.content) + "\n")
 		m.viewport.SetContent(m.history.String())
 		m.viewport.GotoBottom()
@@ -189,7 +193,7 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 				return m, nil
 			}
 			// Append player input to history
-			m.history.WriteString(theme.SelectedItem.Render("You") + "\n")
+			m.history.WriteString(theme.SelectedItem.Render(m.loc.T("wizard.you")) + "\n")
 			m.history.WriteString(text + "\n\n")
 			m.viewport.SetContent(m.history.String())
 			m.viewport.GotoBottom()
@@ -227,7 +231,7 @@ func (m NewStoryModel) Update(msg tea.Msg) (NewStoryModel, tea.Cmd) {
 }
 
 func (m NewStoryModel) View() string {
-	header := theme.Title.Render("Create Your Story")
+	header := theme.Title.Render(m.loc.T("wizard.title"))
 	phaseBar := theme.MutedText.Render(m.creator.StageLabel())
 
 	var statusLine string
@@ -241,23 +245,23 @@ func (m NewStoryModel) View() string {
 
 	var inputArea string
 	if m.waiting {
-		inputArea = m.spinner.View() + " Thinking..."
+		inputArea = m.spinner.View() + " " + m.loc.T("wizard.thinking")
 	} else if m.errMsg != "" {
 		inputArea = theme.DangerText.Render(m.errMsg)
 	} else if !m.inputFocus && len(m.actions) > 0 {
-		inputArea = theme.MutedText.Render("Press TAB to type a custom reply.")
+		inputArea = theme.MutedText.Render(m.loc.T("wizard.custom_hint"))
 	} else {
 		inputArea = m.input.View()
 	}
 
 	choicesView := m.choices.View()
 	if choicesView != "" {
-		choicesView = theme.MutedText.Render("Quick choices") + "\n" + choicesView
+		choicesView = theme.MutedText.Render(m.loc.T("wizard.quick_choices")) + "\n" + choicesView
 	}
 
-	help := theme.MutedText.Render("tab toggle · enter send/select · alt+enter/ctrl+j newline · esc back · ctrl+c quit")
+	help := theme.MutedText.Render(m.loc.T("wizard.help"))
 	if len(m.actions) == 0 {
-		help = theme.MutedText.Render("enter send · alt+enter/ctrl+j newline · esc back · ctrl+c quit")
+		help = theme.MutedText.Render(m.loc.T("wizard.help_input"))
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left,

@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/crimsab/oneday/internal/game/contracts"
 	"github.com/crimsab/oneday/internal/game/gatewayprotocol"
 	gameservice "github.com/crimsab/oneday/internal/game/service"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/google/uuid"
 )
@@ -50,6 +52,62 @@ type gatewayAudioRequest = gatewayprotocol.AudioRequest
 type gatewayAudioExport = gatewayprotocol.AudioExport
 type gatewayAudioResponse = gatewayprotocol.AudioResponse
 
+const (
+	gatewayCodeInvalidRequest = "invalid_request"
+	gatewayCodeStaleRequest   = "stale_request"
+	gatewayCodeConflict       = "conflict"
+	gatewayCodeNotFound       = "not_found"
+	gatewayCodeInternal       = "internal_error"
+)
+
+type gatewayCauseError struct {
+	code string
+	err  error
+}
+
+func (e gatewayCauseError) Error() string { return e.err.Error() }
+func (e gatewayCauseError) Unwrap() error { return e.err }
+
+func gatewayCause(code string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return gatewayCauseError{code: code, err: err}
+}
+
+func gatewayErrorCode(err error) string {
+	var cause gatewayCauseError
+	if errors.As(err, &cause) && cause.code != "" {
+		return cause.code
+	}
+	switch {
+	case errors.Is(err, sql.ErrNoRows),
+		errors.Is(err, storage.ErrBranchNotFound),
+		errors.Is(err, storage.ErrCommitNotFound):
+		return gatewayCodeNotFound
+	case errors.Is(err, storage.ErrStaleWorldTurn),
+		errors.Is(err, storage.ErrStaleStoryRevision),
+		errors.Is(err, storage.ErrStaleBranchHead),
+		errors.Is(err, storage.ErrStoryTurnLockLost):
+		return gatewayCodeStaleRequest
+	case errors.Is(err, storage.ErrTurnIdempotencyConflict),
+		errors.Is(err, storage.ErrTurnIdempotencyInProgress),
+		errors.Is(err, storage.ErrTurnIdempotencyLost):
+		return gatewayCodeConflict
+	default:
+		return gatewayCodeInternal
+	}
+}
+
+func gatewayErrorPresentation(err error) (string, string) {
+	code := gatewayErrorCode(err)
+	if code == gatewayCodeInternal {
+		log.Printf("oneday: gateway internal error: %v", err)
+		return code, "An internal gateway error occurred."
+	}
+	return code, err.Error()
+}
+
 func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in io.Reader, out io.Writer) error {
 	var req gatewayAudioRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
@@ -77,7 +135,7 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 		response.Settings, err = db.GetStoryTTSSettings(req.StoryID)
 	case "settings-put":
 		if req.Settings == nil {
-			err = errors.New("TTS settings are required")
+			err = gatewayCause(gatewayCodeInvalidRequest, errors.New("TTS settings are required"))
 		} else if err = requireRevision(); err == nil {
 			req.Settings.StoryID = req.StoryID
 			response.Settings, err = db.UpsertStoryTTSSettings(*req.Settings)
@@ -86,7 +144,7 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 		response.Assignments, err = db.ListVoiceAssignments(req.StoryID)
 	case "assignment-put":
 		if req.Assignment == nil {
-			err = errors.New("voice assignment is required")
+			err = gatewayCause(gatewayCodeInvalidRequest, errors.New("voice assignment is required"))
 		} else if err = requireRevision(); err == nil {
 			req.Assignment.StoryID = req.StoryID
 			if req.AssignmentID != "" {
@@ -98,7 +156,7 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 		response.Pronunciations, err = db.ListPronunciations(req.StoryID, req.Language)
 	case "pronunciation-put":
 		if req.Pronunciation == nil {
-			err = errors.New("pronunciation entry is required")
+			err = gatewayCause(gatewayCodeInvalidRequest, errors.New("pronunciation entry is required"))
 		} else if err = requireRevision(); err == nil {
 			req.Pronunciation.StoryID = req.StoryID
 			if req.PronunciationID != "" {
@@ -135,7 +193,7 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 		var job *storage.TTSJob
 		job, err = db.GetTTSJob(req.JobID)
 		if err == nil && job.StoryID != req.StoryID {
-			err = errors.New("TTS job belongs to another story")
+			err = gatewayCause(gatewayCodeConflict, errors.New("TTS job belongs to another story"))
 		}
 		if err == nil {
 			_, err = db.CancelTTSJob(req.StoryID, req.JobID)
@@ -157,7 +215,7 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 		var job *storage.TTSJob
 		job, err = db.GetTTSJob(req.JobID)
 		if err == nil && job.StoryID != req.StoryID {
-			err = errors.New("TTS job belongs to another story")
+			err = gatewayCause(gatewayCodeConflict, errors.New("TTS job belongs to another story"))
 		}
 		if err == nil {
 			_, err = db.RetryTTSJob(req.StoryID, req.JobID)
@@ -216,11 +274,12 @@ func runGatewayAudio(ctx context.Context, cfg config.Config, db *storage.DB, in 
 			response.Format = response.Asset.OutputFormat
 		}
 	default:
-		err = fmt.Errorf("unknown audio operation %q", req.Operation)
+		err = gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("unknown audio operation %q", req.Operation))
 	}
 	if err != nil {
-		response.Error = err.Error()
-		response.ResponseMeta = gatewayprotocol.Failure("audio_operation_failed", err.Error())
+		code, message := gatewayErrorPresentation(err)
+		response.Error = message
+		response.ResponseMeta = gatewayprotocol.Failure(code, message)
 	}
 	return json.NewEncoder(out).Encode(response)
 }
@@ -294,7 +353,9 @@ func runGatewayMiniGame(db *storage.DB, operation string, in io.Reader, out io.W
 		digest := sha256.Sum256([]byte(id + "\x00" + req.StoryID + "\x00" + head.Branch.ID))
 		seed := int64(binary.BigEndian.Uint64(digest[:8]) & uint64(contracts.MaxPortableChallengeSeed))
 		value := engine.NewMiniGameInstance(id, req.StoryID, head.Branch.ID, head.Commit.CanonicalTurn, seed, definition)
-		if err = host.Start(&value); err == nil {
+		if startErr := host.Start(&value); startErr != nil {
+			err = gatewayCause(gatewayCodeInvalidRequest, startErr)
+		} else {
 			instance, err = saveGatewayMiniGame(db, host, value)
 		}
 	case "get":
@@ -314,16 +375,19 @@ func runGatewayMiniGame(db *storage.DB, operation string, in io.Reader, out io.W
 			instance, err = host.Restore(record.Instance)
 		}
 		if err == nil {
-			err = host.Apply(instance, req.Input)
+			if applyErr := host.Apply(instance, req.Input); applyErr != nil {
+				err = gatewayCause(gatewayCodeInvalidRequest, applyErr)
+			}
 		}
 		if err == nil {
 			instance, err = saveGatewayMiniGame(db, host, *instance)
 		}
 	default:
-		err = fmt.Errorf("unknown minigame operation %q", operation)
+		err = gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("unknown minigame operation %q", operation))
 	}
 	if err != nil {
-		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{ResponseMeta: gatewayprotocol.Failure("minigame_operation_failed", err.Error()), Error: err.Error()})
+		code, message := gatewayErrorPresentation(err)
+		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	}
 	if instance == nil {
 		return json.NewEncoder(out).Encode(gatewayMiniGameResponse{})
@@ -355,8 +419,12 @@ func runGatewaySchemaPreflight(out io.Writer) error {
 	return nil
 }
 
-func runGatewayCommandDescriptors(out io.Writer) error {
-	if err := json.NewEncoder(out).Encode(gatewayCommandDescriptorsResponse{Commands: contracts.CommandDescriptors()}); err != nil {
+func runGatewayCommandDescriptors(out io.Writer, locale ...string) error {
+	loc := appi18n.New(appi18n.English)
+	if len(locale) > 0 {
+		loc = appi18n.New(appi18n.Normalize(locale[0]))
+	}
+	if err := json.NewEncoder(out).Encode(gatewayCommandDescriptorsResponse{Commands: contracts.CommandDescriptors(loc)}); err != nil {
 		return fmt.Errorf("writing gateway-command-descriptors response: %w", err)
 	}
 	return nil
@@ -365,16 +433,16 @@ func runGatewayCommandDescriptors(out io.Writer) error {
 func runGatewayStoryCreate(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req gatewayStoryCreateRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayStoryCreateError(out, fmt.Errorf("invalid gateway-story-create JSON: %w", err))
+		return writeGatewayStoryCreateError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-story-create JSON: %w", err)))
 	}
 	req.Brief = strings.TrimSpace(req.Brief)
 	req.CharacterName = strings.TrimSpace(req.CharacterName)
 	req.CharacterBackground = strings.TrimSpace(req.CharacterBackground)
 	if req.Brief == "" {
-		return writeGatewayStoryCreateError(out, fmt.Errorf("story brief is required"))
+		return writeGatewayStoryCreateError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("story brief is required")))
 	}
 	if req.CharacterName == "" {
-		return writeGatewayStoryCreateError(out, fmt.Errorf("character name is required"))
+		return writeGatewayStoryCreateError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("character name is required")))
 	}
 
 	creator := engine.NewStoryCreator(router, db, cfg.AI.Generation)
@@ -426,13 +494,13 @@ func runGatewayStoryCreate(ctx context.Context, cfg config.Config, db *storage.D
 func runGatewayStoryWizard(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req gatewayStoryWizardRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayStoryWizardError(out, fmt.Errorf("invalid gateway-story-wizard JSON: %w", err))
+		return writeGatewayStoryWizardError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-story-wizard JSON: %w", err)))
 	}
 
 	creator := engine.NewStoryCreator(router, db, cfg.AI.Generation)
 	if req.State != nil {
 		if err := creator.RestoreState(*req.State); err != nil {
-			return writeGatewayStoryWizardError(out, err)
+			return writeGatewayStoryWizardError(out, gatewayCause(gatewayCodeInvalidRequest, err))
 		}
 	}
 
@@ -498,7 +566,7 @@ func runGatewayStoryWizard(ctx context.Context, cfg config.Config, db *storage.D
 func runGatewayStoryEnhance(ctx context.Context, cfg config.Config, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req gatewayStoryEnhanceRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayStoryEnhanceError(out, fmt.Errorf("invalid gateway-story-enhance JSON: %w", err))
+		return writeGatewayStoryEnhanceError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-story-enhance JSON: %w", err)))
 	}
 	seed := strings.TrimSpace(req.Text)
 	if seed == "" {
@@ -660,7 +728,7 @@ func runGatewayModelSettings(configPath string, out io.Writer) error {
 func runGatewayModelSettingsUpdate(configPath string, in io.Reader, out io.Writer) error {
 	var update config.ModelRoutingUpdate
 	if err := json.NewDecoder(in).Decode(&update); err != nil {
-		return writeGatewayModelSettingsError(out, fmt.Errorf("invalid gateway-model-settings-update JSON: %w", err))
+		return writeGatewayModelSettingsError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-model-settings-update JSON: %w", err)))
 	}
 	settings, err := config.UpdateModelRoutingSettings(configPath, update)
 	if err != nil {
@@ -672,13 +740,75 @@ func runGatewayModelSettingsUpdate(configPath string, in io.Reader, out io.Write
 	return nil
 }
 
+func gatewayMutationPreflight(
+	ctx context.Context,
+	turns *gameservice.InProcessTurnService,
+	storyID string,
+	sessionID string,
+	clientTurn int,
+	clientRevision int64,
+) error {
+	if strings.TrimSpace(storyID) == "" {
+		return gatewayCause(gatewayCodeInvalidRequest, errors.New("story_id is required"))
+	}
+	if strings.TrimSpace(sessionID) == "" {
+		return gatewayCause(gatewayCodeInvalidRequest, errors.New("session_id is required"))
+	}
+	snapshot, err := turns.Snapshot(ctx, storyID)
+	if err != nil {
+		return err
+	}
+	if clientTurn != snapshot.Turn {
+		return gatewayCause(gatewayCodeStaleRequest, fmt.Errorf("stale client_turn %d, current turn is %d", clientTurn, snapshot.Turn))
+	}
+	if clientRevision != snapshot.Revision {
+		return gatewayCause(gatewayCodeStaleRequest, fmt.Errorf("stale client_revision %d, current revision is %d", clientRevision, snapshot.Revision))
+	}
+	if snapshot.SessionID != "" && sessionID != snapshot.SessionID {
+		return gatewayCause(gatewayCodeStaleRequest, fmt.Errorf("stale session_id %q, active session is %q", sessionID, snapshot.SessionID))
+	}
+	return nil
+}
+
+func gatewayTurnPreflight(ctx context.Context, db *storage.DB, turns *gameservice.InProcessTurnService, req contracts.SubmitActionRequest) error {
+	if strings.TrimSpace(req.IdempotencyKey) == "" {
+		return gatewayCause(gatewayCodeInvalidRequest, errors.New("idempotency_key is required"))
+	}
+	if strings.TrimSpace(req.Action.Text) == "" && req.Action.ChoiceID == 0 {
+		return gatewayCause(gatewayCodeInvalidRequest, errors.New("action text or choice_id is required"))
+	}
+	var status string
+	err := db.Conn().QueryRow(
+		`SELECT status FROM turn_idempotency WHERE story_id=? AND idempotency_key=?`,
+		strings.TrimSpace(req.StoryID), strings.TrimSpace(req.IdempotencyKey),
+	).Scan(&status)
+	if err == nil && status == "committed" {
+		// Let the turn service replay the durable response or return its typed
+		// idempotency conflict without rejecting an intentionally old retry.
+		return nil
+	}
+	if err == nil && status == "running" {
+		return gatewayCause(gatewayCodeConflict, storage.ErrTurnIdempotencyInProgress)
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	return gatewayMutationPreflight(ctx, turns, req.StoryID, req.SessionID, req.ClientTurn, req.ClientRevision)
+}
+
 func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.SubmitActionRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayTurnError(out, fmt.Errorf("invalid gateway-turn JSON: %w", err))
+		return writeGatewayTurnError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-turn JSON: %w", err)))
 	}
 
 	turns := gameservice.NewInProcessTurnService(cfg, db, router)
+	if err := gatewayTurnPreflight(ctx, db, turns, req); err != nil {
+		if req.Stream {
+			return writeGatewayTurnStreamError(out, err)
+		}
+		return writeGatewayTurnError(out, err)
+	}
 	if req.Stream {
 		stream, err := turns.SubmitActionStream(ctx, req)
 		if err != nil {
@@ -688,7 +818,7 @@ func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, rout
 		var sequence int64
 		for event := range stream {
 			sequence++
-			eventCopy := event
+			eventCopy := gatewayStreamEvent(event)
 			if err := encoder.Encode(gatewayTurnStreamLine{
 				Event:    &eventCopy,
 				Phase:    gatewayTurnEventPhase(eventCopy),
@@ -719,15 +849,26 @@ func runGatewayTurn(ctx context.Context, cfg config.Config, db *storage.DB, rout
 	return nil
 }
 
+func gatewayStreamEvent(event contracts.TurnEvent) contracts.TurnEvent {
+	if event.Type != contracts.EventError {
+		return event
+	}
+	event.Payload, _ = json.Marshal(map[string]string{
+		"code":    gatewayCodeInternal,
+		"message": "An internal gateway error occurred.",
+	})
+	return event
+}
+
 func runGatewayCraft(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req gatewayCraftRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayCraftError(out, fmt.Errorf("invalid gateway-craft JSON: %w", err))
+		return writeGatewayCraftError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-craft JSON: %w", err)))
 	}
 	req.StoryID = strings.TrimSpace(req.StoryID)
 	req.Message = strings.TrimSpace(req.Message)
 	if req.StoryID == "" || req.Message == "" {
-		return writeGatewayCraftError(out, fmt.Errorf("story_id and message are required"))
+		return writeGatewayCraftError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("story_id and message are required")))
 	}
 	story, err := db.GetStory(req.StoryID)
 	if err != nil {
@@ -765,10 +906,18 @@ func runGatewayCraft(ctx context.Context, cfg config.Config, db *storage.DB, rou
 func runGatewayMeta(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.BrowserMetaRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayMetaError(out, fmt.Errorf("invalid gateway-meta JSON: %w", err))
+		return writeGatewayMetaError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-meta JSON: %w", err)))
+	}
+	switch req.Kind {
+	case contracts.BrowserMetaKindBTW, contracts.BrowserMetaKindGuide, contracts.BrowserMetaKindNarrator:
+	default:
+		return writeGatewayMetaError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("unsupported browser meta kind %q", req.Kind)))
 	}
 
 	turns := gameservice.NewInProcessTurnService(cfg, db, router)
+	if err := gatewayMutationPreflight(ctx, turns, req.StoryID, req.SessionID, req.ClientTurn, req.ClientRevision); err != nil {
+		return writeGatewayMetaError(out, err)
+	}
 	resp, err := turns.SubmitMeta(ctx, req)
 	if err != nil {
 		return writeGatewayMetaError(out, err)
@@ -782,10 +931,13 @@ func runGatewayMeta(ctx context.Context, cfg config.Config, db *storage.DB, rout
 func runGatewaySave(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.BrowserSaveRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewaySaveError(out, fmt.Errorf("invalid gateway-save JSON: %w", err))
+		return writeGatewaySaveError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-save JSON: %w", err)))
 	}
 
 	turns := gameservice.NewInProcessTurnService(cfg, db, router)
+	if err := gatewayMutationPreflight(ctx, turns, req.StoryID, req.SessionID, req.ClientTurn, req.ClientRevision); err != nil {
+		return writeGatewaySaveError(out, err)
+	}
 	resp, err := turns.CreateSave(ctx, req)
 	if err != nil {
 		return writeGatewaySaveError(out, err)
@@ -799,10 +951,16 @@ func runGatewaySave(ctx context.Context, cfg config.Config, db *storage.DB, rout
 func runGatewayLoad(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.BrowserLoadRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayLoadError(out, fmt.Errorf("invalid gateway-load JSON: %w", err))
+		return writeGatewayLoadError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-load JSON: %w", err)))
 	}
 
 	turns := gameservice.NewInProcessTurnService(cfg, db, router)
+	if strings.TrimSpace(req.SaveID) == "" {
+		return writeGatewayLoadError(out, gatewayCause(gatewayCodeInvalidRequest, errors.New("save_id is required")))
+	}
+	if err := gatewayMutationPreflight(ctx, turns, req.StoryID, req.SessionID, req.ClientTurn, req.ClientRevision); err != nil {
+		return writeGatewayLoadError(out, err)
+	}
 	resp, err := turns.LoadSave(ctx, req)
 	if err != nil {
 		return writeGatewayLoadError(out, err)
@@ -816,10 +974,16 @@ func runGatewayLoad(ctx context.Context, cfg config.Config, db *storage.DB, rout
 func runGatewayDeleteSave(ctx context.Context, cfg config.Config, db *storage.DB, router *ai.Router, in io.Reader, out io.Writer) error {
 	var req contracts.BrowserDeleteSaveRequest
 	if err := json.NewDecoder(in).Decode(&req); err != nil {
-		return writeGatewayDeleteSaveError(out, fmt.Errorf("invalid gateway-delete-save JSON: %w", err))
+		return writeGatewayDeleteSaveError(out, gatewayCause(gatewayCodeInvalidRequest, fmt.Errorf("invalid gateway-delete-save JSON: %w", err)))
 	}
 
 	turns := gameservice.NewInProcessTurnService(cfg, db, router)
+	if strings.TrimSpace(req.SaveID) == "" {
+		return writeGatewayDeleteSaveError(out, gatewayCause(gatewayCodeInvalidRequest, errors.New("save_id is required")))
+	}
+	if err := gatewayMutationPreflight(ctx, turns, req.StoryID, req.SessionID, req.ClientTurn, req.ClientRevision); err != nil {
+		return writeGatewayDeleteSaveError(out, err)
+	}
 	resp, err := turns.DeleteSave(ctx, req)
 	if err != nil {
 		return writeGatewayDeleteSaveError(out, err)
@@ -907,17 +1071,20 @@ func runGatewayTimeline(db *storage.DB, in io.Reader, out io.Writer) error {
 }
 
 func writeGatewayTurnError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{ResponseMeta: gatewayprotocol.Failure("turn_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayTurnResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayCraftError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayCraftResponse{ResponseMeta: gatewayprotocol.Failure("craft_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayCraftResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayTurnStreamError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{ResponseMeta: gatewayprotocol.Failure("turn_stream_failed", err.Error()), Error: err.Error(), Sequence: 1})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayTurnStreamLine{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message, Sequence: 1})
 	return err
 }
 
@@ -929,48 +1096,63 @@ func gatewayTurnEventPhase(event contracts.TurnEvent) string {
 }
 
 func writeGatewayStoryCreateError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayStoryCreateResponse{ResponseMeta: gatewayprotocol.Failure("story_create_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayStoryCreateResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayStoryWizardError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayStoryWizardResponse{ResponseMeta: gatewayprotocol.Failure("story_wizard_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayStoryWizardResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayStoryEnhanceError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayStoryEnhanceResponse{ResponseMeta: gatewayprotocol.Failure("story_enhance_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayStoryEnhanceResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayMetaError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayMetaResponse{ResponseMeta: gatewayprotocol.Failure("meta_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayMetaResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewaySaveError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewaySaveResponse{ResponseMeta: gatewayprotocol.Failure("save_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewaySaveResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayLoadError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayLoadResponse{ResponseMeta: gatewayprotocol.Failure("load_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayLoadResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayDeleteSaveError(out io.Writer, err error) error {
-	_ = json.NewEncoder(out).Encode(gatewayDeleteSaveResponse{ResponseMeta: gatewayprotocol.Failure("delete_save_failed", err.Error()), Error: err.Error()})
+	code, message := gatewayErrorPresentation(err)
+	_ = json.NewEncoder(out).Encode(gatewayDeleteSaveResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message})
 	return err
 }
 
 func writeGatewayModelSettingsError(out io.Writer, err error) error {
 	code := config.ModelRoutingErrorWrite
 	var routingErr config.ModelRoutingError
-	if errors.As(err, &routingErr) && routingErr.Code != "" {
+	var cause gatewayCauseError
+	if errors.As(err, &cause) && cause.code != "" {
+		code = cause.code
+	} else if errors.As(err, &routingErr) && routingErr.Code != "" {
 		code = routingErr.Code
 	} else if err != nil && errors.Is(err, context.Canceled) {
 		code = "cancelled"
 	}
-	_ = json.NewEncoder(out).Encode(gatewayModelSettingsResponse{ResponseMeta: gatewayprotocol.Failure(code, err.Error()), Error: err.Error(), ErrorCode: code})
+	message := err.Error()
+	if code == config.ModelRoutingErrorWrite {
+		log.Printf("oneday: gateway model settings error: %v", err)
+		message = "An internal gateway error occurred."
+	}
+	_ = json.NewEncoder(out).Encode(gatewayModelSettingsResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message, ErrorCode: code})
 	return err
 }

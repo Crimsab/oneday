@@ -1,3 +1,4 @@
+use crate::error::PublicError;
 use anyhow::Context;
 use serde::Serialize;
 use serde_json::json;
@@ -83,9 +84,14 @@ pub async fn message_diagnostics(
     )
     .bind(story_id)
     .bind(message_id)
-    .fetch_one(pool)
-    .await
-    .context("generation diagnostics not found")?;
+    .fetch_optional(pool)
+    .await?
+    .ok_or_else(|| {
+        PublicError::not_found(
+            "generation_diagnostics_not_found",
+            "generation diagnostics not found",
+        )
+    })?;
     run_diagnostics(pool, &run_id).await
 }
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 )
@@ -44,7 +45,7 @@ func (m *NarrativeModel) buildChoicePresentation(choices []engine.Choice) ([]com
 			Certainty:    choice.Certainty,
 			RelatedStats: relatedStats,
 		}
-		help[i+1] = buildChoiceHelp(choice, statInfo, currentStats)
+		help[i+1] = buildChoiceHelp(choice, statInfo, currentStats, m.loc)
 	}
 	return items, help
 }
@@ -150,23 +151,24 @@ func resolveCharacterStatValues(char *storage.Character) map[string]string {
 	return values
 }
 
-func buildChoiceHelp(choice engine.Choice, statInfo map[string]storyStatInfo, currentStats map[string]string) string {
+func buildChoiceHelp(choice engine.Choice, statInfo map[string]storyStatInfo, currentStats map[string]string, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	lines := []string{
-		fmt.Sprintf("Choice: %s", strings.TrimSpace(choice.Text)),
+		loc.T("choice.help_choice", strings.TrimSpace(choice.Text)),
 		"",
-		"This choice signals:",
+		loc.T("choice.help_signals"),
 	}
 	if choice.Intent != "" {
-		lines = append(lines, fmt.Sprintf("- intent: %s — %s", strings.ToLower(choice.Intent), semanticChoiceHint("intent", choice.Intent)))
+		lines = append(lines, loc.T("choice.help_metadata", loc.T("choice.intent"), strings.ToLower(choice.Intent), semanticChoiceHint("intent", choice.Intent, loc)))
 	}
 	if choice.Risk != "" {
-		lines = append(lines, fmt.Sprintf("- risk: %s — %s", strings.ToLower(choice.Risk), semanticChoiceHint("risk", choice.Risk)))
+		lines = append(lines, loc.T("choice.help_metadata", loc.T("choice.risk"), strings.ToLower(choice.Risk), semanticChoiceHint("risk", choice.Risk, loc)))
 	}
 	if choice.Scope != "" {
-		lines = append(lines, fmt.Sprintf("- scope: %s — %s", strings.ToLower(choice.Scope), semanticChoiceHint("scope", choice.Scope)))
+		lines = append(lines, loc.T("choice.help_metadata", loc.T("choice.scope"), strings.ToLower(choice.Scope), semanticChoiceHint("scope", choice.Scope, loc)))
 	}
 	if choice.Certainty != "" {
-		lines = append(lines, fmt.Sprintf("- certainty: %s — %s", strings.ToLower(choice.Certainty), semanticChoiceHint("certainty", choice.Certainty)))
+		lines = append(lines, loc.T("choice.help_metadata", loc.T("choice.certainty"), strings.ToLower(choice.Certainty), semanticChoiceHint("certainty", choice.Certainty, loc)))
 	}
 
 	statLines := make([]string, 0, len(choice.RelatedStats))
@@ -183,74 +185,76 @@ func buildChoiceHelp(choice engine.Choice, statInfo map[string]storyStatInfo, cu
 			continue
 		}
 
-		value := "unknown"
+		value := loc.T("common.unknown_label")
 		if currentStats != nil && currentStats[key] != "" {
 			value = currentStats[key]
 		}
-		statLines = append(statLines, fmt.Sprintf("- %s [%s]: current %s. %s", info.Label, info.Category, value, statCategoryHint(info.Category)))
+		statLines = append(statLines, loc.T("choice.help_stat", info.Label, loc.T("choice.category."+info.Category), value, statCategoryHint(info.Category, loc)))
 	}
 
 	if len(statLines) > 0 {
 		lines = append(lines, "")
-		lines = append(lines, "Related stats:")
+		lines = append(lines, loc.T("choice.related_stats"))
 		lines = append(lines, statLines...)
 	}
 
 	if len(lines) == 3 && len(statLines) == 0 {
 		lines = append(lines,
-			"- no structured metadata was provided for this choice",
+			loc.T("choice.no_metadata"),
 			"",
-			"Treat it as a freeform narrative action: judge risk and likely stat influence from the scene text.",
+			loc.T("choice.freeform_hint"),
 		)
 	}
 	return strings.Join(lines, "\n")
 }
 
-func statCategoryHint(category string) string {
+func statCategoryHint(category string, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	switch category {
 	case "vital":
-		return "A core resource; low values usually mean immediate danger or exhaustion."
+		return loc.T("choice.stat_hint.vital")
 	case "attribute":
-		return "A core capability used in actions, checks, and narrative judgment."
+		return loc.T("choice.stat_hint.attribute")
 	case "secondary":
-		return "A progression or world-facing metric that tracks longer-term standing."
+		return loc.T("choice.stat_hint.secondary")
 	default:
-		return "This is a story-defined stat used by the narrator and game systems."
+		return loc.T("choice.stat_hint.default")
 	}
 }
 
-func semanticChoiceHint(kind, value string) string {
+func semanticChoiceHint(kind, value string, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	value = strings.ToLower(strings.TrimSpace(value))
 	switch kind {
 	case "intent":
 		switch value {
 		case "social":
-			return "leans on rapport, deception, persuasion, or etiquette"
+			return loc.T("choice.hint.intent_social")
 		case "explore", "observe", "lore":
-			return "focuses on information, discovery, or environmental reading"
+			return loc.T("choice.hint.intent_explore")
 		case "combat", "aggressive":
-			return "pushes the scene toward confrontation or force"
+			return loc.T("choice.hint.intent_combat")
 		case "stealth":
-			return "prioritizes subtlety, concealment, or low attention"
+			return loc.T("choice.hint.intent_stealth")
 		default:
-			return "describes the narrative purpose of the action"
+			return loc.T("choice.hint.intent_default")
 		}
 	case "risk":
 		switch value {
 		case "low":
-			return "safer play with fewer likely downsides"
+			return loc.T("choice.hint.risk_low")
 		case "medium":
-			return "balanced risk with meaningful upside and downside"
+			return loc.T("choice.hint.risk_medium")
 		case "high":
-			return "big swing: stronger payoff, stronger danger"
+			return loc.T("choice.hint.risk_high")
 		default:
-			return "describes how dangerous or costly the action may be"
+			return loc.T("choice.hint.risk_default")
 		}
 	case "scope":
-		return "shows what part of the scene this choice mainly affects"
+		return loc.T("choice.hint.scope")
 	case "certainty":
-		return "shows how predictable the likely outcome is"
+		return loc.T("choice.hint.certainty")
 	default:
-		return "structured hint provided by the narrator"
+		return loc.T("choice.hint.default")
 	}
 }

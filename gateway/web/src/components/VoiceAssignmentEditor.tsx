@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getTTSCatalog, getTTSSettings, getVoiceAssignments, updateTTSSettings, updateVoiceAssignment } from "../api";
 import type { RecordView, StoryTTSSettings, VoiceAssignment, VoiceProfile } from "../types";
 import { AudioLanguageTools } from "./AudioLanguageTools";
@@ -13,7 +14,8 @@ interface VoiceAssignmentEditorProps {
   heading?: string;
 }
 
-export function VoiceAssignmentEditor({ storyId, language, revision, protagonist, npcs, heading = "Spoken audio" }: VoiceAssignmentEditorProps) {
+export function VoiceAssignmentEditor({ storyId, language, revision, protagonist, npcs, heading }: VoiceAssignmentEditorProps) {
+  const { t } = useTranslation(["audio", "common", "surfaces"]);
   const [settings, setSettings] = useState<StoryTTSSettings | null>(null);
   const [voices, setVoices] = useState<VoiceProfile[]>([]);
   const [providers, setProviders] = useState<{ id: string; available: boolean; reason?: string }[]>([]);
@@ -22,10 +24,10 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
   const [error, setError] = useState("");
 
   const targets = useMemo(() => [
-    { key: "narrator", label: "Narrator", role: "narrator" as const, entityId: "", importance: "supporting" as const },
-    { key: `protagonist:${protagonist.id}`, label: protagonist.name || "Protagonist", role: "protagonist" as const, entityId: protagonist.id, importance: "major" as const },
+    { key: "narrator", label: t("surfaces:voice.narrator"), role: "narrator" as const, entityId: "", importance: "supporting" as const },
+    { key: `protagonist:${protagonist.id}`, label: protagonist.name || t("surfaces:voice.protagonist"), role: "protagonist" as const, entityId: protagonist.id, importance: "major" as const },
     ...npcs.map((npc) => ({ key: `npc:${npc.id}`, label: npc.name, role: "npc" as const, entityId: npc.id, importance: "supporting" as const })),
-  ], [npcs, protagonist]);
+  ], [npcs, protagonist, t]);
 
   useEffect(() => {
     setError("");
@@ -36,7 +38,7 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
         setProviders(catalog.providers || []);
         setAssignments(assignmentResponse.assignments || []);
       })
-      .catch((cause) => setError(cause instanceof Error ? cause.message : "Voice settings unavailable"));
+      .catch(() => setError(t("audio:unavailable")));
   }, [storyId, language]);
 
   const saveSettings = async () => {
@@ -47,7 +49,7 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
       setSettings(saved);
       window.dispatchEvent(new CustomEvent("oneday:tts-settings", { detail: { storyId, settings: saved } }));
     }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save speech settings"); }
+    catch { setError(t("audio:saveFailed")); }
     finally { setBusy(false); }
   };
 
@@ -64,30 +66,31 @@ export function VoiceAssignmentEditor({ storyId, language, revision, protagonist
     try {
       const saved = (await updateVoiceAssignment(storyId, assignment, revision)).assignment;
       if (saved) setAssignments((items) => [...items.filter((item) => item.id !== saved.id), saved]);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Could not save voice assignment"); }
+    } catch { setError(t("audio:assignmentFailed")); }
     finally { setBusy(false); }
   };
 
-  if (!settings) return <section className="voice-settings"><h3>{heading}</h3><p className="empty-copy">{error || "Loading voice registry…"}</p></section>;
+  const displayHeading = heading || t("surfaces:voice.spokenAudio");
+  if (!settings) return <section className="voice-settings"><h3>{displayHeading}</h3><p className="empty-copy">{error || t("audio:load")}</p></section>;
 
   return (
     <section className="voice-settings" aria-labelledby="voice-settings-title">
-      <div className="settings-section-head"><div><h3 id="voice-settings-title">{heading}</h3><p>Committed narration and dialogue only. Autoplay is controlled separately.</p></div><button type="button" disabled={busy} onClick={saveSettings}>Save audio settings</button></div>
+      <div className="settings-section-head"><div><h3 id="voice-settings-title">{displayHeading}</h3><p>{t("audio:committed")}</p></div><button type="button" disabled={busy} onClick={saveSettings}>{t("audio:save")}</button></div>
       <div className="settings-grid voice-global-settings">
-        <label><span>Speech mode</span><CustomSelect value={settings.mode} ariaLabel="Speech mode" onChange={(value) => setSettings({ ...settings, mode: value as StoryTTSSettings["mode"] })} options={[{ value: "off", label: "Off" }, { value: "narrator", label: "Narrator only" }, { value: "dialogue", label: "Dialogue only" }, { value: "all", label: "Narration and dialogue" }]} /></label>
-        <label><span>Default language</span><input value={settings.default_language_tag} onChange={(event) => setSettings({ ...settings, default_language_tag: event.target.value })} placeholder="en-US" /></label>
-        <label className="toggle-row"><span>Autoplay new audio</span><input type="checkbox" checked={settings.autoplay} onChange={(event) => setSettings({ ...settings, autoplay: event.target.checked })} /></label>
+        <label><span>{t("surfaces:voice.mode")}</span><CustomSelect value={settings.mode} ariaLabel={t("surfaces:voice.mode")} onChange={(value) => setSettings({ ...settings, mode: value as StoryTTSSettings["mode"] })} options={[{ value: "off", label: t("surfaces:voice.off") }, { value: "narrator", label: t("surfaces:voice.narratorOnly") }, { value: "dialogue", label: t("surfaces:voice.dialogueOnly") }, { value: "all", label: t("surfaces:voice.all") }]} /></label>
+        <label><span>{t("surfaces:voice.defaultLanguage")}</span><input value={settings.default_language_tag} onChange={(event) => setSettings({ ...settings, default_language_tag: event.target.value })} placeholder="en-US" /></label>
+        <label className="toggle-row"><span>{t("surfaces:voice.autoplay")}</span><input type="checkbox" checked={settings.autoplay} onChange={(event) => setSettings({ ...settings, autoplay: event.target.checked })} /></label>
       </div>
-      <div className="provider-status" aria-label="TTS provider status">{providers.map((provider) => <span key={provider.id} className={provider.available ? "available" : "unavailable"}>{provider.id}: {provider.available ? "available" : provider.reason || "unavailable"}</span>)}</div>
-      {voices.length === 0 ? <p className="empty-copy">No enabled voice is currently available. Story audio remains safely off.</p> : (
+      <div className="provider-status" aria-label={t("surfaces:voice.providerStatus")}>{providers.map((provider) => <span key={provider.id} className={provider.available ? "available" : "unavailable"}>{provider.id}: {provider.available ? t("surfaces:voice.available") : provider.reason || t("surfaces:voice.unavailable")}</span>)}</div>
+      {voices.length === 0 ? <p className="empty-copy">{t("surfaces:voice.noVoices")}</p> : (
         <div className="voice-assignment-list">
           {targets.map((target) => {
             const current = assignments.find((item) => item.assignment_key === assignmentKey(target.role, target.entityId));
-            return <div className="voice-assignment-row" key={target.key}><strong>{target.label}</strong><label><span>Voice</span><CustomSelect disabled={busy || current?.locked} value={current?.voice_profile_id || ""} ariaLabel={`Voice for ${target.label}`} onChange={(value) => void saveTarget(target, value, current?.enabled_mode || "inherit")} options={[{ value: "", label: "Select a voice" }, ...voices.map((voice) => ({ value: voice.id, label: `${voice.display_name} · ${voice.provider}` }))]} /></label><label><span>Playback</span><CustomSelect disabled={busy} value={current?.enabled_mode || "inherit"} ariaLabel={`Playback for ${target.label}`} onChange={(value) => void saveTarget(target, current?.voice_profile_id || voices[0]?.id || "", value as VoiceAssignment["enabled_mode"])} options={[{ value: "inherit", label: "Inherit story" }, { value: "on", label: "On" }, { value: "off", label: "Off" }]} /></label></div>;
+            return <div className="voice-assignment-row" key={target.key}><strong>{target.label}</strong><label><span>{t("surfaces:voice.voice")}</span><CustomSelect disabled={busy || current?.locked} value={current?.voice_profile_id || ""} ariaLabel={t("surfaces:voice.voiceFor", { name: target.label })} onChange={(value) => void saveTarget(target, value, current?.enabled_mode || "inherit")} options={[{ value: "", label: t("surfaces:voice.select") }, ...voices.map((voice) => ({ value: voice.id, label: `${voice.display_name} · ${voice.provider}` }))]} /></label><label><span>{t("surfaces:voice.playback")}</span><CustomSelect disabled={busy} value={current?.enabled_mode || "inherit"} ariaLabel={t("surfaces:voice.playbackFor", { name: target.label })} onChange={(value) => void saveTarget(target, current?.voice_profile_id || voices[0]?.id || "", value as VoiceAssignment["enabled_mode"])} options={[{ value: "inherit", label: t("surfaces:voice.inherit") }, { value: "on", label: t("surfaces:voice.on") }, { value: "off", label: t("surfaces:voice.off") }]} /></label></div>;
           })}
         </div>
       )}
-      <p className="settings-feedback" role="status" aria-live="polite">{busy ? "Saving…" : error}</p>
+      <p className="settings-feedback" role="status" aria-live="polite">{busy ? t("surfaces:voice.saving") : error}</p>
       <AudioLanguageTools storyId={storyId} language={settings.default_language_tag || language} revision={revision} />
     </section>
   );

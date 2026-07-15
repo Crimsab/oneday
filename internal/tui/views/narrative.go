@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
@@ -85,12 +86,14 @@ type sessionMenuItem struct {
 
 // NarrativeModel is the core gameplay view.
 type NarrativeModel struct {
+	loc                     appi18n.Localizer
 	narrator                *engine.Narrator
 	viewport                viewport.Model
 	typewriter              components.TypewriterModel
 	statusBar               components.StatusBarModel
 	choices                 components.ChoiceListModel
 	slashSuggestions        components.SuggestionListModel
+	commandSpecs            []slashCommandSpec
 	overlay                 components.OverlayModel
 	historyBrowser          *historyBrowserModel
 	achievementBrowser      *AchievementBrowserModel
@@ -161,20 +164,23 @@ type NarrativeModel struct {
 }
 
 // NewNarrativeModel creates the narrative view.
-func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int, visiblePrivateThoughts bool) NarrativeModel {
-	ta := newGameTextarea("Type a free action or press 1-4 to choose...", actionInputHeight)
+func NewNarrativeModel(narrator *engine.Narrator, typewriterSpeed int, visiblePrivateThoughts bool, localizers ...appi18n.Localizer) NarrativeModel {
+	loc := viewLocalizer(localizers)
+	ta := newGameTextarea(loc.T("narrative.action_placeholder"), actionInputHeight)
 
 	vp := viewport.New(80, 20)
 
 	return NarrativeModel{
+		loc:                    loc,
 		narrator:               narrator,
 		viewport:               vp,
 		typewriter:             components.NewTypewriter(typewriterSpeed),
 		statusBar:              components.NewStatusBar(),
 		choices:                components.NewChoiceList(),
 		slashSuggestions:       components.NewSuggestionList(),
-		overlay:                components.NewOverlay(),
-		achievementPopup:       components.NewAchievementPopup(),
+		commandSpecs:           contractSlashCommandSpecs(loc),
+		overlay:                components.NewOverlay(loc),
+		achievementPopup:       components.NewAchievementPopup(loc),
 		input:                  ta,
 		history:                &strings.Builder{},
 		streamRaw:              &strings.Builder{},
@@ -279,9 +285,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			cmds = append(cmds, histCmd)
 
 			// Send result to AI for narrative continuation.
-			outcome := "PASSED"
+			outcome := m.loc.T("challenge.passed_short")
 			if !crMsg.Result.Passed {
-				outcome = "FAILED"
+				outcome = m.loc.T("challenge.failed_short")
 			}
 			resultMsg := fmt.Sprintf("[Challenge Result: %s %s — %s]",
 				crMsg.Spec.Type, outcome, crMsg.Result.Detail)
@@ -339,7 +345,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 				}
 				return lease.Renew()
 			}); err != nil {
-				m.statusMsg = "Social duel sync failed"
+				m.statusMsg = m.loc.T("social.sync_failed")
 				m.statusExpiry = time.Now().Add(4 * time.Second)
 			}
 
@@ -388,7 +394,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 		if msg.err != nil {
 			m.waiting = false
 			m.streaming = false
-			m.errMsg = fmt.Sprintf("AI Error: %v", msg.err)
+			m.errMsg = m.loc.T("narrative.ai_error", msg.err)
 			return m, nil
 		}
 		m.streaming = true
@@ -401,7 +407,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			m.waiting = false
 			m.streaming = false
 			m.streamCh = nil
-			m.errMsg = fmt.Sprintf("AI Error: %v", msg.chunk.Err)
+			m.errMsg = m.loc.T("narrative.ai_error", msg.chunk.Err)
 			return m, nil
 		}
 		if msg.chunk.Delta != "" {
@@ -423,7 +429,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 	case narrativeResponseMsg:
 		if msg.err != nil {
 			m.waiting = false
-			m.errMsg = fmt.Sprintf("AI Error: %v", msg.err)
+			m.errMsg = m.loc.T("narrative.ai_error", msg.err)
 			return m, nil
 		}
 		return m, m.applyNarrativeResponse(msg.response, msg.instant)
@@ -441,21 +447,21 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 	case narratorMetaResponseMsg:
 		m.waiting = false
 		if msg.err != nil {
-			m.errMsg = fmt.Sprintf("Narrator Error: %v", msg.err)
+			m.errMsg = m.loc.T("narrative.narrator_error", msg.err)
 			return m, nil
 		}
 		m.errMsg = ""
 		if msg.overlay {
 			title := strings.TrimSpace(msg.title)
 			if title == "" {
-				title = "Aside"
+				title = m.loc.T("narrative.aside")
 			}
 			m.showOverlay(title, msg.message)
 			return m, nil
 		}
 		title := strings.TrimSpace(msg.title)
 		if title == "" {
-			title = "Narrator Control"
+			title = m.loc.T("narrative.narrator_control")
 		}
 		rendered := components.RenderMarkdown("\n**[" + title + "]** " + msg.message + "\n")
 		cmd := m.appendNarrativeSegment(rendered+"\n", false)
@@ -466,9 +472,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 
 	case engine.AutosaveCompleteMsg:
 		if msg.Err == nil {
-			m.statusMsg = "Autosaved"
+			m.statusMsg = m.loc.T("save.autosaved")
 		} else {
-			m.statusMsg = "Autosave failed"
+			m.statusMsg = m.loc.T("save.autosave_failed")
 		}
 		m.statusExpiry = time.Now().Add(2 * time.Second)
 		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
@@ -477,9 +483,9 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 
 	case SaveCompleteMsg:
 		if msg.Err == nil {
-			m.statusMsg = fmt.Sprintf("Saved: %s", msg.Name)
+			m.statusMsg = m.loc.T("save.saved", msg.Name)
 		} else {
-			m.errMsg = fmt.Sprintf("Save failed: %v", msg.Err)
+			m.errMsg = m.loc.T("save.failed", msg.Err)
 		}
 		m.statusExpiry = time.Now().Add(3 * time.Second)
 		return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
@@ -503,10 +509,10 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 
 	case components.ChoiceInspectRequestedMsg:
 		if help := strings.TrimSpace(m.choiceHelp[msg.ID]); help != "" {
-			m.showOverlay("Choice Insight", help)
+			m.showOverlay(m.loc.T("choice.insight"), help)
 			return m, nil
 		}
-		m.statusMsg = "No extra info for this choice."
+		m.statusMsg = m.loc.T("choice.no_insight")
 		m.statusExpiry = time.Now().Add(2 * time.Second)
 		return m, tea.Tick(2*time.Second, func(t time.Time) tea.Msg {
 			return clearStatusMsg{}
@@ -529,7 +535,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			return m, nil
 		}
 		if msg.err != nil {
-			m.SetStatusMsg("ASCII art unavailable for this scene")
+			m.SetStatusMsg(m.loc.T("narrative.ascii_unavailable"))
 			return m, nil
 		}
 		if strings.TrimSpace(msg.art) == "" {
@@ -745,7 +751,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 			switch msg.String() {
 			case "ctrl+@", "ctrl+space":
 				if m.inputFocus && m.talkModeActive() {
-					m.closeTalkMode("Talk mode closed")
+					m.closeTalkMode(m.loc.T("talk.closed"))
 					return m, nil
 				}
 			case "tab":
@@ -777,7 +783,7 @@ func (m NarrativeModel) Update(msg tea.Msg) (NarrativeModel, tea.Cmd) {
 
 		case "ctrl+@", "ctrl+space":
 			if m.inputFocus && m.talkModeActive() {
-				m.closeTalkMode("Talk mode closed")
+				m.closeTalkMode(m.loc.T("talk.closed"))
 				return m, nil
 			}
 
@@ -923,20 +929,20 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.doQuit()
 	case "narrator":
 		if len(cmd.Args) == 0 {
-			m.errMsg = "Usage: /n <narrator instruction or canon correction>"
+			m.errMsg = m.loc.T("narrative.narrator_usage")
 			return m, nil
 		}
 		input := strings.Join(cmd.Args, " ")
 		return m.sendNarratorCommand(input)
 	case "btw":
 		if len(cmd.Args) == 0 {
-			m.errMsg = "Usage: /btw <quick question about the current story>"
+			m.errMsg = m.loc.T("narrative.btw_usage")
 			return m, nil
 		}
 		return m.sendAsideQuestion(strings.Join(cmd.Args, " "))
 	case "guide":
 		if len(cmd.Args) == 0 {
-			m.errMsg = "Usage: /guide <future beat or chapter wish>"
+			m.errMsg = m.loc.T("narrative.guide_usage")
 			return m, nil
 		}
 		return m.sendGuideCommand(strings.Join(cmd.Args, " "))
@@ -986,9 +992,9 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 			}
 		}
 		if name != "" && name != "unknown" {
-			m.errMsg = fmt.Sprintf("Unknown command: /%s. Type /help for available commands.", name)
+			m.errMsg = m.loc.T("narrative.unknown_named_command", name)
 		} else {
-			m.errMsg = "Unknown command. Type /help for available commands."
+			m.errMsg = m.loc.T("narrative.unknown_command")
 		}
 		return m, nil
 	}
@@ -1027,7 +1033,7 @@ func (m *NarrativeModel) showOverlay(title, content string) {
 // Does not increment the turn counter.
 func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.Cmd) {
 	m.waiting = true
-	m.statusMsg = "Speaking to the narrator..."
+	m.statusMsg = m.loc.T("narrative.speaking")
 	m.statusExpiry = time.Now().Add(30 * time.Second)
 	narrator := m.narrator
 	return m, func() tea.Msg {
@@ -1049,13 +1055,13 @@ func (m NarrativeModel) sendNarratorCommand(input string) (NarrativeModel, tea.C
 		if err != nil {
 			return narratorMetaResponseMsg{err: err}
 		}
-		return narratorMetaResponseMsg{title: "Narrator Control", message: resp.Message}
+		return narratorMetaResponseMsg{title: m.loc.T("narrative.narrator_control"), message: resp.Message}
 	}
 }
 
 func (m NarrativeModel) sendAsideQuestion(input string) (NarrativeModel, tea.Cmd) {
 	m.waiting = true
-	m.statusMsg = "Asking a quick aside..."
+	m.statusMsg = m.loc.T("narrative.asking_aside")
 	m.statusExpiry = time.Now().Add(30 * time.Second)
 	narrator := m.narrator
 	return m, func() tea.Msg {
@@ -1064,7 +1070,7 @@ func (m NarrativeModel) sendAsideQuestion(input string) (NarrativeModel, tea.Cmd
 			return narratorMetaResponseMsg{err: err}
 		}
 		return narratorMetaResponseMsg{
-			title:   "By The Way",
+			title:   m.loc.T("narrative.aside"),
 			message: resp,
 			overlay: true,
 		}
@@ -1073,7 +1079,7 @@ func (m NarrativeModel) sendAsideQuestion(input string) (NarrativeModel, tea.Cmd
 
 func (m NarrativeModel) sendGuideCommand(input string) (NarrativeModel, tea.Cmd) {
 	m.waiting = true
-	m.statusMsg = "Saving story guidance..."
+	m.statusMsg = m.loc.T("narrative.saving_guidance")
 	m.statusExpiry = time.Now().Add(30 * time.Second)
 	narrator := m.narrator
 	return m, func() tea.Msg {
@@ -1095,18 +1101,18 @@ func (m NarrativeModel) sendGuideCommand(input string) (NarrativeModel, tea.Cmd)
 		if err != nil {
 			return narratorMetaResponseMsg{err: err}
 		}
-		return narratorMetaResponseMsg{title: "Guide", message: resp.Message}
+		return narratorMetaResponseMsg{title: m.loc.T("narrative.guide"), message: resp.Message}
 	}
 }
 
 func (m NarrativeModel) handleAdvanceCommand(args []string) (NarrativeModel, tea.Cmd) {
-	m.statusMsg = "Sto mandando avanti la scena..."
+	m.statusMsg = m.loc.T("narrative.advancing")
 	m.statusExpiry = time.Now().Add(3 * time.Second)
 	return m, m.sendRawAction(buildAdvanceSceneAction(strings.Join(args, " ")))
 }
 
 func (m NarrativeModel) handleTimeSkipCommand(args []string) (NarrativeModel, tea.Cmd) {
-	m.statusMsg = "Sto saltando al prossimo momento importante..."
+	m.statusMsg = m.loc.T("narrative.timeskipping")
 	m.statusExpiry = time.Now().Add(3 * time.Second)
 	return m, m.sendRawAction(buildTimeSkipAction(strings.Join(args, " ")))
 }
@@ -1138,21 +1144,21 @@ func (m NarrativeModel) showJournal() (NarrativeModel, tea.Cmd) {
 		currentTurn = world.CurrentTurn
 	}
 	journalText := engine.FormatJournalView(m.narrator.DB(), storyID, currentChapter, currentTurn)
-	m.showOverlay("Journal", journalText)
+	m.showOverlay(m.loc.T("narrative.journal"), journalText)
 	return m, nil
 }
 
 func (m NarrativeModel) showThoughts() (NarrativeModel, tea.Cmd) {
 	if !m.visiblePrivateThoughts {
-		m.errMsg = "Unknown command: /thoughts. Type /help for available commands."
+		m.errMsg = m.loc.T("narrative.thoughts_unknown")
 		return m, nil
 	}
 	if m.narrator == nil || m.narrator.DB() == nil || m.narrator.Story() == nil {
-		m.errMsg = "Private thoughts unavailable right now."
+		m.errMsg = m.loc.T("narrative.thoughts_unavailable")
 		return m, nil
 	}
 	thoughtsText := engine.FormatPrivateThoughtsView(m.narrator.DB(), m.narrator.Story().ID)
-	m.showOverlay("NPC Private Thoughts", thoughtsText)
+	m.showOverlay(m.loc.T("narrative.private_thoughts"), thoughtsText)
 	return m, nil
 }
 
@@ -1164,7 +1170,7 @@ func (m NarrativeModel) showMap() (NarrativeModel, tea.Cmd) {
 			mapText = engine.FormatCanonicalMapView(projection)
 		}
 	}
-	m.showOverlay("World Map", mapText)
+	m.showOverlay(m.loc.T("narrative.world_map"), mapText)
 	return m, nil
 }
 
@@ -1173,10 +1179,10 @@ func (m NarrativeModel) showAchievements() (NarrativeModel, tea.Cmd) {
 	storyID := m.narrator.Story().ID
 	archive, err := engine.BuildStoryArchiveSummary(m.narrator.DB(), storyID)
 	if err != nil {
-		m.errMsg = fmt.Sprintf("Achievements unavailable: %v", err)
+		m.errMsg = m.loc.T("achievement.unavailable", err)
 		return m, nil
 	}
-	browser := NewSingleStoryAchievementBrowser(*archive, m.width, m.height)
+	browser := NewSingleStoryAchievementBrowser(*archive, m.width, m.height, m.loc)
 	m.achievementBrowser = &browser
 	m.historyReturnInputFocus = m.inputFocus
 	m.inputFocus = false
@@ -1189,10 +1195,10 @@ func (m NarrativeModel) showAchievements() (NarrativeModel, tea.Cmd) {
 func (m NarrativeModel) startCrafting() (NarrativeModel, tea.Cmd) {
 	craftingEngine, err := engine.NewCraftingEngine(m.narrator)
 	if err != nil {
-		m.errMsg = fmt.Sprintf("Cannot start crafting: %v", err)
+		m.errMsg = m.loc.T("craft.start_error", err)
 		return m, nil
 	}
-	craftingView := NewCraftingModel(craftingEngine, m.narrator, m.width, m.height)
+	craftingView := NewCraftingModel(craftingEngine, m.narrator, m.width, m.height, m.loc)
 	m.craftingView = &craftingView
 	m.inCrafting = true
 	return m, nil
@@ -1214,116 +1220,11 @@ func (m *NarrativeModel) startNextChallenge() tea.Cmd {
 }
 
 func (m NarrativeModel) showHelp() (NarrativeModel, tea.Cmd) {
-	lines := []string{
-		"Available Commands:",
-		"",
-		"  /inventory    (/i)   Show your inventory",
-		"  /stats        (/s)   Open the protagonist dossier",
-		"  /characters          Browse protagonist and NPC dossiers",
-		"  /codex               Open the full story codex",
-		"  /fronts              Open the fronts and fallout tracker",
-		"  /hooks               Alias for /fronts",
-		"  /investigations      Open the dedicated investigation workspace",
-		"  /projects            Open the dedicated project workspace",
-		"  /map          (/m)   Show discovered world map",
-		"  /journal      (/j)   Show chapter journal",
-		"  h                   Open the story history browser",
-		"  /btw <question>     Ask the AI a quick contextual question without advancing the turn",
-		"  /guide <request>    Store a soft future-facing chapter wish without advancing the turn",
-		"  /advance [hint]     Move to the next meaningful beat now; free text after it is a soft target",
-		"  /timeskip [hint]    Jump ahead to a later meaningful moment; free text sets the target moment",
-	}
+	key := "narrative.help"
 	if m.visiblePrivateThoughts {
-		lines = append(lines, "  /thoughts            Inspect saved NPC private thoughts")
+		key = "narrative.help_with_thoughts"
 	}
-	lines = append(lines,
-		"  /achievements (/a)   Show earned achievements",
-		"  /narrator     (/n)   Direct narrator canon",
-		"  /craft               Open crafting station (AI-driven)",
-		"  /talk [npc] [intent] Enter nearby-NPC talk mode or send a one-shot line",
-		"  /downtime [focus]    Request a quieter downtime beat",
-		"  /save [name]         Save your game",
-		"  /load                Load a saved game",
-		"  /help                Show this help",
-		"  /quit         (/q)   Save and quit to menu",
-		"",
-		"Keyboard Shortcuts:",
-		"  s / F5              Quick save snapshot",
-		"  h                   Open searchable history browser",
-		"  P / I / F / C       Jump between projects, investigations, fronts, and codex",
-		"  Up / Down           Browse free-input history (single-line input)",
-		"  Mouse wheel         Scroll the current scene",
-		"  Ctrl+Space          Close talk mode instantly",
-		"  Esc                 Open session menu (resume, quick save, load, main menu)",
-		"  Space               Confirms the highlighted option in menus and pickers",
-		"  Left / Right        Focus metadata badges on the selected choice",
-		"  ?                   Explain the selected choice's related stats/metadata",
-		"",
-		"Narrator examples:",
-		"  /n Add a secret underground city",
-		"  /n Make Lyanna secretly jealous",
-		"  /n What factions exist in this world?",
-		"  /n I want the next area to be a haunted forest",
-		"",
-		"Guide examples:",
-		"  /guide In questo capitolo voglio una boss fight memorabile",
-		"  /guide Fammi trovare materiali rari e almeno un reward forte",
-		"  /guide Semina una scena tesa con Lyanna, ma falla arrivare quando ha senso",
-		"",
-		"Pacing examples:",
-		"  /advance",
-		"  /advance Vai oltre questa scena domestica e portami al primo vero cambiamento",
-		"  /advance una settimana dopo",
-		"  /advance la mattina seguente, quando torno al mercato",
-		"  /timeskip",
-		"  /timeskip arrivo a 6 anni",
-		"  /timeskip Tre anni dopo, quando la magia e gia parte della routine",
-		"  /timeskip al prossimo inverno",
-		"  /timeskip Alla prossima tappa davvero importante del viaggio",
-	)
-	if m.visiblePrivateThoughts {
-		lines = append(lines,
-			"",
-			"Private thoughts:",
-			"  /thoughts",
-		)
-	}
-	lines = append(lines,
-		"",
-		"Talk mode:",
-		"  /talk Lyanna",
-		"  /talk Lyanna promise",
-		"  /talk Lyanna ask What did you see at the docks?",
-		"  /talk off",
-		"",
-		"Downtime examples:",
-		"  /downtime rest by the fire",
-		"  /downtime write a letter home",
-		"  /downtime train with Lyanna",
-		"",
-		"Challenges:",
-		"  Active challenges pause first on a confirmation screen.",
-		"  Types: dice roll (d100), rock-paper-scissors, memory sequence,",
-		"         quick-time (press key in time), riddle, stat/skill/item checks.",
-		"  The game engine resolves the outcome fairly — the AI then narrates the result.",
-		"",
-		"  Footer legend:",
-		"  10.4s         total response time",
-		"  ft 5.5s       time to first token",
-		"  6016t         total tokens",
-		"  4980p/1036c   prompt/completion tokens",
-		"  r193          reasoning tokens",
-		"  cache 900p    cached prompt tokens",
-		"  99.7t/s       completion throughput",
-		"",
-		"Quick aside:",
-		"  /btw Who exactly is Dee Podale Suprema?",
-		"  /btw Remind me what this faction wants",
-	)
-
-	helpText := strings.Join(lines, "\n")
-
-	m.showOverlay("Help", helpText)
+	m.showOverlay(m.loc.T("narrative.help_title"), m.loc.T(key))
 	return m, nil
 }
 
@@ -1490,13 +1391,13 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 	if totalItems == 0 && currency == 0 {
 		sb.WriteString(theme.MutedText.Render("  You carry nothing. The journey begins light."))
 		sb.WriteString("\n")
-		m.showOverlay("Inventory", sb.String())
+		m.showOverlay(m.loc.T("inventory.title"), sb.String())
 		return m, nil
 	}
 
 	// Equipped section.
 	if len(equippedItems) > 0 {
-		sb.WriteString(theme.Title.Render("Equipped") + "\n")
+		sb.WriteString(theme.Title.Render(m.loc.T("inventory.equipped")) + "\n")
 		for _, info := range equippedItems {
 			if info.slot != "" {
 				slotLabel := strings.ReplaceAll(strings.Title(strings.ReplaceAll(info.slot, "_", " ")), " ", " ")
@@ -1513,7 +1414,7 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 
 	// Backpack section.
 	if len(backpackItems) > 0 {
-		sb.WriteString(theme.Title.Render(fmt.Sprintf("Backpack (%d items)", len(backpackItems))) + "\n")
+		sb.WriteString(theme.Title.Render(m.loc.Plural("inventory.backpack", len(backpackItems), len(backpackItems))) + "\n")
 		// Calculate total weight if any items have it.
 		totalWeight := 0.0
 		hasWeight := false
@@ -1541,7 +1442,7 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 
 	// Quest items section.
 	if len(questItems) > 0 {
-		sb.WriteString(theme.Title.Render("Quest Items") + "\n")
+		sb.WriteString(theme.Title.Render(m.loc.T("inventory.quest_items")) + "\n")
 		for _, info := range questItems {
 			sb.WriteString(fmt.Sprintf("  ◆ %s\n", info.name))
 			if info.description != "" {
@@ -1552,33 +1453,33 @@ func (m NarrativeModel) showInventory() (NarrativeModel, tea.Cmd) {
 	}
 
 	// Currency.
-	sb.WriteString(theme.Title.Render("Currency") + "\n")
+	sb.WriteString(theme.Title.Render(m.loc.T("inventory.currency")) + "\n")
 	sb.WriteString(fmt.Sprintf("  %d %s\n", currency, currencyName))
 
-	m.showOverlay("Inventory", sb.String())
+	m.showOverlay(m.loc.T("inventory.title"), sb.String())
 	return m, nil
 }
 
 // showStats opens the protagonist dossier inside the codex browser.
 func (m NarrativeModel) showStats() (NarrativeModel, tea.Cmd) {
-	return m.openCodexBrowser("Character Sheet", "people", engine.ProtagonistCodexEntryID())
+	return m.openCodexBrowser(m.loc.T("codex.character_sheet"), "people", engine.ProtagonistCodexEntryID())
 }
 
 func (m NarrativeModel) showCharacters() (NarrativeModel, tea.Cmd) {
-	return m.openCodexBrowser("Characters", "people", "")
+	return m.openCodexBrowser(m.loc.T("codex.characters"), "people", "")
 }
 
 func (m NarrativeModel) showCodex() (NarrativeModel, tea.Cmd) {
-	return m.openCodexBrowser("Codex", "", "")
+	return m.openCodexBrowser(m.loc.T("codex.title"), "", "")
 }
 
 func (m NarrativeModel) showInvestigations() (NarrativeModel, tea.Cmd) {
 	if m.narrator == nil || m.narrator.Story() == nil {
-		m.errMsg = "Investigations unavailable: no active story."
+		m.errMsg = m.loc.T("investigation.unavailable")
 		return m, nil
 	}
 
-	browser := NewInvestigationBrowserModel("Investigations", engine.LoadInvestigationBoard(m.narrator.World()), m.width, m.height)
+	browser := NewInvestigationBrowserModel(m.loc.CommandPresentation("investigations", "title", "Investigations"), engine.LoadInvestigationBoard(m.narrator.World()), m.width, m.height, m.loc)
 	m.investigationBrowser = &browser
 	m.historyReturnInputFocus = m.inputFocus
 	m.inputFocus = false
@@ -1588,11 +1489,11 @@ func (m NarrativeModel) showInvestigations() (NarrativeModel, tea.Cmd) {
 
 func (m NarrativeModel) showProjects() (NarrativeModel, tea.Cmd) {
 	if m.narrator == nil || m.narrator.Story() == nil {
-		m.errMsg = "Projects unavailable: no active story."
+		m.errMsg = m.loc.T("project.unavailable")
 		return m, nil
 	}
 
-	browser := NewProjectBrowserModel("Projects", engine.LoadProjectBoard(m.narrator.World()), m.width, m.height)
+	browser := NewProjectBrowserModel(m.loc.CommandPresentation("projects", "title", "Projects"), engine.LoadProjectBoard(m.narrator.World()), m.width, m.height, m.loc)
 	m.projectBrowser = &browser
 	m.historyReturnInputFocus = m.inputFocus
 	m.inputFocus = false
@@ -1602,17 +1503,17 @@ func (m NarrativeModel) showProjects() (NarrativeModel, tea.Cmd) {
 
 func (m NarrativeModel) openCodexBrowser(title, initialCategory, initialEntryID string) (NarrativeModel, tea.Cmd) {
 	if m.narrator == nil || m.narrator.DB() == nil || m.narrator.Story() == nil {
-		m.errMsg = "Codex unavailable: no active story."
+		m.errMsg = m.loc.T("codex.unavailable")
 		return m, nil
 	}
 
 	index, err := engine.BuildStoryCodexByID(m.narrator.DB(), m.narrator.Story().ID)
 	if err != nil {
-		m.errMsg = fmt.Sprintf("Codex unavailable: %v", err)
+		m.errMsg = m.loc.T("codex.error", err)
 		return m, nil
 	}
 
-	m.codexBrowser = NewCodexBrowserModel(title, index, m.width, m.height, initialCategory, initialEntryID)
+	m.codexBrowser = NewCodexBrowserModel(title, index, m.width, m.height, initialCategory, initialEntryID, m.loc)
 	m.historyReturnInputFocus = m.inputFocus
 	m.inputFocus = false
 	m.input.Blur()
@@ -1677,7 +1578,7 @@ func (m NarrativeModel) openActiveSystemWorkspace(target, codexCategory string) 
 		updated, _ := m.showHooks()
 		return updated
 	case "codex":
-		updated, _ := m.openCodexBrowser("Codex", codexCategory, "")
+		updated, _ := m.openCodexBrowser(m.loc.T("codex.title"), codexCategory, "")
 		return updated
 	default:
 		return m
@@ -1851,7 +1752,7 @@ func (m NarrativeModel) RealtimeSyncCmd() tea.Cmd {
 func (m NarrativeModel) handleRealtimeSyncMsg(msg storyRealtimeSyncMsg) (NarrativeModel, tea.Cmd) {
 	cmd := m.RealtimeSyncCmd()
 	if msg.err != nil {
-		m.statusMsg = "Realtime sync paused"
+		m.statusMsg = m.loc.T("sync.paused")
 		m.statusExpiry = time.Now().Add(2 * time.Second)
 		return m, cmd
 	}
@@ -1862,10 +1763,10 @@ func (m NarrativeModel) handleRealtimeSyncMsg(msg storyRealtimeSyncMsg) (Narrati
 		return m, cmd
 	}
 	if err := m.narrator.RefreshFromDB(); err != nil {
-		m.errMsg = fmt.Sprintf("Sync Error: %v", err)
+		m.errMsg = m.loc.T("sync.error", err)
 		return m, cmd
 	}
-	m.SetStatusMsg("Synced external turn")
+	m.SetStatusMsg(m.loc.T("sync.external_turn"))
 	applyCmd := m.applyNarrativeResponse(msg.response, true)
 	return m, tea.Batch(applyCmd, cmd)
 }
@@ -1913,7 +1814,7 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 	if strings.TrimSpace(rendered) == "" {
 		rendered = components.RenderMarkdown(nr.Narrative)
 	}
-	if callout := turnDeltaStatusCallout(nr.TurnDelta); callout != "" {
+	if callout := turnDeltaStatusCallout(nr.TurnDelta, m.loc); callout != "" {
 		m.SetStatusMsg(callout)
 	}
 	m.streamRaw.Reset()
@@ -1993,12 +1894,12 @@ func (m *NarrativeModel) applyNarrativeResponse(nr *engine.NarrativeResponse, st
 	if nr.CombatStart != nil {
 		combatEngine, err := engine.NewCombatEngine(m.narrator, nr.CombatStart)
 		if err == nil {
-			combatView := NewCombatModel(combatEngine, m.narrator, m.width, m.height)
+			combatView := NewCombatModel(combatEngine, m.narrator, m.width, m.height, m.loc)
 			m.combatView = &combatView
 			m.inCombat = true
 			return m.batchTurnCommands(cmds...)
 		}
-		m.errMsg = fmt.Sprintf("Could not start combat: %v", err)
+		m.errMsg = m.loc.T("combat.start_error", err)
 	}
 
 	if !animateScene && !duelPending && len(nr.Challenges) > 0 {
@@ -2296,7 +2197,7 @@ func (m NarrativeModel) View() string {
 
 	// Header: chapter + location
 	world := m.narrator.World()
-	header := accentStyle.Bold(true).Render(fmt.Sprintf("Chapter %d", world.CurrentChapter))
+	header := accentStyle.Bold(true).Render(m.loc.T("tui.chapter", world.CurrentChapter))
 	if world.CurrentLocation != "" {
 		header += "  " + subtitleStyle.Render(world.CurrentLocation)
 	}
@@ -2304,7 +2205,7 @@ func (m NarrativeModel) View() string {
 		header += "  " + theme.MutedText.Render(timelineSummary)
 	}
 	if m.talkModeActive() {
-		header += "  " + theme.MutedText.Render(fmt.Sprintf("talking to %s [%s]", m.talkTarget, m.activeTalkIntent()))
+		header += "  " + theme.MutedText.Render(m.loc.T("talk.header", m.talkTarget, m.activeTalkIntent()))
 	}
 
 	// Narrative viewport
@@ -2319,9 +2220,9 @@ func (m NarrativeModel) View() string {
 	var waitLine string
 	if m.waiting {
 		if m.streaming {
-			waitLine = theme.MutedText.Render("  The narrator is streaming...")
+			waitLine = theme.MutedText.Render("  " + m.loc.T("tui.streaming"))
 		} else {
-			waitLine = theme.MutedText.Render("  The narrator is writing...")
+			waitLine = theme.MutedText.Render("  " + m.loc.T("tui.writing"))
 		}
 	}
 
@@ -2337,7 +2238,7 @@ func (m NarrativeModel) View() string {
 	var inputView string
 	var slashSuggestionsView string
 	if !sceneReady {
-		inputView = theme.MutedText.Render("  [Enter/Space] Finish scene")
+		inputView = theme.MutedText.Render("  " + m.loc.T("tui.finish_scene"))
 	} else if m.inputFocus {
 		m.applyInputCommandStyle()
 		inputView = m.input.View()
@@ -2345,7 +2246,7 @@ func (m NarrativeModel) View() string {
 			slashSuggestionsView = m.slashSuggestions.View()
 		}
 	} else {
-		inputView = theme.MutedText.Render("  [TAB] Free input")
+		inputView = theme.MutedText.Render("  " + m.loc.T("tui.free_input"))
 	}
 
 	// Temporary status message (e.g. "Autosaved")
@@ -2355,7 +2256,7 @@ func (m NarrativeModel) View() string {
 	}
 
 	// Help line
-	help := theme.MutedText.Render("↑/↓ input history · alt+enter/ctrl+j newline · wheel scroll scene · tab complete slash · ctrl+space close talk · s quicksave · esc session")
+	help := theme.MutedText.Render(m.loc.T("tui.help"))
 
 	// Status bar
 	m.statusBar.SetWidth(m.width)
@@ -2442,19 +2343,20 @@ func (m NarrativeModel) handleSessionMenu(msg tea.KeyMsg) (NarrativeModel, tea.C
 	return m, nil
 }
 
-func sessionMenuItems() []sessionMenuItem {
+func sessionMenuItems(localizers ...appi18n.Localizer) []sessionMenuItem {
+	loc := viewLocalizer(localizers)
 	return []sessionMenuItem{
-		{Label: "Resume", Hint: "Return to the current scene", Action: sessionMenuResume},
-		{Label: "Quick Save", Hint: "Create a new snapshot right now", Action: sessionMenuQuickSave},
-		{Label: "Load Save", Hint: "Open the save picker", Action: sessionMenuLoadSave},
-		{Label: "Main Menu", Hint: "Autosave and leave this session", Action: sessionMenuQuitToMenu},
+		{Label: loc.T("session.resume"), Hint: loc.T("session.resume_hint"), Action: sessionMenuResume},
+		{Label: loc.T("session.quicksave"), Hint: loc.T("session.quicksave_hint"), Action: sessionMenuQuickSave},
+		{Label: loc.T("session.load"), Hint: loc.T("session.load_hint"), Action: sessionMenuLoadSave},
+		{Label: loc.T("session.main_menu"), Hint: loc.T("session.main_menu_hint"), Action: sessionMenuQuitToMenu},
 	}
 }
 
 func (m NarrativeModel) sessionMenuView(background string) string {
 	_ = background
-	items := sessionMenuItems()
-	lines := []string{theme.Title.Render("Session"), ""}
+	items := sessionMenuItems(m.loc)
+	lines := []string{theme.Title.Render(m.loc.T("session.title")), ""}
 	for i, item := range items {
 		cursor := "  "
 		style := theme.UnselectedItem
@@ -2465,7 +2367,7 @@ func (m NarrativeModel) sessionMenuView(background string) string {
 		lines = append(lines, cursor+style.Render(item.Label))
 		lines = append(lines, "   "+theme.MutedText.Render(item.Hint))
 	}
-	lines = append(lines, "", theme.MutedText.Render("↑/↓ navigate · Enter/Space select · Esc resume"))
+	lines = append(lines, "", theme.MutedText.Render(m.loc.T("session.help")))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

@@ -5,6 +5,7 @@ import type {
   ModelSettings,
   ModelSettingsUpdate,
 } from "./types";
+import i18n from "./i18n";
 
 export interface ModelProviderDraft {
   enabled: boolean;
@@ -126,62 +127,62 @@ export function modelRoutingIssues(
   );
   const issues: string[] = [];
   if (enabledProviders.length === 0) {
-    issues.push("Enable at least one provider.");
+    issues.push(i18n.t("model_issues:providerRequired"));
   }
   const selectedProvider = priority[0];
   if (selectedProvider && !draft.providers[selectedProvider]?.enabled) {
-    issues.push("The first provider in the priority chain must be enabled.");
+    issues.push(i18n.t("model_issues:priorityEnabled"));
   }
   for (const provider of enabledProviders) {
     const value = draft.providers[provider.id];
     if (provider.supports_model && !value?.model.trim()) {
-      issues.push(`${provider.label} needs a model name.`);
+      issues.push(i18n.t("model_issues:modelName", { provider: provider.label }));
     }
   }
   if (!draft.utilityModel.trim()) {
-    issues.push("Utility model is required.");
+    issues.push(i18n.t("model_issues:utility"));
   }
   if (!draft.embeddingProvider.trim()) {
-    issues.push("Embedding provider is required.");
+    issues.push(i18n.t("model_issues:embedding"));
   }
   if (draft.imageGeneration.autoGenerate) {
     if (!draft.imageGeneration.provider.trim()) {
-      issues.push("Image generation provider is required when auto-generate is enabled.");
+      issues.push(i18n.t("model_issues:imageProvider"));
     }
     if (!draft.imageGeneration.model.trim()) {
-      issues.push("Image generation model is required when auto-generate is enabled.");
+      issues.push(i18n.t("model_issues:imageModel"));
     }
     if (!draft.imageGeneration.mapIconModel.trim()) {
-      issues.push("Transparent map icon model is required when auto-generate is enabled.");
+      issues.push(i18n.t("model_issues:mapIcon"));
     }
     if (draft.imageGeneration.timeoutSeconds <= 0) {
-      issues.push("Image generation timeout must be positive.");
+      issues.push(i18n.t("model_issues:timeout"));
     }
     if (
       isOpenClawImageProvider(draft.imageGeneration.provider) &&
       !draft.imageGeneration.openClawBridgeUrl.trim()
     ) {
-      issues.push("OpenClaw image generation needs a bridge URL.");
+      issues.push(i18n.t("model_issues:openClawUrl"));
     }
     if (
       isImagegenBridgeProvider(draft.imageGeneration.provider) &&
       !draft.imageGeneration.imagegenBridgeUrl.trim()
     ) {
-      issues.push("imagegen-bridge needs its native API URL.");
+      issues.push(i18n.t("model_issues:nativeUrl"));
     }
     if (
       !isImagegenBridgeProvider(draft.imageGeneration.provider) &&
       !isOpenClawImageProvider(draft.imageGeneration.provider) &&
       !draft.imageGeneration.baseUrl.trim()
     ) {
-      issues.push("OpenAI-compatible image generation needs a base URL.");
+      issues.push(i18n.t("model_issues:baseUrl"));
     }
     if (
       !isImagegenBridgeProvider(draft.imageGeneration.provider) &&
       !isOpenClawImageProvider(draft.imageGeneration.provider) &&
       !settings.image_generation.api_key_configured
     ) {
-      issues.push("OpenAI-compatible image generation needs an API key configured outside the browser.");
+      issues.push(i18n.t("model_issues:apiKey"));
     }
   }
   return issues;

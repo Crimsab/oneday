@@ -56,6 +56,7 @@ import type {
   AudioExportResponse,
   AgencyEventView,
 } from "./types";
+import i18n from "./i18n";
 
 interface ErrorPayload {
   error?: string;
@@ -101,7 +102,7 @@ async function fetchWithTimeout(path: string, options: RequestOptions = {}): Pro
 		response = await fetch(path, { ...fetchOptions, signal: controller.signal });
 	} catch (error) {
 		if (controller.signal.aborted && !callerSignal?.aborted) {
-			throw new ApiRequestError("Gateway request timed out.", 408, { code: "request_timeout" });
+			throw new ApiRequestError(i18n.t("common:requestTimedOut"), 408, { code: "request_timeout" });
 		}
 		throw error;
 	} finally {
@@ -115,15 +116,22 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 	const response = await fetchWithTimeout(path, options);
   const payload = (await response.json().catch(() => {
     if (response.ok) {
-      throw new ApiRequestError("Gateway returned a non-JSON response.", response.status, {});
+      throw new ApiRequestError(i18n.t("common:nonJson"), response.status, {});
     }
     return {};
   })) as ErrorPayload;
   if (!response.ok) {
-    const message = typeof payload?.error === "string" ? payload.error : response.statusText;
+    const message = localizedError(payload, response.status);
     throw new ApiRequestError(message, response.status, payload);
   }
   return payload as T;
+}
+
+function localizedError(payload: ErrorPayload, status: number): string {
+  const knownCodes = new Set(["invalid_request", "invalid_audio_request", "invalid_minigame_request", "stale_request", "conflict", "not_found", "validation_failed", "stale_config", "config_locked", "internal_error", "request_timeout"]);
+  if (payload.code && knownCodes.has(payload.code)) return i18n.t(`api_errors:${payload.code}`);
+  if (status >= 400 && status < 500) return i18n.t("api_errors:client_error");
+  return i18n.t("api_errors:internal_error");
 }
 
 export function getHealth(): Promise<Health> {
@@ -301,7 +309,7 @@ export async function getStoryEpub(storyId:string):Promise<{filename:string;blob
 	const response = await fetchWithTimeout(`/api/stories/${encodeURIComponent(storyId)}/export?format=epub`);
 	if (!response.ok) {
 		const payload = await response.json().catch(() => ({})) as ErrorPayload;
-		throw new ApiRequestError(typeof payload.error === "string" ? payload.error : response.statusText, response.status, payload);
+		throw new ApiRequestError(localizedError(payload, response.status), response.status, payload);
 	}
 	const disposition = response.headers.get("content-disposition") ?? "";
 	const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] ?? `${storyId}-history.epub`;
@@ -409,8 +417,8 @@ export function stepVisualAssetSelection(storyId: string, assetId: string, actio
   );
 }
 
-export function getCommandDescriptors(): Promise<CommandDescriptor[]> {
-  return request<CommandDescriptor[]>("/api/contracts/commands");
+export function getCommandDescriptors(locale = i18n.resolvedLanguage ?? "en"): Promise<CommandDescriptor[]> {
+  return request<CommandDescriptor[]>(`/api/contracts/commands?locale=${encodeURIComponent(locale)}`);
 }
 
 export function getModelSettings(): Promise<ModelSettings> {

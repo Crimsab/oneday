@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -28,6 +29,7 @@ type ModDisplay struct {
 
 // DiceModel renders an animated d100 dice roll with modifiers and result.
 type DiceModel struct {
+	loc appi18n.Localizer
 	// Configuration (set once)
 	Context    string       // what the roll is for
 	FinalRoll  int          // the actual d100 result (pre-computed by engine)
@@ -50,8 +52,9 @@ type DiceModel struct {
 
 // NewDiceModel creates a dice roll animation.
 // All values are pre-computed by the engine — this is purely visual.
-func NewDiceModel(context string, roll, total, difficulty int, modifiers []ModDisplay, passed bool, width, height int) DiceModel {
+func NewDiceModel(context string, roll, total, difficulty int, modifiers []ModDisplay, passed bool, width, height int, localizers ...appi18n.Localizer) DiceModel {
 	return DiceModel{
+		loc:             componentLocalizer(localizers),
 		Context:         strings.TrimSpace(context),
 		FinalRoll:       roll,
 		Total:           total,
@@ -127,7 +130,7 @@ func (d DiceModel) View() string {
 	// Title
 	title := theme.ChallengeOverlay.Copy().
 		Foreground(theme.DiceGold).Bold(true).
-		Render("🎲  DICE ROLL")
+		Render("🎲  " + d.loc.T("minigame.dice_title"))
 
 	// Large animated number
 	numStr := fmt.Sprintf("[ %d ]", d.displayedNumber)
@@ -148,7 +151,7 @@ func (d DiceModel) View() string {
 
 	if d.done {
 		// Show breakdown
-		lines = append(lines, fmt.Sprintf("  Roll:       %3d", d.FinalRoll))
+		lines = append(lines, fmt.Sprintf("  %-11s %3d", d.loc.T("challenge.roll")+":", d.FinalRoll))
 		for _, mod := range d.Modifiers {
 			sign := "+"
 			if mod.Value < 0 {
@@ -157,21 +160,21 @@ func (d DiceModel) View() string {
 			lines = append(lines, fmt.Sprintf("  %-12s %s%d", mod.Source+":", sign, mod.Value))
 		}
 		lines = append(lines, "  "+strings.Repeat("─", innerW-4))
-		lines = append(lines, fmt.Sprintf("  Total:      %3d", d.Total))
-		lines = append(lines, fmt.Sprintf("  Difficulty: %3d", d.Difficulty))
+		lines = append(lines, fmt.Sprintf("  %-11s %3d", d.loc.T("challenge.total")+":", d.Total))
+		lines = append(lines, fmt.Sprintf("  %-11s %3d", d.loc.T("challenge.difficulty")+":", d.Difficulty))
 		lines = append(lines, "")
 
 		var resultLine string
 		if d.Passed {
-			resultLine = theme.DicePassed.Render("  ✓  PASSED!")
+			resultLine = theme.DicePassed.Render("  ✓  " + d.loc.T("challenge.passed"))
 		} else {
-			resultLine = theme.DiceFailed.Render("  ✗  FAILED!")
+			resultLine = theme.DiceFailed.Render("  ✗  " + d.loc.T("challenge.failed"))
 		}
 		lines = append(lines, resultLine)
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  Press any key to continue the story"))
+		lines = append(lines, theme.MutedText.Render("  "+d.loc.T("challenge.continue")))
 	} else {
-		lines = append(lines, theme.MutedText.Render("  Rolling..."))
+		lines = append(lines, theme.MutedText.Render("  "+d.loc.T("challenge.rolling")))
 	}
 
 	inner := strings.Join(lines, "\n")

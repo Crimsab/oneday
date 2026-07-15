@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { CornerDownLeft } from "lucide-react";
 import { commandSuggestions, type CommandSuggestionContext, type SlashCommandItem } from "../commands";
 import { CommandPalette } from "./CommandPalette";
@@ -30,6 +31,7 @@ export function Composer({
   onSubmit,
   onHistoryStep,
 }: ComposerProps) {
+  const { t } = useTranslation("composer");
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
   const [inlineSuppressed, setInlineSuppressed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -175,28 +177,28 @@ export function Composer({
               }
             }
           }}
-          placeholder="What do you want to try?"
+          placeholder={t("placeholder")}
           rows={2}
         />
         <CustomSelect
           value={mode}
-          ariaLabel="Action type"
+          ariaLabel={t("actionType")}
           onChange={onModeChange}
           options={[
-            { value: "action", label: "Action" },
-            { value: "talk", label: "Talk" },
-            { value: "advance", label: "Advance" },
-            { value: "timeskip", label: "Time Skip" },
+            { value: "action", label: t("action") },
+            { value: "talk", label: t("talk") },
+            { value: "advance", label: t("advance") },
+            { value: "timeskip", label: t("timeSkip") },
           ]}
         />
         <button type="submit" className="execute-button" disabled={disabled || !draft.trim()}>
           <CornerDownLeft size={16} />
-          Send action
+          {t("send")}
         </button>
       </div>
       <div className="composer-tip">
-        <span>{notice || "Type / for commands or use Ctrl+K to explore them."}</span>
-        <span>Ctrl+Enter to send</span>
+        <span>{notice || t("commandTip")}</span>
+        <span>{t("sendTip")}</span>
       </div>
       {paletteOpen && (
         <CommandPalette

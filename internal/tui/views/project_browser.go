@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -31,6 +32,7 @@ type ProjectBrowserBackMsg struct{}
 
 // ProjectBrowserModel renders a dedicated project workspace grouped by status.
 type ProjectBrowserModel struct {
+	loc      appi18n.Localizer
 	title    string
 	board    engine.ProjectBoard
 	rows     []projectBrowserRow
@@ -41,11 +43,14 @@ type ProjectBrowserModel struct {
 	detail   components.OverlayModel
 }
 
-func NewProjectBrowserModel(title string, board engine.ProjectBoard, width, height int) ProjectBrowserModel {
+func NewProjectBrowserModel(title string, board engine.ProjectBoard, width, height int, localizers ...appi18n.Localizer) ProjectBrowserModel {
+	loc := viewLocalizer(localizers)
 	model := ProjectBrowserModel{
 		title:   title,
+		loc:     loc,
 		board:   normalizedProjectBrowserBoard(board),
 		visible: true,
+		detail:  components.NewOverlay(loc),
 	}
 	model.SetSize(width, height)
 	model.rebuildRows()
@@ -69,7 +74,7 @@ func (m *ProjectBrowserModel) Close() {
 func (m *ProjectBrowserModel) rebuildRows() {
 	m.rows = m.rows[:0]
 
-	for _, section := range orderedProjectSections() {
+	for _, section := range orderedProjectSections(m.loc) {
 		sectionProjects := projectIndexesForStatus(m.board.Projects, section.statuses...)
 		if len(sectionProjects) == 0 {
 			continue
@@ -145,7 +150,7 @@ func (m ProjectBrowserModel) Update(msg tea.Msg) (ProjectBrowserModel, tea.Cmd) 
 			if !ok {
 				return m, nil
 			}
-			m.detail.Show(project.Title, formatProjectDetail(project))
+			m.detail.Show(project.Title, formatProjectDetail(project, m.loc))
 			return m, nil
 		}
 	}
@@ -171,13 +176,13 @@ func (m ProjectBrowserModel) View() string {
 	}
 
 	lines := []string{theme.Title.Render(m.title)}
-	lines = append(lines, theme.MutedText.Render(projectWorkspaceSummary(m.board)))
+	lines = append(lines, theme.MutedText.Render(projectWorkspaceSummary(m.board, m.loc)))
 	lines = append(lines, "")
 
 	if len(m.rows) == 0 {
-		lines = append(lines, theme.MutedText.Render("No downtime projects yet. Start one through play and it will appear here."))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("project.empty")))
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("Esc close"))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("browser.close")))
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Render(strings.Join(lines, "\n")))
 	}
 
@@ -199,12 +204,12 @@ func (m ProjectBrowserModel) View() string {
 				style = theme.SelectedItem
 			}
 			lines = append(lines, style.Render(cursor+projectRowTitle(project, rowWidth)))
-			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(projectRowSubtitle(project), rowWidth)))
+			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(projectRowSubtitle(project, m.loc), rowWidth)))
 		}
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter open · I investigations · F fronts · C codex · Esc close"))
+	lines = append(lines, theme.MutedText.Render(m.loc.T("project.navigation")))
 
 	content := strings.Join(lines, "\n")
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Height(boxHeight).Render(content))
@@ -215,12 +220,13 @@ type projectSection struct {
 	statuses []string
 }
 
-func orderedProjectSections() []projectSection {
+func orderedProjectSections(localizers ...appi18n.Localizer) []projectSection {
+	loc := viewLocalizer(localizers)
 	return []projectSection{
-		{label: "Active", statuses: []string{"active"}},
-		{label: "Paused", statuses: []string{"paused"}},
-		{label: "Completed", statuses: []string{"completed"}},
-		{label: "Other", statuses: []string{"abandoned", "failed", "stalled"}},
+		{label: loc.T("status.active"), statuses: []string{"active"}},
+		{label: loc.T("status.paused"), statuses: []string{"paused"}},
+		{label: loc.T("status.completed"), statuses: []string{"completed"}},
+		{label: loc.T("status.other"), statuses: []string{"abandoned", "failed", "stalled"}},
 	}
 }
 
@@ -274,19 +280,20 @@ func projectStatusOrder(status string) int {
 	}
 }
 
-func projectWorkspaceSummary(board engine.ProjectBoard) string {
+func projectWorkspaceSummary(board engine.ProjectBoard, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	counts := map[string]int{}
 	for _, project := range board.Projects {
 		counts[strings.ToLower(strings.TrimSpace(project.Status))]++
 	}
 	parts := []string{
-		fmt.Sprintf("Active %d", counts["active"]),
-		fmt.Sprintf("Paused %d", counts["paused"]),
-		fmt.Sprintf("Completed %d", counts["completed"]),
+		loc.T("project.active_count", counts["active"]),
+		loc.T("project.paused_count", counts["paused"]),
+		loc.T("project.completed_count", counts["completed"]),
 	}
 	other := len(board.Projects) - counts["active"] - counts["paused"] - counts["completed"]
 	if other > 0 {
-		parts = append(parts, fmt.Sprintf("Other %d", other))
+		parts = append(parts, loc.T("project.other_count", other))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -302,19 +309,20 @@ func projectRowTitle(project engine.ProjectClock, width int) string {
 	return truncatePlain(strings.Join(parts, "  ·  "), width)
 }
 
-func projectRowSubtitle(project engine.ProjectClock) string {
+func projectRowSubtitle(project engine.ProjectClock, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	parts := []string{}
 	if summary := strings.TrimSpace(project.Summary); summary != "" {
 		parts = append(parts, summary)
 	}
 	if outcome := strings.TrimSpace(project.Outcome); outcome != "" {
-		parts = append(parts, "Outcome: "+outcome)
+		parts = append(parts, loc.T("project.outcome_value", outcome))
 	}
 	if stakes := strings.TrimSpace(project.Stakes); stakes != "" && !strings.EqualFold(project.Status, "completed") {
-		parts = append(parts, "Stakes: "+stakes)
+		parts = append(parts, loc.T("project.stakes_value", stakes))
 	}
 	if len(parts) == 0 {
-		return "No additional details yet."
+		return loc.T("project.no_details")
 	}
 	return strings.Join(parts, " ")
 }
@@ -326,39 +334,40 @@ func formatProjectProgress(project engine.ProjectClock) string {
 	return fmt.Sprintf("%d/%d", project.Progress, project.Segments)
 }
 
-func formatProjectDetail(project engine.ProjectClock) string {
+func formatProjectDetail(project engine.ProjectClock, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	lines := []string{}
-	lines = append(lines, fmt.Sprintf("Status: %s", strings.Title(strings.TrimSpace(project.Status))))
+	lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.status"), strings.Title(strings.TrimSpace(project.Status))))
 	if progress := formatProjectProgress(project); progress != "" {
-		lines = append(lines, fmt.Sprintf("Progress: %s", progress))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.progress"), progress))
 	}
 	if kind := strings.TrimSpace(project.Kind); kind != "" {
-		lines = append(lines, fmt.Sprintf("Kind: %s", kind))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.kind"), kind))
 	}
 	if owner := strings.TrimSpace(project.Owner); owner != "" {
-		lines = append(lines, fmt.Sprintf("Owner: %s", owner))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.owner"), owner))
 	}
 	if location := strings.TrimSpace(project.Location); location != "" {
-		lines = append(lines, fmt.Sprintf("Location: %s", location))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.location"), location))
 	}
 	if project.UpdatedTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Updated Turn: %d", project.UpdatedTurn))
+		lines = append(lines, fmt.Sprintf("%s: %d", loc.T("field.updated_turn"), project.UpdatedTurn))
 	}
 	if project.CompletedTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Completed Turn: %d", project.CompletedTurn))
+		lines = append(lines, fmt.Sprintf("%s: %d", loc.T("field.completed_turn"), project.CompletedTurn))
 	}
 
 	if summary := strings.TrimSpace(project.Summary); summary != "" {
-		lines = append(lines, "", "Summary", summary)
+		lines = append(lines, "", loc.T("field.summary"), summary)
 	}
 	if stakes := strings.TrimSpace(project.Stakes); stakes != "" {
-		lines = append(lines, "", "Stakes", stakes)
+		lines = append(lines, "", loc.T("field.stakes"), stakes)
 	}
 	if outcome := strings.TrimSpace(project.Outcome); outcome != "" {
-		lines = append(lines, "", "Outcome", outcome)
+		lines = append(lines, "", loc.T("field.outcome"), outcome)
 	}
 	if len(project.Rewards) > 0 {
-		lines = append(lines, "", "Rewards")
+		lines = append(lines, "", loc.T("field.rewards"))
 		for _, reward := range project.Rewards {
 			line := reward.Label
 			if kind := strings.TrimSpace(reward.Kind); kind != "" {
@@ -371,7 +380,7 @@ func formatProjectDetail(project engine.ProjectClock) string {
 		}
 	}
 	if len(project.Links) > 0 {
-		lines = append(lines, "", "Linked")
+		lines = append(lines, "", loc.T("field.linked"))
 		for _, link := range project.Links {
 			label := strings.TrimSpace(link.Label)
 			if label == "" {

@@ -1,0 +1,1 @@
+export const inspector = { inventory: "Inventory", knownRecipes: "Known recipes", equipment: "Equipment", usefulContext: "Useful context", inventoryEmpty: "Inventory is empty.", noRecipes: "No known recipes.", noEquipment: "No dedicated equipment slot data.", crafting: "Crafting conversation", craftPlaceholder: "What do you want to craft or improvise?" } as const;

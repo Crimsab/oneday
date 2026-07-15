@@ -3,7 +3,6 @@ package views
 import (
 	"crypto/sha256"
 	"encoding/binary"
-	"fmt"
 	"strings"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/game/contracts"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
@@ -45,6 +45,7 @@ type passiveChallengeMsg struct {
 type ChallengeView struct {
 	spec   *engine.ChallengeSpec
 	result *engine.ChallengeResult
+	loc    appi18n.Localizer
 
 	// Only one of these is active at a time.
 	dice      *components.DiceModel
@@ -72,11 +73,14 @@ func NewChallengeView(
 	db *storage.DB,
 	storyID string,
 	width, height int,
+	localizers ...appi18n.Localizer,
 ) (*ChallengeView, tea.Cmd) {
+	loc := viewLocalizer(localizers)
 	cv := &ChallengeView{
 		spec:   spec,
 		width:  width,
 		height: height,
+		loc:    loc,
 	}
 
 	switch spec.Type {
@@ -87,13 +91,13 @@ func NewChallengeView(
 		if err != nil {
 			result = &engine.ChallengeResult{
 				Passed: false,
-				Detail: fmt.Sprintf("Error resolving challenge: %v", err),
+				Detail: loc.T("challenge.resolve_error", err),
 			}
 		}
 		cv.passive = true
 		cv.result = result
 
-		msg := buildPassiveMessage(spec, result)
+		msg := buildPassiveMessage(spec, result, loc)
 		cv.passiveMessage = msg
 
 		capturedSpec := spec
@@ -109,7 +113,7 @@ func NewChallengeView(
 		if err != nil {
 			result = &engine.ChallengeResult{
 				Passed: false,
-				Detail: "Dice roll failed",
+				Detail: loc.T("challenge.roll_failed", err),
 			}
 		}
 		cv.result = result
@@ -118,39 +122,39 @@ func NewChallengeView(
 		for i, m := range result.Modifiers {
 			mods[i] = components.ModDisplay{Source: m.Source, Value: m.Value}
 		}
-		dice := components.NewDiceModel(challengeDisplayContext(spec), result.Roll, result.Total, result.Difficulty, mods, result.Passed, width, height)
+		dice := components.NewDiceModel(challengeDisplayContext(spec, loc), result.Roll, result.Total, result.Difficulty, mods, result.Passed, width, height, loc)
 		cv.dice = &dice
 		return cv, cv.dice.Start()
 
 	case engine.ChallengeMiniGame:
 		switch spec.MiniGame {
 		case string(engine.MiniGameRPS):
-			rps := components.NewRPSModel(width, height)
+			rps := components.NewRPSModel(width, height, loc)
 			cv.rps = &rps
 			return cv, nil
 
 		case string(engine.MiniGameMemory):
 			mc := engine.NewMemoryChallenge(spec.Sequence, len(spec.Sequence))
-			mem := components.NewMemoryModel(mc, width, height)
+			mem := components.NewMemoryModel(mc, width, height, loc)
 			cv.memory = &mem
 			return cv, cv.memory.Start()
 
 		case string(engine.MiniGameQuickTime):
 			qtc := engine.NewQuickTimeChallenge(spec.TimeLimit)
-			qt := components.NewQuickTimeModel(qtc, width, height)
+			qt := components.NewQuickTimeModel(qtc, width, height, loc)
 			cv.quicktime = &qt
 			return cv, cv.quicktime.Start()
 
 		case string(engine.MiniGameRiddle):
 			rc := engine.NewRiddleChallenge(spec.Riddle, spec.Answer)
-			rid := components.NewRiddleModel(rc, width, height)
+			rid := components.NewRiddleModel(rc, width, height, loc)
 			cv.riddle = &rid
 			return cv, nil
 
 		case string(engine.MiniGameDeduction), string(engine.MiniGameNegotiation), string(engine.MiniGamePattern), string(engine.MiniGameBidding), string(engine.MiniGameCourtroom), string(engine.MiniGameComedy):
 			definition := engine.DefaultMiniGameDefinition(engine.MiniGameType(spec.MiniGame))
 			definition.Prompt = fallbackChallengePrompt(spec.Description, definition.Prompt)
-			hostGame, err := components.NewHostMiniGameModel(definition, challengeMiniGameSeed(storyID, spec), width, height)
+			hostGame, err := components.NewHostMiniGameModel(definition, challengeMiniGameSeed(storyID, spec), width, height, loc)
 			if err != nil {
 				break
 			}
@@ -161,7 +165,7 @@ func NewChallengeView(
 
 	// Fallback: treat as passive failure.
 	cv.passive = true
-	cv.result = &engine.ChallengeResult{Passed: false, Detail: "Unknown challenge type"}
+	cv.result = &engine.ChallengeResult{Passed: false, Detail: loc.T("challenge.unknown_type", spec.Type)}
 	capturedSpec := spec
 	capturedResult := cv.result
 	return cv, tea.Tick(1000*time.Millisecond, func(time.Time) tea.Msg {
@@ -281,31 +285,31 @@ func (cv *ChallengeView) IsPassive() bool {
 }
 
 // buildPassiveMessage creates a brief notification string for passive challenges.
-func buildPassiveMessage(spec *engine.ChallengeSpec, result *engine.ChallengeResult) string {
+func buildPassiveMessage(spec *engine.ChallengeSpec, result *engine.ChallengeResult, loc appi18n.Localizer) string {
 	var label string
 	switch spec.Type {
 	case engine.ChallengeStatCheck:
-		label = fmt.Sprintf("Stat Check [%s]", strings.ToUpper(spec.Stat))
+		label = loc.T("challenge.stat_check_value", strings.ToUpper(spec.Stat))
 	case engine.ChallengeItemCheck:
-		label = fmt.Sprintf("Item Check [%s]", spec.Item)
+		label = loc.T("challenge.item_check_value", spec.Item)
 	case engine.ChallengeSkillCheck:
-		label = fmt.Sprintf("Skill Check [%s]", spec.Skill)
+		label = loc.T("challenge.skill_check_value", spec.Skill)
 	case engine.ChallengeRelCheck:
-		label = fmt.Sprintf("Relationship Check [%s]", spec.NPCName)
+		label = loc.T("challenge.relationship_check_value", spec.NPCName)
 	default:
-		label = "Check"
+		label = loc.T("challenge.check")
 	}
 	if context := strings.TrimSpace(spec.Description); context != "" {
-		label += " — " + context
+		label += " - " + context
 	}
 
 	if result.Passed {
-		return fmt.Sprintf("✓ %s — Passed", label)
+		return loc.T("challenge.passive_passed", label)
 	}
-	return fmt.Sprintf("✗ %s — Failed", label)
+	return loc.T("challenge.passive_failed", label)
 }
 
-func challengeDisplayContext(spec *engine.ChallengeSpec) string {
+func challengeDisplayContext(spec *engine.ChallengeSpec, loc appi18n.Localizer) string {
 	if spec == nil {
 		return ""
 	}
@@ -315,26 +319,26 @@ func challengeDisplayContext(spec *engine.ChallengeSpec) string {
 
 	switch spec.Type {
 	case engine.ChallengeDiceRoll:
-		return fmt.Sprintf("Roll against difficulty %d.", spec.Difficulty)
+		return loc.T("challenge.roll_against", spec.Difficulty)
 	case engine.ChallengeStatCheck:
 		if spec.Stat != "" {
-			return fmt.Sprintf("Check %s.", strings.ToUpper(spec.Stat))
+			return loc.T("challenge.check_stat", strings.ToUpper(spec.Stat))
 		}
 	case engine.ChallengeItemCheck:
 		if spec.Item != "" {
-			return fmt.Sprintf("Requires %s.", spec.Item)
+			return loc.T("challenge.requires_item", spec.Item)
 		}
 	case engine.ChallengeSkillCheck:
 		if spec.Skill != "" {
-			return fmt.Sprintf("Check skill %s.", spec.Skill)
+			return loc.T("challenge.check_skill", spec.Skill)
 		}
 	case engine.ChallengeRelCheck:
 		if spec.NPCName != "" {
-			return fmt.Sprintf("Social check against %s.", spec.NPCName)
+			return loc.T("challenge.social_against", spec.NPCName)
 		}
 	}
 
-	return "Resolve the current challenge."
+	return loc.T("challenge.resolve_current")
 }
 
 // renderPassiveOverlay renders a brief notification for passive challenges.

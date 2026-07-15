@@ -3,6 +3,8 @@ package components
 import (
 	"strings"
 	"testing"
+
+	"github.com/crimsab/oneday/internal/i18n"
 )
 
 func TestDiceViewShowsContextAndContinuationHint(t *testing.T) {
@@ -19,5 +21,17 @@ func TestDiceViewShowsContextAndContinuationHint(t *testing.T) {
 	}
 	if !strings.Contains(view, "continue the") || !strings.Contains(view, "story") {
 		t.Fatalf("dice view missing continuation hint: %q", view)
+	}
+}
+
+func TestDiceViewUsesItalianPresentation(t *testing.T) {
+	model := NewDiceModel("Una serratura arrugginita", 12, 14, 10, nil, true, 80, 24, i18n.New(i18n.Italian))
+	model.done = true
+	model.displayedNumber = model.FinalRoll
+	view := model.View()
+	for _, want := range []string{"Lancio", "Difficoltà", "SUPERATA", "Premi un tasto"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("Italian dice view missing %q:\n%s", want, view)
+		}
 	}
 }

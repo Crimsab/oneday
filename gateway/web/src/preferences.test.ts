@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultPreferences, loadPreferences, normalizePreferences, savePreferences } from "./preferences";
+import { defaultPreferences, loadPreferences, normalizeLocale, normalizePreferences, resolveLocale, savePreferences } from "./preferences";
 
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
 
@@ -7,6 +7,7 @@ describe("normalizePreferences", () => {
   it("keeps valid preferences and falls back for invalid values", () => {
     expect(
       normalizePreferences({
+        locale: "it",
         density: "compact",
         fontSize: "large",
         accent: "blue",
@@ -16,6 +17,7 @@ describe("normalizePreferences", () => {
         showChoiceDetails: true,
       }),
     ).toEqual({
+      locale: "it",
       density: "compact",
       fontSize: "large",
       accent: "blue",
@@ -36,6 +38,20 @@ describe("normalizePreferences", () => {
         showChoiceDetails: "yes" as never,
       }),
     ).toEqual(defaultPreferences);
+  });
+});
+
+describe("interface locale resolution", () => {
+  it("normalizes supported regional variants", () => {
+    expect(normalizeLocale("it-IT")).toBe("it");
+    expect(normalizeLocale("en_US")).toBe("en");
+    expect(normalizeLocale("fr-FR")).toBeNull();
+  });
+
+  it("prefers a saved locale, then browser order, then English", () => {
+    expect(resolveLocale("en-US", ["it-IT"])).toBe("en");
+    expect(resolveLocale(undefined, ["fr-FR", "it-CH"])).toBe("it");
+    expect(resolveLocale(undefined, ["fr-FR"])).toBe("en");
   });
 });
 

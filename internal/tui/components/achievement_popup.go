@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -29,11 +30,12 @@ type AchievementPopupModel struct {
 	height      int
 	showAt      time.Time
 	generation  int // incremented on each Show() to invalidate stale timers
+	loc         appi18n.Localizer
 }
 
 // NewAchievementPopup creates a new AchievementPopupModel.
-func NewAchievementPopup() AchievementPopupModel {
-	return AchievementPopupModel{}
+func NewAchievementPopup(localizers ...appi18n.Localizer) AchievementPopupModel {
+	return AchievementPopupModel{loc: componentLocalizer(localizers)}
 }
 
 // Show displays the achievement popup with the given data.
@@ -111,7 +113,7 @@ func (m AchievementPopupModel) View() string {
 
 	// Title line.
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(rarityColor)
-	title := titleStyle.Render("★ ACHIEVEMENT UNLOCKED ★")
+	title := titleStyle.Render("★ " + m.loc.T("achievement.unlocked") + " ★")
 
 	// Name line.
 	nameStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Text)
@@ -130,7 +132,7 @@ func (m AchievementPopupModel) View() string {
 	badge := badgeStyle.Render(rarityLabel)
 
 	// Hint.
-	hint := mutedStyle.Render("Press any key to dismiss...")
+	hint := mutedStyle.Render(m.loc.T("achievement.dismiss"))
 
 	separator := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", innerW))
 

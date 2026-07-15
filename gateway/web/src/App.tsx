@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { actionFingerprint, resolvePendingActionIdentity, type PendingActionIdentity } from "./actionIdentity";
 import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
@@ -47,6 +48,7 @@ import { restoreFailedDraft } from "./draftLifecycle";
 import { coalesceRequest, isCurrentAsyncSelection } from "./asyncState";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
+import i18n, { formatInterfaceNumber, setInterfaceLocale } from "./i18n";
 import {
   isVisualAssetTurnEvent,
   parseStorySnapshotEvent,
@@ -89,10 +91,12 @@ import type {
 import { visualCatalog } from "./visualAssets";
 import { visualPollingDelayMs } from "./visualJobs";
 import type { SpatialEdge } from "./spatialMap";
+import { turnEventMessage } from "./presentation";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
 let didBootstrap = false;
 const PanelDrawer = lazy(() => import("./components/PanelDrawer").then((module) => ({ default: module.PanelDrawer })));
+type HealthState = { kind: "starting" } | { kind: "stories"; count: number } | { kind: "error"; message: string };
 
 function initialOverlayFromLocation(): OverlayKind {
   if (typeof window === "undefined") return null;
@@ -101,11 +105,12 @@ function initialOverlayFromLocation(): OverlayKind {
 }
 
 function App() {
+  const { t } = useTranslation(["common", "story", "notifications"]);
   const [stories, setStories] = useState<StorySummary[]>([]);
   const [storyId, setStoryId] = useState("");
   const [snapshot, setSnapshot] = useState<StorySnapshot | null>(null);
   const [sync, setSync] = useState<SyncState>("Idle");
-  const [healthText, setHealthText] = useState("Gateway starting");
+  const [health, setHealth] = useState<HealthState>({ kind: "starting" });
   const [filter, setFilter] = useState("");
   const [selectedTab, setSelectedTab] = useState<ModuleTab>("history");
   const [moduleFocusId, setModuleFocusId] = useState<string | null>(null);
@@ -149,13 +154,19 @@ function App() {
   const miniGameRequestVersion = useRef(0);
   storyIdRef.current = storyId;
   pausedRef.current = paused;
+  const healthText = health.kind === "starting"
+    ? t("notifications:health.starting")
+    : health.kind === "stories"
+      ? t("notifications:health.stories", { count: health.count, formattedCount: formatInterfaceNumber(health.count) })
+      : health.message;
+  const syncLabel = t(`notifications:sync.${sync.toLowerCase()}`);
 
   const refreshHealth = useCallback(async () => {
     try {
       const health = await getHealth();
-      setHealthText(`${health.stories} ${health.stories === 1 ? "story" : "stories"}`);
+      setHealth({ kind: "stories", count: health.stories });
     } catch (error) {
-      setHealthText(errorMessage(error));
+      setHealth({ kind: "error", message: errorMessage(error) });
     }
   }, []);
 
@@ -289,7 +300,7 @@ function App() {
 			setPendingTurn(null);
 			void refreshMiniGame(storyId);
 			pendingActionIdentity.current = null;
-			setNotice(`Active branch: ${response.timeline.branches.find((branch) => branch.id === response.timeline.active_branch_id)?.name ?? "updated"}.`);
+			setNotice(t("notifications:branch.active", { name: response.timeline.branches.find((branch) => branch.id === response.timeline.active_branch_id)?.name ?? t("notifications:branch.updated") }));
 		} catch (error) {
 			setNotice(actionErrorMessage(error));
 			await loadSnapshot().catch(() => undefined);
@@ -316,7 +327,7 @@ function App() {
       setSnapshot(checkedOut.snapshot);
       setPendingTurn(null);
       pendingActionIdentity.current = null;
-      setNotice(`Back at the previous decision on ${name}.`);
+      setNotice(t("notifications:branch.previousDecision", { name }));
     } catch (error) {
       setNotice(actionErrorMessage(error));
       await loadSnapshot().catch(() => undefined);
@@ -339,7 +350,7 @@ function App() {
       nextSource.addEventListener("snapshot", (event) => {
       const nextSnapshot = parseStorySnapshotEvent(event.data);
       if (!nextSnapshot) {
-        setNotice("Received an unreadable live snapshot; keeping the current story state.");
+        setNotice(t("story:unreadableSnapshot"));
         setSync("Reconnecting");
         return;
       }
@@ -354,7 +365,7 @@ function App() {
       try {
         liveEvent = JSON.parse(event.data) as TurnStreamEvent;
       } catch {
-        setNotice("Received an unreadable live turn event.");
+        setNotice(t("story:unreadableEvent"));
         return;
       }
       if (isVisualAssetTurnEvent(liveEvent)) {
@@ -369,20 +380,20 @@ function App() {
         if (pending.streamingSuppressed || shouldSuppressStreamingDelta(pending.streamingText, delta)) {
           return {
             ...pending,
-			detail: "Preparing the final story response...",
+			detail: t("story:preparing"),
             streamingText: undefined,
             streamingSuppressed: true,
           };
         }
         return {
           ...pending,
-          detail: "Assistant draft streaming. This text becomes canonical only after commit.",
+          detail: t("story:streaming"),
           streamingText: `${pending.streamingText ?? ""}${delta}`,
         };
       });
       if (liveEvent.status === "failed") {
         setSync("Error");
-        setNotice(liveEvent.message);
+        setNotice(turnEventMessage(liveEvent, t));
         return;
       }
       if (liveEvent.status === "completed" || liveEvent.status === "snapshot_changed") {
@@ -400,7 +411,7 @@ function App() {
       window.clearTimeout(connectTimer);
       source?.close();
     };
-  }, [paused, refreshTimeline, refreshVisualAssets, storyId]);
+  }, [paused, refreshTimeline, refreshVisualAssets, storyId, t]);
 
   useEffect(() => {
     if (!storyId) return;
@@ -449,6 +460,21 @@ function App() {
   useEffect(() => {
     savePreferences(preferences);
   }, [preferences]);
+
+  useEffect(() => {
+    void setInterfaceLocale(preferences.locale).then(async (locale) => {
+      // Transient errors are already presentation strings. Clear and refresh
+      // them so a live locale change cannot leave stale copy in the old language.
+      setNotice("");
+      setModelSettingsError("");
+      setVisualAssetsError("");
+      setMiniGameError("");
+      setHealth({ kind: "starting" });
+      const descriptors = await getCommandDescriptors(locale).catch(() => []);
+      setCommandDescriptors(descriptors);
+      await refreshHealth();
+    });
+  }, [preferences.locale, refreshHealth]);
 
   const selectModuleTab = useCallback((tab: ModuleTab) => {
     setModuleFocusId(null);
@@ -526,7 +552,7 @@ function App() {
       if (targetStoryId === storyId) {
         await loadSnapshot(targetStoryId);
       }
-      setNotice(updated.is_archived ? `Archived ${updated.name}.` : `Updated ${updated.name}.`);
+      setNotice(t(updated.is_archived ? "notifications:story.archived" : "notifications:story.updated", { name: updated.name }));
       setSync(paused ? "Paused" : "Live");
     } catch (error) {
       setSync("Error");
@@ -549,15 +575,17 @@ function App() {
       const topCounts = plan.counts
         .filter((count) => count.rows > 0)
         .slice(0, 6)
-        .map((count) => `${count.table}: ${count.rows}`)
+        .map((count) => `${count.table}: ${formatInterfaceNumber(count.rows)}`)
         .join("\n");
       const retainedFiles = plan.retained_asset_files.length;
       const message = [
-        `Delete "${plan.story_name || targetStoryId}"?`,
+        t("notifications:story.deletePrompt", { name: plan.story_name || targetStoryId }),
         "",
-        `Database rows affected: ${plan.total_rows}`,
+        t("notifications:story.rowsAffected", { count: plan.total_rows, formattedCount: formatInterfaceNumber(plan.total_rows) }),
         topCounts,
-        retainedFiles ? `Generated image files retained on disk: ${retainedFiles}` : "No generated image files are linked.",
+        retainedFiles
+          ? t("notifications:story.retainedFiles", { count: retainedFiles, formattedCount: formatInterfaceNumber(retainedFiles) })
+          : t("notifications:story.noGeneratedFiles"),
       ]
         .filter(Boolean)
         .join("\n");
@@ -584,7 +612,7 @@ function App() {
       } else {
         setSync(paused ? "Paused" : "Live");
       }
-      setNotice("Story deleted.");
+      setNotice(t("notifications:story.deleted"));
     } catch (error) {
       setSync("Error");
       setNotice(errorMessage(error));
@@ -619,12 +647,12 @@ function App() {
 		const details = document.querySelector<HTMLDetailsElement>(".branch-navigator");
 		if (details) { details.open = true; details.querySelector<HTMLElement>("summary")?.focus(); }
 		const value = commandResult.timeline.value?.trim() ?? "";
-		if (commandResult.timeline.action === "list") setNotice("Story branch navigator opened in the sidebar.");
-		if (commandResult.timeline.action === "fork") value ? await forkBranch(value) : setNotice("Usage: /fork <branch name>");
-		if (commandResult.timeline.action === "rename") value ? await renameBranch(timeline?.active_branch_id ?? "", value) : setNotice("Usage: /branch-rename <name>");
+		if (commandResult.timeline.action === "list") setNotice(t("notifications:branch.navigatorOpened"));
+		if (commandResult.timeline.action === "fork") value ? await forkBranch(value) : setNotice(t("notifications:branch.forkUsage"));
+		if (commandResult.timeline.action === "rename") value ? await renameBranch(timeline?.active_branch_id ?? "", value) : setNotice(t("notifications:branch.renameUsage"));
 		if (commandResult.timeline.action === "checkout") {
 			const target = timeline?.branches.find((branch) => branch.id === value || branch.name.toLowerCase() === value.toLowerCase());
-			target ? await checkoutBranch(target.id) : setNotice(`Branch not found: ${value || "(missing name)"}`);
+			target ? await checkoutBranch(target.id) : setNotice(t("notifications:branch.notFound", { name: value || t("notifications:branch.missingName") }));
 		}
 		setDraft(""); setHistoryIndex(-1); return;
 	}
@@ -703,9 +731,9 @@ function App() {
       if (response.meta) {
         setMetaResult(response.meta);
         setOverlay("meta");
-        setNotice(`${response.meta.title} answered.`);
+        setNotice(t("notifications:meta.answered", { title: response.meta.title }));
       } else {
-        setNotice("Meta command completed.");
+        setNotice(t("notifications:meta.completed"));
       }
       setLocalCommands((items) => [
         { id: clientId("command"), text: sourceText.trim(), turn: response.snapshot.world.current_turn, source: "browser" as const },
@@ -733,12 +761,12 @@ function App() {
       if (instance?.runtime.phase === "resolved" && result) {
         const degree = result.outcome?.degree ?? (result.passed ? "full_success" : "hard_failure");
         const continuation = `[Challenge Result: mini_game ${degree.toUpperCase()} - ${result.detail}]`;
-        const continued = await sendAction({ kind: "free_text", text: continuation }, "Challenge resolved");
+        const continued = await sendAction({ kind: "free_text", text: continuation }, t("notifications:challenge.resolved"));
         if (continued) {
           setActiveMiniGame(null);
           await refreshMiniGame(storyId);
         } else {
-          setMiniGameError("The challenge was resolved, but narrative continuation needs a retry.");
+          setMiniGameError(t("notifications:challenge.continuationRetry"));
         }
       }
     } catch (error) {
@@ -768,7 +796,7 @@ function App() {
       selectModuleTab("saves");
       setOverlay("saves");
       setSaveFilter("");
-      setNotice(`Saved ${response.save?.name ?? saveName}.`);
+      setNotice(t("notifications:save.saved", { name: response.save?.name ?? saveName }));
       setLocalCommands((items) => [
         { id: clientId("command"), text: sourceText.trim() || `/save ${saveName}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
         ...items,
@@ -784,7 +812,7 @@ function App() {
   };
 
   const runBrowserStoryWizard = async (payload: StoryWizardEnvelope): Promise<StoryWizardResponse> => {
-    if (sending) throw new Error("Another OneDay request is already running.");
+    if (sending) throw new Error(t("notifications:request.alreadyRunning"));
     setSending(true);
     setNotice("");
     setSync("Sending");
@@ -799,12 +827,11 @@ function App() {
         setOverlay(null);
         setHiddenBeforeMessageId(0);
         pendingActionIdentity.current = null;
-        const startNotice = response.wizard.start_error
-          ? ` created, but first turn did not start: ${response.wizard.start_error}`
-          : ` created${response.wizard.started ? " and started" : ""}.`;
-        setNotice(`${response.snapshot.story.name}${startNotice}`);
+        setNotice(response.wizard.start_error
+          ? t("notifications:wizard.createdStartFailed", { name: response.snapshot.story.name, error: response.wizard.start_error })
+          : t(response.wizard.started ? "notifications:wizard.createdStarted" : "notifications:wizard.created", { name: response.snapshot.story.name }));
       } else {
-        setNotice(response.wizard.stage_label || "Story wizard updated.");
+        setNotice(response.wizard.stage_label || t("notifications:wizard.updated"));
       }
       setSync(paused ? "Paused" : "Live");
       return response;
@@ -818,13 +845,13 @@ function App() {
   };
 
   const runBrowserStoryEnhance = async (payload: StoryEnhanceEnvelope): Promise<StoryEnhanceResponse> => {
-    if (sending) throw new Error("Another OneDay request is already running.");
+    if (sending) throw new Error(t("notifications:request.alreadyRunning"));
     setSending(true);
     setNotice("");
     setSync("Sending");
     try {
       const response = await enhanceStoryText(payload);
-      setNotice(response.model ? `Enhanced text with ${response.model}.` : "Enhanced text.");
+      setNotice(response.model ? t("notifications:enhance.withModel", { model: response.model }) : t("notifications:enhance.completed"));
       setSync(paused ? "Paused" : "Live");
       return response;
     } catch (error) {
@@ -838,7 +865,7 @@ function App() {
 
   const loadManualSave = async (save: SaveView) => {
     if (!snapshot || !storyId || sending) return;
-    const confirmed = window.confirm(`Load "${save.name}" from turn ${save.turn}? Current progress will roll back to that snapshot.`);
+    const confirmed = window.confirm(t("notifications:save.loadConfirm", { name: save.name, turn: formatInterfaceNumber(save.turn) }));
     if (!confirmed) return;
     setSending(true);
     const baseSnapshot = snapshot;
@@ -854,10 +881,12 @@ function App() {
       });
       setSnapshot(response.snapshot);
       selectModuleTab("saves");
-      const loadNotice = response.snapshot_state === "legacy_partial"
-        ? `Legacy save loaded with partial rollback${response.snapshot_detail ? `: ${response.snapshot_detail}` : ""}`
-        : "Loaded";
-      setNotice(`${loadNotice} ${response.save?.name ?? save.name}.`);
+      const loadedName = response.save?.name ?? save.name;
+      setNotice(response.snapshot_state === "legacy_partial"
+        ? response.snapshot_detail
+          ? t("notifications:save.legacyLoadedWithDetail", { name: loadedName, detail: response.snapshot_detail })
+          : t("notifications:save.legacyLoaded", { name: loadedName })
+        : t("notifications:save.loaded", { name: loadedName }));
       setLocalCommands((items) => [
         { id: clientId("command"), text: `/load ${save.name}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
         ...items,
@@ -874,7 +903,7 @@ function App() {
 
   const deleteManualSave = async (save: SaveView) => {
     if (!snapshot || !storyId || sending) return;
-    const confirmed = window.confirm(`Delete "${save.name}" from turn ${save.turn}? This removes only the saved snapshot.`);
+    const confirmed = window.confirm(t("notifications:save.deleteConfirm", { name: save.name, turn: formatInterfaceNumber(save.turn) }));
     if (!confirmed) return;
     setSending(true);
     const baseSnapshot = snapshot;
@@ -891,7 +920,7 @@ function App() {
       setSnapshot(response.snapshot);
       selectModuleTab("saves");
       setOverlay("saves");
-      setNotice(`Deleted ${response.save?.name ?? save.name}.`);
+      setNotice(t("notifications:save.deleted", { name: response.save?.name ?? save.name }));
       setLocalCommands((items) => [
         { id: clientId("command"), text: `/delete-save ${save.name}`, turn: response.snapshot.world.current_turn, source: "browser" as const },
         ...items,
@@ -920,7 +949,7 @@ function App() {
         id: clientId("pending"),
         turn: currentTurn,
         source: action.kind === "choice" ? action.text ?? sourceText.trim() : sourceText.trim(),
-		detail: action.kind === "choice" ? "Resolving your selected choice..." : "Resolving your action...",
+		detail: action.kind === "choice" ? t("notifications:action.resolvingChoice") : t("notifications:action.resolvingAction"),
         kind: action.kind,
       });
       const fingerprint = actionFingerprint(storyId, readySnapshot, action);
@@ -964,7 +993,7 @@ function App() {
     setSnapshot(latest);
     if (submitSnapshotChanged(baseSnapshot, latest)) {
       setSync(paused ? "Paused" : "Live");
-      setNotice("The story changed before sending. Review the latest turn before sending again.");
+      setNotice(t("story:changed"));
       return null;
     }
     setSync(paused ? "Paused" : "Live");
@@ -1030,7 +1059,7 @@ function App() {
       const nextSettings = await updateModelSettings(payload);
       setModelSettings(nextSettings);
       setModelSettingsError("");
-      setNotice(`Model routing saved. Active provider: ${nextSettings.active.provider || "none"}.`);
+      setNotice(t("notifications:model.saved", { provider: nextSettings.active.provider || t("notifications:model.none") }));
     } catch (error) {
       setNotice(errorMessage(error));
       throw error;
@@ -1047,7 +1076,7 @@ function App() {
       const nextAssets = await updateVisualProfile(storyId, payload);
       setVisualAssets(nextAssets);
       setVisualAssetsError("");
-      setNotice("Visual profile saved. New missing assets will use the updated prompt direction.");
+      setNotice(t("notifications:visual.profileSaved"));
     } catch (error) {
       setVisualAssetsError(errorMessage(error));
       setNotice(errorMessage(error));
@@ -1068,7 +1097,12 @@ function App() {
       const ready = nextAssets.assets.filter((asset) => asset.status === "ready").length;
       const failed = nextAssets.assets.filter((asset) => asset.status === "failed").length;
       const active = nextAssets.assets.filter((asset) => asset.status === "queued" || asset.status === "running").length;
-      setNotice(`Visual generation queued. ${ready} ready${active ? `, ${active} queued/running` : ""}${failed ? `, ${failed} failed` : ""}.`);
+      const summary = [
+        t("notifications:visual.ready", { count: ready, formattedCount: formatInterfaceNumber(ready) }),
+        active ? t("notifications:visual.active", { count: active, formattedCount: formatInterfaceNumber(active) }) : "",
+        failed ? t("notifications:visual.failed", { count: failed, formattedCount: formatInterfaceNumber(failed) }) : "",
+      ].filter(Boolean).join(", ");
+      setNotice(t("notifications:visual.generationQueued", { summary }));
     } catch (error) {
       setVisualAssetsError(errorMessage(error));
       setNotice(errorMessage(error));
@@ -1086,7 +1120,7 @@ function App() {
       const nextAssets = await cancelVisualGenerationJob(storyId, jobId);
       setVisualAssets(nextAssets);
       setVisualAssetsError("");
-      setNotice(`Visual generation job ${jobId} cancelled.`);
+      setNotice(t("notifications:visual.jobCancelled", { jobId }));
     } catch (error) {
       setVisualAssetsError(errorMessage(error));
       setNotice(errorMessage(error));
@@ -1104,8 +1138,8 @@ function App() {
       const result = await cleanupVisualAssetFiles(storyId, { dry_run: dryRun });
       setNotice(
         dryRun
-          ? `Visual cleanup preview: ${result.deleted_files.length} stale files can be removed.`
-          : `Visual cleanup removed ${result.deleted_files.length} stale files.`,
+          ? t("notifications:visual.cleanupPreview", { count: result.deleted_files.length, formattedCount: formatInterfaceNumber(result.deleted_files.length) })
+          : t("notifications:visual.cleanupRemoved", { count: result.deleted_files.length, formattedCount: formatInterfaceNumber(result.deleted_files.length) }),
       );
       void refreshVisualAssets(storyId);
     } catch (error) {
@@ -1130,7 +1164,7 @@ function App() {
       const nextAssets = await updateVisualAssetPrompt(storyId, assetId, payload);
       setVisualAssets(nextAssets);
       setVisualAssetsError("");
-      setNotice("Image prompt saved. Regenerate the asset to create a new version from this prompt.");
+      setNotice(t("notifications:visual.promptSaved"));
     } catch (error) {
       setVisualAssetsError(errorMessage(error));
       setNotice(errorMessage(error));
@@ -1138,7 +1172,7 @@ function App() {
     } finally {
       setVisualProfileSaving(false);
     }
-  }, [storyId]);
+  }, [storyId, t]);
 
   const chooseVisualAssetVersion = useCallback(async (assetId: string, versionId: number) => {
     if (!storyId) return;
@@ -1148,7 +1182,7 @@ function App() {
       const nextAssets = await selectVisualAssetVersion(storyId, assetId, versionId);
       setVisualAssets(nextAssets);
       setVisualAssetsError("");
-      setNotice("Visual version selected.");
+      setNotice(t("notifications:visual.versionSelected"));
     } catch (error) {
       setVisualAssetsError(errorMessage(error));
       setNotice(errorMessage(error));
@@ -1156,7 +1190,7 @@ function App() {
     } finally {
       setVisualProfileSaving(false);
     }
-  }, [storyId]);
+  }, [storyId, t]);
 
   const stepVisualSelection = useCallback(async (assetId: string, action: "undo" | "redo") => {
     if (!storyId) return;
@@ -1166,7 +1200,7 @@ function App() {
       const nextAssets = await stepVisualAssetSelection(storyId, assetId, action);
       setVisualAssets(nextAssets);
       setVisualAssetsError("");
-      setNotice(`Visual selection ${action === "undo" ? "undone" : "restored"}.`);
+      setNotice(t(action === "undo" ? "notifications:visual.selectionUndone" : "notifications:visual.selectionRestored"));
     } catch (error) {
       setVisualAssetsError(errorMessage(error));
       setNotice(errorMessage(error));
@@ -1174,7 +1208,7 @@ function App() {
     } finally {
       setVisualProfileSaving(false);
     }
-  }, [storyId]);
+  }, [storyId, t]);
 
   const openVisualAssetEditor = useCallback((assetId: string) => {
     setVisualAssetFocusId(assetId);
@@ -1232,6 +1266,8 @@ function App() {
       <TopBar
         snapshot={snapshot}
         sync={sync}
+        syncLabel={syncLabel}
+        syncTitle={t("notifications:sync.connection", { status: syncLabel })}
         showLeftRail={preferences.showLeftRail}
         showInspector={preferences.showInspector}
         onToggleLeftRail={toggleLeftRail}
@@ -1264,7 +1300,7 @@ function App() {
         ) : null}
         <main className="center-stage">
           <section className="transcript-panel" aria-labelledby="story-surface-title">
-            <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || "Your story"}</h1>
+            <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || t("notifications:surface.yourStory")}</h1>
             <StoryPath
               snapshot={snapshot}
               locationAsset={visuals.location}
@@ -1286,7 +1322,7 @@ function App() {
           </section>
 
           {snapshot && snapshot.choices.length > 0 && (
-            <section className="inline-choice-panel" aria-label="Suggested actions">
+            <section className="inline-choice-panel" aria-label={t("notifications:surface.suggestedActions")}>
               <SuggestedActions choices={snapshot.choices} snapshot={snapshot} disabled={sending} showDetails={preferences.showChoiceDetails} onChoice={sendChoice} onDraft={setDraft} />
             </section>
           )}
@@ -1374,11 +1410,11 @@ function errorMessage(error: unknown): string {
 
 function actionErrorMessage(error: unknown): string {
   if (error instanceof ApiRequestError && error.status === 409) {
-    return "The story advanced elsewhere. Review the latest choices before sending again.";
+    return i18n.t("notifications:action.stale");
   }
   const message = errorMessage(error);
   if (/stale|session/i.test(message)) {
-    return "The story advanced elsewhere. Review the latest choices before sending again.";
+    return i18n.t("notifications:action.stale");
   }
   return message;
 }

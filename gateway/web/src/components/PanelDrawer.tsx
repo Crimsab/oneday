@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
@@ -13,7 +14,7 @@ import {
   updateFromDraft,
   type ModelRoutingDraft,
 } from "../modelRouting";
-import { ModuleContent, moduleTitle } from "./Inspector";
+import { ModuleContent } from "./Inspector";
 import type {
   AppPreferences,
   CommandDescriptor,
@@ -51,6 +52,8 @@ import {
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
 import { CustomSelect } from "./CustomSelect";
+import { visualGateReason } from "../presentation";
+import i18n from "../i18n";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -154,6 +157,7 @@ export function PanelDrawer({
   saveFilter,
   onSaveFilterChange,
 }: PanelDrawerProps) {
+  const { t } = useTranslation(["drawer", "library"]);
   const dialogRef = useRef<HTMLElement>(null);
   const titleId = useId();
   const onCloseRef = useRef(onClose);
@@ -211,13 +215,13 @@ export function PanelDrawer({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <div className="overlay-head">
-          <h2 id={titleId}>{overlayTitle(overlay, activeModuleTab)}</h2>
+          <h2 id={titleId}>{overlayTitle(overlay, activeModuleTab, t)}</h2>
           <button
             type="button"
             className="square-button"
             onClick={onClose}
-            aria-label="Close"
-            title="Close"
+            aria-label={t("drawer:close")}
+            title={t("drawer:close")}
           >
             <X size={16} />
           </button>
@@ -286,13 +290,13 @@ export function PanelDrawer({
   );
 }
 
-function overlayTitle(overlay: OverlayKind, selectedTab: ModuleTab): string {
-  if (overlay === "help") return "Help";
-  if (overlay === "options") return "Options";
-  if (overlay === "saves") return "Saves";
-  if (overlay === "meta") return "Meta Command";
-  if (overlay === "module") return moduleTitle(selectedTab);
-  return "New Story";
+function overlayTitle(overlay: OverlayKind, selectedTab: ModuleTab, t: (key: string) => string): string {
+  if (overlay === "help") return t("drawer:title.help");
+  if (overlay === "options") return t("drawer:title.options");
+  if (overlay === "saves") return t("drawer:title.saves");
+  if (overlay === "meta") return t("drawer:title.meta");
+  if (overlay === "module") return t(`library:tabs.${selectedTab}`);
+  return t("drawer:title.newStory");
 }
 
 function HelpContent({
@@ -376,6 +380,7 @@ function OptionsContent({
     action: "undo" | "redo",
   ) => Promise<void>;
 }) {
+  const { t } = useTranslation(["options", "common", "drawer"]);
   const update = <K extends keyof AppPreferences>(
     key: K,
     value: AppPreferences[K],
@@ -391,37 +396,42 @@ function OptionsContent({
     {
       id: "general",
       content: <div className="settings-grid general-settings">
-        <label data-setting-id="density"><span>Density</span><CustomSelect value={preferences.density} ariaLabel="Interface density" onChange={(value) => update("density", value as AppPreferences["density"])} options={[{ value: "compact", label: "Compact" }, { value: "balanced", label: "Balanced" }, { value: "comfortable", label: "Comfortable" }]} /></label>
-        <label data-setting-id="font-size"><span>Font size</span><CustomSelect value={preferences.fontSize} ariaLabel="Font size" onChange={(value) => update("fontSize", value as AppPreferences["fontSize"])} options={[{ value: "small", label: "Small" }, { value: "base", label: "Base" }, { value: "large", label: "Large" }]} /></label>
-        <label data-setting-id="accent"><span>Accent</span><CustomSelect value={preferences.accent} ariaLabel="Accent color" onChange={(value) => update("accent", value as AppPreferences["accent"])} options={[{ value: "amber", label: "Amber" }, { value: "green", label: "Green" }, { value: "blue", label: "Blue" }, { value: "rose", label: "Rose" }]} /></label>
-        <label className="toggle-row" data-setting-id="stories-sidebar"><span>Stories sidebar</span><input type="checkbox" checked={preferences.showLeftRail} onChange={(event) => update("showLeftRail", event.target.checked)} /></label>
-        <label className="toggle-row" data-setting-id="inspector"><span>Inspector panel</span><input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} /></label>
-        <label className="toggle-row" data-setting-id="transcript-wrap"><span>Transcript wrap</span><input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} /></label>
+        <label data-setting-id="interface-language">
+          <span>{t("options:interfaceLanguage")}</span>
+          <CustomSelect value={preferences.locale} ariaLabel={t("options:interfaceLanguage")} onChange={(value) => update("locale", value as AppPreferences["locale"])} options={[{ value: "en", label: t("options:english") }, { value: "it", label: t("options:italian") }]} />
+          <small>{t("options:languageHint")}</small>
+        </label>
+        <label data-setting-id="density"><span>{t("options:density")}</span><CustomSelect value={preferences.density} ariaLabel={t("options:density")} onChange={(value) => update("density", value as AppPreferences["density"])} options={[{ value: "compact", label: t("options:compact") }, { value: "balanced", label: t("options:balanced") }, { value: "comfortable", label: t("options:comfortable") }]} /></label>
+        <label data-setting-id="font-size"><span>{t("options:fontSize")}</span><CustomSelect value={preferences.fontSize} ariaLabel={t("options:fontSize")} onChange={(value) => update("fontSize", value as AppPreferences["fontSize"])} options={[{ value: "small", label: t("options:small") }, { value: "base", label: t("options:base") }, { value: "large", label: t("options:large") }]} /></label>
+        <label data-setting-id="accent"><span>{t("options:accent")}</span><CustomSelect value={preferences.accent} ariaLabel={t("options:accent")} onChange={(value) => update("accent", value as AppPreferences["accent"])} options={["amber", "green", "blue", "rose"].map((value) => ({ value, label: t(`drawer:color.${value}`) }))} /></label>
+        <label className="toggle-row" data-setting-id="stories-sidebar"><span>{t("options:storiesSidebar")}</span><input type="checkbox" checked={preferences.showLeftRail} onChange={(event) => update("showLeftRail", event.target.checked)} /></label>
+        <label className="toggle-row" data-setting-id="inspector"><span>{t("options:inspector")}</span><input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} /></label>
+        <label className="toggle-row" data-setting-id="transcript-wrap"><span>{t("options:wrap")}</span><input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} /></label>
       </div>,
     },
     {
       id: "gameplay",
       content: <div className="settings-policy-list">
-        <article data-setting-id="automatic-challenges"><strong>Automatic challenges</strong><p>NPC situations can open an interactive challenge. OneDay selects the family automatically, so the player never chooses the easiest mechanic.</p><span className="settings-status">Enabled</span></article>
-        <article data-setting-id="timing-free"><strong>Timing-free selection</strong><p>The selector excludes reflex-only challenges when a timing-free mechanic can represent the same scene.</p><span className="settings-status">Required</span></article>
-        <article data-setting-id="challenge-cooldown"><strong>Challenge cooldown</strong><p>Recent branch history reduces repetition and blocks a family during its cooldown window.</p><span className="settings-status">Active branch</span></article>
+        <article data-setting-id="automatic-challenges"><strong>{t("drawer:gameplay.automatic")}</strong><p>{t("drawer:gameplay.automaticDesc")}</p><span className="settings-status">{t("drawer:gameplay.enabled")}</span></article>
+        <article data-setting-id="timing-free"><strong>{t("drawer:gameplay.timing")}</strong><p>{t("drawer:gameplay.timingDesc")}</p><span className="settings-status">{t("drawer:gameplay.required")}</span></article>
+        <article data-setting-id="challenge-cooldown"><strong>{t("drawer:gameplay.cooldown")}</strong><p>{t("drawer:gameplay.cooldownDesc")}</p><span className="settings-status">{t("drawer:gameplay.activeBranch")}</span></article>
         <article className="choice-detail-setting" data-setting-id="choice-details">
-          <strong>Choice context</strong>
-          <p>Show intent, risk, scope, certainty, and attributes used by each action. Used attributes influence resolution; they are not guaranteed pass/fail thresholds.</p>
-          <label className="settings-policy-toggle"><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /><span>Show context</span></label>
+          <strong>{t("drawer:gameplay.context")}</strong>
+          <p>{t("drawer:gameplay.contextDesc")}</p>
+          <label className="settings-policy-toggle"><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /><span>{t("drawer:gameplay.showContext")}</span></label>
         </article>
       </div>,
     },
     {
       id: "audio",
-      content: snapshot ? <div data-setting-id="speech-mode"><VoiceAssignmentEditor storyId={snapshot.story.id} language={snapshot.story.language} revision={snapshot.version.revision} protagonist={snapshot.character} npcs={snapshot.panels.npcs} heading="Story speech policy" /></div> : <p className="empty-copy">Select a story to configure spoken audio and character voices.</p>,
+      content: snapshot ? <div data-setting-id="speech-mode"><VoiceAssignmentEditor storyId={snapshot.story.id} language={snapshot.story.language} revision={snapshot.version.revision} protagonist={snapshot.character} npcs={snapshot.panels.npcs} heading={t("drawer:audio.heading")} /></div> : <p className="empty-copy">{t("drawer:audio.empty")}</p>,
     },
     {
       id: "visuals",
       content: <div className="visual-settings-stack">
         <article className="map-art-settings" data-setting-id="map-art">
-          <div><strong>Illustrated known-location map</strong><p>OneDay generates one decorative world layer and one reusable symbol for each canonical location. Routes, labels and discovery state stay in the live SVG, so generated art can never invent map facts.</p></div>
-          <span className="settings-status">{mapBackground?.status === "ready" ? "Art ready" : mapBackground?.generation_eligible ? "Art queued" : "Awaits 2 locations"} · {readyMapIcons}/{mapIcons.length} icons</span>
+          <div><strong>{t("drawer:mapArt.title")}</strong><p>{t("drawer:mapArt.desc")}</p></div>
+          <span className="settings-status">{mapBackground?.status === "ready" ? t("drawer:mapArt.ready") : mapBackground?.generation_eligible ? t("drawer:mapArt.queued") : t("drawer:mapArt.waiting")} · {t("drawer:mapArt.icons", { ready: readyMapIcons, total: mapIcons.length })}</span>
         </article>
         <div data-setting-id="visual-profile"><VisualDirectionSettings profile={visualProfile} assets={visualAssets} jobs={visualJobs} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} /></div>
       </div>,
@@ -433,10 +443,10 @@ function OptionsContent({
     {
       id: "advanced",
       content: <div className="option-grid" data-setting-id="runtime-status">
-        <div><span>Live updates</span><strong>{snapshot ? "SSE snapshots + turn events" : "No story selected"}</strong></div>
-        <div><span>Action transport</span><strong>gateway-turn</strong></div>
-        <div><span>Capabilities</span><strong>images, ascii, roll log</strong></div>
-        <div><span>Theme</span><strong>Reference Amber Noir</strong></div>
+        <div><span>{t("drawer:advanced.liveUpdates")}</span><strong>{snapshot ? t("drawer:advanced.live") : t("drawer:advanced.noStory")}</strong></div>
+        <div><span>{t("drawer:advanced.transport")}</span><strong>gateway-turn</strong></div>
+        <div><span>{t("drawer:advanced.capabilities")}</span><strong>{t("drawer:advanced.capabilitiesValue")}</strong></div>
+        <div><span>{t("drawer:advanced.theme")}</span><strong>Reference Amber Noir</strong></div>
       </div>,
     },
   ];
@@ -480,6 +490,7 @@ function VisualDirectionSettings({
   onVersionSelect: (assetId: string, versionId: number) => Promise<void>;
   onSelectionStep: (assetId: string, action: "undo" | "redo") => Promise<void>;
 }) {
+  const { t } = useTranslation(["server", "common", "drawer"]);
   const [draft, setDraft] = useState<VisualProfileUpdate>(() =>
     profileDraft(profile),
   );
@@ -700,21 +711,21 @@ function VisualDirectionSettings({
   return (
     <div className="visual-direction">
       <div className="model-routing-head">
-        <span>Visual Direction</span>
+        <span>{t("drawer:visuals.title")}</span>
         <strong>
-          {readyCount} ready / {pendingCount} pending
-          {activeJobs.length ? ` / ${activeJobs.length} active jobs` : ""}
+          {t("drawer:visuals.counts", { ready: readyCount, pending: pendingCount })}
+          {activeJobs.length ? t("drawer:visuals.activeJobs", { count: activeJobs.length }) : ""}
         </strong>
       </div>
       {!profile ? (
         <p className="model-error">
-          {error || "Select a story to edit visual prompts."}
+          {error || t("drawer:visuals.empty")}
         </p>
       ) : (
         <>
           <div className="settings-grid visual-settings">
             <label>
-              <span>World/location prompt</span>
+              <span>{t("drawer:visuals.worldPrompt")}</span>
               <textarea
                 value={draft.world_style_prompt}
                 onChange={(event) =>
@@ -724,7 +735,7 @@ function VisualDirectionSettings({
               />
             </label>
             <label>
-              <span>Character prompt</span>
+              <span>{t("drawer:visuals.characterPrompt")}</span>
               <textarea
                 value={draft.character_style_prompt}
                 onChange={(event) =>
@@ -734,14 +745,14 @@ function VisualDirectionSettings({
               />
             </label>
             <label>
-              <span>Palette</span>
+              <span>{t("drawer:visuals.palette")}</span>
               <input
                 value={draft.palette}
                 onChange={(event) => update("palette", event.target.value)}
               />
             </label>
             <label>
-              <span>Negative prompt</span>
+              <span>{t("drawer:visuals.negativePrompt")}</span>
               <input
                 value={draft.negative_prompt}
                 onChange={(event) =>
@@ -759,28 +770,28 @@ function VisualDirectionSettings({
                 title={asset.prompt}
                 onClick={() => setSelectedAssetId(asset.id)}
               >
-                <span>{asset.kind}</span>
+                <span>{t(`drawer:assetKind.${asset.kind}`, { defaultValue: asset.kind.replaceAll("_", " ") })}</span>
                 <strong>{asset.subject}</strong>
                 <small title={asset.error || asset.provider}>
-                  {asset.canon_status} · {asset.status}
+                  {t(`drawer:canonStatus.${asset.canon_status}`, { defaultValue: asset.canon_status })} · {t(`drawer:assetStatus.${asset.status}`, { defaultValue: asset.status })}
                   {asset.error ? " !" : ""}
                 </small>
               </button>
             ))}
           </div>
           {visibleJobs.length > 0 && (
-            <div className="visual-job-list" aria-label="Visual generation jobs">
+            <div className="visual-job-list" aria-label={t("drawer:visuals.jobs")}>
               {visibleJobs.map((job) => (
                 <div className={`visual-job-row ${job.status}`} key={job.id}>
-                  <span>{job.status}</span>
+                  <span>{t(`drawer:assetStatus.${job.status}`, { defaultValue: job.status })}</span>
                   <strong>{assetLabel(assets, job.asset_id)}</strong>
                   <small title={job.error || job.provider || job.updated_at}>
-                    attempt {job.attempts}/{job.max_attempts || 1}
+                    {t("drawer:visuals.attempt", { attempts: job.attempts, max: job.max_attempts || 1 })}
                     {job.provider ? ` - ${job.provider}` : ""}
                   </small>
                   {(job.status === "queued" || job.status === "running") && (
                     <button type="button" onClick={() => void cancelJob(job.id)} disabled={busy}>
-                      Cancel
+                      {t("drawer:visuals.cancel")}
                     </button>
                   )}
                 </div>
@@ -793,28 +804,28 @@ function VisualDirectionSettings({
                 {selectedImageUrl ? (
                   <img src={activeVersion?.url || selectedImageUrl} alt="" />
                 ) : (
-                  <div>{selectedAsset.status}</div>
+                  <div>{t(`drawer:assetStatus.${selectedAsset.status}`, { defaultValue: selectedAsset.status })}</div>
                 )}
               </div>
               <div className="visual-asset-editor-main">
                 <div className="visual-asset-editor-head">
-                  <span>{selectedAsset.kind}</span>
+                  <span>{t(`drawer:assetKind.${selectedAsset.kind}`, { defaultValue: selectedAsset.kind.replaceAll("_", " ") })}</span>
                   <strong>{selectedAsset.subject}</strong>
                   <small title={selectedAsset.provider}>
-                    {selectedAsset.canon_status} · {selectedAsset.status}
+                    {t(`drawer:canonStatus.${selectedAsset.canon_status}`, { defaultValue: selectedAsset.canon_status })} · {t(`drawer:assetStatus.${selectedAsset.status}`, { defaultValue: selectedAsset.status })}
                   </small>
                 </div>
                 <div className="visual-lineage-note">
-                  <strong>{gateLabel(selectedAsset.gate_state)}</strong>
-                  <span>{selectedAsset.gate_reason || "No gating detail."}</span>
+                  <strong>{t(`drawer:gate.${selectedAsset.gate_state}`, { defaultValue: selectedAsset.gate_state.replaceAll("_", " ") })}</strong>
+                  <span>{visualGateReason(selectedAsset, t) || t("common:missing")}</span>
                   <small>
-                    Profile rev {profile.revision}
-                    {selectedAsset.form_id ? ` · form ${compactId(selectedAsset.form_id)}` : ""}
-                    {selectedAsset.inherited ? " · inherited from ancestor branch" : " · current branch"}
+                    {t("drawer:visuals.profileRevision", { revision: profile.revision })}
+                    {selectedAsset.form_id ? ` · ${t("drawer:visuals.form", { id: compactId(selectedAsset.form_id) })}` : ""}
+                    {` · ${selectedAsset.inherited ? t("drawer:visuals.inherited") : t("drawer:visuals.currentBranch")}`}
                   </small>
                 </div>
                 <label>
-                  <span>Asset prompt</span>
+                  <span>{t("drawer:visuals.assetPrompt")}</span>
                   <textarea
                     value={assetDraft.prompt}
                     onChange={(event) =>
@@ -827,7 +838,7 @@ function VisualDirectionSettings({
                   />
                 </label>
                 <label>
-                  <span>Negative prompt</span>
+                  <span>{t("drawer:visuals.negativePrompt")}</span>
                   <input
                     value={assetDraft.negative_prompt}
                     onChange={(event) =>
@@ -846,14 +857,14 @@ function VisualDirectionSettings({
                       setVersionIndex((value) => Math.max(0, value - 1))
                     }
                   >
-                    ← Newer
+                    {t("drawer:visuals.newer")}
                   </button>
                   <span>
                     {versionsBusy
-                      ? "Loading versions"
+                      ? t("drawer:visuals.loadingVersions")
                       : versions.length
-                        ? `${versions.length - versionIndex} / ${versions.length}${activeVersion?.id === selectedAsset.selected_version_id ? " · selected" : " · preview"}`
-                        : "No versions yet"}
+                        ? t("drawer:visuals.position", { current: versions.length - versionIndex, total: versions.length, state: activeVersion?.id === selectedAsset.selected_version_id ? t("drawer:visuals.selected") : t("drawer:visuals.preview") })
+                        : t("drawer:visuals.noVersions")}
                   </span>
                   <button
                     type="button"
@@ -864,21 +875,20 @@ function VisualDirectionSettings({
                       )
                     }
                   >
-                    Older →
+                    {t("drawer:visuals.older")}
                   </button>
                 </div>
                 {activeVersion && (
                   <div className="model-note">
                     <p>
-                      Version from {displayTimestamp(activeVersion.created_at)}{" "}
-                      via {activeVersion.provider || "unknown provider"}.
+                      {t("drawer:visuals.versionFrom", { date: displayTimestamp(activeVersion.created_at), provider: activeVersion.provider || t("drawer:visuals.unknownProvider") })}
                     </p>
                     <p>
-                      {activeVersion.canon_status} · {activeVersion.form_id ? `form ${compactId(activeVersion.form_id)} · ` : ""}
-                      {activeVersion.id === selectedAsset.selected_version_id ? "currently selected" : "preview only"}
+                      {t(`drawer:canonStatus.${activeVersion.canon_status}`, { defaultValue: activeVersion.canon_status })} · {activeVersion.form_id ? `${t("drawer:visuals.form", { id: compactId(activeVersion.form_id) })} · ` : ""}
+                      {activeVersion.id === selectedAsset.selected_version_id ? t("drawer:visuals.currentlySelected") : t("drawer:visuals.previewOnly")}
                     </p>
                     {activeVersion.revised_prompt ? (
-                      <p>Revised: {activeVersion.revised_prompt}</p>
+                      <p>{t("drawer:visuals.revised", { prompt: activeVersion.revised_prompt })}</p>
                     ) : null}
                   </div>
                 )}
@@ -888,28 +898,28 @@ function VisualDirectionSettings({
                     onClick={() => void saveAssetPrompt()}
                     disabled={busy}
                   >
-                    Save prompt
+                    {t("drawer:visuals.savePrompt")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void selectVersion()}
                     disabled={busy || !activeVersion}
                   >
-                    Use shown version
+                    {t("drawer:visuals.useVersion")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void stepSelection("undo")}
                     disabled={busy || !selectedAsset.can_undo_selection}
                   >
-                    Undo selection
+                    {t("drawer:visuals.undo")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void stepSelection("redo")}
                     disabled={busy || !selectedAsset.can_redo_selection}
                   >
-                    Redo selection
+                    {t("drawer:visuals.redo")}
                   </button>
                   <button
                     type="button"
@@ -918,10 +928,10 @@ function VisualDirectionSettings({
                     disabled={busy || selectedJobActive || !generationAllowed}
                   >
                     {selectedJobActive
-                      ? "Generating…"
+                      ? t("drawer:visuals.generating")
                       : selectedAsset.gate_state === "silhouette_available"
-                        ? "Generate silhouette"
-                        : "Regenerate"}
+                        ? t("drawer:visuals.silhouette")
+                        : t("drawer:visuals.regenerate")}
                   </button>
                 </div>
               </div>
@@ -933,35 +943,35 @@ function VisualDirectionSettings({
               onClick={() => void onReload()}
               disabled={busy}
             >
-              Reload assets
+              {t("drawer:visuals.reload")}
             </button>
             <button
               type="button"
               onClick={() => void cleanup(true)}
               disabled={busy}
             >
-              Preview cleanup
+              {t("drawer:visuals.previewCleanup")}
             </button>
             <button
               type="button"
               onClick={() => void cleanup(false)}
               disabled={busy}
             >
-              Clean files
+              {t("drawer:visuals.clean")}
             </button>
             <button
               type="button"
               onClick={() => void generate({ force: false, limit: 6 })}
               disabled={busy || assets.length === 0}
             >
-              Generate missing
+              {t("drawer:visuals.generateMissing")}
             </button>
             <button
               type="button"
               onClick={() => void generate({ force: true, limit: 6 })}
               disabled={busy || assets.length === 0}
             >
-              Regenerate visible
+              {t("drawer:visuals.regenerateVisible")}
             </button>
             <button
               type="button"
@@ -969,14 +979,13 @@ function VisualDirectionSettings({
               onClick={() => void save()}
               disabled={busy}
             >
-              {busy ? "Saving..." : "Save visual prompts"}
+              {busy ? t("drawer:visuals.saving") : t("drawer:visuals.save")}
             </button>
           </div>
           {error && <p className="model-error">{error}</p>}
           {saveError && <p className="model-error">{saveError}</p>}
           <p className="model-note">
-            Missing images become pending asset requests. Ready images are
-            served without blocking story turns.
+            {t("drawer:visuals.note")}
           </p>
         </>
       )}
@@ -1012,6 +1021,7 @@ function ModelRoutingSettings({
   onSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onReload: () => Promise<void> | void;
 }) {
+  const { t } = useTranslation("drawer");
   const [draft, setDraft] = useState<ModelRoutingDraft | null>(() =>
     modelSettings ? draftFromModelSettings(modelSettings) : null,
   );
@@ -1063,7 +1073,7 @@ function ModelRoutingSettings({
     setSaveMessage("");
     try {
       await onSave(updateFromDraft(modelSettings, draft));
-      setSaveMessage("Model routing saved to shared config.");
+      setSaveMessage(t("models.saved"));
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
     }
@@ -1073,13 +1083,13 @@ function ModelRoutingSettings({
     return (
       <div className="model-routing">
         <div className="model-routing-head">
-          <span>Model Routing</span>
-          <strong>Config unavailable</strong>
+          <span>{t("models.title")}</span>
+          <strong>{t("models.unavailable")}</strong>
         </div>
         {modelError && <p className="model-error">{modelError}</p>}
         <div className="model-actions">
           <button type="button" onClick={() => void onReload()} disabled={busy}>
-            Reload from disk
+            {t("models.reload")}
           </button>
         </div>
       </div>
@@ -1090,27 +1100,27 @@ function ModelRoutingSettings({
   const dirty = hasModelRoutingChanges(modelSettings, draft);
   const revision = modelSettings.config_revision
     ? modelSettings.config_revision.slice(0, 12)
-    : "unknown";
+    : t("models.unknown");
 
   return (
     <div className="model-routing">
       <div className="model-routing-head">
-        <span>Model Routing</span>
-        <strong>Shared config · {revision}</strong>
+        <span>{t("models.title")}</span>
+        <strong>{t("models.shared", { revision })}</strong>
       </div>
       <div className="model-active-strip">
         <div>
-          <span>Effective provider from saved config</span>
-          <strong>{modelSettings.active.provider || "none"}</strong>
+          <span>{t("models.effective")}</span>
+          <strong>{modelSettings.active.provider || t("models.none")}</strong>
         </div>
         <div>
-          <span>Configured narrator model</span>
+          <span>{t("models.narrator")}</span>
           <strong>
-            {modelSettings.active.narrative_model || "provider default"}
+            {modelSettings.active.narrative_model || t("models.providerDefault")}
           </strong>
         </div>
         <div>
-          <span>Config path</span>
+          <span>{t("models.path")}</span>
           <strong title={modelSettings.config_path}>
             {modelSettings.config_path}
           </strong>
@@ -1120,48 +1130,46 @@ function ModelRoutingSettings({
         <div
           className={modelSettings.image_generation.available ? "ready" : "blocked"}
         >
-          <span>Image generation</span>
+          <span>{t("models.imageGeneration")}</span>
           <strong>{modelSettings.image_generation.status}</strong>
         </div>
         <div>
-          <span>Provider</span>
-          <strong>{modelSettings.image_generation.provider || "not set"}</strong>
+          <span>{t("models.provider")}</span>
+          <strong>{modelSettings.image_generation.provider || t("models.notSet")}</strong>
         </div>
         <div>
-          <span>Provider credential</span>
+          <span>{t("models.credential")}</span>
           <strong>
             {["imagegen-bridge", "imagegen_bridge", "bridge-native"].includes(
               modelSettings.image_generation.provider.toLowerCase(),
             )
               ? modelSettings.image_generation.imagegen_bridge_token_configured
-                ? "bridge token configured"
-                : "bridge auth not configured"
+                ? t("models.bridgeToken")
+                : t("models.bridgeMissing")
               : modelSettings.image_generation.api_key_configured
-                ? "API key configured"
-                : "API key not configured"}
+                ? t("models.keySet")
+                : t("models.keyMissing")}
           </strong>
         </div>
       </div>
       <p className="model-note">
-        Image generation keys stay in the gateway environment or shared service
-        config. The browser only shows whether a usable key or bridge is already
-        configured.
+        {t("models.note")}
       </p>
       <div className="settings-grid">
         <datalist id="image-provider-options">
-          <option value="imagegen-bridge" label="Native provider-neutral bridge" />
-          <option value="openai-compatible" label="OpenAI-compatible images API" />
-          <option value="openclaw-bridge" label="Legacy OpenClaw bridge" />
+          <option value="imagegen-bridge" label={t("providerLabels.native")} />
+          <option value="openai-compatible" label={t("providerLabels.compatible")} />
+          <option value="openclaw-bridge" label={t("providerLabels.legacy")} />
         </datalist>
         <datalist id="imagegen-bridge-provider-options">
-          <option value="codex-responses" label="Codex Responses OAuth" />
-          <option value="codex-app-server" label="Codex app-server OAuth" />
+          <option value="codex-responses" label={t("providerLabels.responses")} />
+          <option value="codex-app-server" label={t("providerLabels.appServer")} />
         </datalist>
         <label>
-          <span>Provider priority</span>
+          <span>{t("models.priority")}</span>
           <CustomSelect
             value={activeProvider}
-            ariaLabel="Provider priority"
+            ariaLabel={t("models.priority")}
             onChange={(nextProvider) =>
               updateDraft((value) => ({
                 ...value,
@@ -1183,7 +1191,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Utility model</span>
+          <span>{t("models.utility")}</span>
           <ModelInput
             value={draft.utilityModel}
             options={modelSettings.utility_models}
@@ -1193,7 +1201,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Repair model</span>
+          <span>{t("models.repair")}</span>
           <ModelInput
             value={draft.repairModel}
             options={modelSettings.repair_models}
@@ -1203,7 +1211,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Repair fallbacks</span>
+          <span>{t("models.repairFallbacks")}</span>
           <input
             value={draft.repairFallbackModels}
             onChange={(event) =>
@@ -1212,11 +1220,11 @@ function ModelRoutingSettings({
                 repairFallbackModels: event.target.value,
               }))
             }
-            placeholder="comma-separated fallback models"
+            placeholder={t("models.fallbackPlaceholder")}
           />
         </label>
         <label>
-          <span>Image provider</span>
+          <span>{t("models.imageProvider")}</span>
           <input
             list="image-provider-options"
             value={draft.imageGeneration.provider}
@@ -1227,7 +1235,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Image generation model (optional for bridge)</span>
+          <span>{t("models.imageModel")}</span>
           <ModelInput
             value={draft.imageGeneration.model}
             options={modelSettings.image_models}
@@ -1235,7 +1243,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Map icon model (optional for bridge)</span>
+          <span>{t("models.mapIconModel")}</span>
           <ModelInput
             value={draft.imageGeneration.mapIconModel}
             options={modelSettings.image_models}
@@ -1243,7 +1251,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>OpenClaw bridge URL</span>
+          <span>{t("models.openClawUrl")}</span>
           <input
             value={draft.imageGeneration.openClawBridgeUrl}
             onChange={(event) =>
@@ -1253,7 +1261,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>imagegen-bridge native URL</span>
+          <span>{t("models.nativeUrl")}</span>
           <input
             value={draft.imageGeneration.imagegenBridgeUrl}
             onChange={(event) =>
@@ -1263,7 +1271,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>imagegen-bridge provider</span>
+          <span>{t("models.bridgeProvider")}</span>
           <input
             list="imagegen-bridge-provider-options"
             value={draft.imageGeneration.imagegenBridgeProvider}
@@ -1274,7 +1282,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Map icon bridge provider</span>
+          <span>{t("models.mapBridgeProvider")}</span>
           <input
             list="imagegen-bridge-provider-options"
             value={draft.imageGeneration.imagegenBridgeMapIconProvider}
@@ -1287,7 +1295,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Bridge fallbacks</span>
+          <span>{t("models.bridgeFallbacks")}</span>
           <input
             value={draft.imageGeneration.imagegenBridgeFallbacks}
             onChange={(event) =>
@@ -1299,36 +1307,36 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Bridge fallback policy</span>
+          <span>{t("models.fallbackPolicy")}</span>
           <CustomSelect
             value={draft.imageGeneration.imagegenBridgeFallbackPolicy}
-            ariaLabel="Image bridge fallback policy"
+            ariaLabel={t("models.fallbackPolicy")}
             onChange={(value) =>
               updateImageGeneration({ imagegenBridgeFallbackPolicy: value })
             }
             options={[
-              { value: "on_unavailable", label: "On unavailable" },
-              { value: "on_error", label: "On provider error" },
+              { value: "on_unavailable", label: t("models.onUnavailable") },
+              { value: "on_error", label: t("models.onError") },
             ]}
           />
         </label>
         <label>
-          <span>Bridge compatibility</span>
+          <span>{t("models.compatibility")}</span>
           <CustomSelect
             value={draft.imageGeneration.imagegenBridgeCompatibility}
-            ariaLabel="Image bridge compatibility"
+            ariaLabel={t("models.compatibility")}
             onChange={(value) =>
               updateImageGeneration({ imagegenBridgeCompatibility: value })
             }
             options={[
-              { value: "strict", label: "Strict" },
-              { value: "normalize", label: "Normalize" },
-              { value: "best_effort", label: "Best effort" },
+              { value: "strict", label: t("models.strict") },
+              { value: "normalize", label: t("models.normalize") },
+              { value: "best_effort", label: t("models.bestEffort") },
             ]}
           />
         </label>
         <label>
-          <span>OpenAI-compatible base URL</span>
+          <span>{t("models.baseUrl")}</span>
           <input
             value={draft.imageGeneration.baseUrl}
             onChange={(event) =>
@@ -1338,7 +1346,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Default image size</span>
+          <span>{t("models.defaultSize")}</span>
           <input
             value={draft.imageGeneration.defaultSize}
             onChange={(event) =>
@@ -1348,7 +1356,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Location image size</span>
+          <span>{t("models.locationSize")}</span>
           <input
             value={draft.imageGeneration.locationSize}
             onChange={(event) =>
@@ -1358,7 +1366,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Character image size</span>
+          <span>{t("models.characterSize")}</span>
           <input
             value={draft.imageGeneration.characterSize}
             onChange={(event) =>
@@ -1368,11 +1376,11 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Image output format</span>
-          <CustomSelect value={draft.imageGeneration.outputFormat} ariaLabel="Image output format" onChange={(value) => updateImageGeneration({ outputFormat: value })} options={["png", "jpeg", "webp"].map((format) => ({ value: format, label: format.toUpperCase() }))} />
+          <span>{t("models.outputFormat")}</span>
+          <CustomSelect value={draft.imageGeneration.outputFormat} ariaLabel={t("models.outputFormat")} onChange={(value) => updateImageGeneration({ outputFormat: value })} options={["png", "jpeg", "webp"].map((format) => ({ value: format, label: format.toUpperCase() }))} />
         </label>
         <label>
-          <span>Image timeout seconds</span>
+          <span>{t("models.timeout")}</span>
           <input
             type="number"
             min={1}
@@ -1385,7 +1393,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label className="toggle-row">
-          <span>Auto-generate visuals</span>
+          <span>{t("models.auto")}</span>
           <input
             type="checkbox"
             checked={draft.imageGeneration.autoGenerate}
@@ -1395,7 +1403,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label className="toggle-row">
-          <span>Append negative prompt</span>
+          <span>{t("models.appendNegative")}</span>
           <input
             type="checkbox"
             checked={draft.imageGeneration.appendNegativePrompt}
@@ -1407,7 +1415,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>ASCII art model</span>
+          <span>{t("models.ascii")}</span>
           <ModelInput
             value={draft.asciiModel}
             options={modelSettings.ascii_models}
@@ -1417,10 +1425,10 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Embedding provider</span>
+          <span>{t("models.embeddingProvider")}</span>
           <CustomSelect
             value={draft.embeddingProvider}
-            ariaLabel="Embedding provider"
+            ariaLabel={t("models.embeddingProvider")}
             onChange={(nextProvider) =>
               updateDraft((draft) => ({
                 ...draft,
@@ -1431,7 +1439,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Embedding model</span>
+          <span>{t("models.embeddingModel")}</span>
           <input
             value={draft.embeddingModel}
             onChange={(event) =>
@@ -1465,7 +1473,7 @@ function ModelRoutingSettings({
               </label>
               {provider.supports_model && (
                 <label>
-                  <span>Model</span>
+                  <span>{t("models.model")}</span>
                   <ModelInput
                     value={providerDraft?.model ?? ""}
                     options={modelSettings.narrative_models}
@@ -1477,10 +1485,10 @@ function ModelRoutingSettings({
               )}
               {provider.supports_reasoning && (
                 <label>
-                  <span>Reasoning</span>
+                  <span>{t("models.reasoning")}</span>
                   <CustomSelect
                     value={providerDraft?.reasoning ?? "off"}
-                    ariaLabel={`Reasoning for ${provider.label}`}
+                    ariaLabel={t("models.reasoningFor", { provider: provider.label })}
                     onChange={(reasoning) =>
                       updateProvider(provider.id, {
                         reasoning,
@@ -1503,14 +1511,12 @@ function ModelRoutingSettings({
         })}
       </div>
       <div className="model-facts">
-        <span>Provider chain: {draft.providerPriority.join(" -> ")}</span>
+        <span>{t("models.providerChain", { chain: draft.providerPriority.join(" → ") })}</span>
         <span>
-          Images: {draft.imageGeneration.provider || "none"}/
-          {draft.imageGeneration.model || "no model"}
+          {t("models.images", { provider: draft.imageGeneration.provider || t("models.none"), model: draft.imageGeneration.model || t("models.noModel") })}
         </span>
         <span>
-          Embedding: {draft.embeddingProvider}/
-          {draft.embeddingModel || "default"}
+          {t("models.embedding", { provider: draft.embeddingProvider, model: draft.embeddingModel || t("models.default") })}
         </span>
         <span>TTS: {modelSettings.tts_status}</span>
       </div>
@@ -1527,10 +1533,10 @@ function ModelRoutingSettings({
           onClick={() => setDraft(draftFromModelSettings(modelSettings))}
           disabled={busy}
         >
-          Reset
+          {t("models.reset")}
         </button>
         <button type="button" onClick={() => void onReload()} disabled={busy}>
-          Reload from disk
+          {t("models.reload")}
         </button>
         <button
           type="button"
@@ -1538,15 +1544,14 @@ function ModelRoutingSettings({
           onClick={() => void save()}
           disabled={busy || !dirty || issues.length > 0}
         >
-          {busy ? "Saving..." : "Save model routing"}
+          {busy ? t("models.saving") : t("models.save")}
         </button>
       </div>
       {modelError && <p className="model-error">{modelError}</p>}
       {saveError && <p className="model-error">{saveError}</p>}
       {saveMessage && <p className="model-success">{saveMessage}</p>}
       <p className="model-note">
-        Saved changes write to the shared config used by the terminal and by the
-        next browser turn bridge process.
+        {t("models.saveNote")}
       </p>
     </div>
   );
@@ -1595,6 +1600,7 @@ function SavesContent({
   onLoadSave: (save: SaveView) => void;
   onDeleteSave: (save: SaveView) => void;
 }) {
+  const { t } = useTranslation("drawer");
   const [name, setName] = useState("");
   const saves = snapshot?.panels.saves ?? [];
   const query = saveFilter.trim().toLowerCase();
@@ -1614,14 +1620,14 @@ function SavesContent({
     <div className="overlay-content">
       <div className="save-create">
         <label>
-          <span>Manual save name</span>
+          <span>{t("saves.manualName")}</span>
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") submitSave();
             }}
-            placeholder={`Browser Save T${currentTurn}`}
+            placeholder={t("saves.defaultName", { turn: currentTurn })}
             disabled={busy || !snapshot}
           />
         </label>
@@ -1631,11 +1637,11 @@ function SavesContent({
           onClick={submitSave}
           disabled={busy || !snapshot}
         >
-          Create Save
+          {t("saves.create")}
         </button>
       </div>
       <label className="save-filter">
-        <span>Find save</span>
+        <span>{t("saves.find")}</span>
         <input
           value={saveFilter}
           onChange={(event) => onSaveFilterChange(event.target.value)}
@@ -1645,17 +1651,16 @@ function SavesContent({
       </label>
       <div className="save-list">
         {saves.length === 0 ? (
-          <div className="empty-copy">No saved snapshots yet.</div>
+          <div className="empty-copy">{t("saves.empty")}</div>
         ) : filteredSaves.length === 0 ? (
-          <div className="empty-copy">No saves match this filter.</div>
+          <div className="empty-copy">{t("saves.noMatch")}</div>
         ) : (
           filteredSaves.map((save) => (
             <div className="save-row" key={save.id}>
               <div>
                 <strong>{save.name}</strong>
                 <span>
-                  Turn {save.turn} - Chapter {save.chapter} -{" "}
-                  {compactText(save.location || "Unknown", 32)}
+                  {t("saves.summary", { turn: save.turn, chapter: save.chapter, location: compactText(save.location || t("saves.unknown"), 32) })}
                 </span>
                 <small>{displayTimestamp(save.created_at)}</small>
               </div>
@@ -1666,7 +1671,7 @@ function SavesContent({
                   onClick={() => onLoadSave(save)}
                   disabled={busy}
                 >
-                  Load
+                  {t("saves.load")}
                 </button>
                 <button
                   type="button"
@@ -1674,7 +1679,7 @@ function SavesContent({
                   onClick={() => onDeleteSave(save)}
                   disabled={busy}
                 >
-                  Delete
+                  {t("saves.delete")}
                 </button>
               </div>
             </div>
@@ -1686,10 +1691,11 @@ function SavesContent({
 }
 
 function MetaContent({ metaResult }: { metaResult: MetaResult | null }) {
+  const { t } = useTranslation("drawer");
   if (!metaResult) {
     return (
       <div className="overlay-content">
-        <p className="overlay-copy muted">No meta response is available yet.</p>
+        <p className="overlay-copy muted">{t("metaEmpty")}</p>
       </div>
     );
   }
@@ -1717,11 +1723,12 @@ function ModuleOverlayContent({
   onOpenVisualAsset?: (assetId: string) => void;
   onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
 }) {
+  const { t } = useTranslation("drawer");
   if (!snapshot) {
     return (
       <div className="overlay-content">
         <p className="overlay-copy muted">
-          Select a story to inspect this module.
+          {t("moduleEmpty")}
         </p>
       </div>
     );
@@ -1754,6 +1761,7 @@ function NewStoryContent({
     payload: StoryEnhanceEnvelope,
   ) => Promise<StoryEnhanceResponse>;
 }) {
+  const { t } = useTranslation(["onboarding", "wizard", "drawer"]);
   const [wizard, setWizard] = useState<StoryWizardResult | null>(null);
   const [input, setInput] = useState("");
   const [start, setStart] = useState(true);
@@ -1787,7 +1795,7 @@ function NewStoryContent({
       setLog((items) =>
         [
           {
-            stage: next.stage_label || next.stage || "Story setup",
+            stage: next.stage_label || next.stage || t("drawer:wizard.setup"),
             message: next.message,
           },
           ...items,
@@ -1818,7 +1826,7 @@ function NewStoryContent({
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
-    setOperation("Opening guided setup");
+    setOperation(t("drawer:wizard.opening"));
     onRunStoryWizard({ start })
       .then((response) => {
         applyResponse(response);
@@ -1883,8 +1891,8 @@ function NewStoryContent({
         setLog((items) =>
           [
             {
-              stage: "AI enhance",
-              message: `Improved ${inputLabelForStage(stage).toLowerCase()} with ${response.model || response.provider}.`,
+              stage: t("drawer:wizard.aiEnhance"),
+              message: t("drawer:wizard.improved", { field: inputLabelForStage(stage).toLowerCase(), model: response.model || response.provider }),
             },
             ...items,
           ].slice(0, 8),
@@ -1893,7 +1901,7 @@ function NewStoryContent({
     } catch (failure) {
       setInput(fallback);
       setError(
-        `AI enhance failed; used local fallback. ${failure instanceof Error ? failure.message : String(failure)}`,
+        t("drawer:wizard.enhanceFailed", { error: failure instanceof Error ? failure.message : String(failure) }),
       );
     } finally {
       setEnhancing(false);
@@ -1909,12 +1917,12 @@ function NewStoryContent({
         <div>
           <span>
             {phase === "done"
-              ? "Complete"
+              ? t("complete")
               : phase === "character"
-                ? "Character setup"
-                : `Story setup - Step ${step.current} of ${step.total}`}
+                ? t("character")
+                : t("step", { current: step.current, total: step.total })}
           </span>
-          <strong>{wizard?.stage_label || "Loading wizard"}</strong>
+          <strong>{wizard ? t(`wizard:stages.${wizard.stage}`, { defaultValue: wizard.stage_label || t("onboarding:loading") }) : t("onboarding:loading")}</strong>
         </div>
         <label className="checkbox-line">
           <input
@@ -1923,7 +1931,7 @@ function NewStoryContent({
             onChange={(event) => setStart(event.target.checked)}
             disabled={busy || stage === "done"}
           />
-          <span>Start first turn after creation</span>
+          <span>{t("start")}</span>
         </label>
       </div>
 
@@ -1934,21 +1942,20 @@ function NewStoryContent({
               <span className="story-wizard-generation-pulse" aria-hidden="true" />
               <div>
                 <strong>{generationProgressLabel(operation, elapsedSeconds)}</strong>
-                <small>{elapsedSeconds}s elapsed. The structured draft appears after schema validation.</small>
+                <small>{t("onboarding:elapsed", { count: elapsedSeconds })}</small>
               </div>
             </div>
           )}
           <div className="story-wizard-message">
             <pre>
-              {wizard?.message ||
-                "Starting the same guided setup used by the terminal..."}
+              {wizard?.stage === "brief" ? t("wizard:messages.brief") : wizard?.message || t("onboarding:starting")}
             </pre>
           </div>
 
           {wizard?.actions?.length ? (
             <div
               className="story-wizard-actions"
-              aria-label="Wizard quick choices"
+              aria-label={t("quick")}
             >
               {wizard.actions.map((action, index) => (
                 <button
@@ -1960,22 +1967,22 @@ function NewStoryContent({
                   disabled={busy}
                 >
                   <span>{index + 1}</span>
-                  <strong>{action.label}</strong>
+                  <strong>{t(`wizard:actions.${action.key}`, { defaultValue: action.label })}</strong>
                 </button>
               ))}
             </div>
           ) : null}
 
           {pendingPreset && (
-            <section className="story-wizard-confirmation" aria-label="Confirm story preset">
+            <section className="story-wizard-confirmation" aria-label={t("confirm")}>
               <div>
-                <span>Review before generation</span>
-                <strong>{pendingPreset.label}</strong>
-                <p>The preset has only filled the brief. Nothing has been generated or created yet. Edit it below, then confirm when it reads correctly.</p>
+                <span>{t("review")}</span>
+                <strong>{t(`wizard:actions.${pendingPreset.key}`, { defaultValue: pendingPreset.label })}</strong>
+                <p>{t("preset")}</p>
               </div>
               <div>
-                <button type="button" onClick={() => { setPendingPreset(null); setInput(""); }} disabled={busy}>Cancel</button>
-                <button type="button" className="primary" onClick={() => void runStep({ input: input.trim() })} disabled={busy || !input.trim()}>Generate draft</button>
+                <button type="button" onClick={() => { setPendingPreset(null); setInput(""); }} disabled={busy}>{t("common:cancel")}</button>
+                <button type="button" className="primary" onClick={() => void runStep({ input: input.trim() })} disabled={busy || !input.trim()}>{t("generate")}</button>
               </div>
             </section>
           )}
@@ -1993,7 +2000,7 @@ function NewStoryContent({
                       ? 4
                       : 5
                 }
-                placeholder={wizard?.placeholder || "Type your response..."}
+                placeholder={wizard?.placeholder || t("response")}
                 disabled={busy}
               />
             </label>
@@ -2007,11 +2014,11 @@ function NewStoryContent({
               onClick={() => void enhanceInput()}
               disabled={busy || enhancing || stage === "done"}
             >
-              {enhancing ? "Enhancing..." : "Enhance text"}
+              {enhancing ? t("enhancing") : t("enhance")}
             </button>
             {!pendingPreset && (
               <button type="submit" className="primary" disabled={busy || stage === "done"}>
-                {busy ? "Working..." : submitLabelForStage(stage)}
+              {busy ? t("drawer:wizard.working") : submitLabelForStage(stage)}
               </button>
             )}
           </div>
@@ -2019,91 +2026,90 @@ function NewStoryContent({
 
         <aside className="story-wizard-side">
           <div className="story-wizard-card story-visual-style-card">
-            <span>Visual Style</span>
+            <span>{t("visual")}</span>
             <CustomSelect
               value={visualStyle}
-              ariaLabel="Visual style"
+              ariaLabel={t("drawer:wizard.visualStyle")}
               disabled={busy || stage === "done"}
               onChange={(value) => setVisualStyle(value as VisualStyleKey)}
               options={visualStylePresets.map((preset) => ({
                 value: preset.key,
-                label: preset.label,
+                label: t(`drawer:style.presets.${preset.key}.label`),
               }))}
             />
-            <p>{selectedVisualPreset.description}</p>
+            <p>{t(`drawer:style.presets.${selectedVisualPreset.key}.description`)}</p>
             {visualStyle === "custom" && (
               <div className="story-visual-custom-fields">
                 <label>
-                  <span>World direction</span>
+                  <span>{t("onboarding:worldDirection")}</span>
                   <textarea
                     value={customVisualProfile.world_style_prompt}
                     onChange={(event) => updateCustomVisualProfile("world_style_prompt", event.target.value)}
-                    placeholder="Materials, lighting, environment style, camera language..."
+                    placeholder={t("drawer:style.worldPlaceholder")}
                     rows={4}
                     disabled={busy}
                   />
                 </label>
                 <label>
-                  <span>Character direction</span>
+                  <span>{t("onboarding:characterDirection")}</span>
                   <textarea
                     value={customVisualProfile.character_style_prompt}
                     onChange={(event) => updateCustomVisualProfile("character_style_prompt", event.target.value)}
-                    placeholder="Faces, anatomy, costume treatment, expression, rendering style..."
+                    placeholder={t("drawer:style.characterPlaceholder")}
                     rows={4}
                     disabled={busy}
                   />
                 </label>
                 <label>
-                  <span>Avoid</span>
+                  <span>{t("onboarding:avoid")}</span>
                   <textarea
                     value={customVisualProfile.negative_prompt}
                     onChange={(event) => updateCustomVisualProfile("negative_prompt", event.target.value)}
-                    placeholder="Unwanted styles, artifacts, or changes..."
+                    placeholder={t("drawer:style.avoidPlaceholder")}
                     rows={3}
                     disabled={busy}
                   />
                 </label>
                 <label>
-                  <span>Palette</span>
+                  <span>{t("onboarding:palette")}</span>
                   <input
                     value={customVisualProfile.palette}
                     onChange={(event) => updateCustomVisualProfile("palette", event.target.value)}
-                    placeholder="Color and contrast direction..."
+                    placeholder={t("drawer:style.palettePlaceholder")}
                     disabled={busy}
                   />
                 </label>
               </div>
             )}
-            <small>Location symbols use a separate transparent map-icon pipeline.</small>
+            <small>{t("drawer:wizard.mapPipeline")}</small>
           </div>
           <div className="story-wizard-card">
-            <span>Draft Summary</span>
+            <span>{t("summary")}</span>
             {definition ? (
               <>
                 <strong>{definition.name}</strong>
                 <p>{definition.description}</p>
                 <dl>
-                  <dt>Genre</dt>
+                  <dt>{t("genre")}</dt>
                   <dd>{definition.genre}</dd>
-                  <dt>Tone</dt>
+                  <dt>{t("tone")}</dt>
                   <dd>{definition.tone}</dd>
-                  <dt>Language</dt>
+                  <dt>{t("language")}</dt>
                   <dd>{definition.language}</dd>
-                  <dt>World</dt>
+                  <dt>{t("world")}</dt>
                   <dd>{definition.worldName}</dd>
-                  <dt>Combat</dt>
-                  <dd>{definition.hasCombat ? "enabled" : "disabled"}</dd>
+                  <dt>{t("combat")}</dt>
+                  <dd>{definition.hasCombat ? t("drawer:wizard.enabled") : t("drawer:wizard.disabled")}</dd>
                 </dl>
               </>
             ) : (
               <p>
-                No draft yet. Start with a brief or a terminal-compatible
-                preset.
+                {t("onboarding:noDraft")}
               </p>
             )}
           </div>
           <div className="story-wizard-card">
-            <span>Recent Wizard Log</span>
+            <span>{t("log")}</span>
             {log.length ? (
               <ol>
                 {log.map((item, index) => (
@@ -2114,7 +2120,7 @@ function NewStoryContent({
                 ))}
               </ol>
             ) : (
-              <p>Steps will appear here as you build the story.</p>
+              <p>{t("onboarding:emptyLog")}</p>
             )}
           </div>
         </aside>
@@ -2129,51 +2135,51 @@ function wizardStep(stage: string): { current: number; total: number } {
 }
 
 function wizardOperationLabel(stage: string, payload: Omit<StoryWizardEnvelope, "start">): string {
-  if (stage === "brief") return "Generating structured story draft";
-  if (payload.action === "create_story") return "Locking reviewed story";
-  if (stage.startsWith("review_") || stage === "confirm") return "Revising structured story draft";
-  if (stage === "character_background") return "Creating story and protagonist";
-  return "Updating guided setup";
+  if (stage === "brief") return i18n.t("drawer:wizard.generating");
+  if (payload.action === "create_story") return i18n.t("drawer:wizard.locking");
+  if (stage.startsWith("review_") || stage === "confirm") return i18n.t("drawer:wizard.revising");
+  if (stage === "character_background") return i18n.t("drawer:wizard.creating");
+  return i18n.t("drawer:wizard.updating");
 }
 
 function generationProgressLabel(operation: string, elapsedSeconds: number): string {
   if (elapsedSeconds < 2) return operation;
-  if (elapsedSeconds < 8) return "Generating world, rules, and playable stats";
-  return "Validating the structured draft";
+  if (elapsedSeconds < 8) return i18n.t("drawer:wizard.worldRulesStats");
+  return i18n.t("drawer:wizard.validating");
 }
 
 function currentInputRequiredMessage(wizard: StoryWizardResult | null): string {
   const stage = wizard?.stage ?? "brief";
-  if (stage === "character_name") return "Protagonist name is required.";
+  if (stage === "character_name") return i18n.t("drawer:wizard.required.name");
   if (stage === "character_background")
-    return "Write a background or use Skip background.";
-  if (stage === "brief") return "Story brief is required.";
-  return "Type a revision or use one of the quick choices.";
+    return i18n.t("drawer:wizard.required.background");
+  if (stage === "brief") return i18n.t("drawer:wizard.required.brief");
+  return i18n.t("drawer:wizard.required.revision");
 }
 
 function inputLabelForStage(stage: string): string {
   switch (stage) {
     case "brief":
-      return "Story brief";
+      return i18n.t("drawer:wizard.input.brief");
     case "character_name":
-      return "Protagonist name";
+      return i18n.t("drawer:wizard.input.name");
     case "character_background":
-      return "Background";
+      return i18n.t("drawer:wizard.input.background");
     default:
-      return "Revision";
+      return i18n.t("drawer:wizard.input.revision");
   }
 }
 
 function submitLabelForStage(stage: string): string {
   switch (stage) {
     case "brief":
-      return "Draft world";
+      return i18n.t("drawer:wizard.submit.brief");
     case "character_name":
-      return "Set name";
+      return i18n.t("drawer:wizard.submit.name");
     case "character_background":
-      return "Create story";
+      return i18n.t("drawer:wizard.submit.background");
     default:
-      return "Send revision";
+      return i18n.t("drawer:wizard.submit.revision");
   }
 }
 
@@ -2238,8 +2244,8 @@ function storyDefinitionSummary(value: unknown): {
       ? (raw.stats_schema as Record<string, unknown>)
       : {};
   return {
-    name: stringValue(raw.name, "Untitled story"),
-    description: stringValue(raw.description, "No description yet."),
+    name: stringValue(raw.name, i18n.t("drawer:wizard.untitled")),
+    description: stringValue(raw.description, i18n.t("drawer:wizard.noDescription")),
     genre: stringValue(raw.genre, "-"),
     tone: stringValue(raw.tone, "-"),
     language: stringValue(raw.language, "-"),
@@ -2250,23 +2256,6 @@ function storyDefinitionSummary(value: unknown): {
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function gateLabel(value: string): string {
-  const labels: Record<string, string> = {
-    insufficient_observation: "Observation required",
-    silhouette_available: "Silhouette available",
-    identified_draft: "Identity draft",
-    established_canonical: "Canonical identity",
-    form_changed: "New canonical form",
-    identity_contradiction: "Identity contradiction",
-    insufficient_canon: "Location canon required",
-    explicit_request_available: "Available on request",
-    narrative_significance: "Narratively significant",
-    meaningful_stay: "Meaningful stay",
-    chapter_milestone: "Chapter milestone",
-  };
-  return labels[value] ?? value.replaceAll("_", " ");
 }
 
 function compactId(value: string): string {
