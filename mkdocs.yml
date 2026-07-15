@@ -13,6 +13,8 @@ strict: true
 theme:
   name: material
   language: en
+  logo: assets/oneday-icon.png
+  favicon: assets/oneday-icon.png
   features:
     - navigation.footer
     - navigation.indexes
@@ -81,6 +83,7 @@ nav:
       - Story systems: docs/story-systems.md
       - Generated media: docs/media.md
       - Image providers: docs/image-providers.md
+      - Observability and traces: docs/observability.md
   - Reference:
       - Documentation map: docs/README.md
       - Architecture: docs/architecture.md

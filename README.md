@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/oneday-icon.png" alt="OneDay icon: a luminous path branching from an open doorway beneath a starry sky" width="160" />
+
 # OneDay
 
 <p><strong>Imagine any story. Live every possibility.</strong></p>
@@ -10,7 +12,6 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docs/docker.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<!-- Logo slot: add docs/assets/oneday-logo.svg above the title. -->
 <!-- Hero slot: add docs/assets/oneday-hero.webp here when the final artwork is ready. -->
 
 OneDay turns any premise into a persistent, interactive world. Write any action,
@@ -178,6 +179,7 @@ component boundaries.
 | [Story systems](docs/story-systems.md) | Branches, challenges, minigames, crafting, investigations, projects, and conflict |
 | [Generated media](docs/media.md) | Images, maps, ASCII, TTS, providers, and failure behavior |
 | [Image providers](docs/image-providers.md) | Exact imagegen-bridge, OpenAI-compatible, and legacy adapter coverage |
+| [Observability](docs/observability.md) | Optional OpenTelemetry, Langfuse, local diagnostics, privacy, and verification |
 | [Configuration](docs/configuration.md) | Providers, RAG, visuals, game settings, and secrets |
 | [Docker](docs/docker.md) | Networking, persistence, updates, backups, and operations |
 | [Extensions](docs/extensions.md) | Story packs, challenge pools, and minigame definitions |

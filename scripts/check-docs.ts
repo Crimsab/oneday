@@ -103,6 +103,7 @@ const requiredGuides = [
   "docs/story-systems.md",
   "docs/media.md",
   "docs/image-providers.md",
+  "docs/observability.md",
   "docs/extensions.md",
   "docs/wiki.md",
 ];

@@ -34,7 +34,10 @@ if (listed.exitCode !== 0) {
 const docs = listed.stdout
   .toString()
   .split("\0")
-  .filter((path) => path.endsWith(".md"))
+  .filter(
+    (path) =>
+      path.endsWith(".md") || path === "docs/assets/oneday-icon.png",
+  )
   .sort();
 const sources = ["README.md", ...rootSources, ...docs];
 

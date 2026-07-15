@@ -9,6 +9,7 @@ Use this index to find the shortest path for what you are trying to do.
 - [Configuration](configuration.md) — providers, models, RAG, images, secrets, and data paths.
 - [Generated media](media.md) — images, maps, ASCII, speech, providers, and failure behavior.
 - [Image provider compatibility](image-providers.md) — exact native, bridge, compatible, and unsupported routes.
+- [Observability and traces](observability.md) — local diagnostics, OpenTelemetry, Langfuse, privacy, and verification.
 - [Docker](docker.md) — container lifecycle, persistence, updates, and backups.
 - [Troubleshooting](troubleshooting.md) — diagnostics and common startup/provider failures.
 

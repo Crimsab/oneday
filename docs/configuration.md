@@ -127,6 +127,10 @@ documented Basic authorization plus ingestion-version header through
 Collector, Grafana Tempo, Jaeger, and other OTLP receivers. The health response
 reports only `observability.otlp_traces` as `enabled` or `disabled`.
 
+The dedicated [Observability and traces](observability.md) guide provides
+copy-ready generic and Langfuse examples, sampling controls, verification, and
+the data privacy boundary.
+
 ## Game and storage
 
 - `data_dir` contains `oneday.db`, generated visual/audio assets, and story data.
