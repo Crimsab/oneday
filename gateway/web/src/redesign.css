@@ -242,7 +242,7 @@ summary:focus-visible {
 .message-language-trigger:hover, .message-language-secondary:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--line-soft)); color: var(--text); }
 .message-language-status { color: var(--faint); }
 .message-language-error { flex-basis: 100%; color: var(--danger); }
-.language-picker { position: absolute; z-index: 8; inset-block-start: calc(100% + 6px); inset-inline-start: 0; display: grid; width: min(320px, calc(100vw - 32px)); max-height: 340px; grid-template-columns: minmax(0,1fr) auto; border: 1px solid var(--line); border-radius: 8px; background: #11171b; padding: 8px; box-shadow: 0 18px 42px rgba(0,0,0,.34); }
+.language-picker { position: fixed; z-index: 80; display: grid; width: min(320px, calc(100vw - 16px)); max-height: 340px; grid-template-columns: minmax(0,1fr) auto; border: 1px solid var(--line); border-radius: 8px; background: #11171b; padding: 8px; box-shadow: 0 18px 42px rgba(0,0,0,.34); }
 .language-picker > label { display: flex; min-width: 0; align-items: center; gap: 7px; border: 1px solid var(--line-soft); border-radius: 6px; padding-inline: 9px; }
 .language-picker input { min-width: 0; border: 0; background: transparent; padding: 8px 0; color: var(--text); font-size: 1rem; outline: 0; }
 .language-picker-close { width: 34px; border: 0; background: transparent; color: var(--muted); }
