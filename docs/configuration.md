@@ -50,13 +50,24 @@ replace the host with `host.docker.internal` when Ollama runs outside the contai
 Visual settings live under `ai.image_generation` and can be overridden with
 `ONEDAY_IMAGEGEN_*` variables.
 
-- General scene and character design defaults to `openai/gpt-image-2`.
-- Transparent map symbols use the separate `map_icon_model`, defaulting to
-  `openai/gpt-image-1`.
-- `openclaw-bridge` calls `openclaw_bridge_url`; an OpenAI-compatible provider
-  uses `base_url` and `api_key` instead.
+- [`imagegen-bridge`](https://github.com/Crimsab/imagegen-bridge) is the
+  preferred adapter. It calls the native `/v1/images`
+  contract and preserves provider routing, ordered fallbacks, compatibility
+  normalization, idempotency, revised prompts, and verified output metadata.
+- `imagegen_bridge_provider` and `imagegen_bridge_map_icon_provider` can route
+  general art and transparent icons independently. Models may be omitted to use
+  the bridge provider defaults.
+- `imagegen_bridge_fallbacks` accepts ordered `PROVIDER` or `PROVIDER:MODEL`
+  entries. `imagegen_bridge_fallback_policy` is `on_unavailable` or `on_error`;
+  `imagegen_bridge_compatibility` is `strict`, `normalize`, or `best_effort`.
+- The bridge bearer token belongs in `ONEDAY_IMAGEGEN_BRIDGE_TOKEN`, not in
+  browser state or committed YAML. The Options panel reports only whether it is
+  configured.
+- Legacy `openclaw-bridge` calls `openclaw_bridge_url`. Any other provider name
+  uses the OpenAI-compatible `base_url`, `api_key`, and `/images/generations`.
 - `auto_generate` controls background generation; failed work remains non-blocking.
-- `append_negative_prompt` appends the saved negative direction to provider requests.
+- `append_negative_prompt` enables saved negative direction. The native bridge
+  receives it as `negative_prompt`; legacy adapters receive a merged prompt.
 - Size, aspect ratio, resolution, output format, background, and timeout can be
   set globally or separately for locations and characters.
 

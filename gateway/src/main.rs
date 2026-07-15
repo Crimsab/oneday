@@ -4,6 +4,7 @@ mod config;
 mod db;
 mod engine;
 mod events;
+mod imagegen;
 #[allow(dead_code, clippy::derivable_impls)]
 mod gateway_protocol {
     include!(concat!(env!("OUT_DIR"), "/gateway_protocol.rs"));

@@ -30,6 +30,12 @@ export interface ImageGenerationDraft {
   model: string;
   mapIconModel: string;
   openClawBridgeUrl: string;
+  imagegenBridgeUrl: string;
+  imagegenBridgeProvider: string;
+  imagegenBridgeMapIconProvider: string;
+  imagegenBridgeFallbacks: string;
+  imagegenBridgeFallbackPolicy: string;
+  imagegenBridgeCompatibility: string;
   defaultSize: string;
   locationSize: string;
   characterSize: string;
@@ -141,10 +147,10 @@ export function modelRoutingIssues(
     if (!draft.imageGeneration.provider.trim()) {
       issues.push("Image generation provider is required when auto-generate is enabled.");
     }
-    if (!draft.imageGeneration.model.trim()) {
+    if (!isImagegenBridgeProvider(draft.imageGeneration.provider) && !draft.imageGeneration.model.trim()) {
       issues.push("Image generation model is required when auto-generate is enabled.");
     }
-    if (!draft.imageGeneration.mapIconModel.trim()) {
+    if (!isImagegenBridgeProvider(draft.imageGeneration.provider) && !draft.imageGeneration.mapIconModel.trim()) {
       issues.push("Transparent map icon model is required when auto-generate is enabled.");
     }
     if (draft.imageGeneration.timeoutSeconds <= 0) {
@@ -157,12 +163,20 @@ export function modelRoutingIssues(
       issues.push("OpenClaw image generation needs a bridge URL.");
     }
     if (
+      isImagegenBridgeProvider(draft.imageGeneration.provider) &&
+      !draft.imageGeneration.imagegenBridgeUrl.trim()
+    ) {
+      issues.push("imagegen-bridge needs its native API URL.");
+    }
+    if (
+      !isImagegenBridgeProvider(draft.imageGeneration.provider) &&
       !isOpenClawImageProvider(draft.imageGeneration.provider) &&
       !draft.imageGeneration.baseUrl.trim()
     ) {
       issues.push("OpenAI-compatible image generation needs a base URL.");
     }
     if (
+      !isImagegenBridgeProvider(draft.imageGeneration.provider) &&
       !isOpenClawImageProvider(draft.imageGeneration.provider) &&
       !settings.image_generation.api_key_configured
     ) {
@@ -181,6 +195,12 @@ function imageGenerationDraft(
     model: settings.model,
     mapIconModel: settings.map_icon_model,
     openClawBridgeUrl: settings.openclaw_bridge_url,
+    imagegenBridgeUrl: settings.imagegen_bridge_url,
+    imagegenBridgeProvider: settings.imagegen_bridge_provider,
+    imagegenBridgeMapIconProvider: settings.imagegen_bridge_map_icon_provider,
+    imagegenBridgeFallbacks: settings.imagegen_bridge_fallbacks.join(", "),
+    imagegenBridgeFallbackPolicy: settings.imagegen_bridge_fallback_policy,
+    imagegenBridgeCompatibility: settings.imagegen_bridge_compatibility,
     defaultSize: settings.default_size,
     locationSize: settings.location_size,
     characterSize: settings.character_size,
@@ -208,6 +228,12 @@ function imageGenerationUpdate(
     model: draft.model.trim(),
     map_icon_model: draft.mapIconModel.trim(),
     openclaw_bridge_url: draft.openClawBridgeUrl.trim(),
+    imagegen_bridge_url: draft.imagegenBridgeUrl.trim(),
+    imagegen_bridge_provider: draft.imagegenBridgeProvider.trim(),
+    imagegen_bridge_map_icon_provider: draft.imagegenBridgeMapIconProvider.trim(),
+    imagegen_bridge_fallbacks: splitModelList(draft.imagegenBridgeFallbacks),
+    imagegen_bridge_fallback_policy: draft.imagegenBridgeFallbackPolicy.trim(),
+    imagegen_bridge_compatibility: draft.imagegenBridgeCompatibility.trim(),
     default_size: draft.defaultSize.trim(),
     location_size: draft.locationSize.trim(),
     character_size: draft.characterSize.trim(),
@@ -230,6 +256,12 @@ function imageGenerationUpdate(
 
 function isOpenClawImageProvider(provider: string): boolean {
   return ["openclaw", "openclaw-bridge", "codex-oauth"].includes(
+    provider.trim().toLowerCase(),
+  );
+}
+
+function isImagegenBridgeProvider(provider: string): boolean {
+  return ["imagegen-bridge", "imagegen_bridge", "bridge-native"].includes(
     provider.trim().toLowerCase(),
   );
 }

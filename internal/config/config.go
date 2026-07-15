@@ -107,27 +107,34 @@ type ASCIIArtConfig struct {
 
 // ImageGenerationConfig controls non-blocking visual asset generation.
 type ImageGenerationConfig struct {
-	Provider             string `yaml:"provider"`
-	BaseURL              string `yaml:"base_url"`
-	APIKey               string `yaml:"api_key"`
-	Model                string `yaml:"model"`
-	MapIconModel         string `yaml:"map_icon_model"`
-	OpenClawBridgeURL    string `yaml:"openclaw_bridge_url"`
-	DefaultSize          string `yaml:"default_size"`
-	LocationSize         string `yaml:"location_size"`
-	CharacterSize        string `yaml:"character_size"`
-	DefaultResolution    string `yaml:"default_resolution"`
-	LocationResolution   string `yaml:"location_resolution"`
-	CharacterResolution  string `yaml:"character_resolution"`
-	DefaultAspectRatio   string `yaml:"default_aspect_ratio"`
-	LocationAspectRatio  string `yaml:"location_aspect_ratio"`
-	CharacterAspectRatio string `yaml:"character_aspect_ratio"`
-	Quality              string `yaml:"quality"`
-	OutputFormat         string `yaml:"output_format"`
-	Background           string `yaml:"background"`
-	TimeoutSeconds       int    `yaml:"timeout_seconds"`
-	AutoGenerate         bool   `yaml:"auto_generate"`
-	AppendNegativePrompt bool   `yaml:"append_negative_prompt"`
+	Provider                      string   `yaml:"provider"`
+	BaseURL                       string   `yaml:"base_url"`
+	APIKey                        string   `yaml:"api_key"`
+	Model                         string   `yaml:"model"`
+	MapIconModel                  string   `yaml:"map_icon_model"`
+	OpenClawBridgeURL             string   `yaml:"openclaw_bridge_url"`
+	ImagegenBridgeURL             string   `yaml:"imagegen_bridge_url"`
+	ImagegenBridgeToken           string   `yaml:"imagegen_bridge_token"`
+	ImagegenBridgeProvider        string   `yaml:"imagegen_bridge_provider"`
+	ImagegenBridgeMapIconProvider string   `yaml:"imagegen_bridge_map_icon_provider"`
+	ImagegenBridgeFallbacks       []string `yaml:"imagegen_bridge_fallbacks"`
+	ImagegenBridgeFallbackPolicy  string   `yaml:"imagegen_bridge_fallback_policy"`
+	ImagegenBridgeCompatibility   string   `yaml:"imagegen_bridge_compatibility"`
+	DefaultSize                   string   `yaml:"default_size"`
+	LocationSize                  string   `yaml:"location_size"`
+	CharacterSize                 string   `yaml:"character_size"`
+	DefaultResolution             string   `yaml:"default_resolution"`
+	LocationResolution            string   `yaml:"location_resolution"`
+	CharacterResolution           string   `yaml:"character_resolution"`
+	DefaultAspectRatio            string   `yaml:"default_aspect_ratio"`
+	LocationAspectRatio           string   `yaml:"location_aspect_ratio"`
+	CharacterAspectRatio          string   `yaml:"character_aspect_ratio"`
+	Quality                       string   `yaml:"quality"`
+	OutputFormat                  string   `yaml:"output_format"`
+	Background                    string   `yaml:"background"`
+	TimeoutSeconds                int      `yaml:"timeout_seconds"`
+	AutoGenerate                  bool     `yaml:"auto_generate"`
+	AppendNegativePrompt          bool     `yaml:"append_negative_prompt"`
 }
 
 // GenerationConfig for AI text generation.
@@ -207,16 +214,21 @@ func Default() Config {
 				TimeoutSeconds: 25,
 			},
 			ImageGeneration: ImageGenerationConfig{
-				Provider:             "openclaw-bridge",
-				MapIconModel:         "openai/gpt-image-1",
-				OpenClawBridgeURL:    "http://127.0.0.1:8099/generate",
-				DefaultSize:          "1024x1024",
-				LocationSize:         "1536x1024",
-				CharacterSize:        "1024x1024",
-				OutputFormat:         "png",
-				TimeoutSeconds:       180,
-				AutoGenerate:         false,
-				AppendNegativePrompt: true,
+				Provider:                      "imagegen-bridge",
+				MapIconModel:                  "gpt-image-2",
+				OpenClawBridgeURL:             "http://127.0.0.1:8099/generate",
+				ImagegenBridgeURL:             "http://127.0.0.1:8787",
+				ImagegenBridgeProvider:        "codex-app-server",
+				ImagegenBridgeMapIconProvider: "codex-app-server",
+				ImagegenBridgeFallbackPolicy:  "on_unavailable",
+				ImagegenBridgeCompatibility:   "normalize",
+				DefaultSize:                   "1024x1024",
+				LocationSize:                  "1536x1024",
+				CharacterSize:                 "1024x1024",
+				OutputFormat:                  "png",
+				TimeoutSeconds:                180,
+				AutoGenerate:                  false,
+				AppendNegativePrompt:          true,
 			},
 			TTS: TTSConfig{
 				OutputDir:      "./oneday_data/audio",
@@ -357,14 +369,29 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(c.AI.ImageGeneration.Provider) == "" {
 			return fmt.Errorf("ai.image_generation.provider must not be empty when auto_generate is enabled")
 		}
-		if strings.TrimSpace(c.AI.ImageGeneration.Model) == "" {
+		if !isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && strings.TrimSpace(c.AI.ImageGeneration.Model) == "" {
 			return fmt.Errorf("ai.image_generation.model must not be empty when auto_generate is enabled")
 		}
-		if strings.TrimSpace(c.AI.ImageGeneration.MapIconModel) == "" {
+		if !isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && strings.TrimSpace(c.AI.ImageGeneration.MapIconModel) == "" {
 			return fmt.Errorf("ai.image_generation.map_icon_model must not be empty when auto_generate is enabled")
+		}
+		if isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && strings.TrimSpace(c.AI.ImageGeneration.ImagegenBridgeURL) == "" {
+			return fmt.Errorf("ai.image_generation.imagegen_bridge_url must not be empty when imagegen-bridge auto-generation is enabled")
 		}
 		if c.AI.ImageGeneration.TimeoutSeconds <= 0 {
 			return fmt.Errorf("ai.image_generation.timeout_seconds must be positive when auto_generate is enabled")
+		}
+	}
+	if policy := strings.TrimSpace(c.AI.ImageGeneration.ImagegenBridgeFallbackPolicy); policy != "" && policy != "on_unavailable" && policy != "on_error" {
+		return fmt.Errorf("ai.image_generation.imagegen_bridge_fallback_policy must be on_unavailable or on_error")
+	}
+	if compatibility := strings.TrimSpace(c.AI.ImageGeneration.ImagegenBridgeCompatibility); compatibility != "" && compatibility != "strict" && compatibility != "normalize" && compatibility != "best_effort" {
+		return fmt.Errorf("ai.image_generation.imagegen_bridge_compatibility must be strict, normalize, or best_effort")
+	}
+	for _, route := range c.AI.ImageGeneration.ImagegenBridgeFallbacks {
+		provider, _, _ := strings.Cut(strings.TrimSpace(route), ":")
+		if strings.TrimSpace(provider) == "" {
+			return fmt.Errorf("ai.image_generation.imagegen_bridge_fallbacks contains an empty provider route")
 		}
 	}
 	switch c.AI.Embedding.Provider {
@@ -401,6 +428,15 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("game.reward_budget must be one of: generous, balanced, harsh")
 	}
 	return nil
+}
+
+func isImagegenBridgeProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "imagegen-bridge", "imagegen_bridge", "bridge-native":
+		return true
+	default:
+		return false
+	}
 }
 
 // EnabledProviders returns the provider priority chain filtered to only enabled providers.

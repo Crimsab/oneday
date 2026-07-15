@@ -307,6 +307,8 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	cfg.AI.Generation.RepairFallbackModels = []string{"test-narrative-model", "test-narrative-model"}
 	cfg.AI.ImageGeneration.Model = "test-image-model"
 	cfg.AI.ImageGeneration.APIKey = "test-secret-image-key"
+	cfg.AI.ImageGeneration.ImagegenBridgeToken = "test-secret-bridge-token"
+	cfg.AI.ImageGeneration.ImagegenBridgeFallbacks = []string{"codex-responses:gpt-image-2"}
 
 	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg, "revision-1")
 
@@ -331,12 +333,18 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	if !settings.ImageGeneration.APIKeyConfigured {
 		t.Fatalf("ImageGeneration.APIKeyConfigured = false")
 	}
+	if !settings.ImageGeneration.ImagegenBridgeTokenConfigured {
+		t.Fatalf("ImageGeneration.ImagegenBridgeTokenConfigured = false")
+	}
 	raw, err := json.Marshal(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(string(raw), "test-secret-image-key") {
 		t.Fatalf("model settings leaked image API key: %s", raw)
+	}
+	if strings.Contains(string(raw), "test-secret-bridge-token") {
+		t.Fatalf("model settings leaked imagegen-bridge token: %s", raw)
 	}
 }
 

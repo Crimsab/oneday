@@ -99,6 +99,27 @@ describe("model routing helpers", () => {
       "Enable at least one provider.",
     );
   });
+
+  it("allows imagegen-bridge to select its default model and validates its URL", () => {
+    const bridgeSettings: ModelSettings = {
+      ...settings,
+      image_generation: {
+        ...settings.image_generation,
+        provider: "imagegen-bridge",
+        model: "",
+        map_icon_model: "",
+        imagegen_bridge_url: "http://imagegen-bridge:8787",
+      },
+    };
+    const draft = draftFromModelSettings(bridgeSettings);
+    draft.imageGeneration.autoGenerate = true;
+    expect(modelRoutingIssues(bridgeSettings, draft)).toEqual([]);
+
+    draft.imageGeneration.imagegenBridgeUrl = "";
+    expect(modelRoutingIssues(bridgeSettings, draft)).toContain(
+      "imagegen-bridge needs its native API URL.",
+    );
+  });
 });
 
 const settings: ModelSettings = {
@@ -152,6 +173,13 @@ const settings: ModelSettings = {
     model: "test-image-model",
     map_icon_model: "openai/gpt-image-1",
     openclaw_bridge_url: "http://openclaw-imagegen:8099/generate",
+    imagegen_bridge_url: "http://imagegen-bridge:8787",
+    imagegen_bridge_token_configured: true,
+    imagegen_bridge_provider: "codex-app-server",
+    imagegen_bridge_map_icon_provider: "codex-app-server",
+    imagegen_bridge_fallbacks: [],
+    imagegen_bridge_fallback_policy: "on_unavailable",
+    imagegen_bridge_compatibility: "normalize",
     default_size: "1024x1024",
     location_size: "1536x1024",
     character_size: "1024x1024",

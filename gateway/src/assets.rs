@@ -1,6 +1,5 @@
 use crate::{db, events::TurnStreamEvent, AppState};
 use anyhow::{anyhow, Context};
-use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -165,7 +164,7 @@ pub struct VisualAssetPromptUpdate {
     pub negative_prompt: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 struct ImageGenerationConfig {
     base_url: String,
     api_key: String,
@@ -173,6 +172,13 @@ struct ImageGenerationConfig {
     map_icon_model: String,
     provider: String,
     openclaw_bridge_url: String,
+    imagegen_bridge_url: String,
+    imagegen_bridge_token: String,
+    imagegen_bridge_provider: String,
+    imagegen_bridge_map_icon_provider: String,
+    imagegen_bridge_fallbacks: Vec<String>,
+    imagegen_bridge_fallback_policy: String,
+    imagegen_bridge_compatibility: String,
     default_size: String,
     location_size: String,
     character_size: String,
@@ -215,6 +221,13 @@ struct GatewayImageGenerationConfig {
     model: Option<String>,
     map_icon_model: Option<String>,
     openclaw_bridge_url: Option<String>,
+    imagegen_bridge_url: Option<String>,
+    imagegen_bridge_token: Option<String>,
+    imagegen_bridge_provider: Option<String>,
+    imagegen_bridge_map_icon_provider: Option<String>,
+    imagegen_bridge_fallbacks: Option<Vec<String>>,
+    imagegen_bridge_fallback_policy: Option<String>,
+    imagegen_bridge_compatibility: Option<String>,
     default_size: Option<String>,
     location_size: Option<String>,
     character_size: Option<String>,
@@ -232,31 +245,12 @@ struct GatewayImageGenerationConfig {
     append_negative_prompt: Option<bool>,
 }
 
-#[derive(Debug, Deserialize)]
-struct ImageGenerateResponse {
-    data: Vec<ImageGenerateData>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ImageGenerateData {
-    b64_json: Option<String>,
-    revised_prompt: Option<String>,
-    url: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OpenClawGenerateResponse {
-    ok: bool,
-    image_b64: Option<String>,
-    revised_prompt: Option<String>,
-    error: Option<String>,
-}
-
 #[derive(Debug)]
 struct GeneratedAsset {
     url: String,
     file_path: String,
     revised_prompt: String,
+    provider_label: String,
 }
 
 #[derive(Debug, Default)]
@@ -1467,7 +1461,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             "running",
             format!("Generating image for {}.", job.asset.subject),
         );
-        match generate_one_asset(&client, &state, &config, &job.asset).await {
+        match generate_one_asset(&client, &state, &config, &job).await {
             Ok(generated) => {
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
@@ -2094,7 +2088,7 @@ async fn record_asset_version(
     .bind(&asset.prompt)
     .bind(&generated.revised_prompt)
     .bind(&asset.negative_prompt)
-    .bind(provider_label(config, asset))
+    .bind(actual_provider_label(generated, config, asset))
     .bind(asset.turn)
     .bind(&job.branch_id)
     .bind(&job.source_commit_id)
@@ -2140,7 +2134,7 @@ async fn complete_generated_asset(
         &job.source_commit_id,
         "ready",
         "",
-        &provider_label(config, &job.asset),
+        &actual_provider_label(generated, config, &job.asset),
     )
     .await?;
     mark_generation_job_succeeded_on(&mut tx, job).await?;
@@ -2224,172 +2218,48 @@ async fn generate_one_asset(
     client: &Client,
     state: &AppState,
     config: &ImageGenerationConfig,
-    asset: &VisualAsset,
+    job: &VisualGenerationJob,
 ) -> anyhow::Result<GeneratedAsset> {
-    if is_openclaw_bridge(config) {
-        return generate_one_openclaw_asset(client, state, config, asset).await;
-    }
-
-    let output_format = image_output_format(config);
-    let prompt = final_prompt(asset, config);
-    let mut payload = serde_json::json!({
-        "model": generation_model(config, asset),
-        "prompt": prompt,
-        "size": asset_size(config, asset),
-        "output_format": output_format.clone(),
-        "n": 1
-    });
-    if !config.quality.trim().is_empty() {
-        payload["quality"] = Value::String(config.quality.trim().to_string());
-    }
-    let background = generation_background(config, asset);
-    if !background.is_empty() {
-        payload["background"] = Value::String(background);
-    }
-
-    let endpoint = format!(
-        "{}/images/generations",
-        config.base_url.trim_end_matches('/')
-    );
-    let response = client
-        .post(endpoint)
-        .bearer_auth(&config.api_key)
-        .json(&payload)
-        .send()
-        .await
-        .with_context(|| format!("requesting image for {}", asset.subject))?;
-    let status = response.status();
-    if !status.is_success() {
-        let detail = response.text().await.unwrap_or_default();
-        return Err(anyhow!(
-            "image provider returned {}: {}",
-            status,
-            compact_error(&detail)
-        ));
-    }
-
-    let response: ImageGenerateResponse = response
-        .json()
-        .await
-        .context("decoding image generation response")?;
-    let first = response
-        .data
-        .first()
-        .ok_or_else(|| anyhow!("image provider returned no images"))?;
-    let bytes = if let Some(encoded) = &first.b64_json {
-        base64::engine::general_purpose::STANDARD
-            .decode(encoded)
-            .context("decoding generated image base64")?
-    } else if let Some(url) = &first.url {
-        client
-            .get(url)
-            .send()
-            .await
-            .with_context(|| format!("downloading generated image for {}", asset.subject))?
-            .error_for_status()
-            .context("generated image download failed")?
-            .bytes()
-            .await
-            .context("reading generated image bytes")?
-            .to_vec()
-    } else {
-        return Err(anyhow!("image provider returned neither b64_json nor url"));
-    };
-    if bytes.is_empty() {
-        return Err(anyhow!("image provider returned empty image bytes"));
-    }
-
-    let mut generated = persist_generated_asset(state, asset, bytes, &output_format).await?;
-    generated.revised_prompt = first.revised_prompt.clone().unwrap_or_default();
-    Ok(generated)
-}
-
-async fn generate_one_openclaw_asset(
-    client: &Client,
-    state: &AppState,
-    config: &ImageGenerationConfig,
-    asset: &VisualAsset,
-) -> anyhow::Result<GeneratedAsset> {
-    let output_format = image_output_format(config);
-    let payload = openclaw_generate_payload(config, asset);
-    let response = client
-        .post(&config.openclaw_bridge_url)
-        .json(&payload)
-        .send()
-        .await
-        .with_context(|| format!("requesting OpenClaw image for {}", asset.subject))?;
-    let status = response.status();
-    let raw = response
-        .text()
-        .await
-        .context("reading OpenClaw image response")?;
-    if !status.is_success() {
-        return Err(anyhow!(
-            "OpenClaw image bridge returned {}: {}",
-            status,
-            compact_error(&raw)
-        ));
-    }
-
-    let response: OpenClawGenerateResponse =
-        serde_json::from_str(&raw).context("decoding OpenClaw image response")?;
-    if !response.ok {
-        return Err(anyhow!(
-            "OpenClaw image bridge failed: {}",
-            compact_error(response.error.as_deref().unwrap_or("unknown error"))
-        ));
-    }
-    let encoded = response
-        .image_b64
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| anyhow!("OpenClaw image bridge returned no image_b64"))?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .context("decoding OpenClaw image base64")?;
-    if bytes.is_empty() {
-        return Err(anyhow!("OpenClaw image bridge returned empty image bytes"));
-    }
-
-    let mut generated = persist_generated_asset(state, asset, bytes, &output_format).await?;
-    generated.revised_prompt = response.revised_prompt.unwrap_or_default();
-    Ok(generated)
-}
-
-fn openclaw_generate_payload(config: &ImageGenerationConfig, asset: &VisualAsset) -> Value {
-    let mut payload = serde_json::json!({
-        "prompt": final_prompt(asset, config),
-        "output_format": image_output_format(config)
-    });
-    maybe_set_string(&mut payload, "size", Some(asset_size(config, asset)));
-    maybe_set_string(
-        &mut payload,
-        "resolution",
-        asset_generation_value(
+    let asset = &job.asset;
+    let adapter_config = imagegen_adapter_config(config);
+    let request = crate::imagegen::GenerateRequest {
+        subject: asset.subject.clone(),
+        prompt: clean_or(
+            &asset.prompt,
+            "Create a polished visual asset for this story.",
+        ),
+        negative_prompt: if config.append_negative_prompt {
+            asset.negative_prompt.trim().to_string()
+        } else {
+            String::new()
+        },
+        model: generation_model(config, asset),
+        is_map_icon: asset.kind == "map_icon",
+        size: asset_size(config, asset),
+        resolution: asset_generation_value(
             &asset.kind,
             &config.location_resolution,
             &config.character_resolution,
             &config.default_resolution,
         ),
-    );
-    maybe_set_string(
-        &mut payload,
-        "aspect_ratio",
-        asset_generation_value(
+        aspect_ratio: asset_generation_value(
             &asset.kind,
             &config.location_aspect_ratio,
             &config.character_aspect_ratio,
             &config.default_aspect_ratio,
         ),
-    );
-    maybe_set_string(
-        &mut payload,
-        "background",
-        Some(generation_background(config, asset)),
-    );
-    if let Some(model) = openclaw_payload_model(config, asset) {
-        maybe_set_string(&mut payload, "model", Some(model));
-    }
-    payload
+        quality: config.quality.trim().to_string(),
+        output_format: image_output_format_for_asset(config, asset),
+        background: generation_background(config, asset),
+        timeout_ms: config.timeout_seconds.saturating_mul(1_000),
+        idempotency_key: format!("oneday-{}-{}", job.id, short_hash(asset.id.as_bytes())),
+    };
+    let generated = crate::imagegen::generate(client, &adapter_config, &request).await?;
+    let mut persisted =
+        persist_generated_asset(state, asset, generated.bytes, &generated.output_format).await?;
+    persisted.revised_prompt = generated.revised_prompt;
+    persisted.provider_label = generated.provider_label;
+    Ok(persisted)
 }
 
 async fn persist_generated_asset(
@@ -2424,6 +2294,7 @@ async fn persist_generated_asset(
         url,
         file_path: file_path.to_string_lossy().to_string(),
         revised_prompt: String::new(),
+        provider_label: String::new(),
     })
 }
 
@@ -2489,6 +2360,7 @@ async fn discard_generated_asset(generated: &GeneratedAsset) {
     }
 }
 
+#[cfg(test)]
 fn final_prompt(asset: &VisualAsset, config: &ImageGenerationConfig) -> String {
     let mut prompt = clean_or(
         &asset.prompt,
@@ -2523,6 +2395,7 @@ fn asset_generation_value(
     (!value.trim().is_empty()).then_some(value)
 }
 
+#[cfg(test)]
 fn maybe_set_string(payload: &mut Value, key: &str, value: Option<String>) {
     if let Some(value) = value {
         let value = value.trim();
@@ -2537,6 +2410,14 @@ fn image_output_format(config: &ImageGenerationConfig) -> String {
         "jpeg" | "jpg" => "jpeg".to_string(),
         "webp" => "webp".to_string(),
         _ => "png".to_string(),
+    }
+}
+
+fn image_output_format_for_asset(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
+    if asset.kind == "map_icon" {
+        "png".to_string()
+    } else {
+        image_output_format(config)
     }
 }
 
@@ -2556,6 +2437,7 @@ fn generation_background(config: &ImageGenerationConfig, asset: &VisualAsset) ->
     }
 }
 
+#[cfg(test)]
 fn openclaw_payload_model(config: &ImageGenerationConfig, asset: &VisualAsset) -> Option<String> {
     let selected = generation_model(config, asset);
     let model = selected.trim();
@@ -2567,6 +2449,44 @@ fn openclaw_payload_model(config: &ImageGenerationConfig, asset: &VisualAsset) -
         "gpt-image-2" => Some("openai/gpt-image-2".to_string()),
         _ => Some(model.to_string()),
     }
+}
+
+#[cfg(test)]
+fn openclaw_generate_payload(config: &ImageGenerationConfig, asset: &VisualAsset) -> Value {
+    let mut payload = serde_json::json!({
+        "prompt": final_prompt(asset, config),
+        "output_format": image_output_format_for_asset(config, asset)
+    });
+    maybe_set_string(&mut payload, "size", Some(asset_size(config, asset)));
+    maybe_set_string(
+        &mut payload,
+        "resolution",
+        asset_generation_value(
+            &asset.kind,
+            &config.location_resolution,
+            &config.character_resolution,
+            &config.default_resolution,
+        ),
+    );
+    maybe_set_string(
+        &mut payload,
+        "aspect_ratio",
+        asset_generation_value(
+            &asset.kind,
+            &config.location_aspect_ratio,
+            &config.character_aspect_ratio,
+            &config.default_aspect_ratio,
+        ),
+    );
+    maybe_set_string(
+        &mut payload,
+        "background",
+        Some(generation_background(config, asset)),
+    );
+    if let Some(model) = openclaw_payload_model(config, asset) {
+        maybe_set_string(&mut payload, "model", Some(model));
+    }
+    payload
 }
 
 fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationConfig> {
@@ -2603,7 +2523,7 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         .unwrap_or_default();
     let map_icon_model = first_env(&["ONEDAY_IMAGEGEN_MAP_ICON_MODEL"])
         .or_else(|| image_config_string(image_generation, |config| &config.map_icon_model))
-        .unwrap_or_else(|| "openai/gpt-image-1".to_string());
+        .unwrap_or_else(|| "gpt-image-2".to_string());
 
     Ok(ImageGenerationConfig {
         base_url,
@@ -2612,13 +2532,54 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         map_icon_model,
         provider: first_env(&["ONEDAY_IMAGEGEN_PROVIDER", "ONEDAY_IMAGE_PROVIDER"])
             .or_else(|| image_config_string(image_generation, |config| &config.provider))
-            .unwrap_or_else(|| "openclaw-bridge".to_string()),
+            .unwrap_or_else(|| "imagegen-bridge".to_string()),
         openclaw_bridge_url: first_env(&[
             "ONEDAY_IMAGEGEN_OPENCLAW_URL",
             "ONEDAY_OPENCLAW_IMAGEGEN_URL",
         ])
         .or_else(|| image_config_string(image_generation, |config| &config.openclaw_bridge_url))
         .unwrap_or_else(|| "http://127.0.0.1:8099/generate".to_string()),
+        imagegen_bridge_url: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_URL"])
+            .or_else(|| image_config_string(image_generation, |config| &config.imagegen_bridge_url))
+            .unwrap_or_else(|| "http://127.0.0.1:8787".to_string()),
+        imagegen_bridge_token: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_TOKEN"])
+            .or_else(|| {
+                image_config_string(image_generation, |config| &config.imagegen_bridge_token)
+            })
+            .map(|value| expand_env_refs(&value))
+            .unwrap_or_default(),
+        imagegen_bridge_provider: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_PROVIDER"])
+            .or_else(|| {
+                image_config_string(image_generation, |config| &config.imagegen_bridge_provider)
+            })
+            .unwrap_or_else(|| "codex-app-server".to_string()),
+        imagegen_bridge_map_icon_provider: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_MAP_ICON_PROVIDER"])
+            .or_else(|| {
+                image_config_string(image_generation, |config| {
+                    &config.imagegen_bridge_map_icon_provider
+                })
+            })
+            .unwrap_or_else(|| "codex-app-server".to_string()),
+        imagegen_bridge_fallbacks: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_FALLBACKS"])
+            .map(|value| split_config_list(&value))
+            .or_else(|| {
+                image_generation.and_then(|config| config.imagegen_bridge_fallbacks.clone())
+            })
+            .unwrap_or_default(),
+        imagegen_bridge_fallback_policy: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_FALLBACK_POLICY"])
+            .or_else(|| {
+                image_config_string(image_generation, |config| {
+                    &config.imagegen_bridge_fallback_policy
+                })
+            })
+            .unwrap_or_else(|| "on_unavailable".to_string()),
+        imagegen_bridge_compatibility: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_COMPATIBILITY"])
+            .or_else(|| {
+                image_config_string(image_generation, |config| {
+                    &config.imagegen_bridge_compatibility
+                })
+            })
+            .unwrap_or_else(|| "normalize".to_string()),
         default_size: first_env(&["ONEDAY_IMAGEGEN_SIZE", "ONEDAY_IMAGE_SIZE"])
             .or_else(|| image_config_string(image_generation, |config| &config.default_size))
             .unwrap_or_else(|| "1024x1024".to_string()),
@@ -2687,6 +2648,16 @@ fn image_config_string(
         .and_then(non_empty)
 }
 
+fn split_config_list(value: &str) -> Vec<String> {
+    value
+        .split([',', '\n'])
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[cfg(test)]
 fn is_openclaw_bridge(config: &ImageGenerationConfig) -> bool {
     matches!(
         config.provider.trim().to_ascii_lowercase().as_str(),
@@ -2695,13 +2666,7 @@ fn is_openclaw_bridge(config: &ImageGenerationConfig) -> bool {
 }
 
 fn image_generation_available(config: &ImageGenerationConfig) -> bool {
-    if config.provider.trim().is_empty() || config.model.trim().is_empty() {
-        return false;
-    }
-    if is_openclaw_bridge(config) {
-        return !config.openclaw_bridge_url.trim().is_empty();
-    }
-    !config.base_url.trim().is_empty() && !config.api_key.trim().is_empty()
+    crate::imagegen::is_available(&imagegen_adapter_config(config), &config.model)
 }
 
 fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
@@ -2712,6 +2677,34 @@ fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
 
 fn provider_label(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
     format!("{}:{}", config.provider, generation_model(config, asset))
+}
+
+fn actual_provider_label(
+    generated: &GeneratedAsset,
+    config: &ImageGenerationConfig,
+    asset: &VisualAsset,
+) -> String {
+    if generated.provider_label.trim().is_empty() {
+        provider_label(config, asset)
+    } else {
+        generated.provider_label.trim().to_string()
+    }
+}
+
+fn imagegen_adapter_config(config: &ImageGenerationConfig) -> crate::imagegen::AdapterConfig {
+    crate::imagegen::AdapterConfig {
+        provider: config.provider.clone(),
+        base_url: config.base_url.clone(),
+        api_key: config.api_key.clone(),
+        openclaw_url: config.openclaw_bridge_url.clone(),
+        bridge_url: config.imagegen_bridge_url.clone(),
+        bridge_token: config.imagegen_bridge_token.clone(),
+        bridge_provider: config.imagegen_bridge_provider.clone(),
+        bridge_map_icon_provider: config.imagegen_bridge_map_icon_provider.clone(),
+        bridge_fallbacks: config.imagegen_bridge_fallbacks.clone(),
+        bridge_fallback_policy: config.imagegen_bridge_fallback_policy.clone(),
+        bridge_compatibility: config.imagegen_bridge_compatibility.clone(),
+    }
 }
 
 fn short_hash(bytes: &[u8]) -> String {
@@ -4159,6 +4152,13 @@ mod tests {
             map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "test".to_string(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
+            imagegen_bridge_url: "http://imagegen-bridge:8787".to_string(),
+            imagegen_bridge_token: "bridge-token".to_string(),
+            imagegen_bridge_provider: "codex-app-server".to_string(),
+            imagegen_bridge_map_icon_provider: "codex-app-server".to_string(),
+            imagegen_bridge_fallbacks: Vec::new(),
+            imagegen_bridge_fallback_policy: "on_unavailable".to_string(),
+            imagegen_bridge_compatibility: "normalize".to_string(),
             default_size: "1024x1024".to_string(),
             location_size: "1536x1024".to_string(),
             character_size: "768x768".to_string(),
@@ -4674,6 +4674,7 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
         let mut asset = VisualAsset {
             id: "asset".to_string(),
@@ -4740,6 +4741,7 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
         assert!(final_prompt(&asset, &config).contains("portrait"));
         assert!(final_prompt(&asset, &config).contains("Avoid: no text"));
@@ -4849,8 +4851,23 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
         assert!(is_openclaw_bridge(&config));
+        assert!(image_generation_available(&config));
+    }
+
+    #[test]
+    fn imagegen_bridge_uses_native_url_and_can_defer_model_selection() {
+        let config = ImageGenerationConfig {
+            provider: "imagegen-bridge".to_string(),
+            model: String::new(),
+            map_icon_model: String::new(),
+            base_url: String::new(),
+            api_key: String::new(),
+            imagegen_bridge_url: "http://imagegen-bridge:8787".to_string(),
+            ..test_config()
+        };
         assert!(image_generation_available(&config));
     }
 
@@ -4878,6 +4895,7 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
 
         assert_eq!(
@@ -4910,6 +4928,7 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
 
         assert_eq!(
@@ -4964,6 +4983,7 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
         assert!(!is_openclaw_bridge(&config));
         assert!(!image_generation_available(&config));
@@ -4993,6 +5013,7 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
 
         assert!(!image_generation_available(&config));
@@ -5022,6 +5043,7 @@ mod tests {
             timeout_seconds: 10,
             auto_generate: true,
             append_negative_prompt: true,
+            ..test_config()
         };
         assert!(!image_generation_available(&config));
     }
@@ -5397,6 +5419,7 @@ mod tests {
             url: "/generated.png".into(),
             file_path: "/tmp/generated.png".into(),
             revised_prompt: "revised".into(),
+            provider_label: "imagegen-bridge:gpt-image-2".into(),
         };
 
         assert!(complete_generated_asset(&pool, &job, &generated, &config)

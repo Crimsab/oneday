@@ -117,7 +117,7 @@ Docker-host networking, RAG, and verification details.
 | LiteLLM / OpenAI-compatible | Self-hosted or managed model gateway |
 | OpenRouter | Direct hosted model routing |
 | Ollama / custom HTTP | Local RAG embeddings |
-| OpenClaw bridge / OpenAI-compatible image API | Non-blocking story visuals |
+| imagegen-bridge native API / OpenClaw / OpenAI-compatible API | Non-blocking story visuals with provider routing and fallbacks |
 
 Narrative, utility, repair, embedding, ASCII, image, map-icon, and TTS paths can
 use separate models. General visuals default to `openai/gpt-image-2`; transparent

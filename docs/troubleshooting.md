@@ -44,6 +44,8 @@ and migrated automatically.
 ## Images stay pending or fail
 
 - Check `ai.image_generation.provider`, its URL, and provider credentials.
+- For `imagegen-bridge`, check `/health/ready`, the bearer token, selected
+  upstream provider capabilities, and any configured fallback routes.
 - `openclaw-bridge` does not require an API key but its bridge must be reachable.
 - General art and transparent map icons may intentionally use different models.
 - Image generation is asynchronous; narrative turns remain usable when it fails.

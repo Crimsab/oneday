@@ -1035,6 +1035,30 @@
         "openclaw_bridge_url": {
           "type": "string"
         },
+        "imagegen_bridge_url": {
+          "type": "string"
+        },
+        "imagegen_bridge_token_configured": {
+          "type": "boolean"
+        },
+        "imagegen_bridge_provider": {
+          "type": "string"
+        },
+        "imagegen_bridge_map_icon_provider": {
+          "type": "string"
+        },
+        "imagegen_bridge_fallbacks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "imagegen_bridge_fallback_policy": {
+          "type": "string"
+        },
+        "imagegen_bridge_compatibility": {
+          "type": "string"
+        },
         "default_size": {
           "type": "string"
         },
@@ -1096,6 +1120,13 @@
         "model",
         "map_icon_model",
         "openclaw_bridge_url",
+        "imagegen_bridge_url",
+        "imagegen_bridge_token_configured",
+        "imagegen_bridge_provider",
+        "imagegen_bridge_map_icon_provider",
+        "imagegen_bridge_fallbacks",
+        "imagegen_bridge_fallback_policy",
+        "imagegen_bridge_compatibility",
         "default_size",
         "location_size",
         "character_size",
@@ -1130,6 +1161,27 @@
           "type": "string"
         },
         "openclaw_bridge_url": {
+          "type": "string"
+        },
+        "imagegen_bridge_url": {
+          "type": "string"
+        },
+        "imagegen_bridge_provider": {
+          "type": "string"
+        },
+        "imagegen_bridge_map_icon_provider": {
+          "type": "string"
+        },
+        "imagegen_bridge_fallbacks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "imagegen_bridge_fallback_policy": {
+          "type": "string"
+        },
+        "imagegen_bridge_compatibility": {
           "type": "string"
         },
         "default_size": {

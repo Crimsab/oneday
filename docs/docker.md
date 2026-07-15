@@ -35,6 +35,7 @@ ai:
     local:
       base_url: "http://host.docker.internal:11434"
   image_generation:
+    imagegen_bridge_url: "http://host.docker.internal:8787"
     openclaw_bridge_url: "http://host.docker.internal:8099/generate"
 ```
 

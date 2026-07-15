@@ -78,29 +78,36 @@ type ModelRoutingSettings struct {
 }
 
 type ImageGenerationSetting struct {
-	Provider             string `json:"provider"`
-	BaseURL              string `json:"base_url"`
-	APIKeyConfigured     bool   `json:"api_key_configured"`
-	Model                string `json:"model"`
-	MapIconModel         string `json:"map_icon_model"`
-	OpenClawBridgeURL    string `json:"openclaw_bridge_url"`
-	DefaultSize          string `json:"default_size"`
-	LocationSize         string `json:"location_size"`
-	CharacterSize        string `json:"character_size"`
-	DefaultResolution    string `json:"default_resolution"`
-	LocationResolution   string `json:"location_resolution"`
-	CharacterResolution  string `json:"character_resolution"`
-	DefaultAspectRatio   string `json:"default_aspect_ratio"`
-	LocationAspectRatio  string `json:"location_aspect_ratio"`
-	CharacterAspectRatio string `json:"character_aspect_ratio"`
-	Quality              string `json:"quality"`
-	OutputFormat         string `json:"output_format"`
-	Background           string `json:"background"`
-	TimeoutSeconds       int    `json:"timeout_seconds"`
-	AutoGenerate         bool   `json:"auto_generate"`
-	AppendNegativePrompt bool   `json:"append_negative_prompt"`
-	Available            bool   `json:"available"`
-	Status               string `json:"status"`
+	Provider                      string   `json:"provider"`
+	BaseURL                       string   `json:"base_url"`
+	APIKeyConfigured              bool     `json:"api_key_configured"`
+	Model                         string   `json:"model"`
+	MapIconModel                  string   `json:"map_icon_model"`
+	OpenClawBridgeURL             string   `json:"openclaw_bridge_url"`
+	ImagegenBridgeURL             string   `json:"imagegen_bridge_url"`
+	ImagegenBridgeTokenConfigured bool     `json:"imagegen_bridge_token_configured"`
+	ImagegenBridgeProvider        string   `json:"imagegen_bridge_provider"`
+	ImagegenBridgeMapIconProvider string   `json:"imagegen_bridge_map_icon_provider"`
+	ImagegenBridgeFallbacks       []string `json:"imagegen_bridge_fallbacks"`
+	ImagegenBridgeFallbackPolicy  string   `json:"imagegen_bridge_fallback_policy"`
+	ImagegenBridgeCompatibility   string   `json:"imagegen_bridge_compatibility"`
+	DefaultSize                   string   `json:"default_size"`
+	LocationSize                  string   `json:"location_size"`
+	CharacterSize                 string   `json:"character_size"`
+	DefaultResolution             string   `json:"default_resolution"`
+	LocationResolution            string   `json:"location_resolution"`
+	CharacterResolution           string   `json:"character_resolution"`
+	DefaultAspectRatio            string   `json:"default_aspect_ratio"`
+	LocationAspectRatio           string   `json:"location_aspect_ratio"`
+	CharacterAspectRatio          string   `json:"character_aspect_ratio"`
+	Quality                       string   `json:"quality"`
+	OutputFormat                  string   `json:"output_format"`
+	Background                    string   `json:"background"`
+	TimeoutSeconds                int      `json:"timeout_seconds"`
+	AutoGenerate                  bool     `json:"auto_generate"`
+	AppendNegativePrompt          bool     `json:"append_negative_prompt"`
+	Available                     bool     `json:"available"`
+	Status                        string   `json:"status"`
 }
 
 type ModelProviderUpdate struct {
@@ -125,26 +132,32 @@ type ModelRoutingUpdate struct {
 }
 
 type ImageGenerationUpdate struct {
-	Provider             *string `json:"provider,omitempty"`
-	BaseURL              *string `json:"base_url,omitempty"`
-	Model                *string `json:"model,omitempty"`
-	MapIconModel         *string `json:"map_icon_model,omitempty"`
-	OpenClawBridgeURL    *string `json:"openclaw_bridge_url,omitempty"`
-	DefaultSize          *string `json:"default_size,omitempty"`
-	LocationSize         *string `json:"location_size,omitempty"`
-	CharacterSize        *string `json:"character_size,omitempty"`
-	DefaultResolution    *string `json:"default_resolution,omitempty"`
-	LocationResolution   *string `json:"location_resolution,omitempty"`
-	CharacterResolution  *string `json:"character_resolution,omitempty"`
-	DefaultAspectRatio   *string `json:"default_aspect_ratio,omitempty"`
-	LocationAspectRatio  *string `json:"location_aspect_ratio,omitempty"`
-	CharacterAspectRatio *string `json:"character_aspect_ratio,omitempty"`
-	Quality              *string `json:"quality,omitempty"`
-	OutputFormat         *string `json:"output_format,omitempty"`
-	Background           *string `json:"background,omitempty"`
-	TimeoutSeconds       *int    `json:"timeout_seconds,omitempty"`
-	AutoGenerate         *bool   `json:"auto_generate,omitempty"`
-	AppendNegativePrompt *bool   `json:"append_negative_prompt,omitempty"`
+	Provider                      *string   `json:"provider,omitempty"`
+	BaseURL                       *string   `json:"base_url,omitempty"`
+	Model                         *string   `json:"model,omitempty"`
+	MapIconModel                  *string   `json:"map_icon_model,omitempty"`
+	OpenClawBridgeURL             *string   `json:"openclaw_bridge_url,omitempty"`
+	ImagegenBridgeURL             *string   `json:"imagegen_bridge_url,omitempty"`
+	ImagegenBridgeProvider        *string   `json:"imagegen_bridge_provider,omitempty"`
+	ImagegenBridgeMapIconProvider *string   `json:"imagegen_bridge_map_icon_provider,omitempty"`
+	ImagegenBridgeFallbacks       *[]string `json:"imagegen_bridge_fallbacks,omitempty"`
+	ImagegenBridgeFallbackPolicy  *string   `json:"imagegen_bridge_fallback_policy,omitempty"`
+	ImagegenBridgeCompatibility   *string   `json:"imagegen_bridge_compatibility,omitempty"`
+	DefaultSize                   *string   `json:"default_size,omitempty"`
+	LocationSize                  *string   `json:"location_size,omitempty"`
+	CharacterSize                 *string   `json:"character_size,omitempty"`
+	DefaultResolution             *string   `json:"default_resolution,omitempty"`
+	LocationResolution            *string   `json:"location_resolution,omitempty"`
+	CharacterResolution           *string   `json:"character_resolution,omitempty"`
+	DefaultAspectRatio            *string   `json:"default_aspect_ratio,omitempty"`
+	LocationAspectRatio           *string   `json:"location_aspect_ratio,omitempty"`
+	CharacterAspectRatio          *string   `json:"character_aspect_ratio,omitempty"`
+	Quality                       *string   `json:"quality,omitempty"`
+	OutputFormat                  *string   `json:"output_format,omitempty"`
+	Background                    *string   `json:"background,omitempty"`
+	TimeoutSeconds                *int      `json:"timeout_seconds,omitempty"`
+	AutoGenerate                  *bool     `json:"auto_generate,omitempty"`
+	AppendNegativePrompt          *bool     `json:"append_negative_prompt,omitempty"`
 }
 
 func ReadModelRoutingSettings(path string) (ModelRoutingSettings, error) {
@@ -290,29 +303,36 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetting {
 	available, status := imageGenerationAvailability(cfg)
 	return ImageGenerationSetting{
-		Provider:             cfg.Provider,
-		BaseURL:              cfg.BaseURL,
-		APIKeyConfigured:     strings.TrimSpace(cfg.APIKey) != "",
-		Model:                cfg.Model,
-		MapIconModel:         cfg.MapIconModel,
-		OpenClawBridgeURL:    cfg.OpenClawBridgeURL,
-		DefaultSize:          cfg.DefaultSize,
-		LocationSize:         cfg.LocationSize,
-		CharacterSize:        cfg.CharacterSize,
-		DefaultResolution:    cfg.DefaultResolution,
-		LocationResolution:   cfg.LocationResolution,
-		CharacterResolution:  cfg.CharacterResolution,
-		DefaultAspectRatio:   cfg.DefaultAspectRatio,
-		LocationAspectRatio:  cfg.LocationAspectRatio,
-		CharacterAspectRatio: cfg.CharacterAspectRatio,
-		Quality:              cfg.Quality,
-		OutputFormat:         cfg.OutputFormat,
-		Background:           cfg.Background,
-		TimeoutSeconds:       cfg.TimeoutSeconds,
-		AutoGenerate:         cfg.AutoGenerate,
-		AppendNegativePrompt: cfg.AppendNegativePrompt,
-		Available:            available,
-		Status:               status,
+		Provider:                      cfg.Provider,
+		BaseURL:                       cfg.BaseURL,
+		APIKeyConfigured:              strings.TrimSpace(cfg.APIKey) != "",
+		Model:                         cfg.Model,
+		MapIconModel:                  cfg.MapIconModel,
+		OpenClawBridgeURL:             cfg.OpenClawBridgeURL,
+		ImagegenBridgeURL:             cfg.ImagegenBridgeURL,
+		ImagegenBridgeTokenConfigured: strings.TrimSpace(cfg.ImagegenBridgeToken) != "",
+		ImagegenBridgeProvider:        cfg.ImagegenBridgeProvider,
+		ImagegenBridgeMapIconProvider: cfg.ImagegenBridgeMapIconProvider,
+		ImagegenBridgeFallbacks:       append([]string(nil), cfg.ImagegenBridgeFallbacks...),
+		ImagegenBridgeFallbackPolicy:  cfg.ImagegenBridgeFallbackPolicy,
+		ImagegenBridgeCompatibility:   cfg.ImagegenBridgeCompatibility,
+		DefaultSize:                   cfg.DefaultSize,
+		LocationSize:                  cfg.LocationSize,
+		CharacterSize:                 cfg.CharacterSize,
+		DefaultResolution:             cfg.DefaultResolution,
+		LocationResolution:            cfg.LocationResolution,
+		CharacterResolution:           cfg.CharacterResolution,
+		DefaultAspectRatio:            cfg.DefaultAspectRatio,
+		LocationAspectRatio:           cfg.LocationAspectRatio,
+		CharacterAspectRatio:          cfg.CharacterAspectRatio,
+		Quality:                       cfg.Quality,
+		OutputFormat:                  cfg.OutputFormat,
+		Background:                    cfg.Background,
+		TimeoutSeconds:                cfg.TimeoutSeconds,
+		AutoGenerate:                  cfg.AutoGenerate,
+		AppendNegativePrompt:          cfg.AppendNegativePrompt,
+		Available:                     available,
+		Status:                        status,
 	}
 }
 
@@ -320,8 +340,14 @@ func imageGenerationAvailability(cfg ImageGenerationConfig) (bool, string) {
 	if strings.TrimSpace(cfg.Provider) == "" {
 		return false, "missing provider"
 	}
-	if strings.TrimSpace(cfg.Model) == "" {
+	if !isImagegenBridgeProvider(cfg.Provider) && strings.TrimSpace(cfg.Model) == "" {
 		return false, "missing model"
+	}
+	if isImagegenBridgeProvider(cfg.Provider) {
+		if strings.TrimSpace(cfg.ImagegenBridgeURL) == "" {
+			return false, "missing imagegen-bridge URL"
+		}
+		return true, "configured through imagegen-bridge native API"
 	}
 	if isOpenClawImageProvider(cfg.Provider) {
 		if strings.TrimSpace(cfg.OpenClawBridgeURL) == "" {
@@ -438,6 +464,24 @@ func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerati
 	}
 	if update.OpenClawBridgeURL != nil {
 		cfg.OpenClawBridgeURL = cleanString(*update.OpenClawBridgeURL)
+	}
+	if update.ImagegenBridgeURL != nil {
+		cfg.ImagegenBridgeURL = cleanString(*update.ImagegenBridgeURL)
+	}
+	if update.ImagegenBridgeProvider != nil {
+		cfg.ImagegenBridgeProvider = cleanString(*update.ImagegenBridgeProvider)
+	}
+	if update.ImagegenBridgeMapIconProvider != nil {
+		cfg.ImagegenBridgeMapIconProvider = cleanString(*update.ImagegenBridgeMapIconProvider)
+	}
+	if update.ImagegenBridgeFallbacks != nil {
+		cfg.ImagegenBridgeFallbacks = cleanStringSlice(*update.ImagegenBridgeFallbacks)
+	}
+	if update.ImagegenBridgeFallbackPolicy != nil {
+		cfg.ImagegenBridgeFallbackPolicy = cleanString(*update.ImagegenBridgeFallbackPolicy)
+	}
+	if update.ImagegenBridgeCompatibility != nil {
+		cfg.ImagegenBridgeCompatibility = cleanString(*update.ImagegenBridgeCompatibility)
 	}
 	if update.DefaultSize != nil {
 		cfg.DefaultSize = cleanString(*update.DefaultSize)
@@ -556,6 +600,24 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 		},
 		func() error {
 			return setString(root, cfg.AI.ImageGeneration.OpenClawBridgeURL, "ai", "image_generation", "openclaw_bridge_url")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeURL, "ai", "image_generation", "imagegen_bridge_url")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeProvider, "ai", "image_generation", "imagegen_bridge_provider")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeMapIconProvider, "ai", "image_generation", "imagegen_bridge_map_icon_provider")
+		},
+		func() error {
+			return setStringSlice(root, cfg.AI.ImageGeneration.ImagegenBridgeFallbacks, "ai", "image_generation", "imagegen_bridge_fallbacks")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeFallbackPolicy, "ai", "image_generation", "imagegen_bridge_fallback_policy")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeCompatibility, "ai", "image_generation", "imagegen_bridge_compatibility")
 		},
 		func() error {
 			return setString(root, cfg.AI.ImageGeneration.DefaultSize, "ai", "image_generation", "default_size")

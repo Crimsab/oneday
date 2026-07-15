@@ -1128,11 +1128,17 @@ function ModelRoutingSettings({
           <strong>{modelSettings.image_generation.provider || "not set"}</strong>
         </div>
         <div>
-          <span>API key</span>
+          <span>Provider credential</span>
           <strong>
-            {modelSettings.image_generation.api_key_configured
-              ? "configured"
-              : "not configured"}
+            {["imagegen-bridge", "imagegen_bridge", "bridge-native"].includes(
+              modelSettings.image_generation.provider.toLowerCase(),
+            )
+              ? modelSettings.image_generation.imagegen_bridge_token_configured
+                ? "bridge token configured"
+                : "bridge auth not configured"
+              : modelSettings.image_generation.api_key_configured
+                ? "API key configured"
+                : "API key not configured"}
           </strong>
         </div>
       </div>
@@ -1207,11 +1213,11 @@ function ModelRoutingSettings({
             onChange={(event) =>
               updateImageGeneration({ provider: event.target.value })
             }
-            placeholder="openclaw-bridge"
+            placeholder="imagegen-bridge"
           />
         </label>
         <label>
-          <span>Image generation model</span>
+          <span>Image generation model (optional for bridge)</span>
           <ModelInput
             value={draft.imageGeneration.model}
             options={modelSettings.image_models}
@@ -1219,7 +1225,7 @@ function ModelRoutingSettings({
           />
         </label>
         <label>
-          <span>Transparent map icon model</span>
+          <span>Map icon model (optional for bridge)</span>
           <ModelInput
             value={draft.imageGeneration.mapIconModel}
             options={modelSettings.image_models}
@@ -1234,6 +1240,79 @@ function ModelRoutingSettings({
               updateImageGeneration({ openClawBridgeUrl: event.target.value })
             }
             placeholder="http://127.0.0.1:8099/generate"
+          />
+        </label>
+        <label>
+          <span>imagegen-bridge native URL</span>
+          <input
+            value={draft.imageGeneration.imagegenBridgeUrl}
+            onChange={(event) =>
+              updateImageGeneration({ imagegenBridgeUrl: event.target.value })
+            }
+            placeholder="http://127.0.0.1:8787"
+          />
+        </label>
+        <label>
+          <span>imagegen-bridge provider</span>
+          <input
+            value={draft.imageGeneration.imagegenBridgeProvider}
+            onChange={(event) =>
+              updateImageGeneration({ imagegenBridgeProvider: event.target.value })
+            }
+            placeholder="codex-app-server"
+          />
+        </label>
+        <label>
+          <span>Map icon bridge provider</span>
+          <input
+            value={draft.imageGeneration.imagegenBridgeMapIconProvider}
+            onChange={(event) =>
+              updateImageGeneration({
+                imagegenBridgeMapIconProvider: event.target.value,
+              })
+            }
+            placeholder="codex-app-server"
+          />
+        </label>
+        <label>
+          <span>Bridge fallbacks</span>
+          <input
+            value={draft.imageGeneration.imagegenBridgeFallbacks}
+            onChange={(event) =>
+              updateImageGeneration({
+                imagegenBridgeFallbacks: event.target.value,
+              })
+            }
+            placeholder="codex-responses:gpt-image-2"
+          />
+        </label>
+        <label>
+          <span>Bridge fallback policy</span>
+          <CustomSelect
+            value={draft.imageGeneration.imagegenBridgeFallbackPolicy}
+            ariaLabel="Image bridge fallback policy"
+            onChange={(value) =>
+              updateImageGeneration({ imagegenBridgeFallbackPolicy: value })
+            }
+            options={[
+              { value: "on_unavailable", label: "On unavailable" },
+              { value: "on_error", label: "On provider error" },
+            ]}
+          />
+        </label>
+        <label>
+          <span>Bridge compatibility</span>
+          <CustomSelect
+            value={draft.imageGeneration.imagegenBridgeCompatibility}
+            ariaLabel="Image bridge compatibility"
+            onChange={(value) =>
+              updateImageGeneration({ imagegenBridgeCompatibility: value })
+            }
+            options={[
+              { value: "strict", label: "Strict" },
+              { value: "normalize", label: "Normalize" },
+              { value: "best_effort", label: "Best effort" },
+            ]}
           />
         </label>
         <label>

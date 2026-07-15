@@ -105,6 +105,13 @@ export interface ImageGenerationSetting {
   model: string;
   map_icon_model: string;
   openclaw_bridge_url: string;
+  imagegen_bridge_url: string;
+  imagegen_bridge_token_configured: boolean;
+  imagegen_bridge_provider: string;
+  imagegen_bridge_map_icon_provider: string;
+  imagegen_bridge_fallbacks: string[];
+  imagegen_bridge_fallback_policy: string;
+  imagegen_bridge_compatibility: string;
   default_size: string;
   location_size: string;
   character_size: string;
@@ -151,6 +158,12 @@ export interface ImageGenerationUpdate {
   model?: string;
   map_icon_model?: string;
   openclaw_bridge_url?: string;
+  imagegen_bridge_url?: string;
+  imagegen_bridge_provider?: string;
+  imagegen_bridge_map_icon_provider?: string;
+  imagegen_bridge_fallbacks?: string[];
+  imagegen_bridge_fallback_policy?: string;
+  imagegen_bridge_compatibility?: string;
   default_size?: string;
   location_size?: string;
   character_size?: string;
