@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.9.0](https://github.com/Crimsab/oneday/compare/v1.8.0...v1.9.0) (2026-07-15)
+
+
+### Features
+
+* **imagegen:** default to Codex Responses routing ([9080ea8](https://github.com/Crimsab/oneday/commit/9080ea829ce9ec10a80debbcda3b4d44c50bbe62))
+* **imagegen:** integrate native bridge routing ([c91f4f3](https://github.com/Crimsab/oneday/commit/c91f4f3c9eb95427984c2b989290d6b18ba2b686))
+* **observability:** add optional OTLP tracing ([e0e176c](https://github.com/Crimsab/oneday/commit/e0e176c0e38ba19f50a8a1bd84c726b1ec5aa4fd))
+
 ## [1.8.0](https://github.com/Crimsab/oneday/compare/v1.7.0...v1.8.0) (2026-07-14)
 
 
