@@ -13,11 +13,18 @@ RUN bun run build
 
 FROM golang:1.25.12-bookworm@sha256:102fc956f6f6d98594cfe3cb6cd77b3d2699b6e914ab3ad6e819f3d8e83ebfac AS go-builder
 WORKDIR /app
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_DATE=unknown
+ARG DIRTY=false
 COPY go.mod go.sum ./
 RUN go mod download
 COPY cmd cmd
 COPY internal internal
-RUN CGO_ENABLED=0 go build -o /out/oneday ./cmd/oneday
+COPY scripts/build-ldflags.sh scripts/build-ldflags.sh
+RUN CGO_ENABLED=0 go build \
+    -ldflags "$(VERSION="${VERSION}" COMMIT="${COMMIT}" BUILD_DATE="${BUILD_DATE}" DIRTY="${DIRTY}" bash ./scripts/build-ldflags.sh)" \
+    -o /out/oneday ./cmd/oneday
 
 FROM chef AS planner
 COPY gateway/Cargo.toml gateway/Cargo.toml

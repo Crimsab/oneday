@@ -4,3 +4,8 @@ services:
     build:
       context: .
       dockerfile: gateway/Dockerfile
+      args:
+        VERSION: ${ONEDAY_BUILD_VERSION:-dev}
+        COMMIT: ${ONEDAY_BUILD_COMMIT:-unknown}
+        BUILD_DATE: ${ONEDAY_BUILD_DATE:-unknown}
+        DIRTY: ${ONEDAY_BUILD_DIRTY:-false}
