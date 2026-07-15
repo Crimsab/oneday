@@ -1359,6 +1359,7 @@ summary:focus-visible {
   width: min(980px, calc(100vw - 32px));
   height: min(790px, calc(100dvh - 32px));
   max-height: calc(100dvh - 32px);
+  grid-template-rows: 44px auto minmax(0, 1fr);
 }
 .story-library-toolbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); padding: 12px 14px; }
 .story-library-tabs { display: flex; gap: 4px; }
