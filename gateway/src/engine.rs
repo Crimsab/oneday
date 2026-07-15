@@ -87,6 +87,8 @@ pub struct ClientCapabilities {
     pub timing_free_challenges: Option<bool>,
     #[serde(default)]
     pub challenge_cooldown: Option<bool>,
+    #[serde(default)]
+    pub excluded_minigames: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -335,6 +337,7 @@ pub async fn submit_action(
             automatic_challenges: envelope.capabilities.automatic_challenges,
             timing_free_challenges: envelope.capabilities.timing_free_challenges,
             challenge_cooldown: envelope.capabilities.challenge_cooldown,
+            excluded_minigames: envelope.capabilities.excluded_minigames,
         }),
     };
 
@@ -1617,6 +1620,7 @@ printf '{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"%
                 automatic_challenges: Some(true),
                 timing_free_challenges: Some(true),
                 challenge_cooldown: Some(true),
+                excluded_minigames: Vec::new(),
             }),
         }
     }
