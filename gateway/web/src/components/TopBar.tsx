@@ -59,7 +59,13 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, showLeftRail, sho
           <Settings size={15} />
           {t("options")}
         </button>
-        <button className="chrome-button" type="button" onClick={() => onOpen("help")}>
+        <button
+          className="chrome-button"
+          type="button"
+          onClick={() => onOpen("help")}
+          aria-label={t("help")}
+          title={t("help")}
+        >
           <CircleHelp size={16} />
           <span className="sr-only">{t("help")}</span>
         </button>

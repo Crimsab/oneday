@@ -232,7 +232,7 @@ summary:focus-visible {
 .transcript-message { position: relative; display: block; width: 100%; margin: 0 0 30px; font-family: var(--reading); font-size: var(--transcript-font-size); line-height: 1.72; }
 .message-stamp { position: absolute; right: calc(100% + 14px); top: 0; width: 78px; padding-top: 4px; font-family: var(--sans); white-space: normal; text-align: right; }
 .message-stamp span { display: block; color: var(--faint); font-size: 10px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
-.message-stamp small { display: block; margin-top: 3px; color: #6f6b60; font-size: 10px; }
+.message-stamp small { display: block; margin-top: 3px; color: var(--faint); font-size: 10px; }
 .message-body { max-width: 72ch; color: #dfe5e8; }
 .message-body p { margin: 0 0 18px; }
 .transcript-message.user { margin-block: 10px 32px; }
