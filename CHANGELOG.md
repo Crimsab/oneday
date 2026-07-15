@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.13.0](https://github.com/Crimsab/oneday/compare/v1.12.0...v1.13.0) (2026-07-15)
+
+
+### Features
+
+* **web:** finish personalized options and support tools ([15c44fe](https://github.com/Crimsab/oneday/commit/15c44fe5167c810fb29e36a248092ea892607e74))
+
+
+### Bug Fixes
+
+* **gateway:** forward excluded minigame families ([87b3cd6](https://github.com/Crimsab/oneday/commit/87b3cd6ef783488ff2cdc2e56b850e08d99ef754))
+
 ## [1.12.0](https://github.com/Crimsab/oneday/compare/v1.11.0...v1.12.0) (2026-07-15)
 
 
