@@ -149,9 +149,13 @@ function automaticPatternMiniGame() {
   return { protocol_version: 1, id: "mini-auto-pattern", story_id: story.id, branch_id: "branch-main", turn: 4, seed: 7, definition: { id: "pattern-generic", kind: "pattern", prompt: "Decode the fractured seal by completing its pattern.", difficulty: 50, options: ["8", "9", "10"], rules: { selection_reason: "difficulty fit 50; 4 narrative tag matches; timing-free" } }, runtime: { phase: "active", revision: 1, state: {}, history: [{ action: "start" }] } };
 }
 
-async function mockGateway(page: Page, options: { failAction?: boolean; activeMiniGame?: boolean; ttsOff?: boolean } = {}) {
+async function mockGateway(page: Page, options: { failAction?: boolean; activeMiniGame?: boolean; ttsOff?: boolean; holdAction?: boolean } = {}) {
   let failAction = Boolean(options.failAction);
   let actionRequests = 0;
+  let releaseAction = () => {};
+  const actionGate = options.holdAction
+    ? new Promise<void>((resolve) => { releaseAction = resolve; })
+    : null;
   let wizardRequests = 0;
   const wizardBodies: Array<Record<string, unknown>> = [];
   let activeMiniGame: any = options.activeMiniGame ? automaticPatternMiniGame() : null;
@@ -329,13 +333,15 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       }
       const body = request.postDataJSON() as { action?: { text?: string } };
       if (body.action?.text?.startsWith("[Challenge Result:")) activeMiniGame = null;
-      await new Promise((resolve) => setTimeout(resolve, 350));
+      if (actionGate) await actionGate;
+      else await new Promise((resolve) => setTimeout(resolve, 350));
       return json(route, { events: [{ id: "challenge-start", type: "challenge.started", payload: { protocol_version: "challenge.v1" } }, { id: "challenge-end", type: "challenge.resolved", payload: { degree: "success" } }, { id: "commit", type: "turn.committed", payload: {} }], snapshot: snapshot(5) });
     }
     return json(route, {});
   });
   return {
     actionRequests: () => actionRequests,
+    releaseAction,
     wizardRequests: () => wizardRequests,
     lastWizardRequest: () => wizardBodies.at(-1),
   };
@@ -344,7 +350,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
 test("submits once, clears optimistically, and renders stream/challenge lifecycle", async ({ page }) => {
   const errors: string[] = [];
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
-  const requests = await mockGateway(page);
+  const requests = await mockGateway(page, { holdAction: true });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "The Glass Archive" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Challenge host" })).toHaveCount(0);
@@ -360,11 +366,13 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   const actionRequest = page.waitForRequest((request) => request.url().endsWith("/actions"));
   await page.getByRole("button", { name: "Send action" }).evaluate((button: HTMLButtonElement) => { button.click(); button.click(); });
   await actionRequest;
-  await expect(page.locator(".pending-narrator")).toBeVisible();
-  await expect(page.locator(".narrative-skeleton")).toBeVisible();
+  const pendingNarrator = page.locator(".pending-narrator");
+  await expect(pendingNarrator).toBeVisible();
+  await expect(pendingNarrator.locator(".narrative-skeleton")).toBeVisible();
   await expect(page.getByText("Turn progress", { exact: true })).toHaveCount(0);
   await expect(composer).toHaveValue("");
   expect(requests.actionRequests()).toBe(1);
+  requests.releaseAction();
   await expect(page.locator(".pending-narrator")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
