@@ -53,36 +53,41 @@ type TurnCommitResult struct {
 
 // Narrator manages the gameplay AI conversation.
 type Narrator struct {
-	router                 *ai.Router
-	db                     *storage.DB
-	story                  *storage.Story
-	character              *storage.Character
-	world                  *storage.WorldState
-	session                *GameSession
-	contextCfg             ContextConfig
-	genCfg                 config.GenerationConfig // AI generation parameters (temperature, max_tokens, timeout)
-	lastModel              string
-	lastLatency            int64
-	lastTTFT               int64
-	lastUsage              ai.Usage
-	lastStreamed           bool
-	asciiCfg               config.ASCIIArtConfig
-	dataDir                string
-	autosaveEvery          int
-	persistMiniGames       bool
-	rag                    *rag.RAG         // optional — nil means RAG is disabled
-	chapters               *ChapterManager  // optional — nil means chapter tracking is disabled
-	narratorCmd            *NarratorCommand // optional — nil means /narrator command is disabled
-	achievementCacheLoaded bool
-	achievementCache       []storage.Achievement
-	chapterSummaryCache    map[int]string
-	loadedFromSaveID       string
-	loadedFromSaveName     string
-	committedAudioQueue    func(context.Context, string, int64) error
+	router                  *ai.Router
+	db                      *storage.DB
+	story                   *storage.Story
+	character               *storage.Character
+	world                   *storage.WorldState
+	session                 *GameSession
+	contextCfg              ContextConfig
+	genCfg                  config.GenerationConfig // AI generation parameters (temperature, max_tokens, timeout)
+	lastModel               string
+	lastLatency             int64
+	lastTTFT                int64
+	lastUsage               ai.Usage
+	lastStreamed            bool
+	asciiCfg                config.ASCIIArtConfig
+	dataDir                 string
+	autosaveEvery           int
+	persistMiniGames        bool
+	automaticMiniGamePolicy AutomaticMiniGamePolicy
+	rag                     *rag.RAG         // optional — nil means RAG is disabled
+	chapters                *ChapterManager  // optional — nil means chapter tracking is disabled
+	narratorCmd             *NarratorCommand // optional — nil means /narrator command is disabled
+	achievementCacheLoaded  bool
+	achievementCache        []storage.Achievement
+	chapterSummaryCache     map[int]string
+	loadedFromSaveID        string
+	loadedFromSaveName      string
+	committedAudioQueue     func(context.Context, string, int64) error
 }
 
 func (n *Narrator) SetPersistentMiniGames(enabled bool) {
 	n.persistMiniGames = enabled
+}
+
+func (n *Narrator) SetAutomaticMiniGamePolicy(policy AutomaticMiniGamePolicy) {
+	n.automaticMiniGamePolicy = policy
 }
 
 func (n *Narrator) SetCommittedAudioQueue(queue func(context.Context, string, int64) error) {
@@ -129,18 +134,19 @@ func NewNarrator(
 		}
 	}
 	return &Narrator{
-		router:              router,
-		db:                  db,
-		story:               story,
-		character:           char,
-		world:               world,
-		session:             session,
-		contextCfg:          contextCfg,
-		genCfg:              genCfg,
-		asciiCfg:            asciiCfg,
-		dataDir:             dataDir,
-		autosaveEvery:       autosaveEvery,
-		chapterSummaryCache: make(map[int]string),
+		router:                  router,
+		db:                      db,
+		story:                   story,
+		character:               char,
+		world:                   world,
+		session:                 session,
+		contextCfg:              contextCfg,
+		genCfg:                  genCfg,
+		asciiCfg:                asciiCfg,
+		dataDir:                 dataDir,
+		autosaveEvery:           autosaveEvery,
+		automaticMiniGamePolicy: DefaultAutomaticMiniGamePolicy(),
+		chapterSummaryCache:     make(map[int]string),
 	}
 }
 

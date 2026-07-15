@@ -10,21 +10,45 @@ describe("normalizePreferences", () => {
         locale: "it",
         density: "compact",
         fontSize: "large",
-        accent: "blue",
+        accent: "#73c7ff",
+        accentHistory: ["#112233", "bad", "#abc"],
+        fontId: "system:atkinson",
+        fontFamily: "Atkinson Hyperlegible",
+        fontSource: "system",
+        fontScope: "all",
+        readingFontSize: 21,
+        readingFontWeight: 600,
+        readingFontStyle: "italic",
+        readingTextColor: "#eeeeee",
         showLeftRail: false,
         showInspector: false,
         wrapTranscript: false,
         showChoiceDetails: true,
+        automaticChallenges: false,
+        timingFreeChallenges: false,
+        challengeCooldown: false,
       }),
     ).toEqual({
       locale: "it",
       density: "compact",
       fontSize: "large",
-      accent: "blue",
+      accent: "#73c7ff",
+      accentHistory: ["#112233", "#aabbcc"],
+      fontId: "system:atkinson",
+      fontFamily: "Atkinson Hyperlegible",
+      fontSource: "system",
+      fontScope: "all",
+      readingFontSize: 21,
+      readingFontWeight: 600,
+      readingFontStyle: "italic",
+      readingTextColor: "#eeeeee",
       showLeftRail: false,
       showInspector: false,
       wrapTranscript: false,
       showChoiceDetails: true,
+      automaticChallenges: false,
+      timingFreeChallenges: false,
+      challengeCooldown: false,
     });
 
     expect(
@@ -36,6 +60,9 @@ describe("normalizePreferences", () => {
         showInspector: "yes" as never,
         wrapTranscript: "no" as never,
         showChoiceDetails: "yes" as never,
+        readingFontSize: 99,
+        readingFontWeight: 450,
+        readingTextColor: "tomato",
       }),
     ).toEqual(defaultPreferences);
   });
@@ -73,9 +100,15 @@ describe("loadPreferences and savePreferences", () => {
 
   it("persists normalized preferences", () => {
     const storage = stubLocalStorage();
-    savePreferences({ ...defaultPreferences, density: "comfortable", accent: "rose" });
+    savePreferences({ ...defaultPreferences, density: "comfortable", accent: "#ff91ad" });
     expect(storage.get("oneday-browser-preferences-v2")).toContain("comfortable");
-    expect(loadPreferences()).toMatchObject({ density: "comfortable", accent: "rose" });
+    expect(loadPreferences()).toMatchObject({ density: "comfortable", accent: "#ff91ad" });
+  });
+
+  it("migrates legacy named accent colors", () => {
+    stubLocalStorage();
+    localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ accent: "green" }));
+    expect(loadPreferences().accent).toBe("#8ed979");
   });
 });
 

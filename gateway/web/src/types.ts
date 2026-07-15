@@ -19,17 +19,31 @@ export type OverlayKind =
 
 export type DensityPreference = "compact" | "balanced" | "comfortable";
 export type FontSizePreference = "small" | "base" | "large";
-export type AccentPreference = "amber" | "green" | "blue" | "rose";
+export type FontSourcePreference = "bundled" | "system" | "imported";
+export type FontScopePreference = "reading" | "interface" | "all";
+export type FontStylePreference = "normal" | "italic";
 
 export interface AppPreferences {
   locale: "en" | "it";
   density: DensityPreference;
   fontSize: FontSizePreference;
-  accent: AccentPreference;
+  accent: string;
+  accentHistory: string[];
+  fontId: string;
+  fontFamily: string;
+  fontSource: FontSourcePreference;
+  fontScope: FontScopePreference;
+  readingFontSize: number;
+  readingFontWeight: number;
+  readingFontStyle: FontStylePreference;
+  readingTextColor: string;
   showLeftRail: boolean;
   showInspector: boolean;
   wrapTranscript: boolean;
   showChoiceDetails: boolean;
+  automaticChallenges: boolean;
+  timingFreeChallenges: boolean;
+  challengeCooldown: boolean;
 }
 
 export interface CraftConversationMessage {
@@ -946,6 +960,9 @@ export interface ActionEnvelope {
     images: boolean;
     ascii: boolean;
     roll_log: boolean;
+    automatic_challenges: boolean;
+    timing_free_challenges: boolean;
+    challenge_cooldown: boolean;
   };
 }
 

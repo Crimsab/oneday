@@ -12,8 +12,20 @@ import (
 	"github.com/crimsab/oneday/internal/game/contracts"
 )
 
+// AutomaticMiniGamePolicy controls browser-selectable challenge behavior while
+// keeping the terminal and older clients on the established defaults.
+type AutomaticMiniGamePolicy struct {
+	Enabled        bool
+	TimingFreeOnly bool
+	UseCooldowns   bool
+}
+
+func DefaultAutomaticMiniGamePolicy() AutomaticMiniGamePolicy {
+	return AutomaticMiniGamePolicy{Enabled: true, TimingFreeOnly: true, UseCooldowns: true}
+}
+
 func (n *Narrator) prepareAutomaticMiniGame(narrative *NarrativeResponse, turn int) (*MiniGameInstance, error) {
-	if narrative == nil || n.story == nil {
+	if narrative == nil || n.story == nil || !n.automaticMiniGamePolicy.Enabled {
 		return nil, nil
 	}
 	var intent *ChallengeSpec
@@ -42,7 +54,7 @@ func (n *Narrator) prepareAutomaticMiniGame(narrative *NarrativeResponse, turn i
 		branchID = head.Branch.ID
 	}
 	recent := []MiniGameUsage{}
-	if n.db != nil {
+	if n.automaticMiniGamePolicy.UseCooldowns && n.db != nil {
 		records, err := n.db.ListRecentMiniGameInstances(n.story.ID, 20)
 		if err != nil {
 			return nil, err
@@ -57,7 +69,7 @@ func (n *Narrator) prepareAutomaticMiniGame(narrative *NarrativeResponse, turn i
 	}
 	selection, err := SelectMiniGame(DefaultMiniGameCandidates(), MiniGameSelectionContext{
 		NarrativeTags: automaticMiniGameTags(n.story.Genre, n.story.Tone, narrative.SceneType, intent.Description, intent.NPCName),
-		CurrentTurn:   turn, Difficulty: difficulty, TimingFreeOnly: true, Recent: recent,
+		CurrentTurn:   turn, Difficulty: difficulty, TimingFreeOnly: n.automaticMiniGamePolicy.TimingFreeOnly, Recent: recent,
 	})
 	if err != nil {
 		return nil, err

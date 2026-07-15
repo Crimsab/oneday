@@ -24,8 +24,10 @@ export const settingsCategories: SettingsCategory[] = [
 ];
 
 export const settingsSearchEntries: SettingsSearchEntry[] = [
+  entry("interface-language", "general", "Interface language", "Change controls and interface messages without changing story or audio language.", "locale italian english controls messages"),
   entry("density", "general", "Density", "Change spacing and information density.", "compact balanced comfortable spacing"),
   entry("font-size", "general", "Font size", "Change the transcript and interface text scale.", "text reading accessibility large small"),
+  entry("typography", "general", "Typography", "Choose bundled, system, or imported fonts and customize reading style.", "font family system imported upload search preview weight italic color"),
   entry("accent", "general", "Accent", "Choose the interface accent color.", "amber green blue rose theme colour color"),
   entry("stories-sidebar", "general", "Stories sidebar", "Show or hide the stories and modules rail.", "left rail navigation"),
   entry("inspector", "general", "Inspector panel", "Show or hide the canonical inspector.", "right rail panel"),

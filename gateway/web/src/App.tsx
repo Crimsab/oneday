@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { actionFingerprint, resolvePendingActionIdentity, type PendingActionIdentity } from "./actionIdentity";
 import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
@@ -48,6 +48,7 @@ import { restoreFailedDraft } from "./draftLifecycle";
 import { coalesceRequest, isCurrentAsyncSelection } from "./asyncState";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
+import { cssFontFamily, loadImportedFonts } from "./fontLibrary";
 import i18n, { formatInterfaceNumber, setInterfaceLocale } from "./i18n";
 import {
   isVisualAssetTurnEvent,
@@ -460,6 +461,10 @@ function App() {
   useEffect(() => {
     savePreferences(preferences);
   }, [preferences]);
+
+  useEffect(() => {
+    void loadImportedFonts().catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     void setInterfaceLocale(preferences.locale).then(async (locale) => {
@@ -962,7 +967,14 @@ function App() {
         idempotency_key: identity.idempotencyKey,
         action,
         stream: true,
-        capabilities: { images: true, ascii: true, roll_log: true },
+        capabilities: {
+          images: true,
+          ascii: true,
+          roll_log: true,
+          automatic_challenges: preferences.automaticChallenges,
+          timing_free_challenges: preferences.timingFreeChallenges,
+          challenge_cooldown: preferences.challengeCooldown,
+        },
       });
       setSnapshot(response.snapshot);
       void refreshMiniGame(storyId);
@@ -1255,13 +1267,25 @@ function App() {
   };
 
   const visuals = useMemo(() => visualCatalog(visualAssets, snapshot), [snapshot, visualAssets]);
+  const selectedFont = cssFontFamily(preferences.fontFamily);
+  const defaultFont = cssFontFamily("IBM Plex Sans Variable");
+  const appStyle = {
+    "--accent": preferences.accent,
+    "--sans": preferences.fontScope === "interface" || preferences.fontScope === "all" ? selectedFont : defaultFont,
+    "--reading": preferences.fontScope === "reading" || preferences.fontScope === "all" ? selectedFont : defaultFont,
+    "--transcript-font-size": `${preferences.readingFontSize}px`,
+    "--reading-font-weight": preferences.readingFontWeight,
+    "--reading-font-style": preferences.readingFontStyle,
+    "--reading-color": preferences.readingTextColor,
+  } as CSSProperties;
 
   return (
     <div
       className={`app-shell ${preferences.showLeftRail ? "" : "left-rail-hidden"} ${preferences.showInspector ? "" : "inspector-hidden"} ${preferences.wrapTranscript ? "" : "transcript-nowrap"}`}
       data-density={preferences.density}
       data-font-size={preferences.fontSize}
-      data-accent={preferences.accent}
+      data-accent="custom"
+      style={appStyle}
     >
       <TopBar
         snapshot={snapshot}

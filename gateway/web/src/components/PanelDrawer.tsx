@@ -51,6 +51,8 @@ import {
 } from "../visualStylePresets";
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
+import { GeneralSettings } from "./settings/GeneralSettings";
+import { GameplaySettings } from "./settings/GameplaySettings";
 import { ImageGenerationSettings as ImageProviderEditor } from "./settings/ImageGenerationSettings";
 import type { ProviderConfigDraft } from "./settings/imageGenerationDraft";
 import { buildProviderConfigUpdates } from "./settings/imageGenerationDraft";
@@ -384,13 +386,6 @@ function OptionsContent({
   ) => Promise<void>;
 }) {
   const { t } = useTranslation(["options", "common", "drawer"]);
-  const update = <K extends keyof AppPreferences>(
-    key: K,
-    value: AppPreferences[K],
-  ) => {
-    onPreferencesChange({ ...preferences, [key]: value });
-  };
-
   const mapBackground = visualAssets.find((asset) => asset.kind === "map_background");
   const mapIcons = visualAssets.filter((asset) => asset.kind === "map_icon");
   const readyMapIcons = mapIcons.filter((asset) => asset.status === "ready").length;
@@ -398,32 +393,11 @@ function OptionsContent({
   const sections: SettingsSection[] = [
     {
       id: "general",
-      content: <div className="settings-grid general-settings">
-        <label data-setting-id="interface-language">
-          <span>{t("options:interfaceLanguage")}</span>
-          <CustomSelect value={preferences.locale} ariaLabel={t("options:interfaceLanguage")} onChange={(value) => update("locale", value as AppPreferences["locale"])} options={[{ value: "en", label: t("options:english") }, { value: "it", label: t("options:italian") }]} />
-          <small>{t("options:languageHint")}</small>
-        </label>
-        <label data-setting-id="density"><span>{t("options:density")}</span><CustomSelect value={preferences.density} ariaLabel={t("options:density")} onChange={(value) => update("density", value as AppPreferences["density"])} options={[{ value: "compact", label: t("options:compact") }, { value: "balanced", label: t("options:balanced") }, { value: "comfortable", label: t("options:comfortable") }]} /></label>
-        <label data-setting-id="font-size"><span>{t("options:fontSize")}</span><CustomSelect value={preferences.fontSize} ariaLabel={t("options:fontSize")} onChange={(value) => update("fontSize", value as AppPreferences["fontSize"])} options={[{ value: "small", label: t("options:small") }, { value: "base", label: t("options:base") }, { value: "large", label: t("options:large") }]} /></label>
-        <label data-setting-id="accent"><span>{t("options:accent")}</span><CustomSelect value={preferences.accent} ariaLabel={t("options:accent")} onChange={(value) => update("accent", value as AppPreferences["accent"])} options={["amber", "green", "blue", "rose"].map((value) => ({ value, label: t(`drawer:color.${value}`) }))} /></label>
-        <label className="toggle-row" data-setting-id="stories-sidebar"><span>{t("options:storiesSidebar")}</span><input type="checkbox" checked={preferences.showLeftRail} onChange={(event) => update("showLeftRail", event.target.checked)} /></label>
-        <label className="toggle-row" data-setting-id="inspector"><span>{t("options:inspector")}</span><input type="checkbox" checked={preferences.showInspector} onChange={(event) => update("showInspector", event.target.checked)} /></label>
-        <label className="toggle-row" data-setting-id="transcript-wrap"><span>{t("options:wrap")}</span><input type="checkbox" checked={preferences.wrapTranscript} onChange={(event) => update("wrapTranscript", event.target.checked)} /></label>
-      </div>,
+      content: <GeneralSettings preferences={preferences} onChange={onPreferencesChange} />,
     },
     {
       id: "gameplay",
-      content: <div className="settings-policy-list">
-        <article data-setting-id="automatic-challenges"><strong>{t("drawer:gameplay.automatic")}</strong><p>{t("drawer:gameplay.automaticDesc")}</p><span className="settings-status">{t("drawer:gameplay.enabled")}</span></article>
-        <article data-setting-id="timing-free"><strong>{t("drawer:gameplay.timing")}</strong><p>{t("drawer:gameplay.timingDesc")}</p><span className="settings-status">{t("drawer:gameplay.required")}</span></article>
-        <article data-setting-id="challenge-cooldown"><strong>{t("drawer:gameplay.cooldown")}</strong><p>{t("drawer:gameplay.cooldownDesc")}</p><span className="settings-status">{t("drawer:gameplay.activeBranch")}</span></article>
-        <article className="choice-detail-setting" data-setting-id="choice-details">
-          <strong>{t("drawer:gameplay.context")}</strong>
-          <p>{t("drawer:gameplay.contextDesc")}</p>
-          <label className="settings-policy-toggle"><input type="checkbox" checked={preferences.showChoiceDetails} onChange={(event) => update("showChoiceDetails", event.target.checked)} /><span>{t("drawer:gameplay.showContext")}</span></label>
-        </article>
-      </div>,
+      content: <GameplaySettings preferences={preferences} onChange={onPreferencesChange} />,
     },
     {
       id: "audio",

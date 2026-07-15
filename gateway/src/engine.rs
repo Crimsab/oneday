@@ -81,6 +81,12 @@ pub struct ClientCapabilities {
     pub ascii: bool,
     #[serde(default)]
     pub roll_log: bool,
+    #[serde(default)]
+    pub automatic_challenges: Option<bool>,
+    #[serde(default)]
+    pub timing_free_challenges: Option<bool>,
+    #[serde(default)]
+    pub challenge_cooldown: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -326,6 +332,9 @@ pub async fn submit_action(
             images: Some(envelope.capabilities.images),
             ascii: Some(envelope.capabilities.ascii),
             roll_log: Some(envelope.capabilities.roll_log),
+            automatic_challenges: envelope.capabilities.automatic_challenges,
+            timing_free_challenges: envelope.capabilities.timing_free_challenges,
+            challenge_cooldown: envelope.capabilities.challenge_cooldown,
         }),
     };
 
@@ -1605,6 +1614,9 @@ printf '{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"%
                 images: Some(false),
                 ascii: Some(false),
                 roll_log: Some(false),
+                automatic_challenges: Some(true),
+                timing_free_challenges: Some(true),
+                challenge_cooldown: Some(true),
             }),
         }
     }

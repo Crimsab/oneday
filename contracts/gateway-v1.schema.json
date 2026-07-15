@@ -705,6 +705,15 @@
         },
         "roll_log": {
           "type": "boolean"
+        },
+        "automatic_challenges": {
+          "type": "boolean"
+        },
+        "timing_free_challenges": {
+          "type": "boolean"
+        },
+        "challenge_cooldown": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false,

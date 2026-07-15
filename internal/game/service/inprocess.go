@@ -476,6 +476,7 @@ func (s *InProcessTurnService) runTurn(ctx context.Context, req contracts.Submit
 	if err != nil {
 		return nil, err
 	}
+	applyAutomaticMiniGameCapabilities(narrator, req.Capabilities)
 	defer func() { _ = session.CloseMirrors() }()
 	sessionID := session.SessionID()
 
@@ -519,6 +520,7 @@ func (s *InProcessTurnService) runTurnStream(ctx context.Context, req contracts.
 	if err != nil {
 		return nil, err
 	}
+	applyAutomaticMiniGameCapabilities(narrator, req.Capabilities)
 	defer func() { _ = session.CloseMirrors() }()
 	sessionID := session.SessionID()
 
@@ -623,6 +625,20 @@ streamLoop:
 		}
 	}
 	return cloneEvents(finalEvents), nil
+}
+
+func applyAutomaticMiniGameCapabilities(narrator *engine.Narrator, capabilities contracts.ClientCapabilities) {
+	policy := engine.DefaultAutomaticMiniGamePolicy()
+	if capabilities.AutomaticChallenges != nil {
+		policy.Enabled = *capabilities.AutomaticChallenges
+	}
+	if capabilities.TimingFreeChallenges != nil {
+		policy.TimingFreeOnly = *capabilities.TimingFreeChallenges
+	}
+	if capabilities.ChallengeCooldown != nil {
+		policy.UseCooldowns = *capabilities.ChallengeCooldown
+	}
+	narrator.SetAutomaticMiniGamePolicy(policy)
 }
 
 func buildTurnEvents(req contracts.SubmitActionRequest, snapshot *contracts.GameSnapshot, sessionID string, resp *engine.NarrativeResponse, world *storage.WorldState, revision int64) ([]contracts.TurnEvent, error) {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Search } from "lucide-react";
+import { BookOpenText, Bot, Gamepad2, Image, Search, SlidersHorizontal, Volume2, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { searchSettings, settingsCategories, settingsSearchEntries, type SettingsSearchEntry, type SettingsSectionId } from "./settingsRegistry";
 
@@ -9,7 +9,7 @@ export interface SettingsSection {
 }
 
 export function SettingsWorkspace({ sections, initialSection = "general" }: { sections: SettingsSection[]; initialSection?: SettingsSectionId }) {
-  const { t } = useTranslation(["options", "common", "settings_search"]);
+  const { t } = useTranslation(["options", "common", "settings_search", "settings_ui"]);
   const [active, setActive] = useState<SettingsSectionId>(initialSection);
   const [query, setQuery] = useState("");
   const [pendingFocus, setPendingFocus] = useState<SettingsSearchEntry | null>(null);
@@ -53,16 +53,17 @@ export function SettingsWorkspace({ sections, initialSection = "general" }: { se
     <div className="settings-workspace">
       <aside className="settings-sidebar" aria-label={t("options:categories")}>
         <div className="settings-sidebar-title">
-          <strong>{t("options:title")}</strong>
-          <span>{t("options:choose")}</span>
+          <strong>{t("settings_ui:sidebar.title")}</strong>
+          <span>{t("settings_ui:sidebar.count", { count: settingsCategories.length })}</span>
         </div>
         <nav>
-          {settingsCategories.map((item) => (
-            <button key={item.id} type="button" className={active === item.id && !query ? "active" : ""} aria-current={active === item.id && !query ? "page" : undefined} onClick={() => { setActive(item.id); setQuery(""); }}>
-              <strong>{t(`options:${item.id}`)}</strong>
-              <span>{t(`options:${item.id}Desc`)}</span>
-            </button>
-          ))}
+          {settingsCategories.map((item) => {
+            const Icon = categoryIcons[item.id];
+            return <button key={item.id} type="button" className={active === item.id && !query ? "active" : ""} aria-current={active === item.id && !query ? "page" : undefined} onClick={() => { setActive(item.id); setQuery(""); }}>
+              <span className="settings-nav-icon" aria-hidden="true"><Icon size={17} /></span>
+              <span className="settings-nav-copy"><strong>{t(`options:${item.id}`)}</strong><small>{t(`options:${item.id}Desc`)}</small></span>
+            </button>;
+          })}
         </nav>
       </aside>
       <div className="settings-main">
@@ -91,6 +92,15 @@ export function SettingsWorkspace({ sections, initialSection = "general" }: { se
     </div>
   );
 }
+
+const categoryIcons: Record<SettingsSectionId, LucideIcon> = {
+  general: BookOpenText,
+  gameplay: Gamepad2,
+  audio: Volume2,
+  visuals: Image,
+  models: Bot,
+  advanced: SlidersHorizontal,
+};
 
 function SettingsSearchResults({ query, results, onOpen }: { query: string; results: SettingsSearchEntry[]; onOpen: (result: SettingsSearchEntry) => void }) {
   const { t } = useTranslation(["options", "common"]);

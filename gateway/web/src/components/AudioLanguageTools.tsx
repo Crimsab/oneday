@@ -1,13 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Download, Trash2, Wrench } from "lucide-react";
+import { Download, Plus, Trash2, Wrench } from "lucide-react";
 import { cleanupAudio, deletePronunciation, getAudioExport, getPronunciations, updatePronunciation } from "../api";
 import type { AudioCleanupResult, PronunciationEntry } from "../types";
 import { CustomSelect } from "./CustomSelect";
 
 export function AudioLanguageTools({ storyId, language, revision }: { storyId: string; language: string; revision: number }) {
-  const { t } = useTranslation(["audio", "audio_tools", "common"]);
+  const { t } = useTranslation(["audio", "audio_tools", "common", "settings_ui"]);
   const [entries, setEntries] = useState<PronunciationEntry[]>([]);
   const [source, setSource] = useState("");
   const [spoken, setSpoken] = useState("");
@@ -76,19 +76,30 @@ export function AudioLanguageTools({ storyId, language, revision }: { storyId: s
   return (
     <div className="audio-language-tools">
       <div className="settings-section-head"><div><h4>{t("audio:pronunciation")}</h4><p>{t("audio:pronunciationHint")}</p></div></div>
-      <form className="pronunciation-form" onSubmit={save}>
-        <label><span>{t("audio_tools:written")}</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Lyanna" required /></label>
-        <label><span>{t("audio_tools:spoken")}</span><input value={spoken} onChange={(event) => setSpoken(event.target.value)} placeholder="Lee-ah-na" required /></label>
-        <label><span>{t("audio_tools:alphabet")}</span><CustomSelect value={alphabet} ariaLabel={t("audio_tools:alphabetLabel")} onChange={(value) => setAlphabet(value as PronunciationEntry["alphabet"])} options={[{ value: "provider", label: t("audio_tools:providerGuidance") }, { value: "ipa", label: "IPA" }, { value: "x-sampa", label: "X-SAMPA" }]} /></label>
-        <label className="toggle-row"><span>{t("audio_tools:caseSensitive")}</span><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} /></label>
-        <button type="submit" disabled={busy || !source.trim() || !spoken.trim()}>{t("audio_tools:add")}</button>
+      <form className="pronunciation-workspace" onSubmit={save}>
+        <section className="pronunciation-editor" aria-labelledby="pronunciation-editor-title">
+          <header><div><h5 id="pronunciation-editor-title">{t("settings_ui:audio.editorTitle")}</h5><p>{t("settings_ui:audio.editorDesc")}</p></div></header>
+          <div className="pronunciation-primary-fields">
+            <label><span>{t("audio_tools:written")}</span><input value={source} onChange={(event) => setSource(event.target.value)} placeholder="Lyanna" required /></label>
+            <label><span>{t("audio_tools:spoken")}</span><input value={spoken} onChange={(event) => setSpoken(event.target.value)} placeholder="Lee-ah-na" required /></label>
+          </div>
+        </section>
+        <section className="pronunciation-options" aria-labelledby="pronunciation-options-title">
+          <header><h5 id="pronunciation-options-title">{t("settings_ui:audio.optionsTitle")}</h5></header>
+          <label><span>{t("audio_tools:alphabet")}</span><CustomSelect value={alphabet} ariaLabel={t("audio_tools:alphabetLabel")} onChange={(value) => setAlphabet(value as PronunciationEntry["alphabet"])} options={[{ value: "provider", label: t("audio_tools:providerGuidance") }, { value: "ipa", label: "IPA" }, { value: "x-sampa", label: "X-SAMPA" }]} /></label>
+          <label className="settings-switch-row"><span><strong>{t("audio_tools:caseSensitive")}</strong></span><input type="checkbox" checked={caseSensitive} onChange={(event) => setCaseSensitive(event.target.checked)} /></label>
+        </section>
+        <div className="pronunciation-submit-row"><button className="primary-action" type="submit" disabled={busy || !source.trim() || !spoken.trim()}><Plus size={15} aria-hidden="true" /> {t("audio_tools:add")}</button></div>
       </form>
       {entries.length > 0 && <div className="pronunciation-list" aria-label={t("audio_tools:entries")}>{entries.map((entry) => <div key={entry.id}><span><strong>{entry.source_text}</strong><small>{entry.pronunciation} · {entry.alphabet} · {t("audio_tools:entryRevision", { revision: entry.revision })}</small></span><button type="button" className="square-button" disabled={busy} onClick={() => void remove(entry)} title={t("audio_tools:deleteEntry", { source: entry.source_text })} aria-label={t("audio_tools:deleteEntry", { source: entry.source_text })}><Trash2 size={14} /></button></div>)}</div>}
-      <div className="audio-maintenance-actions">
-        <button type="button" disabled={busy} onClick={inspectCache}><Wrench size={14} aria-hidden="true" /> {t("audio_tools:audit")}</button>
-        <button type="button" disabled={busy || !removable} onClick={cleanCache}>{t("audio_tools:removeOrphans")}</button>
-        <button type="button" disabled={busy} onClick={exportManifest}><Download size={14} aria-hidden="true" /> {t("audio_tools:export")}</button>
-      </div>
+      <section className="audio-maintenance">
+        <header><div><h5>{t("settings_ui:audio.maintenanceTitle")}</h5><p>{t("settings_ui:audio.maintenanceDesc")}</p></div></header>
+        <div className="audio-maintenance-actions">
+          <button type="button" disabled={busy} onClick={inspectCache}><Wrench size={14} aria-hidden="true" /> {t("audio_tools:audit")}</button>
+          <button type="button" disabled={busy || !removable} onClick={cleanCache}><Trash2 size={14} aria-hidden="true" /> {t("audio_tools:removeOrphans")}</button>
+          <button type="button" disabled={busy} onClick={exportManifest}><Download size={14} aria-hidden="true" /> {t("audio_tools:export")}</button>
+        </div>
+      </section>
       <p className="settings-feedback" role="status" aria-live="polite">{busy ? t("audio_tools:working") : feedback}</p>
     </div>
   );
