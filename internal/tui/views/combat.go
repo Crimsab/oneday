@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
@@ -31,6 +32,7 @@ type combatTurnMsg struct {
 
 // CombatModel is the TUI view for turn-based combat.
 type CombatModel struct {
+	loc      appi18n.Localizer
 	combat   *engine.CombatEngine
 	narrator *engine.Narrator
 
@@ -56,11 +58,12 @@ type CombatModel struct {
 }
 
 // NewCombatModel creates a combat view from an active combat engine.
-func NewCombatModel(combat *engine.CombatEngine, narrator *engine.Narrator, width, height int) CombatModel {
+func NewCombatModel(combat *engine.CombatEngine, narrator *engine.Narrator, width, height int, localizers ...appi18n.Localizer) CombatModel {
+	loc := viewLocalizer(localizers)
 	state := combat.State()
 
 	// Create textarea for free input.
-	input := newGameTextarea("Describe your action...", actionInputHeight)
+	input := newGameTextarea(loc.T("combat.placeholder"), actionInputHeight)
 	input.SetWidth(width - 4)
 	input.Focus()
 
@@ -80,10 +83,11 @@ func NewCombatModel(combat *engine.CombatEngine, narrator *engine.Narrator, widt
 	if barWidth < 20 {
 		barWidth = 20
 	}
-	playerHP := components.NewHPBar("Player", state.PlayerHP, state.PlayerMaxHP, barWidth)
+	playerHP := components.NewHPBar(loc.T("combat.player"), state.PlayerHP, state.PlayerMaxHP, barWidth)
 	enemyHP := components.NewHPBar(state.Enemy.Name, state.Enemy.HP, state.Enemy.MaxHP, barWidth)
 
 	m := CombatModel{
+		loc:        loc,
 		combat:     combat,
 		narrator:   narrator,
 		width:      width,
@@ -149,7 +153,7 @@ func (m CombatModel) Update(msg tea.Msg) (CombatModel, tea.Cmd) {
 	case combatTurnMsg:
 		m.waiting = false
 		if msg.err != nil {
-			m.errMsg = fmt.Sprintf("Combat error: %v", msg.err)
+			m.errMsg = m.loc.T("combat.error", msg.err)
 			return m, nil
 		}
 		result := msg.result
@@ -160,7 +164,7 @@ func (m CombatModel) Update(msg tea.Msg) (CombatModel, tea.Cmd) {
 		if barWidth < 20 {
 			barWidth = 20
 		}
-		m.playerHP = components.NewHPBar("Player", result.PlayerHP, state.PlayerMaxHP, barWidth)
+		m.playerHP = components.NewHPBar(m.loc.T("combat.player"), result.PlayerHP, state.PlayerMaxHP, barWidth)
 		m.enemyHP = components.NewHPBar(state.Enemy.Name, result.EnemyHP, state.Enemy.MaxHP, barWidth)
 
 		// Append narrative to history.
@@ -278,17 +282,17 @@ func (m CombatModel) Update(msg tea.Msg) (CombatModel, tea.Cmd) {
 // View renders the combat screen.
 func (m CombatModel) View() string {
 	if m.width == 0 {
-		return "Loading combat..."
+		return m.loc.T("combat.loading")
 	}
 
 	var sections []string
 
 	// --- Header ---
-	combatTitle := theme.CombatHeader.Render("COMBAT")
-	turnInfo := theme.CombatTurn.Render(fmt.Sprintf("Turn %d", m.turnCount))
+	combatTitle := theme.CombatHeader.Render(m.loc.T("combat.title"))
+	turnInfo := theme.CombatTurn.Render(m.loc.T("combat.turn", m.turnCount))
 	headerContent := lipgloss.JoinHorizontal(lipgloss.Top, combatTitle, " — ", turnInfo)
 	if m.waiting {
-		headerContent += theme.MutedText.Render("  [AI thinking...]")
+		headerContent += theme.MutedText.Render("  [" + m.loc.T("combat.thinking") + "]")
 	}
 	header := lipgloss.NewStyle().
 		Width(m.width).
@@ -342,12 +346,12 @@ func (m CombatModel) View() string {
 	// --- Free input ---
 	focusHint := ""
 	if !m.inputFocus && m.choices.HasChoices() {
-		focusHint = theme.MutedText.Render(" [Tab: switch to free input]")
+		focusHint = theme.MutedText.Render(" [" + m.loc.T("combat.switch_free") + "]")
 	} else if m.inputFocus && m.choices.HasChoices() {
-		focusHint = theme.MutedText.Render(" [Tab: switch to choices | Alt+Enter/Ctrl+J: newline]")
+		focusHint = theme.MutedText.Render(" [" + m.loc.T("combat.switch_choices") + "]")
 	}
 	inputSection := lipgloss.JoinVertical(lipgloss.Left,
-		theme.MutedText.Render("  Free action:")+focusHint,
+		theme.MutedText.Render("  "+m.loc.T("combat.free_action"))+focusHint,
 		lipgloss.NewStyle().Padding(0, 1).Render(m.input.View()),
 	)
 	sections = append(sections, inputSection)

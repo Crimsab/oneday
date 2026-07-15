@@ -13,9 +13,11 @@
   },
   "dependencies": {
     "@fontsource-variable/ibm-plex-sans": "^5.2.8",
+    "i18next": "^26.3.6",
     "lucide-react": "^0.577.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
+    "react-i18next": "^17.0.9",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"
   },

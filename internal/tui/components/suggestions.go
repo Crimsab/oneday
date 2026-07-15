@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -30,11 +31,12 @@ type SuggestionListModel struct {
 	cursor  int
 	width   int
 	focused bool
+	loc     appi18n.Localizer
 }
 
 // NewSuggestionList creates a new suggestion list model.
-func NewSuggestionList() SuggestionListModel {
-	return SuggestionListModel{}
+func NewSuggestionList(localizers ...appi18n.Localizer) SuggestionListModel {
+	return SuggestionListModel{loc: componentLocalizer(localizers)}
 }
 
 // SetItems replaces the visible suggestions and resets navigation focus.
@@ -113,7 +115,7 @@ func (s SuggestionListModel) View() string {
 	}
 
 	lines := make([]string, 0, len(s.items)+1)
-	lines = append(lines, theme.MutedText.Render("Suggestions"))
+	lines = append(lines, theme.MutedText.Render(s.loc.T("suggestions.title")))
 	separatorWidth := 24
 	if s.width > 0 && s.width-4 < separatorWidth {
 		separatorWidth = s.width - 4
@@ -153,7 +155,7 @@ func (s SuggestionListModel) View() string {
 		lines = append(lines, theme.MutedText.Render("  …"))
 	}
 
-	lines = append(lines, theme.MutedText.Render("Tab complete · type to filter · Esc close"))
+	lines = append(lines, theme.MutedText.Render(s.loc.T("suggestions.help")))
 	content := strings.Join(lines, "\n")
 	if s.width <= 0 {
 		return lipgloss.NewStyle().PaddingLeft(1).Render(content)

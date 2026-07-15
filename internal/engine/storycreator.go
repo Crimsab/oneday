@@ -14,6 +14,7 @@ import (
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/prompts"
 	"github.com/crimsab/oneday/internal/config"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -80,6 +81,7 @@ type StoryCreator struct {
 	initialBrief     string
 	charName         string
 	telemetryTraceID string
+	loc              appi18n.Localizer
 }
 
 type storyDefinitionParseOptions struct {
@@ -87,12 +89,16 @@ type storyDefinitionParseOptions struct {
 }
 
 // NewStoryCreator initializes the story creation flow.
-func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.GenerationConfig) *StoryCreator {
+func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.GenerationConfig, localizers ...appi18n.Localizer) *StoryCreator {
 	if genCfg.Temperature == 0 {
 		genCfg.Temperature = 0.9
 	}
 	if genCfg.MaxTokens == 0 {
 		genCfg.MaxTokens = 2048
+	}
+	loc := appi18n.New(appi18n.English)
+	if len(localizers) > 0 {
+		loc = localizers[0]
 	}
 	return &StoryCreator{
 		router:           router,
@@ -100,6 +106,7 @@ func NewStoryCreator(router *ai.Router, db *storage.DB, genCfg config.Generation
 		genCfg:           genCfg,
 		stage:            stageBrief,
 		telemetryTraceID: uuid.NewString(),
+		loc:              loc,
 	}
 }
 
@@ -119,21 +126,21 @@ func (sc *StoryCreator) Phase() StoryCreationPhase {
 func (sc *StoryCreator) StageLabel() string {
 	switch sc.stage {
 	case stageBrief:
-		return "Choose the story brief"
+		return sc.loc.T("story.stage_brief")
 	case stageReviewWorld:
-		return "Review world draft"
+		return sc.loc.T("story.stage_world")
 	case stageReviewRules:
-		return "Review rules and factions"
+		return sc.loc.T("story.stage_rules")
 	case stageReviewStats:
-		return "Review stats schema"
+		return sc.loc.T("story.stage_stats")
 	case stageConfirm:
-		return "Confirm story"
+		return sc.loc.T("story.stage_confirm")
 	case stageCharacterName:
-		return "Name your protagonist"
+		return sc.loc.T("story.stage_name")
 	case stageCharacterBackground:
-		return "Add a background"
+		return sc.loc.T("story.stage_background")
 	default:
-		return "Finalizing story"
+		return sc.loc.T("story.stage_finalizing")
 	}
 }
 
@@ -146,21 +153,21 @@ func (sc *StoryCreator) StageKey() string {
 func (sc *StoryCreator) InputPlaceholder() string {
 	switch sc.stage {
 	case stageBrief:
-		return "Describe the story you want: genre, tone, language, style, extra direction..."
+		return sc.loc.T("story.placeholder_brief")
 	case stageReviewWorld:
-		return "Type how to change the world draft..."
+		return sc.loc.T("story.placeholder_world")
 	case stageReviewRules:
-		return "Type how to change rules, factions, cultures, or dangers..."
+		return sc.loc.T("story.placeholder_rules")
 	case stageReviewStats:
-		return "Type how to change the stats schema..."
+		return sc.loc.T("story.placeholder_stats")
 	case stageConfirm:
-		return "Type final adjustments before creating the story..."
+		return sc.loc.T("story.placeholder_confirm")
 	case stageCharacterName:
-		return "Type your protagonist's name..."
+		return sc.loc.T("story.placeholder_name")
 	case stageCharacterBackground:
-		return "Type a short background, or use the quick choice to skip..."
+		return sc.loc.T("story.placeholder_background")
 	default:
-		return "Type your response..."
+		return sc.loc.T("story.placeholder_response")
 	}
 }
 
@@ -169,45 +176,45 @@ func (sc *StoryCreator) Actions() []CreationAction {
 	switch sc.stage {
 	case stageBrief:
 		return []CreationAction{
-			{Key: "preset_dark_fantasy", Label: "Dark fantasy", Seed: darkFantasyPreset},
-			{Key: "preset_cyberpunk", Label: "Cyberpunk noir", Seed: cyberpunkPreset},
-			{Key: "preset_horror", Label: "Horror mystery", Seed: horrorPreset},
-			{Key: "preset_cozy", Label: "Cozy slice-of-life", Seed: cozyPreset},
-			{Key: "focus_input", Label: "Write my own"},
+			{Key: "preset_dark_fantasy", Label: sc.loc.T("story.action_dark_fantasy"), Seed: darkFantasyPreset},
+			{Key: "preset_cyberpunk", Label: sc.loc.T("story.action_cyberpunk"), Seed: cyberpunkPreset},
+			{Key: "preset_horror", Label: sc.loc.T("story.action_horror"), Seed: horrorPreset},
+			{Key: "preset_cozy", Label: sc.loc.T("story.action_cozy"), Seed: cozyPreset},
+			{Key: "focus_input", Label: sc.loc.T("story.action_custom")},
 		}
 	case stageReviewWorld:
 		return []CreationAction{
-			{Key: "accept_world", Label: "Accept world"},
-			{Key: "regenerate_world", Label: "Regenerate world"},
-			{Key: "make_darker", Label: "Make darker"},
-			{Key: "make_lighter", Label: "Make lighter"},
-			{Key: "edit_world", Label: "Edit manually"},
+			{Key: "accept_world", Label: sc.loc.StoryPresentation("accept_world", "Accept world")},
+			{Key: "regenerate_world", Label: sc.loc.StoryPresentation("regenerate_world", "Regenerate world")},
+			{Key: "make_darker", Label: sc.loc.StoryPresentation("make_darker", "Make darker")},
+			{Key: "make_lighter", Label: sc.loc.StoryPresentation("make_lighter", "Make lighter")},
+			{Key: "edit_world", Label: sc.loc.StoryPresentation("edit_world", "Edit manually")},
 		}
 	case stageReviewRules:
 		return []CreationAction{
-			{Key: "accept_rules", Label: "Accept rules"},
-			{Key: "more_danger", Label: "More danger"},
-			{Key: "fewer_factions", Label: "Fewer factions"},
-			{Key: "regenerate_rules", Label: "Regenerate section"},
-			{Key: "edit_rules", Label: "Edit manually"},
+			{Key: "accept_rules", Label: sc.loc.StoryPresentation("accept_rules", "Accept rules")},
+			{Key: "more_danger", Label: sc.loc.StoryPresentation("more_danger", "More danger")},
+			{Key: "fewer_factions", Label: sc.loc.StoryPresentation("fewer_factions", "Fewer factions")},
+			{Key: "regenerate_rules", Label: sc.loc.StoryPresentation("regenerate_rules", "Regenerate section")},
+			{Key: "edit_rules", Label: sc.loc.StoryPresentation("edit_rules", "Edit manually")},
 		}
 	case stageReviewStats:
 		return []CreationAction{
-			{Key: "accept_stats", Label: "Accept stats"},
-			{Key: "lighter_stats", Label: "Lighter rules"},
-			{Key: "crunchier_stats", Label: "More crunchy"},
-			{Key: "no_combat", Label: "No combat"},
-			{Key: "edit_stats", Label: "Edit manually"},
+			{Key: "accept_stats", Label: sc.loc.StoryPresentation("accept_stats", "Accept stats")},
+			{Key: "lighter_stats", Label: sc.loc.StoryPresentation("lighter_stats", "Lighter rules")},
+			{Key: "crunchier_stats", Label: sc.loc.StoryPresentation("crunchier_stats", "More crunchy")},
+			{Key: "no_combat", Label: sc.loc.StoryPresentation("no_combat", "No combat")},
+			{Key: "edit_stats", Label: sc.loc.StoryPresentation("edit_stats", "Edit manually")},
 		}
 	case stageConfirm:
 		return []CreationAction{
-			{Key: "create_story", Label: "Create story"},
-			{Key: "regenerate_all", Label: "Regenerate all"},
-			{Key: "edit_final", Label: "Edit final details"},
+			{Key: "create_story", Label: sc.loc.StoryPresentation("create_story", "Create story")},
+			{Key: "regenerate_all", Label: sc.loc.StoryPresentation("regenerate_all", "Regenerate all")},
+			{Key: "edit_final", Label: sc.loc.StoryPresentation("edit_final", "Edit final details")},
 		}
 	case stageCharacterBackground:
 		return []CreationAction{
-			{Key: "skip_background", Label: "Skip background"},
+			{Key: "skip_background", Label: sc.loc.StoryPresentation("skip_background", "Skip background")},
 		}
 	default:
 		return nil

@@ -376,7 +376,7 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   await composer.fill("Open the forbidden door");
   await page.getByRole("button", { name: "Send action" }).click();
   await expect(composer).toHaveValue("Open the forbidden door");
-  await expect(page.getByText("simulated rollback")).toBeVisible();
+  await expect(page.getByText("Something went wrong. Try again.")).toBeVisible();
 
   await composer.fill("/checkout quiet route");
   await page.getByRole("button", { name: "Send action" }).click();
@@ -626,7 +626,7 @@ test("renders only canonical known map topology and bounded agency events", asyn
   const mapWorkspace = page.getByRole("dialog");
   const mapShell = mapWorkspace.locator(".canonical-map");
   const map = mapShell.locator('svg[role="img"]');
-  await expect(map).toHaveAttribute("aria-label", "Interactive World map with 4 known places and 4 known routes");
+  await expect(map).toHaveAttribute("aria-label", "Interactive map of World with 4 known places and 4 known routes");
   await expect(map).toBeVisible();
   await expect(map.getByText("Glass Archive", { exact: true })).toBeVisible();
   await expect(map.getByText("Outer Court", { exact: true })).toBeVisible();
@@ -684,13 +684,13 @@ test("drills through canonical region and sub-location map scopes", async ({ pag
   const mapShell = page.getByRole("dialog").locator(".canonical-map");
   await expect(mapShell.locator(".canonical-map-breadcrumbs")).toContainText("WorldVharrowPort District");
   const map = mapShell.locator('svg[role="img"]');
-  await expect(map).toHaveAttribute("aria-label", "Interactive Port District map with 2 known places and 1 known routes");
+  await expect(map).toHaveAttribute("aria-label", "Interactive map of Port District with 2 known places and 1 known route");
   await map.getByRole("button", { name: /Dock 7/ }).dblclick();
   await expect(mapShell.locator(".canonical-map-breadcrumbs")).toContainText("WorldVharrowPort DistrictDock 7");
-  await expect(mapShell.locator('svg[role="img"]')).toHaveAttribute("aria-label", "Interactive Dock 7 map with 1 known places and 0 known routes");
+  await expect(mapShell.locator('svg[role="img"]')).toHaveAttribute("aria-label", "Interactive map of Dock 7 with 1 known place and 0 known routes");
   await expect(mapShell.getByRole("button", { name: "Access Lane, subzone" })).toBeVisible();
   await mapShell.getByRole("button", { name: "Port District", exact: true }).click();
-  await expect(mapShell.locator('svg[role="img"]')).toHaveAttribute("aria-label", "Interactive Port District map with 2 known places and 1 known routes");
+  await expect(mapShell.locator('svg[role="img"]')).toHaveAttribute("aria-label", "Interactive map of Port District with 2 known places and 1 known route");
 });
 
 test("generates committed audio and exposes per-story and per-character voice controls", async ({ page }) => {
@@ -732,4 +732,35 @@ test("generates committed audio and exposes per-story and per-character voice co
   const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));
   expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
   expect(errors).toEqual([]);
+});
+
+test("switches and persists interface locale without changing story or speech language", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Options" }).click();
+  const language = page.getByRole("combobox", { name: "Interface language" });
+  await language.click();
+  await page.getByRole("option", { name: "Italiano" }).click();
+
+  await expect(page.getByRole("heading", { name: "Generali" })).toBeVisible();
+  await expect(page.getByText("Cambia i controlli e i messaggi di OneDay.")).toBeVisible();
+  await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "it");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").locale)).toBe("it");
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Opzioni" })).toBeVisible();
+  await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
+  await page.getByRole("button", { name: "Opzioni" }).click();
+  await page.getByRole("button", { name: /Audio parlato/ }).click();
+  await expect(page.getByPlaceholder("en-US")).toHaveValue("en");
+});
+
+test("localizes fresh Italian onboarding from stable wizard keys", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ locale: "it" })));
+  await mockGateway(page);
+  await page.goto("/?overlay=new-story");
+  await expect(page.getByText("Scegli la traccia della storia")).toBeVisible();
+  await expect(page.getByRole("button", { name: /Fantasy oscuro/ })).toBeVisible();
+  await expect(page.locator(".story-wizard-message").getByText("La creazione della storia inizia con una breve traccia.")).toBeVisible();
 });

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { BookOpen, CircleHelp, Clock3, Hash, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Settings } from "lucide-react";
 import { displayClock } from "../format";
 import type { OverlayKind, StorySnapshot, SyncState } from "../types";
@@ -6,6 +7,8 @@ import type { OverlayKind, StorySnapshot, SyncState } from "../types";
 interface TopBarProps {
   snapshot: StorySnapshot | null;
   sync: SyncState;
+  syncLabel: string;
+  syncTitle: string;
   showLeftRail: boolean;
   showInspector: boolean;
   onToggleLeftRail: () => void;
@@ -13,17 +16,18 @@ interface TopBarProps {
   onOpen: (overlay: OverlayKind) => void;
 }
 
-export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLeftRail, onToggleInspector, onOpen }: TopBarProps) {
+export function TopBar({ snapshot, sync, syncLabel, syncTitle, showLeftRail, showInspector, onToggleLeftRail, onToggleInspector, onOpen }: TopBarProps) {
+  const { t } = useTranslation("chrome");
   const clock = displayClock(snapshot);
   return (
     <header className="top-bar">
-      <div className="top-status" aria-label="Current story status">
-        <StatusCell icon={<Hash size={14} />} label="Turn" value={snapshot ? String(snapshot.world.current_turn) : "-"} />
-        <StatusCell icon={<BookOpen size={14} />} label="Story" value={snapshot?.story.name || "Choose a story"} strong />
-        <StatusCell icon={<Clock3 size={14} />} label="Story time" value={snapshot ? clock.time : "-"} />
+      <div className="top-status" aria-label={t("status")}>
+        <StatusCell icon={<Hash size={14} />} label={t("turn")} value={snapshot ? String(snapshot.world.current_turn) : "-"} />
+        <StatusCell icon={<BookOpen size={14} />} label={t("story")} value={snapshot?.story.name || t("chooseStory")} strong />
+        <StatusCell icon={<Clock3 size={14} />} label={t("storyTime")} value={snapshot ? clock.time : "-"} />
         <div className={`status-cell sync-cell ${sync.toLowerCase()}`}>
           <i aria-hidden="true" />
-          <strong title={`Connection: ${sync}`}>{sync}</strong>
+          <strong title={syncTitle}>{syncLabel}</strong>
         </div>
       </div>
       <div className="top-actions">
@@ -31,33 +35,33 @@ export function TopBar({ snapshot, sync, showLeftRail, showInspector, onToggleLe
           className="square-button"
           type="button"
           onClick={onToggleLeftRail}
-          title={`${showLeftRail ? "Hide" : "Show"} library ([)`}
-          aria-label={`${showLeftRail ? "Hide" : "Show"} library`}
+          title={`${showLeftRail ? t("hideLibrary") : t("showLibrary")} ([)`}
+          aria-label={showLeftRail ? t("hideLibrary") : t("showLibrary")}
           aria-expanded={showLeftRail}
           aria-controls="story-library"
         >
           {showLeftRail ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
-          <span>Library</span>
+          <span>{t("libraryLabel")}</span>
         </button>
         <button
           className="square-button"
           type="button"
           onClick={onToggleInspector}
-          title={`${showInspector ? "Hide" : "Show"} story details (])`}
-          aria-label={`${showInspector ? "Hide" : "Show"} story details`}
+          title={`${showInspector ? t("hideDetails") : t("showDetails")} (])`}
+          aria-label={showInspector ? t("hideDetails") : t("showDetails")}
           aria-expanded={showInspector}
           aria-controls="story-details"
         >
           {showInspector ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
-          <span>Details</span>
+          <span>{t("details")}</span>
         </button>
         <button className="chrome-button" type="button" onClick={() => onOpen("options")}>
           <Settings size={15} />
-          Options
+          {t("options")}
         </button>
         <button className="chrome-button" type="button" onClick={() => onOpen("help")}>
           <CircleHelp size={16} />
-          <span className="sr-only">Help</span>
+          <span className="sr-only">{t("help")}</span>
         </button>
       </div>
     </header>

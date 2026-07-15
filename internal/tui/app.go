@@ -14,6 +14,7 @@ import (
 	audioservice "github.com/crimsab/oneday/internal/audio"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/rag"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/views"
@@ -34,12 +35,14 @@ const (
 
 // App is the top-level Bubbletea model.
 type App struct {
-	cfg    config.Config
-	db     *storage.DB
-	router *ai.Router
-	view   View
-	width  int
-	height int
+	cfg        config.Config
+	db         *storage.DB
+	router     *ai.Router
+	view       View
+	width      int
+	height     int
+	loc        appi18n.Localizer
+	configPath string
 
 	// Child view models
 	menu               views.MenuModel
@@ -52,13 +55,25 @@ type App struct {
 }
 
 // New creates the app with all dependencies.
-func New(cfg config.Config, db *storage.DB, router *ai.Router) App {
+func New(cfg config.Config, db *storage.DB, router *ai.Router, args ...any) App {
+	loc := appi18n.New(appi18n.Resolve(cfg.Interface.Locale, nil))
+	configPath := "config.yaml"
+	for _, arg := range args {
+		switch value := arg.(type) {
+		case appi18n.Localizer:
+			loc = value
+		case string:
+			configPath = value
+		}
+	}
 	return App{
-		cfg:    cfg,
-		db:     db,
-		router: router,
-		view:   ViewMenu,
-		menu:   views.NewMenuModel(),
+		cfg:        cfg,
+		db:         db,
+		router:     router,
+		view:       ViewMenu,
+		loc:        loc,
+		configPath: configPath,
+		menu:       views.NewMenuModel(loc),
 	}
 }
 
@@ -156,6 +171,19 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.view = ViewMenu
 		return a, nil
 
+	case views.SettingsLocaleChangedMsg:
+		if err := config.UpdateInterfaceLocale(a.configPath, string(msg.Locale)); err != nil {
+			return a, nil
+		}
+		a.cfg.Interface.Locale = string(msg.Locale)
+		a.loc = appi18n.New(msg.Locale)
+		a.menu = views.NewMenuModel(a.loc)
+		a.menu.SetSize(a.width, a.height)
+		m := views.NewSettingsModel(a.cfg, a.loc)
+		m.SetSize(a.width, a.height)
+		a.settings = &m
+		return a, nil
+
 	case engine.AutosaveCompleteMsg:
 		// Route autosave notification to the narrative view
 		if a.narrative != nil {
@@ -176,11 +204,11 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if len(msg.Saves) == 0 {
 			// No saves — show a status message in the narrative view
 			if a.narrative != nil {
-				a.narrative.SetStatusMsg("No saves found.")
+				a.narrative.SetStatusMsg(a.loc.T("tui.no_saves"))
 			}
 			return a, nil
 		}
-		m := views.NewSaveLoadModel(msg.Saves)
+		m := views.NewSaveLoadModel(msg.Saves, a.loc)
 		m.SetSize(a.width, a.height)
 		a.saveLoad = &m
 		a.view = ViewSaveLoad
@@ -220,7 +248,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return engine.DeleteSave(a.db, a.cfg.DataDir, msg.SaveID)
 		}); err != nil {
-			a.narrative.SetStatusMsg("Delete save failed")
+			a.narrative.SetStatusMsg(a.loc.T("tui.save_delete_failed"))
 			return a, nil
 		}
 		saves, err := engine.ListSaves(a.db, a.narrative.StoryID())
@@ -231,7 +259,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.saveLoad.SetSaves(saves)
 			a.view = ViewSaveLoad
 		}
-		a.narrative.SetStatusMsg("Save deleted")
+		a.narrative.SetStatusMsg(a.loc.T("tui.save_deleted"))
 		return a, nil
 
 	case views.SaveCompleteMsg:
@@ -249,8 +277,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.cleanup()
 			return a, tea.Quit
 		case views.ActionNewStory:
-			creator := engine.NewStoryCreator(a.router, a.db, a.cfg.AI.Generation)
-			m := views.NewNewStoryModel(creator)
+			creator := engine.NewStoryCreator(a.router, a.db, a.cfg.AI.Generation, a.loc)
+			m := views.NewNewStoryModel(creator, a.loc)
 			m.SetSize(a.width, a.height)
 			a.newStory = &m
 			a.view = ViewNewStory
@@ -261,7 +289,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Fall back to menu on error
 				return a, nil
 			}
-			m := views.NewLoadStoryModel(stories)
+			m := views.NewLoadStoryModel(stories, a.loc)
 			m.SetSize(a.width, a.height)
 			a.loadStory = &m
 			a.view = ViewLoadStory
@@ -271,12 +299,12 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if err != nil {
 				return a, nil
 			}
-			m := views.NewAchievementBrowserModel("Achievement Archive", archives, a.width, a.height)
+			m := views.NewAchievementBrowserModel(a.loc.CommandPresentation("achievements", "title", "Achievement Archive"), archives, a.width, a.height, a.loc)
 			a.achievementArchive = &m
 			a.view = ViewAchievementArchive
 			return a, nil
 		case views.ActionSettings:
-			m := views.NewSettingsModel(a.cfg)
+			m := views.NewSettingsModel(a.cfg, a.loc)
 			m.SetSize(a.width, a.height)
 			a.settings = &m
 			a.view = ViewSettings
@@ -513,12 +541,12 @@ func (a *App) mountNarrativeView(
 		narrator.SetLoadedSaveContext(save)
 	}
 
-	model := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed, a.cfg.Game.VisiblePrivateThoughts)
+	model := views.NewNarrativeModel(narrator, a.cfg.Game.TypewriterSpeed, a.cfg.Game.VisiblePrivateThoughts, a.loc)
 	model.SetSize(a.width, a.height)
 	a.narrative = &model
 	a.view = ViewNarrative
 	if legacy {
-		a.narrative.SetStatusMsg("Legacy save loaded: history rollback is partial")
+		a.narrative.SetStatusMsg(a.loc.T("save.legacy_partial"))
 	}
 }
 

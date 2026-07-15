@@ -89,6 +89,7 @@ nav:
   - Contribute:
       - Development: docs/development.md
       - Testing: docs/testing.md
+      - Localization: docs/localization.md
       - Documentation site: docs/wiki.md
       - Benchmarks: docs/benchmarks/README.md
       - Roadmap: docs/project-roadmap.md

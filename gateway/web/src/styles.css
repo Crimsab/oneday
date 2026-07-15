@@ -2847,6 +2847,8 @@ input:disabled {
 .settings-search-results > header p { max-width: 62ch; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
 .general-settings { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.general-settings [data-setting-id="interface-language"] { grid-column: 1 / -1; }
+.general-settings [data-setting-id="interface-language"] small { max-width: 64ch; color: var(--faint); font-size: 10px; line-height: 1.45; }
 .settings-policy-list { display: grid; gap: 10px; }
 .settings-policy-list article { position: relative; display: grid; gap: 5px; border: 1px solid var(--line); border-radius: 4px; padding: 14px 120px 14px 14px; background: #0c1417; }
 .settings-policy-list article strong { color: var(--text); font-size: 12px; }

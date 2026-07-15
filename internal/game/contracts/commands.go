@@ -1,5 +1,7 @@
 package contracts
 
+import appi18n "github.com/crimsab/oneday/internal/i18n"
+
 type CommandGroup string
 
 const (
@@ -59,8 +61,8 @@ type CommandDescriptor struct {
 	EnabledWhen        string                 `json:"enabled_when,omitempty"`
 }
 
-func CommandDescriptors() []CommandDescriptor {
-	return []CommandDescriptor{
+func CommandDescriptors(localizers ...appi18n.Localizer) []CommandDescriptor {
+	descriptors := []CommandDescriptor{
 		{
 			ID:          "inventory",
 			Canonical:   "inventory",
@@ -357,6 +359,15 @@ func CommandDescriptors() []CommandDescriptor {
 			Examples:    []string{"/quit", "/q"},
 		},
 	}
+	if len(localizers) > 0 {
+		loc := localizers[0]
+		for index := range descriptors {
+			descriptor := &descriptors[index]
+			descriptor.Title = loc.CommandPresentation(descriptor.ID, "title", descriptor.Title)
+			descriptor.Description = loc.CommandPresentation(descriptor.ID, "description", descriptor.Description)
+		}
+	}
+	return descriptors
 }
 
 func CommandAliasRegistry() map[string]string {

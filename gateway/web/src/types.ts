@@ -22,6 +22,7 @@ export type FontSizePreference = "small" | "base" | "large";
 export type AccentPreference = "amber" | "green" | "blue" | "rose";
 
 export interface AppPreferences {
+  locale: "en" | "it";
   density: DensityPreference;
   fontSize: FontSizePreference;
   accent: AccentPreference;
@@ -419,6 +420,9 @@ export interface TurnStreamEvent {
   action_text?: string | null;
   event_type?: string | null;
   event?: JsonValue;
+  message_key?: string;
+  message_args?: JsonObject;
+  error_code?: string | null;
   message: string;
   created_at: string;
 }
@@ -619,6 +623,7 @@ export interface VisualAsset {
   canon_status: string;
   gate_state: string;
   gate_reason: string;
+  gate_reason_code?: string;
   generation_eligible: boolean;
   prompt: string;
   negative_prompt: string;

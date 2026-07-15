@@ -11,6 +11,10 @@ pub struct TurnStreamEvent {
     pub action_text: Option<String>,
     pub event_type: Option<String>,
     pub event: Option<Value>,
+    pub message_key: String,
+    pub message_args: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
     pub message: String,
     pub created_at: String,
 }
@@ -32,9 +36,32 @@ impl TurnStreamEvent {
             action_text: Some(action_text.to_string()),
             event_type: None,
             event: None,
+            message_key: format!("turn.status.{status}"),
+            message_args: json!({}),
+            error_code: None,
             message: message.into(),
             created_at: Utc::now().to_rfc3339(),
         }
+    }
+
+    pub fn status_error(
+        story_id: &str,
+        client_turn: i64,
+        action_kind: &str,
+        action_text: &str,
+        error_code: &str,
+        message: impl Into<String>,
+    ) -> Self {
+        let mut event = Self::status(
+            story_id,
+            "failed",
+            client_turn,
+            action_kind,
+            action_text,
+            message,
+        );
+        event.error_code = Some(error_code.to_string());
+        event
     }
 
     pub fn contract(
@@ -57,6 +84,9 @@ impl TurnStreamEvent {
             action_text: Some(action_text.to_string()),
             event_type: Some(event_type.clone()),
             event: Some(event.clone()),
+            message_key: format!("turn.event.{event_type}"),
+            message_args: json!({}),
+            error_code: None,
             message: contract_event_message(&event_type),
             created_at: Utc::now().to_rfc3339(),
         }
@@ -75,6 +105,9 @@ impl TurnStreamEvent {
                 "turn": turn,
                 "revision": revision,
             })),
+            message_key: "turn.snapshot_changed".to_string(),
+            message_args: json!({ "turn": turn, "revision": revision }),
+            error_code: None,
             message: format!("Canonical snapshot advanced to turn {turn}, revision {revision}."),
             created_at: Utc::now().to_rfc3339(),
         }
@@ -109,6 +142,13 @@ impl TurnStreamEvent {
                     "message": message,
                 },
             })),
+            message_key: format!("turn.event.{event_type}"),
+            message_args: json!({
+                "asset_id": asset_id,
+                "job_id": job_id,
+                "status": status,
+            }),
+            error_code: None,
             message,
             created_at: Utc::now().to_rfc3339(),
         }
@@ -122,7 +162,10 @@ impl TurnStreamEvent {
             action_kind: None,
             action_text: None,
             event_type: Some("stream.lagged".to_string()),
-            event: None,
+            event: Some(json!({ "type": "stream.lagged", "skipped": skipped })),
+            message_key: "turn.stream_lagged".to_string(),
+            message_args: json!({ "skipped": skipped }),
+            error_code: None,
             message: format!(
                 "Missed {skipped} live turn event(s); snapshot sync will recover state."
             ),
@@ -180,5 +223,32 @@ mod tests {
         assert_eq!(payload["asset_id"], "asset-location");
         assert_eq!(payload["job_id"], 42);
         assert_eq!(payload["status"], "ready");
+        assert_eq!(event.message_key, "turn.event.asset.ready");
+        assert_eq!(event.message_args["job_id"], 42);
+    }
+
+    #[test]
+    fn lagged_event_exposes_count_without_parsing_legacy_prose() {
+        let event = TurnStreamEvent::lagged("story-1", 3);
+
+        assert_eq!(event.message_key, "turn.stream_lagged");
+        assert_eq!(event.message_args["skipped"], 3);
+        assert_eq!(event.event.expect("semantic event")["skipped"], 3);
+    }
+
+    #[test]
+    fn failed_status_exposes_stable_error_code_for_sse_consumers() {
+        let event = TurnStreamEvent::status_error(
+            "story-1",
+            4,
+            "free",
+            "Open the gate",
+            "stale_request",
+            "The request is stale.",
+        );
+
+        assert_eq!(event.status, "failed");
+        assert_eq!(event.error_code.as_deref(), Some("stale_request"));
+        assert_eq!(event.message_key, "turn.status.failed");
     }
 }

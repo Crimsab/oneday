@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue, PlayerAction, StorySnapshot, TurnStreamEvent } from "./types";
+import i18n from "./i18n";
 
 export function appendTurnEvent(events: TurnStreamEvent[], next: TurnStreamEvent, limit = 8): TurnStreamEvent[] {
 	const key = turnEventKey(next);
@@ -7,41 +8,41 @@ export function appendTurnEvent(events: TurnStreamEvent[], next: TurnStreamEvent
 }
 
 export function turnEventDetail(event: TurnStreamEvent): string {
-  if (event.status === "submitted") return "Action accepted by the Rust gateway; waiting for OneDay...";
-  if (event.status === "completed") return "Turn committed. Syncing the canonical snapshot...";
-	if (event.status === "failed") return event.message || "The turn could not be completed.";
-  if (event.status === "snapshot_changed") return event.message || "Canonical state changed from another client.";
-  if (event.status === "lagged") return event.message || "Live events were skipped; snapshot sync will recover.";
+  if (event.status === "submitted") return i18n.t("turn_progress:submitted");
+  if (event.status === "completed") return i18n.t("turn_progress:completed");
+	if (event.status === "failed") return i18n.t("turn_progress:failed");
+  if (event.status === "snapshot_changed") return i18n.t("turn_progress:snapshot");
+  if (event.status === "lagged") return i18n.t("turn_progress:lagged");
 
   switch (event.event_type) {
     case "turn.started":
-	  return "Resolving the turn.";
+	  return i18n.t("turn_progress:resolving");
     case "narrative.delta":
-      return streamingDeltaText(event) || "Narrative is streaming.";
+      return streamingDeltaText(event) || i18n.t("turn_progress:streaming");
     case "narrative.final":
-      return "Narrative generated; applying state updates.";
+      return i18n.t("turn_progress:final");
     case "challenge.started":
-	  return "Challenge terms set.";
+	  return i18n.t("turn_progress:challengeSet");
     case "challenge.resolved":
-	  return "Authoritative outcome resolved.";
+	  return i18n.t("turn_progress:outcome");
     case "state.delta":
-      return "State delta received.";
+      return i18n.t("turn_progress:stateDelta");
     case "choices.updated":
-      return "Choices refreshed.";
+      return i18n.t("turn_progress:choices");
     case "asset.queued":
-      return event.message || "Image generation queued.";
+      return event.message || i18n.t("turn_progress:imageQueued");
     case "asset.running":
-      return event.message || "Image generation started.";
+      return event.message || i18n.t("turn_progress:imageStarted");
     case "asset.ready":
-      return event.message || "Generated image is ready.";
+      return event.message || i18n.t("turn_progress:imageReady");
     case "asset.failed":
-      return event.message || "Image generation failed.";
+      return event.message || i18n.t("turn_progress:imageFailed");
     case "asset.cancelled":
-      return event.message || "Image generation cancelled.";
+      return event.message || i18n.t("turn_progress:imageCancelled");
     case "turn.committed":
-      return "Turn committed to the shared story.";
+      return i18n.t("turn_progress:committed");
     default:
-	  return event.message || "Turn progress updated.";
+	  return i18n.t("turn_progress:updated");
   }
 }
 
@@ -109,31 +110,31 @@ function turnEventKey(event: TurnStreamEvent): string {
 function messageForEventType(eventType: string): string {
   switch (eventType) {
     case "turn.started":
-	  return "Turn accepted.";
+	  return i18n.t("turn_progress:accepted");
     case "narrative.final":
-      return "Narrative generated; applying state changes.";
+      return i18n.t("turn_progress:final");
     case "challenge.started":
-	  return "Challenge terms set.";
+	  return i18n.t("turn_progress:challengeSet");
     case "challenge.resolved":
-      return "Authoritative outcome resolved before narration.";
+      return i18n.t("turn_progress:outcomeBefore");
     case "choices.updated":
-	  return "Choices refreshed.";
+	  return i18n.t("turn_progress:choices");
     case "state.delta":
-      return "Canonical state changed.";
+      return i18n.t("turn_progress:canonicalChanged");
     case "asset.queued":
-      return "Visual asset request queued.";
+      return i18n.t("events:asset.queued");
     case "asset.running":
-      return "Visual asset generation started.";
+      return i18n.t("events:asset.running");
     case "asset.ready":
-      return "Visual asset is ready.";
+      return i18n.t("events:asset.ready");
     case "asset.failed":
-      return "Visual asset generation failed.";
+      return i18n.t("events:asset.failed");
     case "asset.cancelled":
-      return "Visual asset generation cancelled.";
+      return i18n.t("events:asset.cancelled");
     case "turn.committed":
-      return "Turn committed to the shared story.";
+      return i18n.t("turn_progress:committed");
     default:
-	  return "Turn progress updated.";
+	  return i18n.t("turn_progress:updated");
   }
 }
 

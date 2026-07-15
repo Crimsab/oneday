@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { compactText, readableStructuredText } from "../format";
 import { MarkdownText } from "./MarkdownText";
 import { MessageDiagnostics } from "./MessageDiagnostics";
@@ -19,6 +20,7 @@ interface TranscriptProps {
 }
 
 export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
+  const { t } = useTranslation(["flow", "surfaces"]);
   const ref = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const activeStoryId = useRef(storyId);
@@ -61,7 +63,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
     >
       {visibleMessages.length === 0 ? (
         <div className="empty-copy transcript-empty">
-          {messages.length ? "Transcript cleared locally. New canonical messages will appear here." : "Choose a story to load the canonical transcript."}
+          {messages.length ? t("transcriptCleared") : t("chooseTranscript")}
         </div>
       ) : (
         visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} ttsSettings={ttsSettings} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
@@ -87,26 +89,27 @@ export function isTranscriptNearBottom(
 }
 
 const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, ttsSettings, autoplay, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; ttsSettings: StoryTTSSettings | null; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
+  const { t } = useTranslation("surfaces");
   const [audioOpen, setAudioOpen] = useState(false);
   const isSystem = message.role === "system" || message.message_type === "state";
   const isUser = message.role === "user";
-  const content = readableStructuredText(message.content) || compactText(message.content || "(empty)", 160);
+  const content = readableStructuredText(message.content) || compactText(message.content || t("history.empty"), 160);
 	const dialogue = dialogueBlocksFromMessage(message);
 
   return (
     <article className={`transcript-message ${message.role} ${isSystem ? "system-line" : ""}`}>
       <div className="message-stamp">
-        <span>{isUser ? "You" : isSystem ? "System" : "Narrator"}</span>
-        <small>Turn {message.turn}</small>
+        <span>{isUser ? t("transcript.you") : isSystem ? t("transcript.system") : t("transcript.narrator")}</span>
+        <small>{t("history.turn", { turn: message.turn })}</small>
       </div>
       <div className="message-body">
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
-		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={`Structured dialogue for turn ${message.turn}`}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || "Unknown speaker"}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
+		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={t("transcript.dialogue", { turn: message.turn })}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || t("transcript.unknownSpeaker")}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
         <MessageDiagnostics message={message} />
         {ttsSettings && ttsSettings.mode !== "off" && message.role === "assistant" && Boolean(message.source_commit_id) && (
           autoplay || audioOpen
             ? <AudioControls storyId={storyId} messageId={message.id} settings={ttsSettings} autoplay={autoplay} />
-            : <section className="message-audio" aria-label="Spoken audio"><div className="message-audio-head"><button type="button" onClick={() => setAudioOpen(true)}>Load spoken audio</button></div></section>
+            : <section className="message-audio" aria-label={t("transcript.spokenAudio")}><div className="message-audio-head"><button type="button" onClick={() => setAudioOpen(true)}>{t("transcript.loadAudio")}</button></div></section>
         )}
         {timelineControls && (
           <MessageBranchControls message={message} timeline={timeline} showRestore={timelineControls.restore} showSwitcher={timelineControls.switcher} busy={timelineBusy} onCheckout={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />
@@ -130,12 +133,13 @@ export function dialogueBlocksFromMessage(message:MessageView):DialogueView[] {
 }
 
 function PendingTurnMessage({ pendingTurn }: { pendingTurn: PendingTurnView }) {
+  const { t } = useTranslation("surfaces");
   return (
     <>
       <article className="transcript-message user pending-turn-user">
         <div className="message-stamp">
-          <span>You</span>
-          <small>Turn {pendingTurn.turn}</small>
+          <span>{t("transcript.you")}</span>
+          <small>{t("history.turn", { turn: pendingTurn.turn })}</small>
         </div>
         <div className="message-body">
           <MarkdownText>{pendingTurn.source}</MarkdownText>
@@ -143,8 +147,8 @@ function PendingTurnMessage({ pendingTurn }: { pendingTurn: PendingTurnView }) {
       </article>
       <article className="transcript-message assistant pending-narrator" aria-busy="true" aria-label={pendingTurn.detail}>
         <div className="message-stamp">
-          <span>Narrator</span>
-          <small>Writing</small>
+          <span>{t("transcript.narrator")}</span>
+          <small>{t("transcript.writing")}</small>
         </div>
         <div className="message-body">
           {pendingTurn.streamingText ? (

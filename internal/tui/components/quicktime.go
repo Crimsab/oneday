@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -31,16 +32,17 @@ type QuickTimeModel struct {
 	now       func() time.Time
 	width     int
 	height    int
+	loc       appi18n.Localizer
 }
 
 // NewQuickTimeModel creates a quick-time challenge.
-func NewQuickTimeModel(challenge *engine.QuickTimeChallenge, width, height int) QuickTimeModel {
-	return NewQuickTimeModelWithClock(challenge, width, height, time.Now)
+func NewQuickTimeModel(challenge *engine.QuickTimeChallenge, width, height int, localizers ...appi18n.Localizer) QuickTimeModel {
+	return NewQuickTimeModelWithClock(challenge, width, height, time.Now, localizers...)
 }
 
 // NewQuickTimeModelWithClock makes timing injectable for deterministic tests
 // and alternate hosts while retaining the normal TUI wall-clock adapter.
-func NewQuickTimeModelWithClock(challenge *engine.QuickTimeChallenge, width, height int, now func() time.Time) QuickTimeModel {
+func NewQuickTimeModelWithClock(challenge *engine.QuickTimeChallenge, width, height int, now func() time.Time, localizers ...appi18n.Localizer) QuickTimeModel {
 	return QuickTimeModel{
 		challenge: challenge,
 		phase:     "ready",
@@ -48,6 +50,7 @@ func NewQuickTimeModelWithClock(challenge *engine.QuickTimeChallenge, width, hei
 		width:     width,
 		height:    height,
 		now:       now,
+		loc:       componentLocalizer(localizers),
 	}
 }
 
@@ -115,18 +118,18 @@ func (q QuickTimeModel) View() string {
 	var lines []string
 
 	titleStyle := lipgloss.NewStyle().Foreground(theme.QuickTimeOrange).Bold(true)
-	lines = append(lines, titleStyle.Render("⚡  QUICK TIME!"))
+	lines = append(lines, titleStyle.Render("⚡  "+q.loc.T("minigame.quick_title")))
 	lines = append(lines, "")
 
 	switch q.phase {
 	case "ready":
-		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render("  Get ready..."))
+		lines = append(lines, lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Render("  "+q.loc.T("minigame.ready")))
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render(fmt.Sprintf("  Time limit: %.1fs", q.challenge.TimeLimit.Seconds())))
+		lines = append(lines, theme.MutedText.Render("  "+q.loc.T("minigame.time_limit", q.challenge.TimeLimit.Seconds())))
 
 	case "active":
 		promptStyle := lipgloss.NewStyle().Foreground(theme.QuickTimeOrange).Bold(true).Blink(true)
-		lines = append(lines, promptStyle.Render("  >>> PRESS ANY KEY! <<<"))
+		lines = append(lines, promptStyle.Render("  >>> "+q.loc.T("minigame.press_key")+" <<<"))
 		lines = append(lines, "")
 
 		// Countdown bar.
@@ -161,12 +164,12 @@ func (q QuickTimeModel) View() string {
 
 	case "result":
 		if q.passed {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  ✓ FAST ENOUGH!"))
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Success).Bold(true).Render("  ✓ "+q.loc.T("minigame.fast")))
 		} else {
-			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Danger).Bold(true).Render("  ✗ TOO SLOW!"))
+			lines = append(lines, lipgloss.NewStyle().Foreground(theme.Danger).Bold(true).Render("  ✗ "+q.loc.T("minigame.slow")))
 		}
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("  Press any key to continue"))
+		lines = append(lines, theme.MutedText.Render("  "+q.loc.T("challenge.continue")))
 	}
 
 	inner := strings.Join(lines, "\n")

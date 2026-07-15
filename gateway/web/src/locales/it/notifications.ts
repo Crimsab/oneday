@@ -1,0 +1,21 @@
+export const notifications = {
+  sync: { idle: "In attesa", loading: "Caricamento", paused: "In pausa", live: "In diretta", error: "Errore", reconnecting: "Riconnessione", saving: "Salvataggio", sending: "Invio", connection: "Connessione: {{status}}" },
+  health: { starting: "Avvio del gateway", stories_one: "{{formattedCount}} storia", stories_other: "{{formattedCount}} storie" },
+  branch: { active: "Ramo attivo: {{name}}.", updated: "aggiornato", previousDecision: "Sei tornato alla decisione precedente in {{name}}.", navigatorOpened: "Il navigatore dei rami della storia è aperto nella barra laterale.", forkUsage: "Uso: /fork <nome del ramo>", renameUsage: "Uso: /branch-rename <nome>", notFound: "Ramo non trovato: {{name}}", missingName: "(nome mancante)" },
+  story: { archived: "{{name}} è stata archiviata.", updated: "{{name}} è stata aggiornata.", deletePrompt: "Eliminare «{{name}}»?", rowsAffected_one: "Riga del database interessata: {{formattedCount}}", rowsAffected_other: "Righe del database interessate: {{formattedCount}}", retainedFiles_one: "File immagine generato conservato sul disco: {{formattedCount}}", retainedFiles_other: "File immagine generati conservati sul disco: {{formattedCount}}", noGeneratedFiles: "Non sono collegati file immagine generati.", deleted: "Storia eliminata." },
+  meta: { answered: "Risposta a {{title}} completata.", completed: "Comando meta completato." },
+  challenge: { resolved: "Sfida risolta", continuationRetry: "La sfida è stata risolta, ma occorre riprovare la continuazione narrativa." },
+  save: { saved: "Salvataggio {{name}} creato.", loadConfirm: "Caricare «{{name}}» dal turno {{turn}}? I progressi attuali torneranno a quello snapshot.", legacyLoaded: "Salvataggio legacy {{name}} caricato con ripristino parziale.", legacyLoadedWithDetail: "Salvataggio legacy {{name}} caricato con ripristino parziale: {{detail}}", loaded: "Salvataggio {{name}} caricato.", deleteConfirm: "Eliminare «{{name}}» del turno {{turn}}? Verrà rimosso soltanto lo snapshot salvato.", deleted: "Salvataggio {{name}} eliminato." },
+  request: { alreadyRunning: "È già in corso un’altra richiesta di OneDay." },
+  wizard: { createdStartFailed: "{{name}} è stata creata, ma il primo turno non è iniziato: {{error}}", createdStarted: "{{name}} è stata creata e avviata.", created: "{{name}} è stata creata.", updated: "Procedura guidata della storia aggiornata." },
+  enhance: { withModel: "Testo migliorato con {{model}}.", completed: "Testo migliorato." },
+  action: { resolvingChoice: "Risoluzione della scelta selezionata...", resolvingAction: "Risoluzione dell’azione...", stale: "La storia è avanzata altrove. Controlla le scelte più recenti prima di inviare di nuovo." },
+  model: { saved: "Instradamento dei modelli salvato. Provider attivo: {{provider}}.", none: "nessuno" },
+  visual: {
+    profileSaved: "Profilo visivo salvato. Le nuove risorse mancanti useranno le indicazioni aggiornate per i prompt.", generationQueued: "Generazione visiva accodata. {{summary}}.",
+    ready_one: "{{formattedCount}} pronta", ready_other: "{{formattedCount}} pronte", active_one: "{{formattedCount}} in coda o in elaborazione", active_other: "{{formattedCount}} in coda o in elaborazione", failed_one: "{{formattedCount}} non riuscita", failed_other: "{{formattedCount}} non riuscite",
+    jobCancelled: "Processo di generazione visiva {{jobId}} annullato.", cleanupPreview_one: "Anteprima della pulizia visiva: è possibile rimuovere {{formattedCount}} file obsoleto.", cleanupPreview_other: "Anteprima della pulizia visiva: è possibile rimuovere {{formattedCount}} file obsoleti.", cleanupRemoved_one: "La pulizia visiva ha rimosso {{formattedCount}} file obsoleto.", cleanupRemoved_other: "La pulizia visiva ha rimosso {{formattedCount}} file obsoleti.",
+    promptSaved: "Prompt dell’immagine salvato. Rigenera la risorsa per creare una nuova versione da questo prompt.", versionSelected: "Versione visiva selezionata.", selectionUndone: "Selezione visiva annullata.", selectionRestored: "Selezione visiva ripristinata.",
+  },
+  surface: { yourStory: "La tua storia", suggestedActions: "Azioni suggerite" },
+} as const;

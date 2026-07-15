@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -37,6 +38,7 @@ type FrontTrackerBackMsg struct{}
 
 // FrontTrackerModel renders hooks, visible fronts, pressure hotspots, and fallout in one workspace.
 type FrontTrackerModel struct {
+	loc      appi18n.Localizer
 	title    string
 	board    engine.FrontTrackerBoard
 	rows     []frontTrackerRow
@@ -47,11 +49,14 @@ type FrontTrackerModel struct {
 	detail   components.OverlayModel
 }
 
-func NewFrontTrackerModel(title string, board engine.FrontTrackerBoard, width, height int) FrontTrackerModel {
+func NewFrontTrackerModel(title string, board engine.FrontTrackerBoard, width, height int, localizers ...appi18n.Localizer) FrontTrackerModel {
+	loc := viewLocalizer(localizers)
 	model := FrontTrackerModel{
 		title:   title,
+		loc:     loc,
 		board:   normalizedFrontTrackerBoard(board),
 		visible: true,
+		detail:  components.NewOverlay(loc),
 	}
 	model.SetSize(width, height)
 	model.rebuildRows()
@@ -76,7 +81,7 @@ func (m *FrontTrackerModel) rebuildRows() {
 	m.rows = m.rows[:0]
 
 	if len(m.board.Hooks) > 0 {
-		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: "Open Hooks"})
+		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: m.loc.T("front.open_hooks")})
 		for idx := range m.board.Hooks {
 			m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowHook, hookIndex: idx})
 		}
@@ -84,7 +89,7 @@ func (m *FrontTrackerModel) rebuildRows() {
 
 	activeFronts := activeFrontTrackerIndexes(m.board.Fronts)
 	if len(activeFronts) > 0 {
-		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: "Active Fronts"})
+		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: m.loc.T("front.active_fronts")})
 		for _, idx := range activeFronts {
 			m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowFront, frontIndex: idx})
 		}
@@ -92,21 +97,21 @@ func (m *FrontTrackerModel) rebuildRows() {
 
 	resolvedFronts := resolvedFrontTrackerIndexes(m.board.Fronts)
 	if len(resolvedFronts) > 0 {
-		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: "Resolved Fronts"})
+		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: m.loc.T("front.resolved_fronts")})
 		for _, idx := range resolvedFronts {
 			m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowFront, frontIndex: idx})
 		}
 	}
 
 	if len(m.board.Hotspots) > 0 {
-		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: "Pressure Hotspots"})
+		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: m.loc.T("front.pressure_hotspots")})
 		for idx := range m.board.Hotspots {
 			m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowHotspot, hotspotIndex: idx})
 		}
 	}
 
 	if len(m.board.Reactions) > 0 {
-		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: "Recent Fallout"})
+		m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowSection, label: m.loc.T("front.recent_fallout")})
 		for idx := range m.board.Reactions {
 			m.rows = append(m.rows, frontTrackerRow{kind: frontTrackerRowReaction, reactionIndex: idx})
 		}
@@ -166,20 +171,20 @@ func (m FrontTrackerModel) Update(msg tea.Msg) (FrontTrackerModel, tea.Cmd) {
 			switch row.kind {
 			case frontTrackerRowHook:
 				hook := m.board.Hooks[row.hookIndex]
-				m.detail.Show(hook.Title, formatTrackerHookDetail(hook))
+				m.detail.Show(hook.Title, formatTrackerHookDetail(hook, m.loc))
 			case frontTrackerRowFront:
 				front := m.board.Fronts[row.frontIndex]
-				m.detail.Show(front.Title, formatTrackerFrontDetail(front))
+				m.detail.Show(front.Title, formatTrackerFrontDetail(front, m.loc))
 			case frontTrackerRowHotspot:
 				hotspot := m.board.Hotspots[row.hotspotIndex]
 				title := hotspot.Region
 				if kind := strings.TrimSpace(hotspot.Kind); kind != "" {
 					title += " · " + kind
 				}
-				m.detail.Show(title, formatTrackerHotspotDetail(hotspot))
+				m.detail.Show(title, formatTrackerHotspotDetail(hotspot, m.loc))
 			case frontTrackerRowReaction:
 				reaction := m.board.Reactions[row.reactionIndex]
-				m.detail.Show(reaction.Title, formatTrackerReactionDetail(reaction))
+				m.detail.Show(reaction.Title, formatTrackerReactionDetail(reaction, m.loc))
 			}
 			return m, nil
 		}
@@ -206,13 +211,13 @@ func (m FrontTrackerModel) View() string {
 	}
 
 	lines := []string{theme.Title.Render(m.title)}
-	lines = append(lines, theme.MutedText.Render(frontTrackerWorkspaceSummary(m.board)))
+	lines = append(lines, theme.MutedText.Render(frontTrackerWorkspaceSummary(m.board, m.loc)))
 	lines = append(lines, "")
 
 	if len(m.rows) == 0 {
-		lines = append(lines, theme.MutedText.Render("No open hooks, visible fronts, or active fallout yet."))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("front.empty")))
 		lines = append(lines, "")
-		lines = append(lines, theme.MutedText.Render("Esc close"))
+		lines = append(lines, theme.MutedText.Render(m.loc.T("browser.close")))
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Render(strings.Join(lines, "\n")))
 	}
 
@@ -233,8 +238,8 @@ func (m FrontTrackerModel) View() string {
 				cursor = "▸ "
 				style = theme.SelectedItem
 			}
-			lines = append(lines, style.Render(cursor+trackerHookRowTitle(hook, rowWidth)))
-			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerHookRowSubtitle(hook), rowWidth)))
+			lines = append(lines, style.Render(cursor+trackerHookRowTitle(hook, rowWidth, m.loc)))
+			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerHookRowSubtitle(hook, m.loc), rowWidth)))
 		case frontTrackerRowFront:
 			front := m.board.Fronts[row.frontIndex]
 			cursor := "  "
@@ -244,7 +249,7 @@ func (m FrontTrackerModel) View() string {
 				style = theme.SelectedItem
 			}
 			lines = append(lines, style.Render(cursor+trackerFrontRowTitle(front, rowWidth)))
-			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerFrontRowSubtitle(front), rowWidth)))
+			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerFrontRowSubtitle(front, m.loc), rowWidth)))
 		case frontTrackerRowHotspot:
 			hotspot := m.board.Hotspots[row.hotspotIndex]
 			cursor := "  "
@@ -254,7 +259,7 @@ func (m FrontTrackerModel) View() string {
 				style = theme.SelectedItem
 			}
 			lines = append(lines, style.Render(cursor+trackerHotspotRowTitle(hotspot, rowWidth)))
-			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerHotspotRowSubtitle(hotspot), rowWidth)))
+			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerHotspotRowSubtitle(hotspot, m.loc), rowWidth)))
 		case frontTrackerRowReaction:
 			reaction := m.board.Reactions[row.reactionIndex]
 			cursor := "  "
@@ -264,12 +269,12 @@ func (m FrontTrackerModel) View() string {
 				style = theme.SelectedItem
 			}
 			lines = append(lines, style.Render(cursor+trackerReactionRowTitle(reaction, rowWidth)))
-			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerReactionRowSubtitle(reaction), rowWidth)))
+			lines = append(lines, theme.MutedText.Render("    "+truncatePlain(trackerReactionRowSubtitle(reaction, m.loc), rowWidth)))
 		}
 	}
 
 	lines = append(lines, "")
-	lines = append(lines, theme.MutedText.Render("↑↓ navigate · Enter open · P projects · I investigations · C codex · Esc close"))
+	lines = append(lines, theme.MutedText.Render(m.loc.T("front.navigation")))
 
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, boxStyle(boxWidth).Height(boxHeight).Render(strings.Join(lines, "\n")))
 }
@@ -359,36 +364,39 @@ func trackerFrontRowOrder(status string) int {
 	}
 }
 
-func frontTrackerWorkspaceSummary(board engine.FrontTrackerBoard) string {
+func frontTrackerWorkspaceSummary(board engine.FrontTrackerBoard, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	return strings.Join([]string{
-		fmt.Sprintf("Hooks %d", len(board.Hooks)),
-		fmt.Sprintf("Fronts %d", len(board.Fronts)),
-		fmt.Sprintf("Hotspots %d", len(board.Hotspots)),
-		fmt.Sprintf("Fallout %d", len(board.Reactions)),
+		loc.T("front.hooks_count", len(board.Hooks)),
+		loc.T("front.fronts_count", len(board.Fronts)),
+		loc.T("front.hotspots_count", len(board.Hotspots)),
+		loc.T("front.fallout_count", len(board.Reactions)),
 	}, " · ")
 }
 
-func trackerHookRowTitle(hook engine.StoryHook, width int) string {
+func trackerHookRowTitle(hook engine.StoryHook, width int, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	parts := []string{hook.Title}
 	if kind := strings.TrimSpace(hook.Kind); kind != "" {
 		parts = append(parts, kind)
 	}
 	if hook.TimerTurns > 0 {
-		parts = append(parts, fmt.Sprintf("timer %d", hook.TimerTurns))
+		parts = append(parts, loc.T("front.timer_short", hook.TimerTurns))
 	}
 	return truncatePlain(strings.Join(parts, "  ·  "), width)
 }
 
-func trackerHookRowSubtitle(hook engine.StoryHook) string {
+func trackerHookRowSubtitle(hook engine.StoryHook, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	parts := []string{}
 	if npc := strings.TrimSpace(hook.NPCName); npc != "" {
-		parts = append(parts, "NPC: "+npc)
+		parts = append(parts, loc.T("front.npc_value", npc))
 	}
 	if detail := strings.TrimSpace(hook.Detail); detail != "" {
 		parts = append(parts, detail)
 	}
 	if len(parts) == 0 {
-		return "No extra details yet."
+		return loc.T("front.no_extra_details")
 	}
 	return strings.Join(parts, " ")
 }
@@ -407,7 +415,8 @@ func trackerFrontRowTitle(front engine.FrontTrackerFront, width int) string {
 	return truncatePlain(strings.Join(parts, "  ·  "), width)
 }
 
-func trackerFrontRowSubtitle(front engine.FrontTrackerFront) string {
+func trackerFrontRowSubtitle(front engine.FrontTrackerFront, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	parts := []string{}
 	if faction := strings.TrimSpace(front.Faction); faction != "" {
 		parts = append(parts, faction)
@@ -418,10 +427,10 @@ func trackerFrontRowSubtitle(front engine.FrontTrackerFront) string {
 		parts = append(parts, front.Pressures[0].Summary)
 	}
 	if strings.EqualFold(front.Status, "resolved") && strings.TrimSpace(front.Resolution) != "" {
-		parts = append(parts, "Outcome: "+strings.TrimSpace(front.Resolution))
+		parts = append(parts, loc.T("front.outcome_value", strings.TrimSpace(front.Resolution)))
 	}
 	if len(parts) == 0 {
-		return "No additional details yet."
+		return loc.T("front.no_details")
 	}
 	return strings.Join(parts, " ")
 }
@@ -440,10 +449,11 @@ func trackerHotspotRowTitle(hotspot engine.FrontTrackerPressure, width int) stri
 	return truncatePlain(strings.Join(parts, "  ·  "), width)
 }
 
-func trackerHotspotRowSubtitle(hotspot engine.FrontTrackerPressure) string {
+func trackerHotspotRowSubtitle(hotspot engine.FrontTrackerPressure, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	parts := []string{}
 	if title := strings.TrimSpace(hotspot.FrontTitle); title != "" {
-		parts = append(parts, "From "+title)
+		parts = append(parts, loc.T("front.from", title))
 	}
 	if summary := strings.TrimSpace(hotspot.Summary); summary != "" {
 		parts = append(parts, summary)
@@ -451,7 +461,7 @@ func trackerHotspotRowSubtitle(hotspot engine.FrontTrackerPressure) string {
 		parts = append(parts, detail)
 	}
 	if len(parts) == 0 {
-		return "No fallout details yet."
+		return loc.T("front.no_fallout_details")
 	}
 	return strings.Join(parts, " · ")
 }
@@ -464,94 +474,97 @@ func trackerReactionRowTitle(reaction engine.WorldReaction, width int) string {
 	return truncatePlain(strings.Join(parts, "  ·  "), width)
 }
 
-func trackerReactionRowSubtitle(reaction engine.WorldReaction) string {
+func trackerReactionRowSubtitle(reaction engine.WorldReaction, localizers ...appi18n.Localizer) string {
 	if detail := strings.TrimSpace(reaction.Detail); detail != "" {
 		return detail
 	}
-	return "The world is shifting around your recent actions."
+	return viewLocalizer(localizers).T("front.world_shifting")
 }
 
-func formatTrackerHookDetail(hook engine.StoryHook) string {
+func formatTrackerHookDetail(hook engine.StoryHook, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	lines := []string{}
 	if kind := strings.TrimSpace(hook.Kind); kind != "" {
-		lines = append(lines, fmt.Sprintf("Kind: %s", strings.Title(kind)))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.kind"), strings.Title(kind)))
 	}
 	if npc := strings.TrimSpace(hook.NPCName); npc != "" {
-		lines = append(lines, fmt.Sprintf("NPC: %s", npc))
+		lines = append(lines, loc.T("front.npc_value", npc))
 	}
 	if status := strings.TrimSpace(hook.Status); status != "" {
-		lines = append(lines, fmt.Sprintf("Status: %s", strings.Title(status)))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.status"), strings.Title(status)))
 	}
 	if hook.TimerTurns > 0 {
-		lines = append(lines, fmt.Sprintf("Timer: %d turns", hook.TimerTurns))
+		lines = append(lines, loc.Plural("front.timer_turns", hook.TimerTurns, hook.TimerTurns))
 	}
 	if hook.SourceTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Source Turn: %d", hook.SourceTurn))
+		lines = append(lines, fmt.Sprintf("%s: %d", loc.T("field.source_turn"), hook.SourceTurn))
 	}
 	if hook.UpdatedTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Updated Turn: %d", hook.UpdatedTurn))
+		lines = append(lines, fmt.Sprintf("%s: %d", loc.T("field.updated_turn"), hook.UpdatedTurn))
 	}
 	if detail := strings.TrimSpace(hook.Detail); detail != "" {
-		lines = append(lines, "", "Detail", detail)
+		lines = append(lines, "", loc.T("field.detail"), detail)
 	}
 	return strings.Join(lines, "\n")
 }
 
-func formatTrackerFrontDetail(front engine.FrontTrackerFront) string {
+func formatTrackerFrontDetail(front engine.FrontTrackerFront, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	lines := []string{}
 	if status := strings.TrimSpace(front.Status); status != "" {
-		lines = append(lines, fmt.Sprintf("Status: %s", strings.Title(status)))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.status"), strings.Title(status)))
 	}
 	if visibility := strings.TrimSpace(front.Visibility); visibility != "" {
-		lines = append(lines, fmt.Sprintf("Visibility: %s", strings.Title(visibility)))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.visibility"), strings.Title(visibility)))
 	}
 	if front.Segments > 0 {
-		lines = append(lines, fmt.Sprintf("Progress: %d/%d", front.Progress, front.Segments))
+		lines = append(lines, fmt.Sprintf("%s: %d/%d", loc.T("field.progress"), front.Progress, front.Segments))
 	}
 	if faction := strings.TrimSpace(front.Faction); faction != "" {
-		lines = append(lines, fmt.Sprintf("Faction: %s", faction))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.faction"), faction))
 	}
 	if front.LastAdvancedTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Last Advanced Turn: %d", front.LastAdvancedTurn))
+		lines = append(lines, loc.T("front.last_advanced_turn", front.LastAdvancedTurn))
 	}
 	if front.NextEscalationTurn > 0 && !strings.EqualFold(front.Status, "resolved") {
-		lines = append(lines, fmt.Sprintf("Next Escalation Turn: %d", front.NextEscalationTurn))
+		lines = append(lines, loc.T("front.next_escalation_turn", front.NextEscalationTurn))
 	}
 	if stakes := strings.TrimSpace(front.Stakes); stakes != "" {
-		lines = append(lines, "", "Stakes", stakes)
+		lines = append(lines, "", loc.T("field.stakes"), stakes)
 	}
 	if len(front.Pressures) > 0 {
-		lines = append(lines, "", "Pressure")
+		lines = append(lines, "", loc.T("field.pressure"))
 		for _, pressure := range front.Pressures {
 			lines = append(lines, "• "+pressure.Summary)
 		}
 	}
 	if strings.EqualFold(front.Status, "resolved") && strings.TrimSpace(front.Resolution) != "" {
-		lines = append(lines, "", "Outcome", front.Resolution)
+		lines = append(lines, "", loc.T("field.outcome"), front.Resolution)
 	}
 	return strings.Join(lines, "\n")
 }
 
-func formatTrackerHotspotDetail(hotspot engine.FrontTrackerPressure) string {
+func formatTrackerHotspotDetail(hotspot engine.FrontTrackerPressure, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	lines := []string{
-		fmt.Sprintf("Region: %s", hotspot.Region),
-		fmt.Sprintf("Kind: %s", hotspot.Kind),
-		fmt.Sprintf("Pressure: %d (%s)", hotspot.Level, hotspot.Severity),
+		loc.T("front.region", hotspot.Region),
+		fmt.Sprintf("%s: %s", loc.T("field.kind"), hotspot.Kind),
+		fmt.Sprintf("%s: %d (%s)", loc.T("field.pressure"), hotspot.Level, hotspot.Severity),
 	}
 	if hotspot.UpdatedTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Updated Turn: %d", hotspot.UpdatedTurn))
+		lines = append(lines, fmt.Sprintf("%s: %d", loc.T("field.updated_turn"), hotspot.UpdatedTurn))
 	}
 	if title := strings.TrimSpace(hotspot.FrontTitle); title != "" {
-		lines = append(lines, fmt.Sprintf("Source Front: %s", title))
+		lines = append(lines, loc.T("front.source_front", title))
 	}
 	if status := strings.TrimSpace(hotspot.FrontStatus); status != "" {
-		lines = append(lines, fmt.Sprintf("Front Status: %s", strings.Title(status)))
+		lines = append(lines, loc.T("front.front_status", strings.Title(status)))
 	}
 	if summary := strings.TrimSpace(hotspot.Summary); summary != "" {
-		lines = append(lines, "", "Summary", summary)
+		lines = append(lines, "", loc.T("field.summary"), summary)
 	}
 	if detail := strings.TrimSpace(hotspot.Detail); detail != "" && detail != summaryOrEmpty(hotspot) {
-		lines = append(lines, "", "Detail", detail)
+		lines = append(lines, "", loc.T("field.detail"), detail)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -560,22 +573,23 @@ func summaryOrEmpty(hotspot engine.FrontTrackerPressure) string {
 	return strings.TrimSpace(hotspot.Summary)
 }
 
-func formatTrackerReactionDetail(reaction engine.WorldReaction) string {
+func formatTrackerReactionDetail(reaction engine.WorldReaction, localizers ...appi18n.Localizer) string {
+	loc := viewLocalizer(localizers)
 	lines := []string{}
 	if kind := strings.TrimSpace(reaction.Kind); kind != "" {
-		lines = append(lines, fmt.Sprintf("Kind: %s", strings.Title(kind)))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.kind"), strings.Title(kind)))
 	}
 	if status := strings.TrimSpace(reaction.Status); status != "" {
-		lines = append(lines, fmt.Sprintf("Status: %s", strings.Title(status)))
+		lines = append(lines, fmt.Sprintf("%s: %s", loc.T("field.status"), strings.Title(status)))
 	}
 	if reaction.CreatedTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Created Turn: %d", reaction.CreatedTurn))
+		lines = append(lines, fmt.Sprintf("%s: %d", loc.T("field.created_turn"), reaction.CreatedTurn))
 	}
 	if reaction.SourceTurn > 0 {
-		lines = append(lines, fmt.Sprintf("Source Turn: %d", reaction.SourceTurn))
+		lines = append(lines, fmt.Sprintf("%s: %d", loc.T("field.source_turn"), reaction.SourceTurn))
 	}
 	if detail := strings.TrimSpace(reaction.Detail); detail != "" {
-		lines = append(lines, "", "Detail", detail)
+		lines = append(lines, "", loc.T("field.detail"), detail)
 	}
 	return strings.Join(lines, "\n")
 }

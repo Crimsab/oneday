@@ -9,12 +9,27 @@ import (
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/config"
+	"github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
 type storyCreatorMockProvider struct {
 	responses []string
 	callCount int
+}
+
+func TestStoryCreatorInterfaceLocaleDoesNotBecomeStoryLanguage(t *testing.T) {
+	creator := NewStoryCreator(nil, nil, config.GenerationConfig{}, i18n.New(i18n.Italian))
+	if creator.StageLabel() != "Scegli il soggetto della storia" {
+		t.Fatalf("stage label=%q", creator.StageLabel())
+	}
+	actions := creator.Actions()
+	if actions[0].Key != "preset_dark_fantasy" || actions[0].Label != "Fantasy oscuro" {
+		t.Fatalf("localized action changed key or label: %+v", actions[0])
+	}
+	if creator.Definition() != nil {
+		t.Fatal("interface locale must not create or mutate a story definition")
+	}
 }
 
 func (m *storyCreatorMockProvider) Name() string { return "mock-story-provider" }

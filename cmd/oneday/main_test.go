@@ -11,6 +11,8 @@ import (
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/game/contracts"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
+	"github.com/crimsab/oneday/internal/storage"
 )
 
 func TestGatewayRequestIDIsSanitizedAndAddedToTelemetry(t *testing.T) {
@@ -97,6 +99,62 @@ func TestWantsOperatorCommands(t *testing.T) {
 	}
 	if !wantsGatewayCraft([]string{"gateway-craft"}) {
 		t.Fatal("expected gateway-craft")
+	}
+}
+
+func TestConfigLocaleCommandPersistsWithoutAffectingStoryOrTTSDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	t.Setenv("ONEDAY_CONFIG", path)
+	var out bytes.Buffer
+	if err := runConfigLocale([]string{"config", "locale", "it"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Interface.Locale != "it" {
+		t.Fatalf("locale=%q", cfg.Interface.Locale)
+	}
+	if cfg.AI.TTS.Cloud.Languages != nil || cfg.AI.TTS.Local.Languages != nil {
+		t.Fatal("interface locale changed TTS languages")
+	}
+	story := storage.Story{Language: "en-US"}
+	if story.Language != "en-US" {
+		t.Fatal("interface locale changed story language")
+	}
+}
+
+func TestItalianSetupTranscriptStrings(t *testing.T) {
+	loc := appi18n.New(appi18n.Italian)
+	transcript := strings.Join([]string{
+		loc.T("cli.setup_title"), loc.T("cli.choose_language"), loc.T("cli.choose_provider"),
+		loc.SetupPresentation("provider_codex", ""), loc.SetupPresentation("rag_title", ""),
+		loc.SetupPresentation("rag_off", ""),
+	}, "\n")
+	for _, want := range []string{"Prima configurazione", "lingua dell'interfaccia", "provider IA", "usa `codex login`", "embedding RAG", "Disabilita RAG"} {
+		if !strings.Contains(transcript, want) {
+			t.Errorf("setup transcript missing %q:\n%s", want, transcript)
+		}
+	}
+}
+
+func TestPublicCLIResidualStringsUseCatalog(t *testing.T) {
+	source, err := os.ReadFile("main.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	for _, literal := range []string{
+		`fmt.Println("No story packs found.")`,
+		`fmt.Println("Usage: oneday rag reindex`,
+		`fmt.Println("OneDay doctor")`,
+		`fmt.Print("Reasoning off/none/minimal`,
+		`fmt.Println("OneDay config (safe)")`,
+	} {
+		if strings.Contains(text, literal) {
+			t.Errorf("public CLI presentation bypasses catalog: %s", literal)
+		}
 	}
 }
 

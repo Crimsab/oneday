@@ -1,4 +1,4 @@
-use crate::{db, events::TurnStreamEvent, AppState};
+use crate::{db, error::PublicError, events::TurnStreamEvent, AppState};
 use anyhow::{anyhow, Context};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -76,6 +76,7 @@ pub struct VisualAsset {
     pub profile_revision_id: String,
     pub canon_status: String,
     pub gate_state: String,
+    pub gate_reason_code: String,
     pub gate_reason: String,
     pub generation_eligible: bool,
     pub prompt: String,
@@ -269,6 +270,7 @@ struct VisualSpec {
     profile_revision_id: String,
     canon_status: String,
     gate_state: String,
+    gate_reason_code: String,
     gate_reason: String,
     generation_eligible: bool,
     prompt: String,
@@ -468,6 +470,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
         ("profile_revision_id", "TEXT"),
         ("canon_status", "TEXT NOT NULL DEFAULT 'draft'"),
         ("gate_state", "TEXT NOT NULL DEFAULT 'legacy'"),
+        ("gate_reason_code", "TEXT NOT NULL DEFAULT ''"),
         ("gate_reason", "TEXT NOT NULL DEFAULT ''"),
         ("generation_eligible", "INTEGER NOT NULL DEFAULT 1"),
     ] {
@@ -522,7 +525,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
             asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
             story_id TEXT NOT NULL,branch_id TEXT NOT NULL,source_commit_id TEXT NOT NULL,
             prompt_override TEXT NOT NULL DEFAULT '',negative_prompt_override TEXT NOT NULL DEFAULT '',
-            gate_state TEXT NOT NULL DEFAULT '',gate_reason TEXT NOT NULL DEFAULT '',generation_eligible INTEGER,
+            gate_state TEXT NOT NULL DEFAULT '',gate_reason_code TEXT NOT NULL DEFAULT '',gate_reason TEXT NOT NULL DEFAULT '',generation_eligible INTEGER,
             status_override TEXT NOT NULL DEFAULT '',error_override TEXT NOT NULL DEFAULT '',provider_override TEXT NOT NULL DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY(asset_id,branch_id)
@@ -532,6 +535,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
     .await?;
     for (column, definition) in [
         ("gate_state", "TEXT NOT NULL DEFAULT ''"),
+        ("gate_reason_code", "TEXT NOT NULL DEFAULT ''"),
         ("gate_reason", "TEXT NOT NULL DEFAULT ''"),
         ("generation_eligible", "INTEGER"),
         ("status_override", "TEXT NOT NULL DEFAULT ''"),
@@ -586,18 +590,18 @@ async fn normalize_location_asset_lineages(pool: &SqlitePool) -> anyhow::Result<
             sqlx::query(
                 r#"INSERT INTO visual_asset_branch_overrides (
                      asset_id,story_id,branch_id,source_commit_id,prompt_override,
-                     negative_prompt_override,gate_state,gate_reason,generation_eligible,
+                     negative_prompt_override,gate_state,gate_reason_code,gate_reason,generation_eligible,
                      status_override,error_override,provider_override,created_at,updated_at
                    )
                    SELECT ?,story_id,branch_id,source_commit_id,prompt_override,
-                     negative_prompt_override,gate_state,gate_reason,generation_eligible,
+                     negative_prompt_override,gate_state,gate_reason_code,gate_reason,generation_eligible,
                      status_override,error_override,provider_override,created_at,updated_at
                    FROM visual_asset_branch_overrides WHERE asset_id=? AND 1=1
                    ON CONFLICT(asset_id,branch_id) DO UPDATE SET
                      source_commit_id=excluded.source_commit_id,
                      prompt_override=excluded.prompt_override,
                      negative_prompt_override=excluded.negative_prompt_override,
-                     gate_state=excluded.gate_state,gate_reason=excluded.gate_reason,
+                     gate_state=excluded.gate_state,gate_reason_code=excluded.gate_reason_code,gate_reason=excluded.gate_reason,
                      generation_eligible=excluded.generation_eligible,
                      status_override=excluded.status_override,error_override=excluded.error_override,
                      provider_override=excluded.provider_override,updated_at=excluded.updated_at
@@ -820,7 +824,11 @@ pub async fn update_asset_prompt(
 ) -> anyhow::Result<VisualAssetsResponse> {
     ensure_asset_belongs_to_story(pool, story_id, asset_id).await?;
     if update.prompt.trim().is_empty() {
-        return Err(anyhow!("visual asset prompt must not be empty"));
+        return Err(PublicError::bad_request(
+            "visual_asset_prompt_required",
+            "visual asset prompt must not be empty",
+        )
+        .into());
     }
     let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await?;
     sqlx::query(
@@ -858,7 +866,11 @@ pub async fn select_asset_version(
     ensure_asset_visible_on(&mut tx, story_id, asset_id, &branch_id).await?;
     let versions = visible_version_ids_on(&mut tx, story_id, asset_id, &branch_id).await?;
     if !versions.contains(&version_id) {
-        return Err(anyhow!("visual asset version not found"));
+        return Err(PublicError::not_found(
+            "visual_asset_version_not_found",
+            "visual asset version not found",
+        )
+        .into());
     }
     let (mut history, mut cursor) =
         exact_selection_state_on(&mut tx, story_id, asset_id, &branch_id).await?;
@@ -899,14 +911,36 @@ pub async fn step_asset_selection(
     let (history, cursor) =
         exact_selection_state_on(&mut tx, story_id, asset_id, &branch_id).await?;
     if history.is_empty() {
-        return Err(anyhow!("visual selection history not found"));
+        return Err(PublicError::not_found(
+            "visual_selection_history_not_found",
+            "visual selection history not found",
+        )
+        .into());
     }
     let next = match direction {
         "undo" if cursor > 0 => cursor - 1,
         "redo" if cursor + 1 < history.len() as i64 => cursor + 1,
-        "undo" => return Err(anyhow!("no earlier visual selection")),
-        "redo" => return Err(anyhow!("no later visual selection")),
-        _ => return Err(anyhow!("visual selection action must be undo or redo")),
+        "undo" => {
+            return Err(PublicError::conflict(
+                "visual_selection_at_start",
+                "no earlier visual selection",
+            )
+            .into())
+        }
+        "redo" => {
+            return Err(PublicError::conflict(
+                "visual_selection_at_end",
+                "no later visual selection",
+            )
+            .into())
+        }
+        _ => {
+            return Err(PublicError::bad_request(
+                "invalid_visual_selection_action",
+                "visual selection action must be undo or redo",
+            )
+            .into())
+        }
     };
     write_selection_state_on(
         &mut tx,
@@ -1211,9 +1245,11 @@ pub async fn generate_visual_assets(
     visual_assets(&state.pool, story_id).await?;
     let config = image_generation_config(&state)?;
     if !image_generation_available(&config) {
-        return Err(anyhow!(
-            "image generation provider is not configured; configure imagegen-bridge, the legacy OpenClaw bridge, or an OpenAI-compatible base URL and API key"
-        ));
+        return Err(PublicError::bad_request(
+            "image_generation_not_configured",
+            "image generation provider is not configured; configure imagegen-bridge, the legacy OpenClaw bridge, or an OpenAI-compatible base URL and API key",
+        )
+        .into());
     }
 
     let targets = generation_targets(&state.pool, story_id, &request).await?;
@@ -1279,13 +1315,20 @@ pub async fn cancel_visual_generation_job(
     .await
     .with_context(|| format!("cancelling visual generation job {job_id}"))?;
 
-    let row = row.ok_or_else(|| anyhow!("active visual generation job not found"))?;
+    let row = row.ok_or_else(|| {
+        PublicError::not_found(
+            "visual_generation_job_not_found",
+            "active visual generation job not found",
+        )
+    })?;
     let asset_id = row_string(&row, "asset_id");
     let asset = list_assets(pool, story_id)
         .await?
         .into_iter()
         .find(|asset| asset.id == asset_id)
-        .ok_or_else(|| anyhow!("visual asset not found"))?;
+        .ok_or_else(|| {
+            PublicError::not_found("visual_asset_not_found", "visual asset not found")
+        })?;
     let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await?;
     set_branch_asset_status(
         pool,
@@ -2069,8 +2112,8 @@ async fn set_branch_asset_status_on(
     sqlx::query(
         r#"INSERT INTO visual_asset_branch_overrides
            (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,
-            gate_state,gate_reason,generation_eligible,status_override,error_override,provider_override)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            gate_state,gate_reason_code,gate_reason,generation_eligible,status_override,error_override,provider_override)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(asset_id,branch_id) DO UPDATE SET
              source_commit_id=excluded.source_commit_id,status_override=excluded.status_override,
              error_override=excluded.error_override,provider_override=excluded.provider_override,
@@ -2083,6 +2126,7 @@ async fn set_branch_asset_status_on(
     .bind(&asset.prompt)
     .bind(&asset.negative_prompt)
     .bind(&asset.gate_state)
+    .bind(&asset.gate_reason_code)
     .bind(&asset.gate_reason)
     .bind(if asset.generation_eligible { 1_i64 } else { 0_i64 })
     .bind(status)
@@ -3005,6 +3049,7 @@ async fn visual_specs(
             profile_revision_id: profile.id.clone(),
             canon_status: gate.canon_status,
             gate_state: gate.state,
+            gate_reason_code: gate.reason_code,
             gate_reason: gate.reason,
             generation_eligible: gate.generation_eligible,
             prompt,
@@ -3114,6 +3159,7 @@ async fn visual_specs(
             profile_revision_id: profile.id.clone(),
             canon_status: gate.canon_status,
             gate_state: gate.state,
+            gate_reason_code: gate.reason_code,
             gate_reason: gate.reason,
             generation_eligible: gate.generation_eligible && !visual_details.is_empty(),
             prompt,
@@ -3325,6 +3371,7 @@ fn known_map_specs(
             profile_revision_id: profile.id.clone(),
             canon_status: "canonical".to_string(),
             gate_state: if eligible { "known_map_ready" } else { "known_map_waiting" }.to_string(),
+            gate_reason_code: if eligible { "visual_gate.known_map_ready" } else { "visual_gate.known_map_waiting" }.to_string(),
             gate_reason: if eligible { "At least two direct player-known children are available in this map scope." } else { "Map art waits until at least two direct children are known in this scope." }.to_string(),
             generation_eligible: eligible,
             prompt: format!(
@@ -3353,6 +3400,7 @@ fn known_map_specs(
             profile_revision_id: profile.id.clone(),
             canon_status: "canonical".to_string(),
             gate_state: "known_map_symbol".to_string(),
+            gate_reason_code: "visual_gate.known_map_symbol".to_string(),
             gate_reason: "Player-known canonical location is eligible for a map symbol."
                 .to_string(),
             generation_eligible: true,
@@ -3418,6 +3466,7 @@ fn silhouette_prompt_details(discovery: &Value) -> String {
 struct VisualGate {
     state: String,
     canon_status: String,
+    reason_code: String,
     reason: String,
     generation_eligible: bool,
 }
@@ -3432,6 +3481,7 @@ fn portrait_gate(
         return VisualGate {
             state: "identity_contradiction".into(),
             canon_status: "contradicted".into(),
+            reason_code: "visual_gate.identity_contradiction".into(),
             reason:
                 "Conflicting canonical identity claims must be resolved before portrait generation."
                     .into(),
@@ -3445,6 +3495,7 @@ fn portrait_gate(
         return VisualGate {
             state: "insufficient_observation".into(),
             canon_status: "draft".into(),
+            reason_code: "visual_gate.manual_lock".into(),
             reason: "Portrait generation is manually locked until more appearance facts are established.".into(),
             generation_eligible: false,
         };
@@ -3470,6 +3521,7 @@ fn portrait_gate(
         return VisualGate {
             state: "insufficient_observation".into(),
             canon_status: "draft".into(),
+            reason_code: "visual_gate.rumor_identity".into(),
             reason: "Only a rumor-level identity is known; more visual anchors are required."
                 .into(),
             generation_eligible: false,
@@ -3479,6 +3531,7 @@ fn portrait_gate(
         return VisualGate {
             state: "form_changed".into(),
             canon_status: if readiness == "canonical" { "canonical" } else { "draft" }.into(),
+            reason_code: "visual_gate.form_changed".into(),
             reason: "The canonical form or established appearance changed; a new visual lineage is required.".into(),
             generation_eligible: visual_score >= 45,
         };
@@ -3489,6 +3542,7 @@ fn portrait_gate(
         return VisualGate {
             state: "silhouette_available".into(),
             canon_status: "silhouette".into(),
+            reason_code: "visual_gate.silhouette_available".into(),
             reason: "Only a silhouette is established; generation requires an explicit silhouette request.".into(),
             generation_eligible: false,
         };
@@ -3501,6 +3555,7 @@ fn portrait_gate(
         return VisualGate {
             state: "established_canonical".into(),
             canon_status: "canonical".into(),
+            reason_code: "visual_gate.established_canonical".into(),
             reason: "Established canonical appearance.".into(),
             generation_eligible: true,
         };
@@ -3513,6 +3568,7 @@ fn portrait_gate(
         return VisualGate {
             state: "identified_draft".into(),
             canon_status: "draft".into(),
+            reason_code: "visual_gate.identified_draft".into(),
             reason: "Identified appearance draft; later facts may create a new lineage.".into(),
             generation_eligible: true,
         };
@@ -3525,6 +3581,7 @@ fn portrait_gate(
         return VisualGate {
             state: "identified_draft".into(),
             canon_status: "draft".into(),
+            reason_code: "visual_gate.legacy_identified_draft".into(),
             reason: "Legacy concrete appearance treated as an identified draft.".into(),
             generation_eligible: true,
         };
@@ -3532,6 +3589,7 @@ fn portrait_gate(
     VisualGate {
         state: "insufficient_observation".into(),
         canon_status: "draft".into(),
+        reason_code: "visual_gate.insufficient_observation".into(),
         reason: "Not enough player-known appearance facts to generate a reliable portrait.".into(),
         generation_eligible: false,
     }
@@ -3582,6 +3640,7 @@ fn location_gate(
             "draft"
         }
         .into(),
+        reason_code: format!("visual_gate.{state}"),
         reason: reason.into(),
         generation_eligible: eligible,
     }
@@ -3736,12 +3795,12 @@ async fn ensure_asset_rows(
             r#"INSERT INTO visual_assets (
                   id,story_id,kind,subject,entity_id,canonical_entity_id,canonical_location_id,
                   map_scope_kind,map_scope_id,form_id,lineage_key,appearance_fingerprint,profile_revision_id,canon_status,
-                  gate_state,gate_reason,generation_eligible,prompt,negative_prompt,
+                  gate_state,gate_reason_code,gate_reason,generation_eligible,prompt,negative_prompt,
                   status,provider,source,turn,branch_id,source_commit_id
                )
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','codex-imagegen','auto-profile',?,?,?)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','codex-imagegen','auto-profile',?,?,?)
                ON CONFLICT(story_id,branch_id,lineage_key) DO UPDATE SET
-                  gate_state=excluded.gate_state,gate_reason=excluded.gate_reason,
+                  gate_state=excluded.gate_state,gate_reason_code=excluded.gate_reason_code,gate_reason=excluded.gate_reason,
                   generation_eligible=excluded.generation_eligible,turn=excluded.turn,
                   updated_at=CURRENT_TIMESTAMP"#,
         )
@@ -3760,6 +3819,7 @@ async fn ensure_asset_rows(
         .bind(&spec.profile_revision_id)
         .bind(&spec.canon_status)
         .bind(&spec.gate_state)
+        .bind(&spec.gate_reason_code)
         .bind(&spec.gate_reason)
         .bind(if spec.generation_eligible { 1_i64 } else { 0_i64 })
         .bind(&spec.prompt)
@@ -3813,13 +3873,13 @@ async fn upsert_asset_branch_override(
         .unwrap_or_else(|| spec.negative_prompt.clone());
     sqlx::query(
         r#"INSERT INTO visual_asset_branch_overrides
-           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,gate_state,gate_reason,generation_eligible)
-           VALUES (?,?,?,?,?,?,?,?,?)
+           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,gate_state,gate_reason_code,gate_reason,generation_eligible)
+           VALUES (?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(asset_id,branch_id) DO UPDATE SET
              source_commit_id=excluded.source_commit_id,
              prompt_override=CASE WHEN visual_asset_branch_overrides.prompt_override='' THEN excluded.prompt_override ELSE visual_asset_branch_overrides.prompt_override END,
              negative_prompt_override=CASE WHEN visual_asset_branch_overrides.negative_prompt_override='' THEN excluded.negative_prompt_override ELSE visual_asset_branch_overrides.negative_prompt_override END,
-             gate_state=excluded.gate_state,gate_reason=excluded.gate_reason,
+             gate_state=excluded.gate_state,gate_reason_code=excluded.gate_reason_code,gate_reason=excluded.gate_reason,
              generation_eligible=excluded.generation_eligible,updated_at=CURRENT_TIMESTAMP"#,
     )
     .bind(asset_id)
@@ -3829,6 +3889,7 @@ async fn upsert_asset_branch_override(
     .bind(prompt)
     .bind(negative_prompt)
     .bind(&spec.gate_state)
+    .bind(&spec.gate_reason_code)
     .bind(&spec.gate_reason)
     .bind(if spec.generation_eligible { 1_i64 } else { 0_i64 })
     .execute(pool)
@@ -3855,6 +3916,7 @@ async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Vi
                   v.canonical_location_id,v.map_scope_kind,v.map_scope_id,v.form_id,v.lineage_key,v.appearance_fingerprint,
                   COALESCE(v.profile_revision_id,'') AS profile_revision_id,v.canon_status,
                   COALESCE(NULLIF(o.gate_state,''),v.gate_state) AS gate_state,
+                  COALESCE(NULLIF(o.gate_reason_code,''),v.gate_reason_code) AS gate_reason_code,
                   COALESCE(NULLIF(o.gate_reason,''),v.gate_reason) AS gate_reason,
                   COALESCE(o.generation_eligible,v.generation_eligible) AS generation_eligible,
                   CASE WHEN o.asset_id IS NULL THEN v.prompt ELSE o.prompt_override END AS prompt,
@@ -3954,7 +4016,7 @@ async fn load_asset(
         r#"SELECT id, story_id, kind, subject, entity_id, canonical_entity_id,
                   canonical_location_id, map_scope_kind, map_scope_id, form_id, lineage_key, appearance_fingerprint,
                   COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
-                  gate_state, gate_reason, generation_eligible, prompt, negative_prompt,
+                  gate_state, gate_reason_code, gate_reason, generation_eligible, prompt, negative_prompt,
                   status, url, provider, source, error, turn, branch_id, source_commit_id,
                   CAST(updated_at AS TEXT) AS updated_at
            FROM visual_assets
@@ -3968,6 +4030,8 @@ async fn load_asset(
 }
 
 fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
+    let gate_state = row_string(&row, "gate_state");
+    let stored_reason_code = row_string(&row, "gate_reason_code");
     VisualAsset {
         id: row_string(&row, "id"),
         story_id: row_string(&row, "story_id"),
@@ -3983,7 +4047,12 @@ fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
         appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
         profile_revision_id: row_string(&row, "profile_revision_id"),
         canon_status: row_string(&row, "canon_status"),
-        gate_state: row_string(&row, "gate_state"),
+        gate_reason_code: if stored_reason_code.is_empty() {
+            legacy_visual_gate_reason_code(&gate_state).to_string()
+        } else {
+            stored_reason_code
+        },
+        gate_state,
         gate_reason: row_string(&row, "gate_reason"),
         generation_eligible: row
             .try_get::<i64, _>("generation_eligible")
@@ -4013,6 +4082,27 @@ fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
     }
 }
 
+fn legacy_visual_gate_reason_code(gate_state: &str) -> &'static str {
+    match gate_state {
+        "identity_contradiction" => "visual_gate.identity_contradiction",
+        "form_changed" => "visual_gate.form_changed",
+        "silhouette_available" => "visual_gate.silhouette_available",
+        "established_canonical" => "visual_gate.established_canonical",
+        "identified_draft" => "visual_gate.identified_draft",
+        "insufficient_observation" => "visual_gate.insufficient_observation",
+        "insufficient_canon" => "visual_gate.insufficient_canon",
+        "narrative_significance" => "visual_gate.narrative_significance",
+        "chapter_milestone" => "visual_gate.chapter_milestone",
+        "meaningful_stay" => "visual_gate.meaningful_stay",
+        "explicit_request_available" => "visual_gate.explicit_request_available",
+        "known_map_ready" => "visual_gate.known_map_ready",
+        "known_map_waiting" => "visual_gate.known_map_waiting",
+        "known_map_symbol" => "visual_gate.known_map_symbol",
+        "" => "",
+        _ => "visual_gate.unknown",
+    }
+}
+
 async fn ensure_asset_belongs_to_story(
     pool: &SqlitePool,
     story_id: &str,
@@ -4034,9 +4124,9 @@ async fn ensure_asset_belongs_to_story(
     .bind(asset_id)
     .fetch_optional(pool)
     .await?;
-    exists
-        .map(|_| ())
-        .ok_or_else(|| anyhow!("visual asset not found"))
+    exists.map(|_| ()).ok_or_else(|| {
+        PublicError::not_found("visual_asset_not_found", "visual asset not found").into()
+    })
 }
 
 async fn ensure_asset_visible_on(
@@ -4062,9 +4152,13 @@ async fn ensure_asset_visible_on(
     .bind(asset_id)
     .fetch_optional(&mut *conn)
     .await?;
-    exists
-        .map(|_| ())
-        .ok_or_else(|| anyhow!("visual asset not found on active branch"))
+    exists.map(|_| ()).ok_or_else(|| {
+        PublicError::not_found(
+            "visual_asset_not_found",
+            "visual asset not found on active branch",
+        )
+        .into()
+    })
 }
 
 fn asset_id(story_id: &str, kind: &str, subject: &str) -> String {
@@ -4173,6 +4267,62 @@ mod tests {
     use super::*;
     use serde_json::json;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[test]
+    fn legacy_visual_gate_codes_depend_only_on_stable_state() {
+        assert_eq!(
+            legacy_visual_gate_reason_code("insufficient_observation"),
+            "visual_gate.insufficient_observation"
+        );
+        assert_eq!(
+            legacy_visual_gate_reason_code("known_map_ready"),
+            "visual_gate.known_map_ready"
+        );
+        assert_eq!(
+            legacy_visual_gate_reason_code("future_state"),
+            "visual_gate.unknown"
+        );
+    }
+
+    #[tokio::test]
+    async fn stored_gate_reason_code_wins_and_legacy_rows_use_state_fallback() {
+        let pool = visual_job_pool().await;
+        let asset_id: String = sqlx::query_scalar(
+            "SELECT id FROM visual_assets WHERE story_id='story' ORDER BY id LIMIT 1",
+        )
+        .fetch_one(&pool)
+        .await
+        .expect("seeded visual asset");
+        sqlx::query(
+            "UPDATE visual_assets SET gate_state='insufficient_observation',gate_reason_code='',gate_reason='Mutable legacy English' WHERE id=?",
+        )
+        .bind(&asset_id)
+        .execute(&pool)
+        .await
+        .expect("mark legacy gate");
+
+        let legacy = load_asset(&pool, "story", &asset_id)
+            .await
+            .expect("load legacy asset")
+            .expect("legacy asset");
+        assert_eq!(
+            legacy.gate_reason_code,
+            "visual_gate.insufficient_observation"
+        );
+
+        sqlx::query(
+            "UPDATE visual_assets SET gate_reason_code='visual_gate.manual_lock',gate_reason='Testo italiano modificabile' WHERE id=?",
+        )
+        .bind(&asset_id)
+        .execute(&pool)
+        .await
+        .expect("store typed gate code");
+        let typed = load_asset(&pool, "story", &asset_id)
+            .await
+            .expect("load typed asset")
+            .expect("typed asset");
+        assert_eq!(typed.gate_reason_code, "visual_gate.manual_lock");
+    }
 
     fn test_config() -> ImageGenerationConfig {
         ImageGenerationConfig {

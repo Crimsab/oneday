@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue, MessageView, RecentCommand, StorySnapshot } from "./types";
+import i18n, { formatInterfaceDateTime } from "./i18n";
 
 export function asObject(value: JsonValue | undefined): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : {};
@@ -49,10 +50,10 @@ export function displayClock(snapshot: StorySnapshot | null) {
   const clock = asObject(snapshot?.world.world_time);
   const day = typeof clock.day === "number" ? clock.day : null;
   const minuteOfDay = typeof clock.minute_of_day === "number" ? clock.minute_of_day : null;
-  const cycle = minuteOfDay === null ? "Not tracked" : minuteOfDay < 360 ? "Night" : minuteOfDay < 720 ? "Morning" : minuteOfDay < 1080 ? "Afternoon" : "Evening";
+  const cycle = minuteOfDay === null ? i18n.t("common:notTracked") : minuteOfDay < 360 ? i18n.t("format:night") : minuteOfDay < 720 ? i18n.t("format:morning") : minuteOfDay < 1080 ? i18n.t("format:afternoon") : i18n.t("format:evening");
   return {
     day,
-	time: typeof clock.display_text === "string" && clock.display_text.trim() ? clock.display_text : "Not tracked",
+	time: typeof clock.display_text === "string" && clock.display_text.trim() ? clock.display_text : i18n.t("common:notTracked"),
     cycle,
   };
 }
@@ -60,11 +61,12 @@ export function displayClock(snapshot: StorySnapshot | null) {
 export function displayTimestamp(value: string | undefined, fallback = "-"): string {
   const text = (value ?? "").trim();
   if (!text) return fallback;
-  return text
+  const cleaned = text
     .replace(/\s+m=\+[0-9.]+s?$/i, "")
     .replace(/\s+m=\+[^\s]+$/i, "")
-    .replace(/^(\d{4}-\d{2}-\d{2})T/, "$1 ")
-    .replace(/Z$/, " UTC");
+  const parsed = /^\d{4}-\d{2}-\d{2}T/.test(cleaned) ? new Date(cleaned) : null;
+  if (parsed && !Number.isNaN(parsed.getTime())) return formatInterfaceDateTime(parsed);
+  return cleaned.replace(/^(\d{4}-\d{2}-\d{2})T/, "$1 ").replace(/Z$/, " UTC");
 }
 
 export function messageClock(message: MessageView): string {
@@ -72,8 +74,8 @@ export function messageClock(message: MessageView): string {
 }
 
 export function deriveCondition(snapshot: StorySnapshot | null): string {
-	if (!snapshot) return "Not tracked";
-	return findString(snapshot.character.fields, ["condition", "status"]) ?? "Not tracked";
+	if (!snapshot) return i18n.t("common:notTracked");
+	return findString(snapshot.character.fields, ["condition", "status"]) ?? i18n.t("common:notTracked");
 }
 
 export function numericStat(value: JsonValue | undefined): number | null {
@@ -108,7 +110,7 @@ export function findString(value: JsonValue | undefined, keys: string[]): string
 
 export function weatherLabel(snapshot: StorySnapshot | null): string {
 	const weather = asObject(snapshot?.world.weather);
-	return typeof weather.label === "string" && weather.label.trim() ? weather.label : "Not tracked";
+	return typeof weather.label === "string" && weather.label.trim() ? weather.label : i18n.t("common:notTracked");
 }
 
 export function recentFromMessages(messages: MessageView[]): RecentCommand[] {
@@ -132,7 +134,7 @@ export function entryLabel(value: JsonValue, index: number): string {
       if (typeof candidate === "string" && candidate.trim()) return candidate;
     }
   }
-  return `Item ${index + 1}`;
+  return i18n.t("common:item", { number: index + 1 });
 }
 
 export function fieldRows(value: JsonValue | undefined): Array<[string, string]> {
@@ -142,7 +144,7 @@ export function fieldRows(value: JsonValue | undefined): Array<[string, string]>
   if (value && typeof value === "object") {
     return Object.entries(value as JsonObject).map(([key, child]) => [titleCase(key), valueToText(child)]);
   }
-  if (value !== undefined && value !== null) return [["Value", valueToText(value)]];
+  if (value !== undefined && value !== null) return [[i18n.t("format_extra:fields.value"), valueToText(value)]];
   return [];
 }
 
@@ -160,7 +162,7 @@ function arrayToText(value: JsonValue[], fallback: string): string {
     }
     return valueToText(item, fallback);
   });
-  const suffix = value.length > labels.length ? `, +${value.length - labels.length} more` : "";
+  const suffix = value.length > labels.length ? `, ${i18n.t("common:more", { count: value.length - labels.length })}` : "";
   return `${labels.join(", ")}${suffix}`;
 }
 
@@ -202,11 +204,11 @@ function objectSummary(value: JsonObject, skipKeys: string[] = []): string {
     if (child === undefined || child === null || child === "") continue;
     if (typeof child === "object") {
       if (Array.isArray(child) && child.length > 0 && child.every((item) => item === null || ["string", "number", "boolean"].includes(typeof item))) {
-        pieces.push(`${titleCase(key)}: ${arrayToText(child, "-")}`);
+        pieces.push(`${localizedFieldLabel(key)}: ${arrayToText(child, "-")}`);
       }
       continue;
     }
-    pieces.push(`${titleCase(key)}: ${String(child)}`);
+    pieces.push(`${localizedFieldLabel(key)}: ${String(child)}`);
     if (pieces.length >= 4) break;
   }
   if (pieces.length > 0) return pieces.join("; ");
@@ -215,7 +217,7 @@ function objectSummary(value: JsonObject, skipKeys: string[] = []): string {
     if (skip.has(key.toLowerCase())) continue;
     if (child === undefined || child === null || child === "") continue;
     if (typeof child === "object") continue;
-    pieces.push(`${titleCase(key)}: ${String(child)}`);
+    pieces.push(`${localizedFieldLabel(key)}: ${String(child)}`);
     if (pieces.length >= 4) break;
   }
   return pieces.join("; ");
@@ -243,17 +245,23 @@ function readableJSONValue(value: JsonValue): string {
   const location = firstReadableString(object, ["location", "place"]);
   const mood = firstReadableString(object, ["mood", "tone"]);
   if (location || mood) {
-    lines.push([location ? `Location: ${location}` : "", mood ? `Mood: ${mood}` : ""].filter(Boolean).join(" - "));
+    lines.push([location ? `${i18n.t("format_extra:fields.location")}: ${location}` : "", mood ? `${i18n.t("format_extra:fields.mood")}: ${mood}` : ""].filter(Boolean).join(" - "));
   }
 
   const choices = readableChoices(object.choices ?? output.choices);
-  if (choices.length > 0) lines.push(`Choices:\n${choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`);
+  if (choices.length > 0) lines.push(`${i18n.t("format_extra:choices")}:\n${choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n")}`);
 
   if (lines.length > 0) return lines.join("\n\n");
   return fieldRows(object)
     .slice(0, 8)
     .map(([key, child]) => `- ${key}: ${child}`)
     .join("\n");
+}
+
+function localizedFieldLabel(key: string): string {
+  const normalized = key.toLowerCase();
+  const known = new Set(["name", "title", "label", "status", "type", "kind", "summary", "description", "detail", "details", "note", "value", "amount", "current", "max", "progress", "outcome", "risk", "intent", "location", "mood"]);
+  return known.has(normalized) ? i18n.t(`format_extra:fields.${normalized}`) : titleCase(key);
 }
 
 function firstReadableString(object: JsonObject, keys: string[]): string {

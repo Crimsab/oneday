@@ -1,13 +1,13 @@
 package views
 
 import (
-	"fmt"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -150,6 +150,7 @@ func (m *NarrativeModel) launchChallenge(spec *engine.ChallengeSpec) tea.Cmd {
 		m.narrator.DB(),
 		m.narrator.Story().ID,
 		m.width, m.height,
+		m.loc,
 	)
 	m.challengeView = cv
 	m.inChallenge = true
@@ -162,32 +163,32 @@ func (m *NarrativeModel) beginPendingChallenge() tea.Cmd {
 	return m.launchChallenge(spec)
 }
 
-func challengeLabel(spec *engine.ChallengeSpec) string {
+func challengeLabel(spec *engine.ChallengeSpec, loc appi18n.Localizer) string {
 	if spec == nil {
-		return "Challenge"
+		return loc.T("challenge.label")
 	}
 	switch spec.Type {
 	case engine.ChallengeDiceRoll:
-		return "Stat Roll"
+		return loc.T("challenge.stat_roll")
 	case engine.ChallengeMiniGame:
 		if spec.MiniGame != "" {
-			return "Mini-game: " + strings.ReplaceAll(spec.MiniGame, "_", " ")
+			return loc.T("challenge.minigame_named", strings.ReplaceAll(spec.MiniGame, "_", " "))
 		}
-		return "Mini-game"
+		return loc.T("challenge.minigame")
 	case engine.ChallengeStatCheck:
-		return "Stat Check"
+		return loc.T("challenge.stat_check")
 	case engine.ChallengeItemCheck:
-		return "Item Check"
+		return loc.T("challenge.item_check")
 	case engine.ChallengeSkillCheck:
-		return "Skill Check"
+		return loc.T("challenge.skill_check")
 	case engine.ChallengeRelCheck:
-		return "Relationship Check"
+		return loc.T("challenge.relationship_check")
 	default:
-		return "Challenge"
+		return loc.T("challenge.label")
 	}
 }
 
-func challengePreludeDescription(spec *engine.ChallengeSpec) string {
+func challengePreludeDescription(spec *engine.ChallengeSpec, loc appi18n.Localizer) string {
 	if spec == nil {
 		return ""
 	}
@@ -196,14 +197,14 @@ func challengePreludeDescription(spec *engine.ChallengeSpec) string {
 	}
 	switch spec.Type {
 	case engine.ChallengeDiceRoll:
-		return fmt.Sprintf("Roll against difficulty %d. Modifiers and the engine will resolve the outcome fairly.", spec.Difficulty)
+		return loc.T("challenge.prelude_roll", spec.Difficulty)
 	case engine.ChallengeMiniGame:
 		if spec.MiniGame == string(engine.MiniGameRiddle) && strings.TrimSpace(spec.Riddle) != "" {
-			return "A riddle is about to begin. Read carefully before answering."
+			return loc.T("challenge.prelude_riddle")
 		}
-		return "A short skill mini-game is about to start. Stay ready."
+		return loc.T("challenge.prelude_minigame")
 	default:
-		return "The game engine is about to resolve a challenge."
+		return loc.T("challenge.prelude_default")
 	}
 }
 
@@ -214,25 +215,25 @@ func (m NarrativeModel) challengePreludeView() string {
 	}
 
 	lines := []string{
-		theme.Title.Render(challengeLabel(spec)),
+		theme.Title.Render(challengeLabel(spec, m.loc)),
 		"",
-		challengePreludeDescription(spec),
+		challengePreludeDescription(spec, m.loc),
 	}
 	if spec.Stat != "" {
-		lines = append(lines, "", fmt.Sprintf("Stat: %s", spec.Stat))
+		lines = append(lines, "", m.loc.T("challenge.field_stat", spec.Stat))
 	}
 	if spec.Skill != "" {
-		lines = append(lines, "", fmt.Sprintf("Skill: %s", spec.Skill))
+		lines = append(lines, "", m.loc.T("challenge.field_skill", spec.Skill))
 	}
 	if spec.NPCName != "" {
-		lines = append(lines, "", fmt.Sprintf("NPC: %s", spec.NPCName))
+		lines = append(lines, "", m.loc.T("challenge.field_npc", spec.NPCName))
 	}
 	if spec.Difficulty > 0 {
-		lines = append(lines, fmt.Sprintf("Difficulty: %d", spec.Difficulty))
+		lines = append(lines, m.loc.T("challenge.field_difficulty", spec.Difficulty))
 	}
 	lines = append(lines, "")
-	lines = append(lines, theme.MutedText.Render("The result will continue the scene automatically."))
-	lines = append(lines, theme.MutedText.Render("Press Enter or Space to begin"))
+	lines = append(lines, theme.MutedText.Render(m.loc.T("challenge.auto_continue")))
+	lines = append(lines, theme.MutedText.Render(m.loc.T("challenge.begin")))
 
 	box := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).

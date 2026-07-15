@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wrap"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -22,11 +23,12 @@ type OverlayModel struct {
 	height  int
 	scroll  int
 	lines   []string // content split into lines
+	loc     appi18n.Localizer
 }
 
 // NewOverlay creates a new OverlayModel.
-func NewOverlay() OverlayModel {
-	return OverlayModel{}
+func NewOverlay(localizers ...appi18n.Localizer) OverlayModel {
+	return OverlayModel{loc: componentLocalizer(localizers)}
 }
 
 // Show makes the overlay visible with given title and content.
@@ -157,9 +159,9 @@ func (m OverlayModel) View() string {
 	contentBlock := strings.Join(contentLines, "\n")
 
 	// Footer hint.
-	hint := theme.MutedText.Render("Press Esc, Enter or Space to close")
+	hint := theme.MutedText.Render(m.loc.T("overlay.close"))
 	if m.maxScroll() > 0 {
-		hint = theme.MutedText.Render("↑/↓ scroll · Esc/Enter close")
+		hint = theme.MutedText.Render(m.loc.T("overlay.scroll_close"))
 	}
 
 	// Build the box content.

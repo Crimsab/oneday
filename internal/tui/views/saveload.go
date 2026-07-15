@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -31,13 +32,15 @@ type SaveLoadModel struct {
 	width         int
 	height        int
 	confirmDelete bool
+	loc           appi18n.Localizer
 }
 
 // NewSaveLoadModel creates the save picker view.
-func NewSaveLoadModel(saves []storage.SaveSnapshot) SaveLoadModel {
+func NewSaveLoadModel(saves []storage.SaveSnapshot, localizers ...appi18n.Localizer) SaveLoadModel {
 	return SaveLoadModel{
 		saves:    saves,
 		selected: 0,
+		loc:      viewLocalizer(localizers),
 	}
 }
 
@@ -102,13 +105,13 @@ func (m SaveLoadModel) Update(msg tea.Msg) (SaveLoadModel, tea.Cmd) {
 func (m SaveLoadModel) View() string {
 	var sb strings.Builder
 
-	sb.WriteString(theme.Title.Render("Load Save"))
+	sb.WriteString(theme.Title.Render(m.loc.T("saves.title")))
 	sb.WriteString("\n\n")
 
 	if len(m.saves) == 0 {
-		sb.WriteString(theme.MutedText.Render("  No saves found."))
+		sb.WriteString(theme.MutedText.Render("  " + m.loc.T("saves.none")))
 		sb.WriteString("\n\n")
-		sb.WriteString(theme.MutedText.Render("  esc  back to game"))
+		sb.WriteString(theme.MutedText.Render("  " + m.loc.T("saves.back")))
 		content := sb.String()
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
@@ -122,10 +125,10 @@ func (m SaveLoadModel) View() string {
 		}
 
 		// Format save info: name, turn, location, time
-		lastPlayed := formatRelativeTime(save.CreatedAt)
+		lastPlayed := formatRelativeTimeLocalized(save.CreatedAt, m.loc)
 		location := save.Location
 		if location == "" {
-			location = "Unknown"
+			location = m.loc.T("common.unknown_label")
 		}
 		tag := ""
 		if meta := save.Metadata(); meta != nil {
@@ -136,9 +139,10 @@ func (m SaveLoadModel) View() string {
 				tag = "  [" + meta.Kind + "]"
 			}
 		}
-		line := fmt.Sprintf("%s%-24s  Turn %-4d  %-18s  %s",
+		line := fmt.Sprintf("%s%-24s  %s %-4d  %-18s  %s",
 			cursor,
 			truncate(save.Name, 22),
+			m.loc.T("saves.turn"),
 			save.Turn,
 			truncate(location, 16),
 			lastPlayed,
@@ -152,9 +156,9 @@ func (m SaveLoadModel) View() string {
 
 	sb.WriteString("\n")
 	if m.confirmDelete && len(m.saves) > 0 {
-		sb.WriteString(theme.DangerText.Render("  Delete this save? Enter/Space confirm · Esc cancel"))
+		sb.WriteString(theme.DangerText.Render("  " + m.loc.T("saves.delete_confirm")))
 	} else {
-		sb.WriteString(theme.MutedText.Render("  ↑↓ navigate · enter/space load · x delete · esc cancel"))
+		sb.WriteString(theme.MutedText.Render("  " + m.loc.T("saves.help")))
 	}
 
 	content := sb.String()

@@ -12,9 +12,16 @@ import (
 type Config struct {
 	ConfigVersion int        `yaml:"config_version"`
 	DataDir       string     `yaml:"data_dir"`
+	Interface     UIConfig   `yaml:"interface"`
 	AI            AIConfig   `yaml:"ai"`
 	RAG           RAGConfig  `yaml:"rag"`
 	Game          GameConfig `yaml:"game"`
+}
+
+// UIConfig contains presentation-only preferences. Locale never controls the
+// language of stored stories, generated content, or speech synthesis.
+type UIConfig struct {
+	Locale string `yaml:"locale,omitempty"`
 }
 
 // AIConfig holds all AI provider settings.
@@ -177,7 +184,7 @@ var validProviders = map[string]bool{
 // is the only source of provider-specific model choices.
 func Default() Config {
 	return Config{
-		ConfigVersion: 2,
+		ConfigVersion: 3,
 		DataDir:       "./oneday_data",
 		AI: AIConfig{
 			ProviderPriority: []string{"litellm", "openrouter", "codex", "claude-code"},
@@ -306,7 +313,7 @@ func (c *Config) Migrate() {
 	if strings.TrimSpace(c.AI.Generation.UtilityModel) == "" {
 		c.AI.Generation.UtilityModel = c.firstEnabledProviderModel()
 	}
-	c.ConfigVersion = 2
+	c.ConfigVersion = 3
 }
 
 // Marshal serializes config for local setup files.
@@ -316,6 +323,12 @@ func Marshal(cfg Config) ([]byte, error) {
 
 // Validate checks that the config is internally consistent.
 func (c *Config) Validate() error {
+	switch strings.ToLower(strings.TrimSpace(c.Interface.Locale)) {
+	case "", "en", "it":
+		c.Interface.Locale = strings.ToLower(strings.TrimSpace(c.Interface.Locale))
+	default:
+		return fmt.Errorf("interface.locale must be en, it, or empty for automatic selection")
+	}
 	if len(c.AI.ProviderPriority) == 0 {
 		return fmt.Errorf("ai.provider_priority must have at least one provider")
 	}

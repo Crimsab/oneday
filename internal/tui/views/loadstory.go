@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -40,13 +41,15 @@ type LoadStoryModel struct {
 	errMsg        string
 	showArchived  bool
 	confirmAction string
+	loc           appi18n.Localizer
 }
 
 // NewLoadStoryModel creates the load story view with the given list of stories.
-func NewLoadStoryModel(stories []storage.Story) LoadStoryModel {
+func NewLoadStoryModel(stories []storage.Story, localizers ...appi18n.Localizer) LoadStoryModel {
 	return LoadStoryModel{
 		stories:  stories,
 		selected: 0,
+		loc:      viewLocalizer(localizers),
 	}
 }
 
@@ -128,9 +131,9 @@ func (m LoadStoryModel) Update(msg tea.Msg) (LoadStoryModel, tea.Cmd) {
 func (m LoadStoryModel) View() string {
 	var sb strings.Builder
 
-	titleText := "Load Story"
+	titleText := m.loc.T("library.title")
 	if m.showArchived {
-		titleText = "Archived Stories"
+		titleText = m.loc.T("library.archived")
 	}
 	title := theme.Title.Render(titleText)
 	sb.WriteString(title)
@@ -139,12 +142,12 @@ func (m LoadStoryModel) View() string {
 	visible := m.visibleStories()
 	if len(visible) == 0 {
 		if m.showArchived {
-			sb.WriteString(theme.MutedText.Render("  No archived stories."))
+			sb.WriteString(theme.MutedText.Render("  " + m.loc.T("library.none_archived")))
 		} else {
-			sb.WriteString(theme.MutedText.Render("  No stories found. Create a new one!"))
+			sb.WriteString(theme.MutedText.Render("  " + m.loc.T("library.none")))
 		}
 		sb.WriteString("\n\n")
-		sb.WriteString(theme.MutedText.Render("  tab toggle archived · esc back to menu"))
+		sb.WriteString(theme.MutedText.Render("  " + m.loc.T("library.empty_help")))
 		content := sb.String()
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
 	}
@@ -158,7 +161,7 @@ func (m LoadStoryModel) View() string {
 		}
 
 		// Format last played date
-		lastPlayed := formatRelativeTime(story.UpdatedAt)
+		lastPlayed := formatRelativeTimeLocalized(story.UpdatedAt, m.loc)
 
 		// Use dedicated Genre column; fall back to extractGenre for pre-V6 stories.
 		genre := story.Genre
@@ -175,21 +178,21 @@ func (m LoadStoryModel) View() string {
 
 	sb.WriteString("\n")
 	if m.errMsg != "" {
-		sb.WriteString(theme.DangerText.Render("  Error: " + m.errMsg))
+		sb.WriteString(theme.DangerText.Render("  " + m.loc.T("library.error", m.errMsg)))
 		sb.WriteString("\n\n")
 	}
 	if len(visible) > 0 && m.confirmAction != "" {
-		actionWord := "archive"
+		confirmKey := "library.archive_confirm"
 		if visible[m.selected].IsArchived {
-			actionWord = "unarchive"
+			confirmKey = "library.unarchive_confirm"
 		}
 		if m.confirmAction == "delete" {
-			sb.WriteString(theme.DangerText.Render("  Delete this story? Enter/Space confirm · Esc cancel"))
+			sb.WriteString(theme.DangerText.Render("  " + m.loc.T("library.delete_confirm")))
 		} else {
-			sb.WriteString(theme.SelectedItem.Render(fmt.Sprintf("  %s this story? Enter/Space confirm · Esc cancel", strings.ToUpper(actionWord[:1])+actionWord[1:])))
+			sb.WriteString(theme.SelectedItem.Render("  " + m.loc.T(confirmKey)))
 		}
 	} else {
-		sb.WriteString(theme.MutedText.Render("  ↑↓ navigate · enter/space load · a archive/unarchive · x delete · tab archived · esc back"))
+		sb.WriteString(theme.MutedText.Render("  " + m.loc.T("library.help")))
 	}
 
 	content := sb.String()
@@ -237,34 +240,11 @@ func (m LoadStoryModel) visibleStories() []storage.Story {
 
 // formatRelativeTime returns a human-friendly relative time string.
 func formatRelativeTime(t time.Time) string {
-	if t.IsZero() {
-		return "never played"
-	}
-	since := time.Since(t)
-	switch {
-	case since < time.Minute:
-		return "just now"
-	case since < time.Hour:
-		mins := int(since.Minutes())
-		if mins == 1 {
-			return "1 minute ago"
-		}
-		return fmt.Sprintf("%d minutes ago", mins)
-	case since < 24*time.Hour:
-		hrs := int(since.Hours())
-		if hrs == 1 {
-			return "1 hour ago"
-		}
-		return fmt.Sprintf("%d hours ago", hrs)
-	case since < 7*24*time.Hour:
-		days := int(since.Hours() / 24)
-		if days == 1 {
-			return "yesterday"
-		}
-		return fmt.Sprintf("%d days ago", days)
-	default:
-		return t.Format("Jan 2, 2006")
-	}
+	return formatRelativeTimeLocalized(t, appi18n.New(appi18n.English))
+}
+
+func formatRelativeTimeLocalized(t time.Time, loc appi18n.Localizer) string {
+	return loc.RelativeTime(t, time.Now())
 }
 
 // extractGenre tries to pull the genre from a story's setting JSON.

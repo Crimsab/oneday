@@ -1,6 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface SelectOption {
   value: string;
@@ -18,6 +19,7 @@ interface CustomSelectProps {
 }
 
 export function CustomSelect({ value, options, onChange, disabled = false, ariaLabel, className = "" }: CustomSelectProps) {
+  const { t } = useTranslation("controls");
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -25,6 +27,7 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)));
   const [position, setPosition] = useState({ top: 0, left: 0, width: 180 });
   const selected = options.find((option) => option.value === value) ?? options[0];
+  const accessibleLabel = ariaLabel || t("select.label");
 
   const placeMenu = () => {
     const trigger = triggerRef.current;
@@ -95,7 +98,7 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
         type="button"
         className="custom-select-trigger"
         role="combobox"
-        aria-label={ariaLabel}
+        aria-label={accessibleLabel}
         aria-controls={`${id}-options`}
         aria-expanded={open}
         aria-haspopup="listbox"
@@ -124,7 +127,7 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
           id={`${id}-options`}
           className="custom-select-menu"
           role="listbox"
-          aria-label={ariaLabel}
+          aria-label={accessibleLabel}
           style={{ top: position.top, left: position.left, width: position.width }}
         >
           {options.map((option, index) => (

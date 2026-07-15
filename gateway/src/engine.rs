@@ -194,10 +194,12 @@ pub struct MiniGameInputEnvelope {
 
 pub async fn command_descriptors(
     state: Arc<AppState>,
+    locale: &str,
 ) -> anyhow::Result<protocol::CommandDescriptorsResponse> {
     let output = run_gateway_command(
         &state,
         "gateway-command-descriptors",
+        &[locale],
         None,
         Duration::from_secs(30),
     )
@@ -233,6 +235,7 @@ pub async fn model_settings(
     let output = run_gateway_command(
         &state,
         "gateway-model-settings",
+        &[],
         None,
         Duration::from_secs(30),
     )
@@ -611,6 +614,13 @@ async fn call_gateway_turn_stream(
                     &event_json,
                 ));
                 let is_error = event_type == "error";
+                let error_code = event
+                    .payload
+                    .as_ref()
+                    .and_then(|payload| payload.get("code"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("internal_error")
+                    .to_string();
                 let error_message = event
                     .payload
                     .as_ref()
@@ -622,7 +632,7 @@ async fn call_gateway_turn_stream(
                     events.push(event);
                 }
                 if is_error {
-                    return Err(anyhow!(error_message));
+                    return Err(bridge_error(error_code, error_message));
                 }
             }
             if parsed.done.unwrap_or(false) {
@@ -912,7 +922,7 @@ where
 {
     let input = serde_json::to_vec(req).with_context(|| format!("encoding {command} request"))?;
     let output =
-        run_gateway_command(&state, command, Some(&input), Duration::from_secs(360)).await?;
+        run_gateway_command(&state, command, &[], Some(&input), Duration::from_secs(360)).await?;
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     let parsed = match serde_json::from_slice(&output.stdout) {
         Ok(parsed) => parsed,
@@ -950,10 +960,12 @@ struct GatewayProcessOutput {
 async fn run_gateway_command(
     state: &AppState,
     command: &str,
+    args: &[&str],
     input: Option<&[u8]>,
     timeout: Duration,
 ) -> anyhow::Result<GatewayProcessOutput> {
     let mut child = gateway_command(state, command)
+        .args(args)
         .spawn()
         .with_context(|| format!("starting {} {command}", state.paths.oneday_bin.display()))?;
     let mut stdin = child
@@ -1147,7 +1159,8 @@ mod tests {
         let state = test_state(script).await;
         let output = crate::HTTP_REQUEST_ID
             .scope("request-test-123".to_string(), async {
-                run_gateway_command(&state, "request-id-test", None, Duration::from_secs(2)).await
+                run_gateway_command(&state, "request-id-test", &[], None, Duration::from_secs(2))
+                    .await
             })
             .await
             .expect("run gateway command");
@@ -1199,6 +1212,7 @@ mod tests {
         let err = run_gateway_command(
             &state,
             "timeout-test",
+            &[],
             Some(&oversized_input),
             Duration::from_millis(200),
         )
@@ -1296,16 +1310,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn command_descriptor_bridge_preserves_typed_contract() {
-        let script = fake_oneday_input_script(&[
-            r#"{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"Save","description":"Save the story","group":"story","parity":"full","behavior":"immediate"}]}"#,
-        ]);
+    async fn command_descriptor_bridge_passes_locale_and_preserves_typed_contract() {
+        let root = std::env::temp_dir().join(format!("oneday-descriptor-test-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("create descriptor test root");
+        let script = root.join("oneday-fake");
+        fs::write(
+            &script,
+            r###"#!/usr/bin/env bash
+printf '{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"%s","description":"localized description","group":"story","parity":"full","behavior":"immediate"}]}' "$2"
+"###,
+        )
+        .expect("write descriptor test script");
+        let mut permissions = fs::metadata(&script)
+            .expect("descriptor script metadata")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).expect("chmod descriptor script");
         let state = test_state(script).await;
-        let response = command_descriptors(state)
+        let response = command_descriptors(state, "it")
             .await
             .expect("command descriptor bridge");
         assert_eq!(response.commands[0].id, "save");
         assert_eq!(response.commands[0].aliases, vec!["s"]);
+        assert_eq!(response.commands[0].title, "it");
+        let _ = fs::remove_dir_all(root);
     }
 
     #[tokio::test]
@@ -1502,7 +1530,7 @@ mod tests {
     #[tokio::test]
     async fn call_gateway_turn_stream_error_event_returns_error() {
         let script = fake_oneday_input_script(&[
-            r#"{"sequence":1,"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"error","payload":{"message":"provider failed"},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
+            r#"{"sequence":1,"event":{"id":"idem:live:1","story_id":"story-1","session_id":"session-1","turn":1,"type":"error","payload":{"code":"internal_error","message":"An internal gateway error occurred."},"created_at":"2026-01-01T00:00:00Z"},"phase":"live"}"#,
         ]);
         let state = test_state(script).await;
         let mut rx = state.turn_events.subscribe();
@@ -1519,7 +1547,11 @@ mod tests {
         .await
         .expect_err("error event should fail");
 
-        assert!(err.to_string().contains("provider failed"), "{err}");
+        let bridge = err
+            .downcast_ref::<BridgeError>()
+            .expect("stream error should retain its stable code");
+        assert_eq!(bridge.code, "internal_error");
+        assert_eq!(bridge.message, "An internal gateway error occurred.");
         let event = rx.recv().await.expect("broadcast error event");
         assert_eq!(event.event_type.as_deref(), Some("error"));
     }

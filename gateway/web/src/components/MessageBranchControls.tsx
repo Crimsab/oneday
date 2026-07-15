@@ -1,4 +1,5 @@
 import { ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { messageAlternativesForCommit } from "../messageAlternatives";
 import type { MessageView, TimelineResponse } from "../types";
 
@@ -21,6 +22,7 @@ export function MessageBranchControls({
   onCheckout,
   onRestoreDecision,
 }: MessageBranchControlsProps) {
+  const { t } = useTranslation(["branches", "flow"]);
   if (!timeline || !message.source_commit_id) return null;
 
   const commit = timeline.commits.find((item) => item.id === message.source_commit_id);
@@ -40,25 +42,25 @@ export function MessageBranchControls({
   if (!(showRestore && restoreFrom) && !showBranchSwitcher) return null;
 
   return (
-    <nav className="message-branch-controls" aria-label={`Story alternatives for turn ${message.turn}`}>
+    <nav className="message-branch-controls" aria-label={t("branches:forTurn", { turn: message.turn })}>
       {showRestore && restoreFrom && (
         <button
           type="button"
           className="restore-decision-button"
           disabled={busy}
           onClick={() => void onRestoreDecision(restoreFrom, message.turn)}
-          title={`Create a new branch from before turn ${message.turn}`}
+          title={t("flow:createBranch", { turn: message.turn })}
         >
           <RotateCcw size={13} aria-hidden="true" />
-          Try another choice
+          {t("flow:tryAnother")}
         </button>
       )}
       {showBranchSwitcher && (
-        <div className="message-branch-switcher" aria-label="Available story alternatives">
+        <div className="message-branch-switcher" aria-label={t("branches:alternatives")}>
           <button
             type="button"
-            aria-label="Previous alternative"
-            title={previous ? `Switch to ${previous.name}` : "No previous branch"}
+            aria-label={t("branches:previous")}
+            title={previous ? `${t("branches:switch")} ${previous.name}` : t("branches:noPrevious")}
             disabled={busy || !previous}
             onClick={() => previous && void onCheckout(previous.id)}
           >
@@ -69,8 +71,8 @@ export function MessageBranchControls({
           </span>
           <button
             type="button"
-            aria-label="Next alternative"
-            title={next ? `Switch to ${next.name}` : "No next branch"}
+            aria-label={t("branches:next")}
+            title={next ? `${t("branches:switch")} ${next.name}` : t("branches:noNext")}
             disabled={busy || !next}
             onClick={() => next && void onCheckout(next.id)}
           >

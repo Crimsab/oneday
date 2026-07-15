@@ -18,6 +18,7 @@ import {
   weatherLabel,
 } from "./format";
 import type { JsonValue, MessageView, StorySnapshot } from "./types";
+import { setInterfaceLocale } from "./i18n";
 
 describe("basic JSON helpers", () => {
   it("normalizes objects, arrays, and printable values", () => {
@@ -108,6 +109,19 @@ describe("structured text display", () => {
   it("supports fenced JSON while leaving normal prose unchanged", () => {
     expect(readableStructuredText("```json\n{\"summary\":\"A short note.\"}\n```")).toBe("A short note.");
     expect(readableStructuredText("look around")).toBe("look around");
+  });
+});
+
+describe("localized presentation fallbacks", () => {
+  it("translates fallback and structured field labels without changing canonical values", async () => {
+    await setInterfaceLocale("it");
+    expect(deriveCondition(null)).toBe("Non monitorato");
+    expect(weatherLabel(null)).toBe("Non monitorato");
+    expect(entryLabel("plain", 1)).toBe("Elemento 2");
+    expect(fieldRows("raw")).toEqual([["Valore", "raw"]]);
+    expect(valueToText([{ name: "Chiave", kind: "quest" }])).toBe("Chiave (Categoria: quest)");
+    expect(readableStructuredText('{"location":"Porto","mood":"Teso","choices":["Vai"]}')).toContain("Luogo: Porto - Atmosfera: Teso");
+    await setInterfaceLocale("en");
   });
 });
 

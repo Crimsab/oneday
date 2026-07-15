@@ -1,0 +1,1 @@
+export const commands = { play: "Play", talk: "Talk", state: "State", save: "Saves", meta: "Meta", system: "System", debug: "Debug", recent: "Recent", unknown: "Unknown command /{{name}}. Type /help to see available commands.", disabled: "/{{name}} is not available in the current story state." } as const;

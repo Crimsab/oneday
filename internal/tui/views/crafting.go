@@ -2,7 +2,6 @@ package views
 
 import (
 	"context"
-	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -11,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/crimsab/oneday/internal/engine"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -55,12 +55,14 @@ type CraftingModel struct {
 	inputHistory       []string
 	inputHistoryCursor int
 	inputHistoryDraft  string
+	loc                appi18n.Localizer
 }
 
 // NewCraftingModel creates a crafting view.
-func NewCraftingModel(crafting *engine.CraftingEngine, narrator *engine.Narrator, width, height int) CraftingModel {
+func NewCraftingModel(crafting *engine.CraftingEngine, narrator *engine.Narrator, width, height int, localizers ...appi18n.Localizer) CraftingModel {
+	loc := viewLocalizer(localizers)
 	// Create textarea for free input.
-	input := newGameTextarea("Descrivi cosa vuoi creare...", storyInputHeight)
+	input := newGameTextarea(loc.T("craft.placeholder"), storyInputHeight)
 	chatWidth := craftingChatWidth(width)
 	input.SetWidth(chatWidth - 4)
 	input.Focus()
@@ -83,6 +85,7 @@ func NewCraftingModel(crafting *engine.CraftingEngine, narrator *engine.Narrator
 	m := CraftingModel{
 		crafting:           crafting,
 		narrator:           narrator,
+		loc:                loc,
 		width:              width,
 		height:             height,
 		chatView:           chatVP,
@@ -98,7 +101,7 @@ func NewCraftingModel(crafting *engine.CraftingEngine, narrator *engine.Narrator
 	m.inventory = m.buildInventorySidebar()
 
 	// Add welcome message to history.
-	welcome := "Benvenuto alla stazione di crafting. Descrivi cosa vuoi creare e valuterò se è possibile con i materiali che hai.\n\n"
+	welcome := loc.T("craft.welcome") + "\n\n"
 	m.history.WriteString(welcome)
 	_ = tw.SetText(m.history.String())
 
@@ -160,7 +163,7 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 	case craftingResponseMsg:
 		m.waiting = false
 		if msg.err != nil {
-			m.errMsg = fmt.Sprintf("Crafting error: %v", msg.err)
+			m.errMsg = m.loc.T("craft.error", msg.err)
 			return m, nil
 		}
 		resp := msg.response
@@ -174,8 +177,7 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 		// If item was crafted, add a celebration note.
 		if resp.Feasible && resp.Item != nil {
 			m.lastCrafted = resp.Item.Name
-			note := fmt.Sprintf("\n**[Creato: %s]**\n_%s_\n\nEffetto: %s\n\n",
-				resp.Item.Name, resp.Item.Description, resp.Item.Effect)
+			note := m.loc.T("craft.created_note", resp.Item.Name, resp.Item.Description, resp.Item.Effect)
 			m.history.WriteString(components.RenderMarkdown(note))
 			// Refresh inventory sidebar since items changed.
 			m.inventory = m.buildInventorySidebar()
@@ -188,7 +190,7 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 		// Update choices.
-		items, exitChoiceID := buildCraftingChoiceItems(resp.Choices)
+		items, exitChoiceID := buildCraftingChoiceItems(resp.Choices, m.loc)
 		m.choices.SetChoices(items)
 		m.exitChoiceID = exitChoiceID
 		m.inputFocus = false
@@ -310,7 +312,7 @@ func (m CraftingModel) Update(msg tea.Msg) (CraftingModel, tea.Cmd) {
 // View renders the crafting screen (two-column layout).
 func (m CraftingModel) View() string {
 	if m.width == 0 {
-		return "Loading crafting..."
+		return m.loc.T("craft.loading")
 	}
 
 	chatW := craftingChatWidth(m.width)
@@ -324,9 +326,9 @@ func (m CraftingModel) View() string {
 	leftParts := []string{}
 
 	// Header.
-	header := theme.CraftingHeader.Render("CRAFTING")
+	header := theme.CraftingHeader.Render(m.loc.T("craft.title"))
 	if m.waiting {
-		header += theme.MutedText.Render("  [valutando...]")
+		header += theme.MutedText.Render("  [" + m.loc.T("craft.evaluating") + "]")
 	}
 	leftParts = append(leftParts, lipgloss.NewStyle().Padding(0, 1).Render(header))
 
@@ -353,16 +355,16 @@ func (m CraftingModel) View() string {
 	// Focus hint.
 	focusHint := ""
 	if !m.inputFocus && m.choices.HasChoices() {
-		focusHint = theme.MutedText.Render(" [Tab: input libero]")
+		focusHint = theme.MutedText.Render(m.loc.T("craft.focus_free"))
 	} else if m.inputFocus && m.choices.HasChoices() {
-		focusHint = theme.MutedText.Render(" [Alt+Enter/Ctrl+J: nuova riga | Tab: scelte | Esc: esci]")
+		focusHint = theme.MutedText.Render(m.loc.T("craft.focus_input_choices"))
 	} else {
-		focusHint = theme.MutedText.Render(" [Alt+Enter/Ctrl+J: nuova riga | Esc: esci]")
+		focusHint = theme.MutedText.Render(m.loc.T("craft.focus_input"))
 	}
 
 	// Input.
 	leftParts = append(leftParts, lipgloss.JoinVertical(lipgloss.Left,
-		theme.MutedText.Render("  Cosa vuoi creare?")+focusHint,
+		theme.MutedText.Render("  "+m.loc.T("craft.prompt"))+focusHint,
 		lipgloss.NewStyle().Padding(0, 1).Render(m.input.View()),
 	))
 
@@ -372,7 +374,7 @@ func (m CraftingModel) View() string {
 		Render(strings.Join(leftParts, "\n"))
 
 	// --- Right panel: inventory sidebar ---
-	sideHeader := theme.Title.Render("Inventario")
+	sideHeader := theme.Title.Render(m.loc.T("craft.inventory"))
 	sideContent := lipgloss.JoinVertical(lipgloss.Left,
 		sideHeader,
 		theme.MutedText.Render(strings.Repeat("─", sideW-4)),
@@ -392,7 +394,7 @@ func (m CraftingModel) View() string {
 func (m CraftingModel) viewSingleColumn() string {
 	var parts []string
 
-	parts = append(parts, theme.CraftingHeader.Render("CRAFTING")+" "+theme.MutedText.Render("[Inventario: /i]"))
+	parts = append(parts, theme.CraftingHeader.Render(m.loc.T("craft.title"))+" "+theme.MutedText.Render("["+m.loc.T("craft.inventory")+": /i]"))
 	parts = append(parts, theme.MutedText.Render(strings.Repeat("─", m.width-2)))
 
 	m.chatView.SetContent(m.typewriter.View())
@@ -417,65 +419,65 @@ func (m CraftingModel) viewSingleColumn() string {
 func (m CraftingModel) buildInventorySidebar() string {
 	char := m.narrator.Character()
 	if char == nil {
-		return theme.MutedText.Render("  (vuoto)")
+		return theme.MutedText.Render("  " + m.loc.T("craft.empty"))
 	}
 
 	var sb strings.Builder
 	guidance := engine.GetCraftingGuidance(char)
 
 	if len(guidance.Materials) > 0 {
-		sb.WriteString(theme.MutedText.Render("Materiali:\n"))
+		sb.WriteString(theme.MutedText.Render(m.loc.T("craft.materials") + "\n"))
 		for _, name := range guidance.Materials {
 			sb.WriteString(theme.NormalText.Render("  • "+name) + "\n")
 		}
 	} else {
-		sb.WriteString(theme.MutedText.Render("  (zaino vuoto)\n"))
+		sb.WriteString(theme.MutedText.Render("  " + m.loc.T("craft.backpack_empty") + "\n"))
 	}
 
 	if len(guidance.MaterialTags) > 0 {
-		sb.WriteString("\n" + theme.MutedText.Render("Tag materiali:\n"))
+		sb.WriteString("\n" + theme.MutedText.Render(m.loc.T("craft.material_tags")+"\n"))
 		sb.WriteString(theme.NormalText.Render("  "+strings.Join(guidance.MaterialTags, " · ")) + "\n")
 	}
 
 	// Known recipes.
 	recipes, _ := engine.GetKnownRecipes(char)
 	if len(recipes) > 0 {
-		sb.WriteString("\n" + theme.MutedText.Render("Ricette note:\n"))
+		sb.WriteString("\n" + theme.MutedText.Render(m.loc.T("craft.recipes")+"\n"))
 		for _, r := range recipes {
 			sb.WriteString(theme.RecipeItem.Render("  ★ "+r.Name) + "\n")
 		}
 	}
 
 	if len(guidance.CraftableNow) > 0 {
-		sb.WriteString("\n" + theme.MutedText.Render("Puoi creare ora:\n"))
+		sb.WriteString("\n" + theme.MutedText.Render(m.loc.T("craft.available")+"\n"))
 		for _, recipe := range guidance.CraftableNow {
 			sb.WriteString(theme.SuccessText.Render("  ✓ "+recipe) + "\n")
 		}
 	}
 
 	if len(guidance.NearMisses) > 0 {
-		sb.WriteString("\n" + theme.MutedText.Render("A un pezzo di distanza:\n"))
+		sb.WriteString("\n" + theme.MutedText.Render(m.loc.T("craft.one_step_away")+"\n"))
 		for _, recipe := range guidance.NearMisses {
 			sb.WriteString(theme.NormalText.Render("  ~ "+recipe) + "\n")
 		}
 	}
 
 	if len(m.lastMissing) > 0 {
-		sb.WriteString("\n" + theme.MutedText.Render("Ti manca:\n"))
+		sb.WriteString("\n" + theme.MutedText.Render(m.loc.T("craft.missing")+"\n"))
 		for _, item := range m.lastMissing {
 			sb.WriteString(theme.DangerText.Render("  - "+item) + "\n")
 		}
 	}
 
 	if len(m.lastAlternatives) > 0 {
-		sb.WriteString("\n" + theme.MutedText.Render("Prova invece:\n"))
+		sb.WriteString("\n" + theme.MutedText.Render(m.loc.T("craft.try_instead")+"\n"))
 		for _, item := range m.lastAlternatives {
 			sb.WriteString(theme.NormalText.Render("  → "+item) + "\n")
 		}
 	}
 
 	if sb.Len() == 0 {
-		return theme.MutedText.Render("  (vuoto)")
+		return theme.MutedText.Render("  " + m.loc.T("craft.empty"))
 	}
 	return sb.String()
 }
@@ -500,9 +502,9 @@ func isCraftingExitChoice(text string) bool {
 	return false
 }
 
-func buildCraftingChoiceItems(choices []engine.Choice) ([]components.ChoiceItem, int) {
+func buildCraftingChoiceItems(choices []engine.Choice, localizers ...appi18n.Localizer) ([]components.ChoiceItem, int) {
 	items := make([]components.ChoiceItem, 0, len(choices)+1)
-	exitLabel := "Esci dal crafting"
+	exitLabel := viewLocalizer(localizers).T("craft.exit")
 	maxID := 0
 
 	for _, choice := range choices {

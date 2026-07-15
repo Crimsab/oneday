@@ -1,5 +1,6 @@
 use crate::{
-    assets, db, engine, events::TurnStreamEvent, gateway_protocol as protocol, telemetry, AppState,
+    assets, db, engine, error::PublicError, events::TurnStreamEvent, gateway_protocol as protocol,
+    telemetry, AppState,
 };
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
@@ -156,9 +157,31 @@ async fn update_model_settings(
 
 async fn command_descriptors(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<CommandDescriptorQuery>,
 ) -> Result<Json<Vec<protocol::CommandDescriptor>>, ApiError> {
-    let descriptors = engine::command_descriptors(state.clone()).await?;
+    let locale = normalize_interface_locale(query.locale.as_deref());
+    let descriptors = engine::command_descriptors(state.clone(), locale).await?;
     Ok(Json(descriptors.commands))
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct CommandDescriptorQuery {
+    locale: Option<String>,
+}
+
+fn normalize_interface_locale(locale: Option<&str>) -> &'static str {
+    match locale
+        .unwrap_or_default()
+        .trim()
+        .split(['-', '_'])
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "it" => "it",
+        _ => "en",
+    }
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, ApiError> {
@@ -346,7 +369,10 @@ async fn audio_job_action(
     Path((story_id, job_id, action)): Path<(String, String, String)>,
 ) -> Result<Json<protocol::AudioResponse>, ApiError> {
     if action != "retry" && action != "cancel" {
-        return Err(anyhow::anyhow!("audio job action must be retry or cancel").into());
+        return Err(ApiError::public(PublicError::bad_request(
+            "invalid_audio_job_action",
+            "audio job action must be retry or cancel",
+        )));
     }
     Ok(Json(
         engine::audio(
@@ -845,18 +871,19 @@ async fn submit_action(
     let events = match engine::submit_action(state.clone(), &story_id, payload).await {
         Ok(events) => events,
         Err(err) => {
+            let api_error = ApiError::from(err);
             emit_turn_stream(
                 &state,
-                TurnStreamEvent::status(
+                TurnStreamEvent::status_error(
                     &story_id,
-                    "failed",
                     client_turn,
                     &action_kind,
                     &action_text,
-                    err.to_string(),
+                    &api_error.code,
+                    api_error.message.clone(),
                 ),
             );
-            return Err(err.into());
+            return Err(api_error);
         }
     };
     if !stream_requested {
@@ -993,17 +1020,17 @@ async fn story_events(
                                             yield Ok(Event::default().event("snapshot").data(snapshot_data));
                                         }
                                         Err(err) => {
-                                            yield Ok(Event::default().event("error").data(err.to_string()));
+                                            yield Ok(Event::default().event("error").data(sse_internal_error(&err)));
                                         }
                                     }
                                 }
                                 Err(err) => {
-                                    yield Ok(Event::default().event("error").data(err.to_string()));
+                                    yield Ok(Event::default().event("error").data(sse_internal_error(&err)));
                                 }
                             }
                         }
                         Err(err) => {
-                            yield Ok(Event::default().event("error").data(err.to_string()));
+                            yield Ok(Event::default().event("error").data(sse_internal_error(&err)));
                         }
                     }
                 },
@@ -1076,85 +1103,99 @@ fn emit_turn_stream(state: &AppState, event: TurnStreamEvent) {
     let _ = state.turn_events.send(event);
 }
 
-#[derive(Debug)]
+fn sse_internal_error(error: &dyn std::fmt::Display) -> String {
+    tracing::error!(
+        request_id = crate::current_request_id().as_deref().unwrap_or("-"),
+        error = %error,
+        "story event reconciliation failed"
+    );
+    "An internal gateway error occurred.".to_string()
+}
+
+#[derive(Clone, Debug)]
 struct ApiError {
     status: StatusCode,
     message: String,
-    code: Option<String>,
+    code: String,
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = match self.code {
-            Some(code) => json!({ "error": self.message, "code": code }),
-            None => json!({ "error": self.message }),
-        };
+        let body = json!({ "error": self.message, "code": self.code });
         (self.status, Json(body)).into_response()
+    }
+}
+
+impl ApiError {
+    fn public(error: PublicError) -> Self {
+        Self {
+            status: error.kind.status(),
+            message: error.message,
+            code: error.code.to_string(),
+        }
+    }
+
+    fn internal(error: &dyn std::fmt::Display) -> Self {
+        tracing::error!(
+            request_id = crate::current_request_id().as_deref().unwrap_or("-"),
+            error = %error,
+            "gateway request failed"
+        );
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: "An internal gateway error occurred.".to_string(),
+            code: "internal_error".to_string(),
+        }
+    }
+}
+
+fn bridge_error_status(code: &str) -> StatusCode {
+    match code {
+        "validation_failed"
+        | "invalid_request"
+        | "invalid_audio_request"
+        | "invalid_minigame_request" => StatusCode::BAD_REQUEST,
+        "stale_request" | "conflict" | "stale_config" | "config_locked" => StatusCode::CONFLICT,
+        "not_found" => StatusCode::NOT_FOUND,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
 
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
         if let Some(bridge) = err.downcast_ref::<engine::BridgeError>() {
-            let status = match bridge.code.as_str() {
-                "validation_failed" => StatusCode::BAD_REQUEST,
-                "stale_config" | "config_locked" => StatusCode::CONFLICT,
-                "write_failed" => StatusCode::INTERNAL_SERVER_ERROR,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            let status = bridge_error_status(&bridge.code);
+            let message = if status.is_server_error() {
+                tracing::error!(
+                    request_id = crate::current_request_id().as_deref().unwrap_or("-"),
+                    error_code = %bridge.code,
+                    error = %bridge.message,
+                    "Go bridge request failed"
+                );
+                "An internal gateway error occurred.".to_string()
+            } else {
+                bridge.message.clone()
             };
             return Self {
                 status,
-                message: bridge.message.clone(),
-                code: Some(bridge.code.clone()),
+                message,
+                code: bridge.code.clone(),
             };
         }
-        let message = err.to_string();
-        let is_bad_request = message.contains("unknown provider")
-            || message.contains("must be")
-            || message.contains("at least one provider")
-            || message.contains("image generation provider is not configured")
-            || message.contains("story brief is required")
-            || message.contains("character name is required")
-            || message.contains("no earlier visual selection")
-            || message.contains("no later visual selection")
-            || message.contains("visual selection action")
-            || message.contains("invalid gateway-model-settings-update JSON");
-        let is_conflict = message.contains("stale client_turn")
-            || message.contains("stale client_revision")
-            || message.contains("stale session_id")
-            || message.contains("turn idempotency key belongs to a different request")
-            || message.contains("is required")
-            || message.contains("belongs to story");
-        let is_not_found = message.contains("no rows returned")
-            || message.contains("no rows in result set")
-            || message.contains("generation diagnostics not found")
-            || message.contains("story not found")
-            || message.contains("visual asset not found")
-            || message.contains("visual asset version not found");
-        let status = if is_bad_request {
-            StatusCode::BAD_REQUEST
-        } else if is_conflict {
-            StatusCode::CONFLICT
-        } else if is_not_found {
-            StatusCode::NOT_FOUND
-        } else {
-            StatusCode::INTERNAL_SERVER_ERROR
-        };
-        Self {
-            status,
-            message,
-            code: None,
+        if let Some(public) = err.downcast_ref::<PublicError>() {
+            return Self {
+                status: public.kind.status(),
+                message: public.message.clone(),
+                code: public.code.to_string(),
+            };
         }
+        Self::internal(&err)
     }
 }
 
 impl From<sqlx::Error> for ApiError {
     fn from(err: sqlx::Error) -> Self {
-        Self {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: err.to_string(),
-            code: None,
-        }
+        Self::internal(&err)
     }
 }
 
@@ -1162,6 +1203,68 @@ impl From<sqlx::Error> for ApiError {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn command_descriptor_locale_normalizes_supported_regional_variants() {
+        assert_eq!(normalize_interface_locale(None), "en");
+        assert_eq!(normalize_interface_locale(Some("en-US")), "en");
+        assert_eq!(normalize_interface_locale(Some("it-IT")), "it");
+        assert_eq!(normalize_interface_locale(Some("IT_it")), "it");
+        assert_eq!(normalize_interface_locale(Some("fr-FR")), "en");
+        assert_eq!(normalize_interface_locale(Some("")), "en");
+    }
+
+    #[test]
+    fn api_errors_use_stable_codes_without_exposing_internal_details() {
+        let internal = ApiError::from(anyhow::anyhow!(
+            "opening SQLite database /private/path failed"
+        ));
+        assert_eq!(internal.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(internal.code, "internal_error");
+        assert_eq!(internal.message, "An internal gateway error occurred.");
+
+        let public = ApiError::from(anyhow::Error::new(PublicError::not_found(
+            "story_not_found",
+            "story not found: story-1",
+        )));
+        assert_eq!(public.status, StatusCode::NOT_FOUND);
+        assert_eq!(public.code, "story_not_found");
+    }
+
+    #[test]
+    fn sse_errors_keep_the_plaintext_contract_while_redacting_details() {
+        let payload = sse_internal_error(&anyhow::anyhow!("database /private/path failed"));
+
+        assert_eq!(payload, "An internal gateway error occurred.");
+        assert!(!payload.contains("/private/path"));
+    }
+
+    #[test]
+    fn bridge_error_status_is_determined_by_code_only() {
+        assert_eq!(
+            bridge_error_status("validation_failed"),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            bridge_error_status("invalid_request"),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(bridge_error_status("stale_config"), StatusCode::CONFLICT);
+        assert_eq!(bridge_error_status("stale_request"), StatusCode::CONFLICT);
+        assert_eq!(bridge_error_status("conflict"), StatusCode::CONFLICT);
+        assert_eq!(bridge_error_status("not_found"), StatusCode::NOT_FOUND);
+        assert_eq!(
+            bridge_error_status("turn_failed"),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+
+        let bridge = ApiError::from(anyhow::Error::new(engine::BridgeError {
+            code: "turn_failed".to_string(),
+            message: "database /private/path failed".to_string(),
+        }));
+        assert_eq!(bridge.code, "turn_failed");
+        assert_eq!(bridge.message, "An internal gateway error occurred.");
+    }
 
     #[test]
     fn serializes_snapshot_with_the_version_that_sse_should_mark_seen() {

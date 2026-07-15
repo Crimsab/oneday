@@ -60,6 +60,9 @@ func TestGatewayAudioSettingsAreRevisionGuardedAndProvidersDegradeExplicitly(t *
 	if !strings.Contains(stale.Error, "stale story revision") {
 		t.Fatalf("stale response=%+v", stale)
 	}
+	if stale.ErrorDetail == nil || stale.ErrorDetail.Code != gatewayCodeStaleRequest {
+		t.Fatalf("stale error detail=%+v", stale.ErrorDetail)
+	}
 	saved := run(gatewayAudioRequest{Operation: "settings-put", StoryID: "story-audio", ClientRevision: revision, Settings: &settings})
 	if saved.Error != "" || saved.Settings == nil || saved.Settings.Mode != "all" || !saved.Settings.Autoplay {
 		t.Fatalf("saved response=%+v", saved)

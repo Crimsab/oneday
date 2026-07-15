@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/components"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
@@ -38,17 +39,20 @@ type MenuModel struct {
 	cursor int
 	width  int
 	height int
+	loc    appi18n.Localizer
 }
 
 // NewMenuModel creates the main menu.
-func NewMenuModel() MenuModel {
+func NewMenuModel(localizers ...appi18n.Localizer) MenuModel {
+	loc := viewLocalizer(localizers)
 	return MenuModel{
+		loc: loc,
 		items: []MenuItem{
-			{Label: "New Story", Action: ActionNewStory},
-			{Label: "Load Story", Action: ActionLoadStory},
-			{Label: "Achievements", Action: ActionAchievementArchive},
-			{Label: "Settings", Action: ActionSettings},
-			{Label: "Quit", Action: ActionQuit},
+			{Label: loc.T("menu.new_story"), Action: ActionNewStory},
+			{Label: loc.T("menu.load_story"), Action: ActionLoadStory},
+			{Label: loc.T("menu.achievements"), Action: ActionAchievementArchive},
+			{Label: loc.T("menu.settings"), Action: ActionSettings},
+			{Label: loc.T("menu.quit"), Action: ActionQuit},
 		},
 	}
 }
@@ -97,7 +101,7 @@ func (m MenuModel) View() string {
 		items += fmt.Sprintf("%s%s\n", cursor, style.Render(item.Label))
 	}
 
-	help := theme.MutedText.Render("↑/↓ navigate • enter/space select • q quit")
+	help := theme.MutedText.Render(m.loc.T("menu.help"))
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		logo,

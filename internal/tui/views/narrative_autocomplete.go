@@ -6,6 +6,7 @@ import (
 
 	"github.com/crimsab/oneday/internal/engine"
 	"github.com/crimsab/oneday/internal/game/contracts"
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui/components"
 )
@@ -18,25 +19,25 @@ type slashCommandSpec struct {
 }
 
 type talkIntentSpec struct {
-	Name string
-	Hint string
+	Name    string
+	HintKey string
 }
 
 var slashCommandSpecs = contractSlashCommandSpecs()
 
 var talkIntentSpecs = []talkIntentSpec{
-	{Name: "ask", Hint: "Ask directly for facts or help"},
-	{Name: "probe", Hint: "Press for subtext or hidden motives"},
-	{Name: "bond", Hint: "Open up and build trust"},
-	{Name: "bargain", Hint: "Negotiate terms or leverage"},
-	{Name: "threaten", Hint: "Push with fear or pressure"},
-	{Name: "promise", Hint: "Offer a commitment"},
-	{Name: "lie", Hint: "Mislead or hide the truth"},
-	{Name: "confess", Hint: "Reveal something vulnerable"},
+	{Name: "ask", HintKey: "talk.intent.ask"},
+	{Name: "probe", HintKey: "talk.intent.probe"},
+	{Name: "bond", HintKey: "talk.intent.bond"},
+	{Name: "bargain", HintKey: "talk.intent.bargain"},
+	{Name: "threaten", HintKey: "talk.intent.threaten"},
+	{Name: "promise", HintKey: "talk.intent.promise"},
+	{Name: "lie", HintKey: "talk.intent.lie"},
+	{Name: "confess", HintKey: "talk.intent.confess"},
 }
 
-func contractSlashCommandSpecs() []slashCommandSpec {
-	descriptors := contracts.CommandDescriptors()
+func contractSlashCommandSpecs(localizers ...appi18n.Localizer) []slashCommandSpec {
+	descriptors := contracts.CommandDescriptors(localizers...)
 	specs := make([]slashCommandSpec, 0, len(descriptors))
 	for _, descriptor := range descriptors {
 		if descriptor.Parity == contracts.CommandParityBrowserOnly {
@@ -138,8 +139,12 @@ func buildCommandSuggestionsForSpecs(query string, specs []slashCommandSpec) []c
 }
 
 func (m NarrativeModel) availableSlashCommandSpecs() []slashCommandSpec {
-	specs := make([]slashCommandSpec, 0, len(slashCommandSpecs))
-	for _, spec := range slashCommandSpecs {
+	source := m.commandSpecs
+	if len(source) == 0 {
+		source = slashCommandSpecs
+	}
+	specs := make([]slashCommandSpec, 0, len(source))
+	for _, spec := range source {
 		if spec.Name == "thoughts" && !m.visiblePrivateThoughts {
 			continue
 		}
@@ -174,7 +179,7 @@ func (m *NarrativeModel) buildTalkSuggestions(rawValue string) []components.Sugg
 
 	argsText := strings.TrimSpace(strings.TrimPrefix(commandBody, strings.Fields(commandBody)[0]))
 	if argsText == "" {
-		return nearbyTalkNPCSuggestionItems(m.narrator.DB(), m.narrator.Story().ID, m.narrator.Turn(), 6, "")
+		return nearbyTalkNPCSuggestionItems(m.narrator.DB(), m.narrator.Story().ID, m.narrator.Turn(), 6, "", m.loc)
 	}
 
 	if err != nil {
@@ -182,13 +187,14 @@ func (m *NarrativeModel) buildTalkSuggestions(rawValue string) []components.Sugg
 	}
 	trailingSpace := strings.HasSuffix(rawValue, " ")
 	if npcName, rest, matched := matchTalkNPCInput(argsText, npcs); matched && (rest != "" || trailingSpace) {
-		return buildTalkIntentSuggestionItems(npcName, rest)
+		return buildTalkIntentSuggestionItems(npcName, rest, m.loc)
 	}
 
-	return buildTalkNPCSuggestionItems(npcs, argsText)
+	return buildTalkNPCSuggestionItems(npcs, argsText, m.loc)
 }
 
-func buildTalkNPCSuggestionItems(npcs []storage.NPC, query string) []components.SuggestionItem {
+func buildTalkNPCSuggestionItems(npcs []storage.NPC, query string, localizers ...appi18n.Localizer) []components.SuggestionItem {
+	loc := viewLocalizer(localizers)
 	query = strings.ToLower(strings.TrimSpace(query))
 	items := make([]components.SuggestionItem, 0, len(npcs))
 	for _, npc := range npcs {
@@ -206,7 +212,7 @@ func buildTalkNPCSuggestionItems(npcs []storage.NPC, query string) []components.
 			hintParts = append(hintParts, role)
 		}
 		if npc.LastSeenTurn > 0 {
-			hintParts = append(hintParts, fmt.Sprintf("seen turn %d", npc.LastSeenTurn))
+			hintParts = append(hintParts, loc.T("talk.seen_turn", npc.LastSeenTurn))
 		}
 		items = append(items, components.SuggestionItem{
 			Value: "/talk " + name + " ",
@@ -217,15 +223,16 @@ func buildTalkNPCSuggestionItems(npcs []storage.NPC, query string) []components.
 	return items
 }
 
-func nearbyTalkNPCSuggestionItems(db *storage.DB, storyID string, currentTurn, limit int, query string) []components.SuggestionItem {
+func nearbyTalkNPCSuggestionItems(db *storage.DB, storyID string, currentTurn, limit int, query string, localizers ...appi18n.Localizer) []components.SuggestionItem {
 	npcs, err := engine.NearbyNPCs(db, storyID, currentTurn, limit)
 	if err != nil {
 		return nil
 	}
-	return buildTalkNPCSuggestionItems(npcs, query)
+	return buildTalkNPCSuggestionItems(npcs, query, localizers...)
 }
 
-func buildTalkIntentSuggestionItems(npcName, query string) []components.SuggestionItem {
+func buildTalkIntentSuggestionItems(npcName, query string, localizers ...appi18n.Localizer) []components.SuggestionItem {
+	loc := viewLocalizer(localizers)
 	query = strings.ToLower(strings.TrimSpace(query))
 	items := make([]components.SuggestionItem, 0, len(talkIntentSpecs))
 	for _, spec := range talkIntentSpecs {
@@ -235,7 +242,7 @@ func buildTalkIntentSuggestionItems(npcName, query string) []components.Suggesti
 		items = append(items, components.SuggestionItem{
 			Value: "/talk " + npcName + " " + spec.Name,
 			Label: spec.Name,
-			Hint:  spec.Hint,
+			Hint:  loc.T(spec.HintKey),
 		})
 	}
 	return items

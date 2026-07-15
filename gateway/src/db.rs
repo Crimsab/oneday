@@ -1,3 +1,4 @@
+use crate::error::PublicError;
 use anyhow::Context;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -6,7 +7,7 @@ use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::io::{Cursor, Write};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct StorySummary {
     pub id: String,
     pub name: String,
@@ -84,7 +85,7 @@ pub struct SessionView {
     pub summary: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct MessageView {
     pub id: i64,
     pub session_id: String,
@@ -115,7 +116,7 @@ pub struct ChoiceView {
     pub related_stats: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 pub struct ChapterView {
     pub id: i64,
     pub chapter_number: i64,
@@ -308,7 +309,11 @@ pub async fn update_story(
     .execute(pool)
     .await?;
     if result.rows_affected() == 0 {
-        anyhow::bail!("story not found: {story_id}");
+        return Err(PublicError::not_found(
+            "story_not_found",
+            format!("story not found: {story_id}"),
+        )
+        .into());
     }
     load_story(pool, story_id).await
 }
@@ -319,7 +324,11 @@ pub async fn delete_story(pool: &SqlitePool, story_id: &str) -> anyhow::Result<(
         .execute(pool)
         .await?;
     if result.rows_affected() == 0 {
-        anyhow::bail!("story not found: {story_id}");
+        return Err(PublicError::not_found(
+            "story_not_found",
+            format!("story not found: {story_id}"),
+        )
+        .into());
     }
     Ok(())
 }
@@ -466,9 +475,10 @@ async fn load_story(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StorySu
          FROM stories WHERE id = ?"#,
     )
     .bind(story_id)
-    .fetch_one(pool)
+    .fetch_optional(pool)
     .await
-    .with_context(|| format!("loading story {story_id}"))?;
+    .with_context(|| format!("loading story {story_id}"))?
+    .ok_or_else(|| story_not_found(story_id))?;
     Ok(story_summary_from_row(row))
 }
 
@@ -482,11 +492,16 @@ async fn load_snapshot_story(
            FROM stories WHERE id = ?"#,
     )
     .bind(story_id)
-    .fetch_one(&mut *conn)
+    .fetch_optional(&mut *conn)
     .await
-    .with_context(|| format!("loading snapshot story {story_id}"))?;
+    .with_context(|| format!("loading snapshot story {story_id}"))?
+    .ok_or_else(|| story_not_found(story_id))?;
     let branch_id = row.try_get("active_branch_id")?;
     Ok((story_summary_from_row(row), branch_id))
+}
+
+fn story_not_found(story_id: &str) -> anyhow::Error {
+    PublicError::not_found("story_not_found", format!("story not found: {story_id}")).into()
 }
 
 async fn count_story_rows(pool: &SqlitePool, table: &str, story_id: &str) -> anyhow::Result<i64> {
@@ -901,26 +916,29 @@ fn build_markdown_export(
     messages: Vec<MessageView>,
     safe_name: String,
 ) -> StoryExport {
-    let mut content = format!("# {}\n\nBranch: `{}`\n\n", story.name, active_branch_id);
+    let labels = export_labels(&story.language);
+    let mut content = format!(
+        "# {}\n\n{}: `{}`\n\n",
+        story.name, labels.branch, active_branch_id
+    );
     if !chapters.is_empty() {
-        content.push_str("## Chapters\n\n");
+        content.push_str(&format!("## {}\n\n", labels.chapters));
         for chapter in chapters {
+            let turn_range = export_turn_range(labels, chapter.start_turn, chapter.end_turn);
             content.push_str(&format!(
-                "### {}\n\nTurns {}–{}\n\n{}\n\n",
-                chapter.title,
-                chapter.start_turn,
-                chapter
-                    .end_turn
-                    .map_or_else(|| "current".into(), |turn| turn.to_string()),
-                chapter.summary
+                "### {}\n\n{}\n\n{}\n\n",
+                chapter.title, turn_range, chapter.summary
             ));
         }
-        content.push_str("## Transcript\n\n");
+        content.push_str(&format!("## {}\n\n", labels.transcript));
     }
     for message in messages {
         content.push_str(&format!(
-            "## Turn {} — {}\n\n{}\n\n",
-            message.turn, message.role, message.content
+            "## {} {} — {}\n\n{}\n\n",
+            labels.turn,
+            message.turn,
+            export_role(labels.locale, &message.role),
+            message.content
         ));
     }
     StoryExport {
@@ -938,9 +956,12 @@ fn build_epub(
     chapters: &[ChapterView],
     messages: &[MessageView],
 ) -> anyhow::Result<Vec<u8>> {
+    let labels = export_labels(&story.language);
+    let document_language = export_document_language(&story.language, labels.locale);
     let mut body = format!(
-        "<h1>{}</h1><p>Branch: <code>{}</code></p>",
+        "<h1>{}</h1><p>{}: <code>{}</code></p>",
         xml_escape(&story.name),
+        labels.branch,
         xml_escape(branch_id)
     );
     for chapter in chapters {
@@ -950,31 +971,34 @@ fn build_epub(
             xml_escape(&chapter.summary)
         ));
     }
-    body.push_str("<section><h2>Transcript</h2>");
+    body.push_str(&format!("<section><h2>{}</h2>", labels.transcript));
     for message in messages {
         body.push_str(&format!(
-            "<article><h3>Turn {} — {}</h3><p>{}</p></article>",
+            "<article><h3>{} {} — {}</h3><p>{}</p></article>",
+            labels.turn,
             message.turn,
-            xml_escape(&message.role),
+            xml_escape(export_role(labels.locale, &message.role)),
             xml_escape(&message.content)
         ));
     }
     body.push_str("</section>");
     let xhtml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html><html xmlns="http://www.w3.org/1999/xhtml" lang="{}"><head><meta charset="utf-8"/><title>{}</title></head><body>{}</body></html>"#,
-        xml_escape(&story.language),
+        document_language,
         xml_escape(&story.name),
         body
     );
     let nav = format!(
-        r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Navigation</title></head><body><nav epub:type="toc"><ol><li><a href="content.xhtml">{}</a></li></ol></nav></body></html>"#,
+        r#"<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="{}"><head><title>{}</title></head><body><nav epub:type="toc"><ol><li><a href="content.xhtml">{}</a></li></ol></nav></body></html>"#,
+        document_language,
+        labels.navigation,
         xml_escape(&story.name)
     );
     let opf = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="book-id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="book-id">urn:oneday:{}</dc:identifier><dc:title>{}</dc:title><dc:language>{}</dc:language><meta property="dcterms:modified">{}</meta></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="content" href="content.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="content"/></spine></package>"#,
         xml_escape(&story.id),
         xml_escape(&story.name),
-        xml_escape(&story.language),
+        document_language,
         chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
     );
     let cursor = Cursor::new(Vec::new());
@@ -994,6 +1018,92 @@ fn build_epub(
     zip.start_file("OEBPS/content.xhtml", compressed)?;
     zip.write_all(xhtml.as_bytes())?;
     Ok(zip.finish()?.into_inner())
+}
+
+#[derive(Clone, Copy)]
+struct ExportLabels {
+    locale: &'static str,
+    branch: &'static str,
+    chapters: &'static str,
+    turns: &'static str,
+    current: &'static str,
+    transcript: &'static str,
+    turn: &'static str,
+    navigation: &'static str,
+}
+
+fn export_labels(language: &str) -> ExportLabels {
+    let language = language.trim().to_ascii_lowercase();
+    let italian = language == "it"
+        || language.starts_with("it-")
+        || language == "italian"
+        || language.starts_with("italiano");
+    if italian {
+        return ExportLabels {
+            locale: "it",
+            branch: "Ramo",
+            chapters: "Capitoli",
+            turns: "Turni",
+            current: "in corso",
+            transcript: "Trascrizione",
+            turn: "Turno",
+            navigation: "Navigazione",
+        };
+    }
+    ExportLabels {
+        locale: "en",
+        branch: "Branch",
+        chapters: "Chapters",
+        turns: "Turns",
+        current: "current",
+        transcript: "Transcript",
+        turn: "Turn",
+        navigation: "Navigation",
+    }
+}
+
+fn export_document_language<'a>(language: &'a str, fallback: &'static str) -> &'a str {
+    let language = language.trim();
+    let mut subtags = language.split('-');
+    let Some(primary) = subtags.next() else {
+        return fallback;
+    };
+    let primary_valid = (2..=3).contains(&primary.len())
+        && primary
+            .bytes()
+            .all(|character| character.is_ascii_alphabetic());
+    let remaining_valid = subtags.all(|subtag| {
+        (1..=8).contains(&subtag.len())
+            && subtag
+                .bytes()
+                .all(|character| character.is_ascii_alphanumeric())
+    });
+    if primary_valid && remaining_valid {
+        language
+    } else {
+        fallback
+    }
+}
+
+fn export_role<'a>(locale: &str, role: &'a str) -> &'a str {
+    match (locale, role) {
+        ("it", "assistant") => "Narratore",
+        ("it", "user") => "Giocatore",
+        ("it", "system") => "Sistema",
+        ("en", "assistant") => "Narrator",
+        ("en", "user") => "Player",
+        ("en", "system") => "System",
+        _ => role,
+    }
+}
+
+fn export_turn_range(labels: ExportLabels, start_turn: i64, end_turn: Option<i64>) -> String {
+    match (labels.locale, end_turn) {
+        ("it", Some(end_turn)) => format!("{} {start_turn}–{end_turn}", labels.turns),
+        ("it", None) => format!("Dal turno {start_turn} ({})", labels.current),
+        (_, Some(end_turn)) => format!("{} {start_turn}–{end_turn}", labels.turns),
+        (_, None) => format!("{} {start_turn}–{}", labels.turns, labels.current),
+    }
 }
 
 fn xml_escape(value: &str) -> String {
@@ -1247,7 +1357,11 @@ fn normalize_story_name(value: Option<String>) -> anyhow::Result<Option<String>>
         Some(raw) => {
             let name = raw.trim().to_string();
             if name.is_empty() {
-                anyhow::bail!("story name cannot be empty");
+                return Err(PublicError::bad_request(
+                    "story_name_required",
+                    "story name cannot be empty",
+                )
+                .into());
             }
             Ok(Some(name))
         }
@@ -1312,6 +1426,109 @@ fn value_i64(value: &Value, key: &str) -> i64 {
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+
+    #[test]
+    fn export_chrome_follows_story_language_without_changing_machine_fields() {
+        let story = StorySummary {
+            id: "story-it".into(),
+            name: "La soglia".into(),
+            description: String::new(),
+            genre: String::new(),
+            tone: String::new(),
+            language: "it-IT".into(),
+            is_archived: false,
+            updated_at: String::new(),
+        };
+        let chapters = vec![ChapterView {
+            id: 1,
+            chapter_number: 1,
+            title: "Il porto".into(),
+            summary: "Una notte di nebbia.".into(),
+            start_turn: 1,
+            end_turn: None,
+            created_at: String::new(),
+            branch_id: "branch-main".into(),
+            source_commit_id: "commit-main".into(),
+        }];
+        let messages = vec![MessageView {
+            id: 1,
+            session_id: "session-main".into(),
+            story_id: story.id.clone(),
+            turn: 1,
+            role: "assistant".into(),
+            content: "La campana suona.".into(),
+            message_type: "narrative".into(),
+            metadata: json!({}),
+            created_at: String::new(),
+            branch_id: "branch-main".into(),
+            source_commit_id: "commit-main".into(),
+        }];
+
+        let markdown = build_markdown_export(
+            story.clone(),
+            "branch-main".into(),
+            chapters.clone(),
+            messages.clone(),
+            "la-soglia".into(),
+        );
+        assert!(markdown.content.contains("Ramo: `branch-main`"));
+        assert!(markdown.content.contains("## Capitoli"));
+        assert!(markdown.content.contains("Dal turno 1 (in corso)"));
+        assert!(markdown.content.contains("## Turno 1 — Narratore"));
+
+        let bytes = build_epub(&story, "branch-main", &chapters, &messages).expect("EPUB");
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).expect("valid EPUB");
+        let mut content = String::new();
+        std::io::Read::read_to_string(
+            &mut archive.by_name("OEBPS/content.xhtml").expect("content"),
+            &mut content,
+        )
+        .expect("read content");
+        assert!(content.contains("lang=\"it-IT\""));
+        assert!(content.contains("<h2>Trascrizione</h2>"));
+        assert!(content.contains("Turno 1 — Narratore"));
+    }
+
+    #[test]
+    fn export_locale_normalizes_supported_variants_and_falls_back_to_english() {
+        assert_eq!(export_labels("italiano").locale, "it");
+        assert_eq!(export_labels("it-CH").locale, "it");
+        assert_eq!(export_labels("en-US").locale, "en");
+        assert_eq!(export_labels("fr-FR").locale, "en");
+        assert_eq!(export_document_language("fr-FR", "en"), "fr-FR");
+        assert_eq!(export_document_language("it-IT", "it"), "it-IT");
+        assert_eq!(export_document_language("italiano", "it"), "it");
+    }
+
+    #[test]
+    fn epub_preserves_valid_non_interface_story_language_metadata() {
+        let story = StorySummary {
+            id: "story-fr".into(),
+            name: "Le seuil".into(),
+            description: String::new(),
+            genre: String::new(),
+            tone: String::new(),
+            language: "fr-FR".into(),
+            is_archived: false,
+            updated_at: String::new(),
+        };
+
+        let bytes = build_epub(&story, "branch-main", &[], &[]).expect("EPUB");
+        let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).expect("valid EPUB");
+        for (name, marker) in [
+            ("OEBPS/content.xhtml", "lang=\"fr-FR\""),
+            ("OEBPS/nav.xhtml", "lang=\"fr-FR\""),
+            ("OEBPS/content.opf", "<dc:language>fr-FR</dc:language>"),
+        ] {
+            let mut document = String::new();
+            std::io::Read::read_to_string(
+                &mut archive.by_name(name).expect("EPUB document"),
+                &mut document,
+            )
+            .expect("read EPUB document");
+            assert!(document.contains(marker), "{name} did not contain {marker}");
+        }
+    }
 
     async fn story_pool() -> SqlitePool {
         let pool = SqlitePoolOptions::new()

@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/tui/theme"
 )
 
@@ -39,11 +40,12 @@ type ChoiceListModel struct {
 	metaCursor int
 	width      int
 	mood       string
+	loc        appi18n.Localizer
 }
 
 // NewChoiceList creates a choice list.
-func NewChoiceList() ChoiceListModel {
-	return ChoiceListModel{}
+func NewChoiceList(localizers ...appi18n.Localizer) ChoiceListModel {
+	return ChoiceListModel{loc: componentLocalizer(localizers)}
 }
 
 // SetChoices updates the available choices and resets the cursor.
@@ -85,7 +87,7 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 			c.metaCursor = -1
 		case "right", "l":
 			if len(c.choices) > 0 {
-				badges := choiceBadges(c.choices[c.cursor], c.mood)
+				badges := choiceBadgesLocalized(c.choices[c.cursor], c.mood, c.loc)
 				if len(badges) > 0 {
 					if c.metaCursor < 0 {
 						c.metaCursor = 0
@@ -96,7 +98,7 @@ func (c ChoiceListModel) Update(msg tea.Msg) (ChoiceListModel, tea.Cmd) {
 			}
 		case "left":
 			if len(c.choices) > 0 {
-				badges := choiceBadges(c.choices[c.cursor], c.mood)
+				badges := choiceBadgesLocalized(c.choices[c.cursor], c.mood, c.loc)
 				if len(badges) > 0 {
 					if c.metaCursor < 0 {
 						c.metaCursor = len(badges) - 1
@@ -175,7 +177,7 @@ func (c ChoiceListModel) View() string {
 }
 
 func (c ChoiceListModel) renderChoiceMeta(choice ChoiceItem, selected bool) string {
-	badges := choiceBadges(choice, c.mood)
+	badges := choiceBadgesLocalized(choice, c.mood, c.loc)
 	if len(badges) == 0 {
 		return ""
 	}
@@ -214,6 +216,10 @@ type choiceBadge struct {
 }
 
 func choiceBadges(choice ChoiceItem, mood string) []choiceBadge {
+	return choiceBadgesLocalized(choice, mood, appi18n.New(appi18n.English))
+}
+
+func choiceBadgesLocalized(choice ChoiceItem, mood string, loc appi18n.Localizer) []choiceBadge {
 	if !choiceHasSemanticMetadata(choice) {
 		return nil
 	}
@@ -222,16 +228,16 @@ func choiceBadges(choice ChoiceItem, mood string) []choiceBadge {
 	var badges []choiceBadge
 
 	if choice.Intent != "" {
-		badges = append(badges, choiceBadge{label: "intent:" + strings.ToLower(choice.Intent), color: palette.NarrativeAccent})
+		badges = append(badges, choiceBadge{label: loc.T("choice.intent") + ":" + localizedChoiceToken(loc, choice.Intent), color: palette.NarrativeAccent})
 	}
 	if choice.Risk != "" {
-		badges = append(badges, choiceBadge{label: "risk:" + strings.ToLower(choice.Risk), color: riskColor(choice.Risk)})
+		badges = append(badges, choiceBadge{label: loc.T("choice.risk") + ":" + localizedChoiceToken(loc, choice.Risk), color: riskColor(choice.Risk)})
 	}
 	if choice.Certainty != "" {
-		badges = append(badges, choiceBadge{label: "certainty:" + strings.ToLower(choice.Certainty), color: palette.Accent})
+		badges = append(badges, choiceBadge{label: loc.T("choice.certainty") + ":" + localizedChoiceToken(loc, choice.Certainty), color: palette.Accent})
 	}
 	if choice.Scope != "" {
-		badges = append(badges, choiceBadge{label: "scope:" + strings.ToLower(choice.Scope), color: theme.Secondary})
+		badges = append(badges, choiceBadge{label: loc.T("choice.scope") + ":" + localizedChoiceToken(loc, choice.Scope), color: theme.Secondary})
 	}
 	for _, stat := range choice.RelatedStats {
 		if strings.TrimSpace(stat) == "" {
@@ -241,6 +247,16 @@ func choiceBadges(choice ChoiceItem, mood string) []choiceBadge {
 	}
 
 	return badges
+}
+
+func localizedChoiceToken(loc appi18n.Localizer, value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	switch normalized {
+	case "low", "medium", "high", "uncertain", "social", "npc", "observe", "combat", "travel", "craft", "self", "world":
+		return loc.T("choice." + normalized)
+	default:
+		return normalized
+	}
 }
 
 func riskColor(risk string) lipgloss.Color {

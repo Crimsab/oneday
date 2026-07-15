@@ -2,8 +2,11 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { getMessageDiagnostics } from "../api";
 import type { GenerationDiagnostics, JsonValue, MessageView } from "../types";
+import i18n, { formatInterfaceNumber } from "../i18n";
+import { useTranslation } from "react-i18next";
 
 export function MessageDiagnostics({ message }: { message: MessageView }) {
+  const { t } = useTranslation("diagnostics");
   const summary = generationSummary(message.metadata);
   const generation = objectValue(objectValue(message.metadata).generation);
   const hasRun = stringValue(generation.run_id) !== "";
@@ -14,7 +17,7 @@ export function MessageDiagnostics({ message }: { message: MessageView }) {
   if (message.role !== "assistant" || (!summary && !hasRun)) return null;
 
   if (!hasRun) {
-    return <div className="generation-diagnostics-inline" aria-label="Generation debug summary">{summary}</div>;
+    return <div className="generation-diagnostics-inline" aria-label={t("summary")}>{summary}</div>;
   }
 
   const load = async () => {
@@ -35,37 +38,38 @@ export function MessageDiagnostics({ message }: { message: MessageView }) {
       if (event.currentTarget.open) void load();
     }}>
       <summary>
-        <span>{summary || "Generation trace"}</span>
+        <span>{summary || t("trace")}</span>
         <ChevronDown size={13} aria-hidden="true" />
       </summary>
-      {loading && <p className="diagnostics-state">Loading diagnostics…</p>}
-      {error && <p className="inline-error" role="alert">Diagnostics unavailable: {error}</p>}
+      {loading && <p className="diagnostics-state">{t("loading")}</p>}
+      {error && <p className="inline-error" role="alert">{t("unavailable", { error })}</p>}
       {diagnostics && <DiagnosticsBody diagnostics={diagnostics} />}
     </details>
   );
 }
 
 function DiagnosticsBody({ diagnostics }: { diagnostics: GenerationDiagnostics }) {
+  const { t } = useTranslation("diagnostics");
   return (
     <div className="diagnostics-body">
       <div className="diagnostics-run">
         <span><strong>{diagnostics.stage}</strong> · {diagnostics.status}</span>
-        <span>{diagnostics.prompt_profile || "unprofiled"} rev {diagnostics.prompt_revision}</span>
-        <span>Total {formatDuration(diagnostics.duration_ms)}</span>
+        <span>{diagnostics.prompt_profile || t("unprofiled")} {t("revision", { revision: diagnostics.prompt_revision })}</span>
+        <span>{t("total", { duration: formatDuration(diagnostics.duration_ms) })}</span>
         <span>TTFT {formatDuration(diagnostics.ttft_ms)}</span>
         <span>{formatTokens(diagnostics.usage.total_tokens)}</span>
-        <span>{diagnostics.observed_streaming ? "streamed" : "not streamed"}</span>
+        <span>{diagnostics.observed_streaming ? t("streamed") : t("notStreamed")}</span>
       </div>
-      <ol className="diagnostics-attempts" aria-label="Provider attempts">
+      <ol className="diagnostics-attempts" aria-label={t("attempts")}>
         {diagnostics.attempts.map((attempt) => (
           <li key={`${diagnostics.run_id}-${attempt.sequence}`}>
             <header>
-              <strong>{attempt.provider || "unknown provider"}</strong>
+              <strong>{attempt.provider || t("unknownProvider")}</strong>
               <span>{attempt.status}</span>
             </header>
-            <p>{attempt.resolved_model || attempt.requested_model || "default model"}</p>
+            <p>{attempt.resolved_model || attempt.requested_model || t("defaultModel")}</p>
             <small>
-              {attempt.observed_streaming ? `streamed · TTFT ${formatDuration(attempt.ttft_ms)}` : "not streamed"}
+              {attempt.observed_streaming ? t("streamedTtft", { duration: formatDuration(attempt.ttft_ms) }) : t("notStreamed")}
               {` · ${formatDuration(attempt.duration_ms)} · ${formatTokens(attempt.usage.total_tokens)}`}
               {attempt.usage.cost_usd > 0 ? ` · $${attempt.usage.cost_usd.toFixed(4)}` : ""}
             </small>
@@ -87,7 +91,7 @@ export function generationSummary(metadata: JsonValue): string {
   const tokens = numberValue(usage.total_tokens);
   if (latency > 0) parts.push(formatDuration(latency));
   if (tokens > 0) parts.push(formatTokens(tokens));
-  if (value.streamed === true) parts.push("streamed");
+  if (value.streamed === true) parts.push(i18n.t("diagnostics:streamed"));
   return parts.join(" · ");
 }
 
@@ -115,5 +119,5 @@ function formatDuration(value: number): string {
 }
 
 function formatTokens(value: number): string {
-  return `${Math.max(0, Math.round(value)).toLocaleString()} tokens`;
+  return `${formatInterfaceNumber(Math.max(0, Math.round(value)))} ${i18n.t("format:tokenLabel")}`;
 }

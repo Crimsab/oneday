@@ -3,6 +3,7 @@ mod challenge;
 mod config;
 mod db;
 mod engine;
+mod error;
 mod events;
 mod imagegen;
 mod observability;

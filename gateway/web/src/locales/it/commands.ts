@@ -1,0 +1,1 @@
+export const commands = { play: "Gioca", talk: "Dialogo", state: "Stato", save: "Salvataggi", meta: "Meta", system: "Sistema", debug: "Debug", recent: "Recenti", unknown: "Comando /{{name}} sconosciuto. Digita /help per vedere i comandi disponibili.", disabled: "/{{name}} non è disponibile nello stato attuale della storia." } as const;

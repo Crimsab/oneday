@@ -185,6 +185,7 @@ component boundaries.
 | [Troubleshooting](docs/troubleshooting.md) | Provider, RAG, media, browser, and CI failures |
 | [Development](docs/development.md) | Toolchains, layout, tests, and generated contracts |
 | [Testing](docs/testing.md) | Automated gates, browser coverage, and manual release checks |
+| [Localization](docs/localization.md) | Interface catalogs, fallback rules, language boundaries, and contributor checks |
 | [Documentation site](docs/wiki.md) | Material for MkDocs and GitHub Pages workflow |
 | [Benchmarks](docs/benchmarks/README.md) | Reproducible model, ASCII, and schema reliability comparisons |
 | [Roadmap](docs/project-roadmap.md) | Current priorities and contribution directions |
