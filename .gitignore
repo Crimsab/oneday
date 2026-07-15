@@ -51,6 +51,11 @@ gateway/web/coverage/
 gateway/web/test-results/
 gateway/web/playwright-report/
 
+# Documentation site
+/.mkdocs-site-src/
+/.venv-docs/
+/site/
+
 # Rust
 target/
 gateway/target/

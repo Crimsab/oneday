@@ -1,0 +1,101 @@
+site_name: OneDay
+site_description: Persistent AI stories that remember, branch, and evolve.
+site_url: https://crimsab.github.io/oneday/
+repo_url: https://github.com/Crimsab/oneday
+repo_name: Crimsab/oneday
+copyright: Copyright &copy; OneDay contributors
+
+docs_dir: .mkdocs-site-src
+site_dir: site
+use_directory_urls: true
+strict: true
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - navigation.top
+    - search.highlight
+    - search.share
+    - search.suggest
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: deep purple
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search:
+      lang: en
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Start:
+      - Your first story: docs/first-story.md
+      - Getting started: docs/getting-started.md
+      - Configuration: docs/configuration.md
+      - Docker deployment: docs/docker.md
+      - Troubleshooting: docs/troubleshooting.md
+  - Explore:
+      - Feature tour: docs/features.md
+      - Story systems: docs/story-systems.md
+      - Generated media: docs/media.md
+      - Image providers: docs/image-providers.md
+  - Reference:
+      - Documentation map: docs/README.md
+      - Architecture: docs/architecture.md
+      - Browser gateway: docs/browser-gateway.md
+      - Extensions and story packs: docs/extensions.md
+  - Contribute:
+      - Development: docs/development.md
+      - Testing: docs/testing.md
+      - Documentation site: docs/wiki.md
+      - Benchmarks: docs/benchmarks/README.md
+      - Roadmap: docs/project-roadmap.md
+      - Releases: docs/releases.md
+  - Project:
+      - Changelog: CHANGELOG.md
+      - Contributing: CONTRIBUTING.md
+      - Support: SUPPORT.md
+      - Security: SECURITY.md
+      - Code of conduct: CODE_OF_CONDUCT.md

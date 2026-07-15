@@ -40,6 +40,10 @@ provider name uses `base_url`, bearer `api_key`, and the OpenAI-compatible
 that route only when they implement the same path and payload; otherwise place
 their adapter in imagegen-bridge.
 
+See [Image provider compatibility](image-providers.md) for the exact support
+matrix, including routes that require a bridge adapter rather than working
+directly.
+
 General art and map symbols can use independent provider/model routes. Size,
 aspect ratio, resolution, quality, format, background, and timeouts can be set
 globally or by asset kind. The story wizard saves a visual direction and

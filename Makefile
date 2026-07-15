@@ -3,8 +3,9 @@ BENCH=oneday-benchmark
 ASCII_BENCH=oneday-ascii-benchmark
 BUILD_DIR=build
 LDFLAGS=$(shell bash ./scripts/build-ldflags.sh)
+DOCS_VENV?=.venv-docs
 
-.PHONY: test coverage vet verify docs-check qa-matrix qa-matrix-auto universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
+.PHONY: test coverage vet verify docs-install docs-prepare docs-build docs-serve docs-check qa-matrix qa-matrix-auto universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
 
 test:
 	go test ./...
@@ -21,6 +22,19 @@ verify: docs-check test vet qa-matrix-auto
 
 docs-check:
 	bun scripts/check-docs.ts
+
+docs-install:
+	python3 -m venv $(DOCS_VENV)
+	$(DOCS_VENV)/bin/python -m pip install --disable-pip-version-check -r requirements-docs.txt
+
+docs-prepare:
+	bun scripts/prepare-docs-site.ts
+
+docs-build: docs-prepare
+	$(DOCS_VENV)/bin/mkdocs build --strict
+
+docs-serve: docs-prepare
+	$(DOCS_VENV)/bin/mkdocs serve --dev-addr 127.0.0.1:8000
 
 qa-matrix:
 	./scripts/qa-matrix.sh

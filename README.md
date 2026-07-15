@@ -177,6 +177,7 @@ component boundaries.
 | [Feature tour](docs/features.md) | Player-facing capabilities and interfaces |
 | [Story systems](docs/story-systems.md) | Branches, challenges, minigames, crafting, investigations, projects, and conflict |
 | [Generated media](docs/media.md) | Images, maps, ASCII, TTS, providers, and failure behavior |
+| [Image providers](docs/image-providers.md) | Exact imagegen-bridge, OpenAI-compatible, and legacy adapter coverage |
 | [Configuration](docs/configuration.md) | Providers, RAG, visuals, game settings, and secrets |
 | [Docker](docs/docker.md) | Networking, persistence, updates, backups, and operations |
 | [Extensions](docs/extensions.md) | Story packs, challenge pools, and minigame definitions |
@@ -184,6 +185,7 @@ component boundaries.
 | [Troubleshooting](docs/troubleshooting.md) | Provider, RAG, media, browser, and CI failures |
 | [Development](docs/development.md) | Toolchains, layout, tests, and generated contracts |
 | [Testing](docs/testing.md) | Automated gates, browser coverage, and manual release checks |
+| [Documentation site](docs/wiki.md) | Material for MkDocs and GitHub Pages workflow |
 | [Benchmarks](docs/benchmarks/README.md) | Reproducible model, ASCII, and schema reliability comparisons |
 | [Roadmap](docs/project-roadmap.md) | Current priorities and contribution directions |
 | [Releases](docs/releases.md) | Changelog automation, versioning, tags, and artifacts |

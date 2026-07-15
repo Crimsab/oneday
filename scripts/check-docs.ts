@@ -102,7 +102,9 @@ const requiredGuides = [
   "docs/features.md",
   "docs/story-systems.md",
   "docs/media.md",
+  "docs/image-providers.md",
   "docs/extensions.md",
+  "docs/wiki.md",
 ];
 for (const guide of requiredGuides) {
   for (const index of ["README.md", "docs/README.md"]) {

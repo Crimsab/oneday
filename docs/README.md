@@ -8,6 +8,7 @@ Use this index to find the shortest path for what you are trying to do.
 - [Getting started](getting-started.md) — native terminal client or browser stack with Docker.
 - [Configuration](configuration.md) — providers, models, RAG, images, secrets, and data paths.
 - [Generated media](media.md) — images, maps, ASCII, speech, providers, and failure behavior.
+- [Image provider compatibility](image-providers.md) — exact native, bridge, compatible, and unsupported routes.
 - [Docker](docker.md) — container lifecycle, persistence, updates, and backups.
 - [Troubleshooting](troubleshooting.md) — diagnostics and common startup/provider failures.
 
@@ -22,6 +23,7 @@ Use this index to find the shortest path for what you are trying to do.
 - [Extensions and story packs](extensions.md) — reusable schemas, rules, challenge pools, and presentation direction.
 - [Development](development.md) — toolchains, test gates, repository layout, and contribution workflow.
 - [Testing](testing.md) — local verification, CI coverage, browser checks, and release confidence.
+- [Documentation site](wiki.md) — Material for MkDocs, local preview, and GitHub Pages deployment.
 - [Benchmarks](benchmarks/README.md) — reproducible model, ASCII, and schema reliability comparisons.
 - [Project roadmap](project-roadmap.md) — current improvement themes and contribution opportunities.
 - [Releases](releases.md) — Conventional Commits, automated changelog PRs, tags, and artifacts.
