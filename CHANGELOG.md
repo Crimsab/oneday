@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.0](https://github.com/Crimsab/oneday/compare/v1.10.0...v1.11.0) (2026-07-15)
+
+
+### Features
+
+* **web:** personalize options workspace ([0ad3637](https://github.com/Crimsab/oneday/commit/0ad3637decad856abbf2fef27109aad75857e460))
+
+
+### Bug Fixes
+
+* **web:** improve player accessibility ([7f76ba7](https://github.com/Crimsab/oneday/commit/7f76ba7a46240e56f97d33a364bb30f42f9019f6))
+
 ## [1.10.0](https://github.com/Crimsab/oneday/compare/v1.9.0...v1.10.0) (2026-07-15)
 
 
