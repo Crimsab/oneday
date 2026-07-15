@@ -18,21 +18,21 @@ export type OverlayKind =
   "help" | "options" | "saves" | "new-story" | "meta" | "module" | null;
 
 export type DensityPreference = "compact" | "balanced" | "comfortable";
-export type FontSizePreference = "small" | "base" | "large";
 export type FontSourcePreference = "bundled" | "system" | "imported" | "online";
-export type FontScopePreference = "reading" | "interface" | "all";
 export type FontStylePreference = "normal" | "italic";
 
 export interface AppPreferences {
   locale: "en" | "it";
   density: DensityPreference;
-  fontSize: FontSizePreference;
   accent: string;
   accentHistory: string[];
-  fontId: string;
-  fontFamily: string;
-  fontSource: FontSourcePreference;
-  fontScope: FontScopePreference;
+  interfaceFontId: string;
+  interfaceFontFamily: string;
+  interfaceFontSource: FontSourcePreference;
+  interfaceFontScale: number;
+  readingFontId: string;
+  readingFontFamily: string;
+  readingFontSource: FontSourcePreference;
   readingFontSize: number;
   readingFontWeight: number;
   readingFontStyle: FontStylePreference;
@@ -44,6 +44,7 @@ export interface AppPreferences {
   automaticChallenges: boolean;
   timingFreeChallenges: boolean;
   challengeCooldown: boolean;
+  disabledMiniGames: MiniGameKind[];
   showGenerationDiagnostics: boolean;
 }
 
@@ -964,6 +965,7 @@ export interface ActionEnvelope {
     automatic_challenges: boolean;
     timing_free_challenges: boolean;
     challenge_cooldown: boolean;
+    excluded_minigames: MiniGameKind[];
   };
 }
 

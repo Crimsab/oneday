@@ -425,7 +425,7 @@ function OptionsContent({
     },
     {
       id: "advanced",
-      content: <AdvancedSettings preferences={preferences} hasSnapshot={Boolean(snapshot)} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />,
+      content: <AdvancedSettings preferences={preferences} snapshot={snapshot} modelSettings={modelSettings} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />,
     },
   ];
 

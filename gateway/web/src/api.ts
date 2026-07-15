@@ -57,6 +57,7 @@ import type {
   AgencyEventView,
 } from "./types";
 import i18n from "./i18n";
+import { recordApiSupportEvent } from "./supportDiagnostics";
 
 interface ErrorPayload {
   error?: string;
@@ -85,6 +86,8 @@ export class ApiRequestError extends Error {
 }
 
 async function fetchWithTimeout(path: string, options: RequestOptions = {}): Promise<Response> {
+	const startedAt = performance.now();
+	const method = options.method ?? "GET";
 	const { timeoutMs, signal: callerSignal, ...fetchOptions } = options;
 	const controller = new AbortController();
 	const timeout = globalThis.setTimeout(
@@ -100,7 +103,9 @@ async function fetchWithTimeout(path: string, options: RequestOptions = {}): Pro
 	let response: Response;
 	try {
 		response = await fetch(path, { ...fetchOptions, signal: controller.signal });
+		recordApiSupportEvent(method, path, response.status, performance.now() - startedAt);
 	} catch (error) {
+		recordApiSupportEvent(method, path, 0, performance.now() - startedAt, error instanceof Error ? error.message : String(error));
 		if (controller.signal.aborted && !callerSignal?.aborted) {
 			throw new ApiRequestError(i18n.t("common:requestTimedOut"), 408, { code: "request_timeout" });
 		}

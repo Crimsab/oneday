@@ -975,6 +975,7 @@ function App() {
           automatic_challenges: preferences.automaticChallenges,
           timing_free_challenges: preferences.timingFreeChallenges,
           challenge_cooldown: preferences.challengeCooldown,
+          excluded_minigames: preferences.disabledMiniGames,
         },
       });
       setSnapshot(response.snapshot);
@@ -1289,7 +1290,6 @@ function App() {
     <div
       className={`app-shell ${preferences.showLeftRail ? "" : "left-rail-hidden"} ${preferences.showInspector ? "" : "inspector-hidden"} ${preferences.wrapTranscript ? "" : "transcript-nowrap"}`}
       data-density={preferences.density}
-      data-font-size={preferences.fontSize}
       data-accent="custom"
       style={appStyle}
     >

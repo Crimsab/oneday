@@ -23,12 +23,13 @@ type PlayerAction struct {
 }
 
 type ClientCapabilities struct {
-	Images               bool  `json:"images,omitempty"`
-	ASCII                bool  `json:"ascii,omitempty"`
-	RollLog              bool  `json:"roll_log,omitempty"`
-	AutomaticChallenges  *bool `json:"automatic_challenges,omitempty"`
-	TimingFreeChallenges *bool `json:"timing_free_challenges,omitempty"`
-	ChallengeCooldown    *bool `json:"challenge_cooldown,omitempty"`
+	Images               bool     `json:"images,omitempty"`
+	ASCII                bool     `json:"ascii,omitempty"`
+	RollLog              bool     `json:"roll_log,omitempty"`
+	AutomaticChallenges  *bool    `json:"automatic_challenges,omitempty"`
+	TimingFreeChallenges *bool    `json:"timing_free_challenges,omitempty"`
+	ChallengeCooldown    *bool    `json:"challenge_cooldown,omitempty"`
+	ExcludedMiniGames    []string `json:"excluded_minigames,omitempty"`
 }
 
 const (

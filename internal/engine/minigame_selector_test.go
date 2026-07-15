@@ -32,10 +32,39 @@ func TestMiniGameSelectorAvoidsImmediateRepetition(t *testing.T) {
 	}
 }
 
+func TestMiniGameSelectorFallsBackToBestAllowedFamily(t *testing.T) {
+	selection, err := SelectMiniGame(DefaultMiniGameCandidates(), MiniGameSelectionContext{
+		NarrativeTags: []string{"social", "comedy", "performance"}, CurrentTurn: 10, Difficulty: 50,
+		TimingFreeOnly: true, ExcludedKinds: []MiniGameType{MiniGameComedy, MiniGameBidding},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Definition.Kind != MiniGameNegotiation {
+		t.Fatalf("selected %s, want best allowed social fallback negotiation: %+v", selection.Definition.Kind, selection)
+	}
+}
+
 func TestMiniGameSelectorFailsWhenPolicyExcludesEverything(t *testing.T) {
 	_, err := SelectMiniGame([]MiniGameCandidate{{Definition: DefaultMiniGameDefinition(MiniGameQuickTime), Reflex: true}}, MiniGameSelectionContext{TimingFreeOnly: true})
 	if err == nil {
 		t.Fatal("timing-free policy accepted reflex-only pool")
+	}
+}
+
+func TestMiniGameSelectorUsesSafetyFallbackForContradictoryExclusions(t *testing.T) {
+	selection, err := SelectMiniGame(DefaultMiniGameCandidates(), MiniGameSelectionContext{
+		NarrativeTags: []string{"mystery", "evidence"}, CurrentTurn: 10, Difficulty: 50, TimingFreeOnly: true,
+		ExcludedKinds: []MiniGameType{MiniGameDeduction, MiniGameNegotiation, MiniGamePattern, MiniGameBidding, MiniGameCourtroom, MiniGameComedy},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selection.Definition.Kind == MiniGameQuickTime {
+		t.Fatalf("timing-free safety fallback selected reflex family: %+v", selection)
+	}
+	if selection.Definition.Rules["selection_reason"] == "" || selection.Reasons[len(selection.Reasons)-1] != "disabled-family safety fallback" {
+		t.Fatalf("safety fallback reason was not exposed: %+v", selection)
 	}
 }
 

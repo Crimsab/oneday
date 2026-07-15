@@ -5,6 +5,9 @@ import "@fontsource-variable/ibm-plex-sans";
 import App from "./App";
 import "./styles.css";
 import "./redesign.css";
+import { installSupportDiagnostics } from "./supportDiagnostics";
+
+installSupportDiagnostics();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

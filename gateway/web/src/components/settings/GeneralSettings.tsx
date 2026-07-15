@@ -28,10 +28,6 @@ export function GeneralSettings({ preferences, onChange }: { preferences: AppPre
             <span>{t("options:density")}</span>
             <CustomSelect value={preferences.density} ariaLabel={t("options:density")} onChange={(value) => update("density", value as AppPreferences["density"])} options={[{ value: "compact", label: t("options:compact") }, { value: "balanced", label: t("options:balanced") }, { value: "comfortable", label: t("options:comfortable") }]} />
           </div>
-          <div className="settings-field" data-setting-id="font-size">
-            <span>{t("settings_ui:general.interfaceScale")}</span>
-            <CustomSelect value={preferences.fontSize} ariaLabel={t("settings_ui:general.interfaceScale")} onChange={(value) => update("fontSize", value as AppPreferences["fontSize"])} options={[{ value: "small", label: t("options:small") }, { value: "base", label: t("options:base") }, { value: "large", label: t("options:large") }]} />
-          </div>
         </div>
       </section>
 

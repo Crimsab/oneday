@@ -913,6 +913,7 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
   });
   await mockGateway(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "Show library" }).click();
   await page.getByRole("button", { name: "Options" }).click();
 
   for (const group of ["Personalization", "Experience", "System"]) {
@@ -921,7 +922,8 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
     if (isMobile) await expect(heading).toBeHidden();
     else await expect(heading).toBeVisible();
   }
-  await expect(page.locator(".settings-sidebar button.active")).toHaveCSS("border-top-width", "0px");
+  await expect(page.locator(".settings-sidebar button.active")).toHaveCSS("border-top-width", "1px");
+  await expect(page.locator(".settings-sidebar button.active")).toHaveCSS("border-left-width", "1px");
 
   const themeBefore = await page.evaluate(() => ({
     accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
@@ -934,31 +936,41 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim())).toBe("#4f9cff");
   expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarColor)).not.toBe(themeBefore.scrollbar);
 
+  await page.getByRole("button", { name: /Gameplay/ }).click();
   await page.getByRole("button", { name: /Typography/ }).click();
+  await page.getByRole("button", { name: "From URL" }).click();
+  const onlineDialog = page.getByRole("dialog", { name: "Add an online font" });
+  await expect(onlineDialog).toBeVisible();
+  const dialogBox = await onlineDialog.boundingBox();
+  if (!dialogBox) throw new Error("online font dialog has no bounding box");
+  await page.mouse.click(Math.max(1, dialogBox.x - 8), Math.max(1, dialogBox.y - 8));
+  await expect(onlineDialog).toBeHidden();
+
   await page.getByRole("button", { name: "From URL" }).click();
   await page.getByLabel("Direct font URL").fill("https://fonts.example.test/qa-reader.woff2");
   await page.getByLabel("Library name").fill("QA Online Font");
   await page.getByRole("button", { name: "Download and save" }).click();
   await expect(page.getByRole("option", { name: /QA Online Font/ })).toBeVisible();
 
-  const selectedFamily = await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").fontFamily as string);
+  const selectedFamily = await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").readingFontFamily as string);
   const assistant = page.locator(".transcript-message.assistant").first();
   await expect.poll(() => assistant.evaluate((node) => getComputedStyle(node).fontFamily)).toContain(selectedFamily);
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily)).not.toContain(selectedFamily);
 
-  const scope = page.getByRole("combobox", { name: "Apply to" });
-  await scope.click();
-  await page.getByRole("option", { name: "Interface", exact: true }).click();
-  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain(selectedFamily);
-  await expect.poll(() => assistant.evaluate((node) => getComputedStyle(node).fontFamily)).not.toContain(selectedFamily);
-
-  await scope.click();
-  await page.getByRole("option", { name: "Entire app", exact: true }).click();
+  await page.locator(".font-target-switcher").getByRole("button", { name: /Interface/ }).click();
+  await page.getByRole("option", { name: /QA Online Font/ }).click();
   await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain(selectedFamily);
   await expect.poll(() => assistant.evaluate((node) => getComputedStyle(node).fontFamily)).toContain(selectedFamily);
-  await scope.click();
-  await expect(page.locator("body > .custom-select-menu")).toHaveCSS("font-family", new RegExp(selectedFamily));
-  await page.keyboard.press("Escape");
+
+  const leftRailFontBefore = await page.locator(".left-rail").evaluate((node) => getComputedStyle(node).fontSize);
+  await page.locator("label.font-size-control", { hasText: "Interface size" }).locator('input[type="range"]').fill("125");
+  await expect.poll(() => page.locator(".left-rail").evaluate((node) => getComputedStyle(node).fontSize)).not.toBe(leftRailFontBefore);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).fontSize)).toBe("20px");
+
+  await page.locator(".font-target-switcher").getByRole("button", { name: /Story text/ }).click();
+  await page.locator("label.font-size-control", { hasText: "Reading size" }).locator('input[type="range"]').fill("23");
+  await expect.poll(() => assistant.evaluate((node) => getComputedStyle(node).fontSize)).toBe("23px");
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").interfaceFontScale)).toBe(125);
 
   await page.getByRole("button", { name: "Edit QA Online Font" }).click();
   await page.getByLabel("Library name").fill("QA Updated Font");
@@ -966,12 +978,27 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
   await expect(page.getByRole("option", { name: /QA Updated Font/ })).toBeVisible();
   await page.getByRole("button", { name: "Delete QA Updated Font" }).click();
   await expect(page.getByRole("option", { name: /QA Updated Font/ })).toHaveCount(0);
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").fontSource)).toBe("bundled");
+  expect(await page.evaluate(() => {
+    const preferences = JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}");
+    return [preferences.interfaceFontSource, preferences.readingFontSource];
+  })).toEqual(["bundled", "bundled"]);
 
   await page.getByRole("button", { name: /Advanced/ }).click();
+  await expect(page.getByText("Support bundle", { exact: true })).toBeVisible();
+  await page.getByText("Recent technical log", { exact: true }).click();
+  await expect(page.locator(".support-log-list")).toBeVisible();
   await expect(page.locator(".generation-diagnostics, .generation-diagnostics-inline")).toHaveCount(0);
   await page.getByText("Show diagnostics in messages", { exact: true }).click();
   await expect(page.locator(".generation-diagnostics, .generation-diagnostics-inline")).not.toHaveCount(0);
+
+  await page.getByRole("button", { name: /Gameplay/ }).click();
+  await page.locator("label.minigame-preference", { hasText: "Deduction" }).locator('input[type="checkbox"]').uncheck();
+  await page.locator(".options-overlay").getByRole("button", { name: "Close" }).click();
+  const policyRequest = page.waitForRequest((request) => request.url().endsWith("/actions") && request.method() === "POST");
+  await page.getByPlaceholder("What do you want to try?").fill("Test an allowed challenge fallback");
+  await page.getByRole("button", { name: "Send action" }).click();
+  const policyBody = await (await policyRequest).postDataJSON() as { capabilities: { excluded_minigames: string[] } };
+  expect(policyBody.capabilities.excluded_minigames).toContain("deduction");
 });
 
 test("switches and persists interface locale without changing story or speech language", async ({ page }) => {

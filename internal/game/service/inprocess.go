@@ -638,6 +638,10 @@ func applyAutomaticMiniGameCapabilities(narrator *engine.Narrator, capabilities 
 	if capabilities.ChallengeCooldown != nil {
 		policy.UseCooldowns = *capabilities.ChallengeCooldown
 	}
+	policy.ExcludedKinds = make([]engine.MiniGameType, 0, len(capabilities.ExcludedMiniGames))
+	for _, kind := range capabilities.ExcludedMiniGames {
+		policy.ExcludedKinds = append(policy.ExcludedKinds, engine.MiniGameType(kind))
+	}
 	narrator.SetAutomaticMiniGamePolicy(policy)
 }
 

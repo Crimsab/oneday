@@ -9,13 +9,15 @@ describe("normalizePreferences", () => {
       normalizePreferences({
         locale: "it",
         density: "compact",
-        fontSize: "large",
         accent: "#73c7ff",
         accentHistory: ["#112233", "bad", "#abc"],
-        fontId: "system:atkinson",
-        fontFamily: "Atkinson Hyperlegible",
-        fontSource: "system",
-        fontScope: "all",
+        interfaceFontId: "system:inter",
+        interfaceFontFamily: "Inter",
+        interfaceFontSource: "system",
+        interfaceFontScale: 112,
+        readingFontId: "system:atkinson",
+        readingFontFamily: "Atkinson Hyperlegible",
+        readingFontSource: "system",
         readingFontSize: 21,
         readingFontWeight: 600,
         readingFontStyle: "italic",
@@ -32,13 +34,15 @@ describe("normalizePreferences", () => {
     ).toEqual({
       locale: "it",
       density: "compact",
-      fontSize: "large",
       accent: "#73c7ff",
       accentHistory: ["#112233", "#aabbcc"],
-      fontId: "system:atkinson",
-      fontFamily: "Atkinson Hyperlegible",
-      fontSource: "system",
-      fontScope: "all",
+      interfaceFontId: "system:inter",
+      interfaceFontFamily: "Inter",
+      interfaceFontSource: "system",
+      interfaceFontScale: 112,
+      readingFontId: "system:atkinson",
+      readingFontFamily: "Atkinson Hyperlegible",
+      readingFontSource: "system",
       readingFontSize: 21,
       readingFontWeight: 600,
       readingFontStyle: "italic",
@@ -50,13 +54,13 @@ describe("normalizePreferences", () => {
       automaticChallenges: false,
       timingFreeChallenges: false,
       challengeCooldown: false,
+      disabledMiniGames: [],
       showGenerationDiagnostics: true,
     });
 
     expect(
       normalizePreferences({
         density: "wide" as never,
-        fontSize: "huge" as never,
         accent: "orange" as never,
         showLeftRail: "yes" as never,
         showInspector: "yes" as never,
@@ -69,24 +73,60 @@ describe("normalizePreferences", () => {
     ).toEqual(defaultPreferences);
   });
 
-  it("accepts online fonts and can reset only typography", () => {
+  it("keeps interface and reading fonts independent and resets only typography", () => {
     const preferences = normalizePreferences({
-      fontId: "online:reader",
-      fontFamily: "OneDay Online reader",
-      fontSource: "online",
-      fontScope: "all",
+      interfaceFontId: "system:ui",
+      interfaceFontFamily: "Example UI",
+      interfaceFontSource: "system",
+      interfaceFontScale: 119,
+      readingFontId: "online:reader",
+      readingFontFamily: "OneDay Online reader",
+      readingFontSource: "online",
       readingFontSize: 23,
       readingFontWeight: 700,
       readingFontStyle: "italic",
       readingTextColor: "#abcdef",
       accent: "#123456",
     });
-    expect(preferences.fontSource).toBe("online");
+    expect(preferences.interfaceFontFamily).toBe("Example UI");
+    expect(preferences.readingFontSource).toBe("online");
     expect(resetTypographyPreferences(preferences)).toEqual({
       ...defaultPreferences,
       accent: "#123456",
       locale: preferences.locale,
     });
+  });
+
+  it("migrates a legacy shared font and interface size", () => {
+    const preferences = normalizePreferences({
+      fontId: "system:legacy",
+      fontFamily: "Legacy Font",
+      fontSource: "system",
+      fontScope: "all",
+      fontSize: "large",
+    });
+    expect(preferences).toMatchObject({
+      interfaceFontId: "system:legacy",
+      readingFontId: "system:legacy",
+      interfaceFontScale: 113,
+    });
+  });
+
+  it("rejects disabling every automatic minigame family", () => {
+    const preferences = normalizePreferences({
+      disabledMiniGames: ["deduction", "negotiation", "pattern", "bidding", "courtroom", "comedy", "quicktime"],
+    });
+    expect(preferences.disabledMiniGames).toHaveLength(6);
+    expect(preferences.disabledMiniGames).not.toContain("deduction");
+  });
+
+  it("restores a timing-free family when only quick reaction remains enabled", () => {
+    const preferences = normalizePreferences({
+      timingFreeChallenges: true,
+      disabledMiniGames: ["deduction", "negotiation", "pattern", "bidding", "courtroom", "comedy"],
+    });
+    expect(preferences.disabledMiniGames).not.toContain("deduction");
+    expect(preferences.disabledMiniGames).toContain("negotiation");
   });
 });
 

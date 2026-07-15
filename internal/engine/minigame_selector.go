@@ -109,6 +109,16 @@ func SelectMiniGame(candidates []MiniGameCandidate, context MiniGameSelectionCon
 		values = append(values, scored{candidate, score, reasons})
 	}
 	if len(values) == 0 {
+		if len(excluded) > 0 {
+			fallbackContext := context
+			fallbackContext.ExcludedKinds = nil
+			selection, fallbackErr := SelectMiniGame(candidates, fallbackContext)
+			if fallbackErr == nil {
+				selection.Reasons = append(selection.Reasons, "disabled-family safety fallback")
+				selection.Definition.Rules["selection_reason"] = strings.Join(selection.Reasons, "; ")
+				return selection, nil
+			}
+		}
 		return nil, errors.New("no minigame satisfies accessibility and cooldown policy")
 	}
 	sort.SliceStable(values, func(i, j int) bool {

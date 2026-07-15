@@ -18,6 +18,7 @@ type AutomaticMiniGamePolicy struct {
 	Enabled        bool
 	TimingFreeOnly bool
 	UseCooldowns   bool
+	ExcludedKinds  []MiniGameType
 }
 
 func DefaultAutomaticMiniGamePolicy() AutomaticMiniGamePolicy {
@@ -69,7 +70,8 @@ func (n *Narrator) prepareAutomaticMiniGame(narrative *NarrativeResponse, turn i
 	}
 	selection, err := SelectMiniGame(DefaultMiniGameCandidates(), MiniGameSelectionContext{
 		NarrativeTags: automaticMiniGameTags(n.story.Genre, n.story.Tone, narrative.SceneType, intent.Description, intent.NPCName),
-		CurrentTurn:   turn, Difficulty: difficulty, TimingFreeOnly: n.automaticMiniGamePolicy.TimingFreeOnly, Recent: recent,
+		CurrentTurn:   turn, Difficulty: difficulty, TimingFreeOnly: n.automaticMiniGamePolicy.TimingFreeOnly,
+		ExcludedKinds: n.automaticMiniGamePolicy.ExcludedKinds, Recent: recent,
 	})
 	if err != nil {
 		return nil, err

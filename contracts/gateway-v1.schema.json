@@ -714,6 +714,12 @@
         },
         "challenge_cooldown": {
           "type": "boolean"
+        },
+        "excluded_minigames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
         }
       },
       "additionalProperties": false,
