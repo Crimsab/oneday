@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.12.0](https://github.com/Crimsab/oneday/compare/v1.11.0...v1.12.0) (2026-07-15)
+
+
+### Features
+
+* **web:** complete personalized settings ([920bb79](https://github.com/Crimsab/oneday/commit/920bb79e3eb5c3df68165427d8acfe264ec77315))
+
+
+### Bug Fixes
+
+* **release:** embed build metadata in container ([1945271](https://github.com/Crimsab/oneday/commit/1945271ece78f1935e00ba6c49f13d6a2a0b68b9))
+
 ## [1.11.0](https://github.com/Crimsab/oneday/compare/v1.10.0...v1.11.0) (2026-07-15)
 
 
