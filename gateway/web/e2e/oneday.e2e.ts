@@ -747,6 +747,7 @@ test("paints a full-resolution mask and submits inpainting without fallback", as
 
   const canvas = dialog.getByRole("application", { name: "Paint the image area that may change" });
   await expect(canvas).toBeVisible();
+  await canvas.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
   await page.mouse.move(box!.x + box!.width * 0.35, box!.y + box!.height * 0.45);
