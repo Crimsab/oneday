@@ -5,7 +5,7 @@ Localization applies to controls, help, status messages, accessibility text,
 validation context, and other presentation. It does not rewrite saved stories or
 machine contracts.
 
-## Three independent language settings
+## Four independent language settings
 
 Keep these concepts separate when adding or changing a feature:
 
@@ -14,11 +14,25 @@ Keep these concepts separate when adding or changing a feature:
 | Interface locale | Browser preferences or `interface.locale` in `config.yaml` | Buttons, menus, help, errors, dates, counts |
 | Story language | Canonical story state | Generated narration, choices, story exports |
 | Spoken-audio language | Per-story TTS settings and voice assignments | Voice discovery, pronunciation, synthesis |
+| Reading translation | Browser-only preference per story | Optional translated view of an individual completed message |
 
 Changing the interface locale must not mutate `Story.Language`, a story-creator
 definition, `default_language_tag`, a voice assignment, or stored story content.
 Provider IDs, model names, slash-command tokens, JSON field names, database
 enums, telemetry keys, and operational logs also remain stable.
+
+## Optional browser translation
+
+On supported desktop Chrome versions, the browser transcript can translate one
+completed message at a time with the browser's built-in Translator API. The
+control is a progressive enhancement: it is hidden when the API or secure
+context is unavailable, never calls OneDay's AI provider, and never changes the
+saved message. Language packs may require a user-initiated download.
+
+The translated text is cached only for the current page session. OneDay stores
+only recent target languages and an optional reading language per story in the
+browser. The original remains immediately available, and story generation,
+TTS, exports, and canonical state continue to use their own language settings.
 
 ## Locale resolution and normalization
 

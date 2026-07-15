@@ -2,6 +2,8 @@ import { Clipboard, Copy, Download, FileJson, RefreshCw, RotateCcw, Trash2, Uplo
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { defaultPreferences, normalizePreferences } from "../../preferences";
+import { listStoredFonts } from "../../fontLibrary";
+import { exportTheme, previewThemeImport, type ThemePreview } from "../../features/themes/themePortability";
 import { buildSupportBundle, clearSupportEvents, getSupportEvents, type SupportEvent } from "../../supportDiagnostics";
 import type { AppPreferences, ModelSettings, StorySnapshot } from "../../types";
 import { SettingsToggle } from "./GeneralSettings";
@@ -25,7 +27,10 @@ export function AdvancedSettings({
 }) {
   const { t } = useTranslation("settings_ui");
   const importRef = useRef<HTMLInputElement>(null);
+  const themeImportRef = useRef<HTMLInputElement>(null);
   const [status, setStatus] = useState("");
+  const [themePreview, setThemePreview] = useState<ThemePreview | null>(null);
+  const [themeUndo, setThemeUndo] = useState<AppPreferences | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
   const [logs, setLogs] = useState<SupportEvent[]>(() => getSupportEvents());
 
@@ -55,6 +60,41 @@ export function AdvancedSettings({
     } finally {
       if (importRef.current) importRef.current.value = "";
     }
+  };
+
+  const exportPortableTheme = () => {
+    downloadJson(exportTheme(preferences), "oneday-theme.json");
+    setStatus(t("advanced.exported"));
+  };
+
+  const previewPortableTheme = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      if (file.size > MAX_PREFERENCES_BYTES) throw new Error(t("advanced.importTooLarge"));
+      const storedFonts = await listStoredFonts();
+      setThemePreview(previewThemeImport(JSON.parse(await file.text()), preferences, new Set(storedFonts.map((font) => font.id))));
+      setStatus("");
+    } catch {
+      setThemePreview(null);
+      setStatus(t("advanced.invalidImport"));
+    } finally {
+      if (themeImportRef.current) themeImportRef.current.value = "";
+    }
+  };
+
+  const applyPortableTheme = () => {
+    if (!themePreview) return;
+    setThemeUndo(preferences);
+    onChange(themePreview.preferences);
+    setThemePreview(null);
+    setStatus(t("advanced.imported"));
+  };
+
+  const undoPortableTheme = () => {
+    if (!themeUndo) return;
+    onChange(themeUndo);
+    setThemeUndo(null);
+    setStatus(t("advanced.resetDone"));
   };
 
   const reloadConfiguration = async () => {
@@ -141,6 +181,16 @@ export function AdvancedSettings({
           <div className="advanced-reset-row"><span><strong>{t("advanced.resetTitle")}</strong><small>{t("advanced.resetDesc")}</small></span>{confirmReset ? <div className="advanced-reset-confirm"><button type="button" onClick={() => setConfirmReset(false)}>{t("common.cancel")}</button><button type="button" className="danger-action" onClick={resetPreferences}>{t("advanced.confirmReset")}</button></div> : <button type="button" onClick={() => setConfirmReset(true)}><RotateCcw size={14} aria-hidden="true" /> {t("advanced.reset")}</button>}</div>
         </div>
         <p className="advanced-status" role="status" aria-live="polite">{status}</p>
+      </section>
+
+      <section className="settings-group" aria-labelledby="advanced-theme-title" data-setting-id="theme-portability">
+        <header><div><h4 id="advanced-theme-title">{t("options:theme")}</h4><p>{t("advanced.portabilityDesc")}</p></div></header>
+        <div className="advanced-action-list">
+          <div><span><strong>{t("advanced.exportTitle")}</strong><small>{t("advanced.exportDesc")}</small></span><button type="button" onClick={exportPortableTheme}><Download size={14} aria-hidden="true" /> {t("advanced.export")}</button></div>
+          <div><span><strong>{t("advanced.importTitle")}</strong><small>{t("advanced.importDesc")}</small></span><button type="button" onClick={() => themeImportRef.current?.click()}><Upload size={14} aria-hidden="true" /> {t("advanced.import")}</button><input ref={themeImportRef} className="sr-only" type="file" accept="application/json,.json" onChange={(event) => void previewPortableTheme(event.target.files?.[0])} /></div>
+          {themeUndo && <div><span><strong>{t("advanced.resetTitle")}</strong><small>{t("advanced.resetDesc")}</small></span><button type="button" onClick={undoPortableTheme}><RotateCcw size={14} aria-hidden="true" /> {t("advanced.reset")}</button></div>}
+        </div>
+        {themePreview && <div className="theme-import-preview" role="region" aria-label={themePreview.theme.meta.name}><strong>{themePreview.theme.meta.name}</strong>{themePreview.changes.length ? <dl>{themePreview.changes.map((change) => <div key={change.key}><dt>{change.key}</dt><dd><span>{change.before}</span><span>{change.after}</span></dd></div>)}</dl> : <p>{t("advanced.imported")}</p>}{themePreview.missingFontIds.length > 0 && <p className="settings-inline-warning">{themePreview.missingFontIds.join(", ")}</p>}<div className="advanced-reset-confirm"><button type="button" onClick={() => setThemePreview(null)}>{t("common:cancel")}</button><button type="button" className="primary-action" onClick={applyPortableTheme}>{t("advanced.import")}</button></div></div>}
       </section>
     </div>
   );

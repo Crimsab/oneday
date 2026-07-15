@@ -3,7 +3,7 @@ use crate::{
     telemetry, AppState,
 };
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -102,6 +102,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route(
             "/api/stories/:story_id/visual-assets/:asset_id/versions",
             get(visual_asset_versions),
+        )
+        .route(
+            "/api/stories/:story_id/visual-assets/:asset_id/versions/upload",
+            post(upload_visual_asset_version).layer(DefaultBodyLimit::max(
+                crate::asset_upload::MAX_UPLOAD_REQUEST_BYTES,
+            )),
         )
         .route(
             "/api/stories/:story_id/visual-assets/:asset_id/versions/:version_id/select",
@@ -763,6 +769,28 @@ async fn visual_asset_versions(
 ) -> Result<Json<Vec<assets::VisualAssetVersion>>, ApiError> {
     Ok(Json(
         assets::visual_asset_versions(&state.pool, &story_id, &asset_id).await?,
+    ))
+}
+
+async fn upload_visual_asset_version(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, asset_id)): Path<(String, String)>,
+    multipart: Multipart,
+) -> Result<
+    (
+        StatusCode,
+        Json<crate::asset_upload::VisualAssetUploadResponse>,
+    ),
+    ApiError,
+> {
+    Ok((
+        StatusCode::CREATED,
+        Json(
+            crate::asset_upload::upload_visual_asset_version(
+                state, &story_id, &asset_id, multipart,
+            )
+            .await?,
+        ),
     ))
 }
 

@@ -9,14 +9,14 @@ interface TopBarProps {
   sync: SyncState;
   syncLabel: string;
   syncTitle: string;
-  showLeftRail: boolean;
+  leftRailVisible: boolean;
   showInspector: boolean;
   onToggleLeftRail: () => void;
   onToggleInspector: () => void;
   onOpen: (overlay: OverlayKind) => void;
 }
 
-export function TopBar({ snapshot, sync, syncLabel, syncTitle, showLeftRail, showInspector, onToggleLeftRail, onToggleInspector, onOpen }: TopBarProps) {
+export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen }: TopBarProps) {
   const { t } = useTranslation("chrome");
   const clock = displayClock(snapshot);
   return (
@@ -35,12 +35,12 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, showLeftRail, sho
           className="square-button"
           type="button"
           onClick={onToggleLeftRail}
-          title={`${showLeftRail ? t("hideLibrary") : t("showLibrary")} ([)`}
-          aria-label={showLeftRail ? t("hideLibrary") : t("showLibrary")}
-          aria-expanded={showLeftRail}
-          aria-controls="story-library"
+          title={`${leftRailVisible ? t("hideLibrary") : t("showLibrary")} ([)`}
+          aria-label={leftRailVisible ? t("hideLibrary") : t("showLibrary")}
+          aria-expanded={leftRailVisible}
+          aria-controls="story-navigation"
         >
-          {showLeftRail ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+          {leftRailVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
           <span>{t("libraryLabel")}</span>
         </button>
         <button

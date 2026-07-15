@@ -221,6 +221,7 @@ pub struct VisualAssetVersion {
     pub turn: i64,
     pub branch_id: String,
     pub source_commit_id: String,
+    pub source_kind: String,
     pub created_at: String,
 }
 
@@ -447,7 +448,7 @@ pub async fn visual_asset_versions(
                   canonical_location_id, form_id, appearance_fingerprint,
                   COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
                   url, prompt, revised_prompt, negative_prompt, provider, turn,
-                  v.branch_id AS branch_id, source_commit_id,
+                  v.branch_id AS branch_id, source_commit_id, source_kind,
                   CAST(created_at AS TEXT) AS created_at
            FROM visual_asset_versions v
            CROSS JOIN active x
@@ -483,6 +484,7 @@ pub async fn visual_asset_versions(
             turn: row.try_get("turn").unwrap_or_default(),
             branch_id: row_string(&row, "branch_id"),
             source_commit_id: row_string(&row, "source_commit_id"),
+            source_kind: row_string(&row, "source_kind"),
             created_at: row_string(&row, "created_at"),
         })
         .collect())
@@ -633,9 +635,37 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
             "canon_status",
             "TEXT NOT NULL DEFAULT 'draft'",
         ),
+        (
+            "visual_asset_versions",
+            "source_kind",
+            "TEXT NOT NULL DEFAULT 'generated' CHECK(source_kind IN ('generated','upload','imported'))",
+        ),
     ] {
         ensure_text_column(pool, table, column, definition).await?;
     }
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS visual_asset_uploads (
+            version_id INTEGER PRIMARY KEY REFERENCES visual_asset_versions(id) ON DELETE CASCADE,
+            story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+            asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+            branch_id TEXT NOT NULL,
+            original_filename_display TEXT NOT NULL DEFAULT '',
+            declared_mime TEXT NOT NULL DEFAULT '',
+            detected_mime TEXT NOT NULL CHECK(detected_mime IN ('image/png','image/jpeg','image/webp')),
+            byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+            width INTEGER NOT NULL CHECK(width > 0),
+            height INTEGER NOT NULL CHECK(height > 0),
+            sha256 TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )"#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_visual_asset_uploads_asset ON visual_asset_uploads(story_id,asset_id,branch_id,created_at DESC)",
+    )
+    .execute(pool)
+    .await?;
     for (column, definition) in [
         ("parent_version_id", "INTEGER"),
         ("operation_id", "TEXT"),
@@ -2139,7 +2169,7 @@ async fn complete_image_operation(
     .bind(&record.mask_id)
     .fetch_one(&mut *transaction)
     .await?;
-    select_generated_version_on(
+    select_new_version_on(
         &mut transaction,
         &record.story_id,
         &record.asset_id,
@@ -3124,7 +3154,7 @@ async fn complete_generated_asset(
     Ok(version_id)
 }
 
-async fn select_generated_version_on(
+pub(crate) async fn select_new_version_on(
     conn: &mut SqliteConnection,
     story_id: &str,
     asset_id: &str,
@@ -3166,6 +3196,39 @@ async fn select_generated_version_on(
         source_commit_id,
         &history,
         cursor,
+    )
+    .await
+}
+
+async fn select_generated_version_on(
+    conn: &mut SqliteConnection,
+    story_id: &str,
+    asset_id: &str,
+    branch_id: &str,
+    source_commit_id: &str,
+    version_id: i64,
+) -> anyhow::Result<()> {
+    let selected_source_kind: Option<String> = sqlx::query_scalar(
+        r#"SELECT v.source_kind
+           FROM visual_asset_selection_states s
+           JOIN visual_asset_versions v ON v.id=s.selected_version_id
+           WHERE s.story_id=? AND s.asset_id=? AND s.branch_id=?"#,
+    )
+    .bind(story_id)
+    .bind(asset_id)
+    .bind(branch_id)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if selected_source_kind.as_deref() == Some("upload") {
+        return Ok(());
+    }
+    select_new_version_on(
+        conn,
+        story_id,
+        asset_id,
+        branch_id,
+        source_commit_id,
+        version_id,
     )
     .await
 }
@@ -6597,6 +6660,59 @@ mod tests {
             .unwrap();
         assert_eq!(asset.selected_version_id, None);
         assert_ne!(asset.prompt, "main-only prompt");
+    }
+
+    #[tokio::test]
+    async fn generated_versions_do_not_replace_a_selected_manual_upload() {
+        let pool = visual_job_pool().await;
+        let upload_id: i64 = sqlx::query_scalar(
+            r#"INSERT INTO visual_asset_versions
+               (asset_id,story_id,kind,subject,url,branch_id,source_commit_id,
+                appearance_fingerprint,source_kind)
+               VALUES ('asset-location','story','location','Station','/upload.png',
+                       'branch-main','commit-main','base','upload') RETURNING id"#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let generated_id: i64 = sqlx::query_scalar(
+            r#"INSERT INTO visual_asset_versions
+               (asset_id,story_id,kind,subject,url,branch_id,source_commit_id,
+                appearance_fingerprint,source_kind)
+               VALUES ('asset-location','story','location','Station','/generated.png',
+                       'branch-main','commit-main','base','generated') RETURNING id"#,
+        )
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let mut connection = pool.acquire().await.unwrap();
+        select_new_version_on(
+            &mut connection,
+            "story",
+            "asset-location",
+            "branch-main",
+            "commit-main",
+            upload_id,
+        )
+        .await
+        .unwrap();
+        select_generated_version_on(
+            &mut connection,
+            "story",
+            "asset-location",
+            "branch-main",
+            "commit-main",
+            generated_id,
+        )
+        .await
+        .unwrap();
+        let selected: i64 = sqlx::query_scalar(
+            "SELECT selected_version_id FROM visual_asset_selection_states WHERE asset_id='asset-location' AND branch_id='branch-main'",
+        )
+        .fetch_one(&mut *connection)
+        .await
+        .unwrap();
+        assert_eq!(selected, upload_id);
     }
 
     #[tokio::test]

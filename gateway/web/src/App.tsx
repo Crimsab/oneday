@@ -97,10 +97,12 @@ import { visualPollingDelayMs } from "./visualJobs";
 import { effectiveRouteCapabilities } from "./imageOperations";
 import type { SpatialEdge } from "./spatialMap";
 import { turnEventMessage } from "./presentation";
+import { activeStoryCount, railPresentation, toggleDesktopRailMode } from "./features/navigation/railState";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
 let didBootstrap = false;
 const PanelDrawer = lazy(() => import("./components/PanelDrawer").then((module) => ({ default: module.PanelDrawer })));
+const StoryLibraryDrawer = lazy(() => import("./features/story-library/StoryLibraryDrawer").then((module) => ({ default: module.StoryLibraryDrawer })));
 type HealthState = { kind: "starting" } | { kind: "stories"; count: number } | { kind: "error"; message: string };
 
 function initialOverlayFromLocation(): OverlayKind {
@@ -116,11 +118,13 @@ function App() {
   const [snapshot, setSnapshot] = useState<StorySnapshot | null>(null);
   const [sync, setSync] = useState<SyncState>("Idle");
   const [health, setHealth] = useState<HealthState>({ kind: "starting" });
-  const [filter, setFilter] = useState("");
   const [selectedTab, setSelectedTab] = useState<ModuleTab>("history");
   const [moduleFocusId, setModuleFocusId] = useState<string | null>(null);
   const [moduleOverlayTab, setModuleOverlayTab] = useState<ModuleTab | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(() => initialOverlayFromLocation());
+  const [storyLibraryOpen, setStoryLibraryOpen] = useState(false);
+  const [mobileRailOpen, setMobileRailOpen] = useState(false);
+  const [isMobileLayout, setIsMobileLayout] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 860px)").matches);
   const [saveFilter, setSaveFilter] = useState("");
   const [draft, setDraft] = useState("");
   const [mode, setMode] = useState("action");
@@ -435,12 +439,6 @@ function App() {
     return () => window.clearInterval(timer);
   }, [refreshVisualAssets, storyId, visualAssets]);
 
-  const filteredStories = useMemo(() => {
-    const query = filter.trim().toLowerCase();
-    if (!query) return stories;
-    return stories.filter((story) => `${story.name} ${story.description} ${story.genre} ${story.tone}`.toLowerCase().includes(query));
-  }, [filter, stories]);
-
   const recentCommands = useMemo(() => {
     const history = recentFromMessages(snapshot?.messages ?? []);
     const seen = new Set<string>();
@@ -465,6 +463,17 @@ function App() {
   useEffect(() => {
     savePreferences(preferences);
   }, [preferences]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 860px)");
+    const update = () => {
+      setIsMobileLayout(media.matches);
+      if (!media.matches) setMobileRailOpen(false);
+    };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     void loadStoredFonts().catch(() => undefined);
@@ -492,6 +501,7 @@ function App() {
     if (window.matchMedia("(max-width: 1240px)").matches) {
       setModuleOverlayTab(tab);
       setOverlay("module");
+      setMobileRailOpen(false);
     } else {
       setPreferences((value) => ({
         ...defaultPreferences,
@@ -520,7 +530,8 @@ function App() {
       }
       if (event.key === "[") {
         event.preventDefault();
-        setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
+        if (isMobileLayout) setMobileRailOpen((value) => !value);
+        else setPreferences((value) => ({ ...defaultPreferences, ...value, showLeftRail: !value.showLeftRail }));
         return;
       }
       if (event.key === "]") {
@@ -536,7 +547,7 @@ function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectModuleTab]);
+  }, [isMobileLayout, selectModuleTab]);
 
   const selectStory = (nextStoryId: string) => {
     if (nextStoryId === storyId) {
@@ -1023,6 +1034,7 @@ function App() {
   };
 
   const openOverlay = (nextOverlay: OverlayKind) => {
+    setStoryLibraryOpen(false);
     if (nextOverlay !== "module") {
       setModuleFocusId(null);
       setModuleOverlayTab(null);
@@ -1252,6 +1264,10 @@ function App() {
   }, []);
 
   const toggleLeftRail = () => {
+    if (isMobileLayout) {
+      setMobileRailOpen((value) => !value);
+      return;
+    }
     setPreferences((value) => {
       const opening = !value.showLeftRail;
       return {
@@ -1261,6 +1277,26 @@ function App() {
         showInspector: opening && window.matchMedia("(max-width: 1600px)").matches ? false : value.showInspector,
       };
     });
+  };
+
+  const toggleRailMode = () => {
+    setPreferences((value) => ({
+      ...defaultPreferences,
+      ...value,
+      desktopRailMode: toggleDesktopRailMode(value.desktopRailMode),
+      showLeftRail: true,
+    }));
+  };
+
+  const openStoryLibrary = () => {
+    setOverlay(null);
+    setStoryLibraryOpen(true);
+    setMobileRailOpen(false);
+  };
+
+  const openNewStoryFromLibrary = () => {
+    setStoryLibraryOpen(false);
+    openOverlay("new-story");
   };
 
   const toggleInspector = () => {
@@ -1307,10 +1343,14 @@ function App() {
     };
   }, [themeVariables]);
   const appStyle = themeVariables as CSSProperties;
+  const desktopRailPresentation = railPresentation(preferences.showLeftRail, preferences.desktopRailMode);
+  const leftRailVisible = isMobileLayout ? mobileRailOpen : desktopRailPresentation !== "hidden";
+  const railMode = isMobileLayout ? "expanded" : preferences.desktopRailMode;
+  const activeStories = activeStoryCount(stories);
 
   return (
     <div
-      className={`app-shell ${preferences.showLeftRail ? "" : "left-rail-hidden"} ${preferences.showInspector ? "" : "inspector-hidden"} ${preferences.wrapTranscript ? "" : "transcript-nowrap"}`}
+      className={`app-shell rail-${desktopRailPresentation} ${mobileRailOpen ? "mobile-rail-open" : "mobile-rail-closed"} ${preferences.showInspector ? "" : "inspector-hidden"} ${preferences.wrapTranscript ? "" : "transcript-nowrap"}`}
       data-density={preferences.density}
       data-accent="custom"
       style={appStyle}
@@ -1320,36 +1360,29 @@ function App() {
         sync={sync}
         syncLabel={syncLabel}
         syncTitle={t("notifications:sync.connection", { status: syncLabel })}
-        showLeftRail={preferences.showLeftRail}
+        leftRailVisible={leftRailVisible}
         showInspector={preferences.showInspector}
         onToggleLeftRail={toggleLeftRail}
         onToggleInspector={toggleInspector}
         onOpen={openOverlay}
       />
       <div className="workspace">
-        {preferences.showLeftRail ? (
-          <LeftRail
-            stories={filteredStories}
-            activeStoryId={storyId}
-            filter={filter}
-            snapshot={snapshot}
-            selectedTab={selectedTab}
-            healthText={healthText}
-            onFilterChange={setFilter}
-            onSelectStory={selectStory}
-            onSelectTab={selectModuleTab}
-            onRefreshStories={refreshStories}
-            onUpdateStory={handleUpdateStory}
-            onSetStoryArchived={handleSetStoryArchived}
-            onDeleteStory={handleDeleteStory}
-            onOpen={openOverlay}
-            busyStoryId={storyMutatingId}
+        {mobileRailOpen && <button type="button" className="mobile-rail-backdrop" aria-label={t("common:close")} onClick={() => setMobileRailOpen(false)} />}
+        <LeftRail
+          activeStoryCount={activeStories}
+          presentation={railMode}
+          snapshot={snapshot}
+          selectedTab={selectedTab}
+          healthText={healthText}
+          onOpenStoryLibrary={openStoryLibrary}
+          onSelectTab={selectModuleTab}
+          onToggleMode={toggleRailMode}
+          busyStoryId={storyMutatingId}
 			timeline={timeline}
 			onForkBranch={forkBranch}
 			onRenameBranch={renameBranch}
 			onCheckoutBranch={checkoutBranch}
-          />
-        ) : null}
+        />
         <main className="center-stage">
           <section className="transcript-panel" aria-labelledby="story-surface-title">
             <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || t("notifications:surface.yourStory")}</h1>
@@ -1363,6 +1396,7 @@ function App() {
             />
             <Transcript
               storyId={snapshot?.story.id ?? ""}
+              storyLanguage={snapshot?.story.language ?? ""}
               messages={snapshot?.messages ?? []}
               hiddenBeforeId={hiddenBeforeMessageId}
               pendingTurn={pendingTurn}
@@ -1410,6 +1444,19 @@ function App() {
           />
         )}
       </div>
+      {storyLibraryOpen && <Suspense fallback={null}><StoryLibraryDrawer
+        stories={stories}
+        activeStoryId={storyId}
+        activeStoryTurn={snapshot?.world.current_turn}
+        busyStoryId={storyMutatingId}
+        onClose={() => setStoryLibraryOpen(false)}
+        onNewStory={openNewStoryFromLibrary}
+        onRefresh={refreshStories}
+        onSelectStory={selectStory}
+        onUpdateStory={handleUpdateStory}
+        onSetStoryArchived={handleSetStoryArchived}
+        onDeleteStory={handleDeleteStory}
+      /></Suspense>}
       {overlay && <Suspense fallback={null}><PanelDrawer
         overlay={overlay}
         snapshot={snapshot}

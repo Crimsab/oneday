@@ -40,6 +40,7 @@ pub struct StoryUpdate {
     pub description: Option<String>,
     pub genre: Option<String>,
     pub tone: Option<String>,
+    pub language: Option<String>,
     pub is_archived: Option<bool>,
 }
 
@@ -278,11 +279,16 @@ pub async fn update_story(
     let prompt_affecting = update.name.is_some()
         || update.description.is_some()
         || update.genre.is_some()
-        || update.tone.is_some();
+        || update.tone.is_some()
+        || update.language.is_some();
     let name = normalize_story_name(update.name)?;
     let description = update.description.map(|value| value.trim().to_string());
     let genre = update.genre.map(|value| value.trim().to_string());
     let tone = update.tone.map(|value| value.trim().to_string());
+    let language = update
+        .language
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
     let archived = update
         .is_archived
         .map(|value| if value { 1_i64 } else { 0_i64 });
@@ -293,6 +299,7 @@ pub async fn update_story(
                description = COALESCE(?, description),
                genre = COALESCE(?, genre),
                tone = COALESCE(?, tone),
+               language = COALESCE(?, language),
                is_archived = COALESCE(?, is_archived),
                revision = CASE WHEN ? = 1 THEN revision + 1 ELSE revision END,
                updated_at = ?
@@ -302,6 +309,7 @@ pub async fn update_story(
     .bind(description)
     .bind(genre)
     .bind(tone)
+    .bind(language)
     .bind(archived)
     .bind(if prompt_affecting { 1_i64 } else { 0_i64 })
     .bind(now)
@@ -1648,6 +1656,7 @@ mod tests {
             description: None,
             genre: None,
             tone: None,
+            language: None,
             is_archived: None,
         }
     }
@@ -1772,6 +1781,20 @@ mod tests {
 
         assert_eq!(story.name, "New Name");
         assert_eq!(story.description, "sharper premise");
+        assert_eq!(revision(&pool, "story-1").await, 8);
+    }
+
+    #[tokio::test]
+    async fn update_story_language_applies_to_future_prompt_revision() {
+        let pool = story_pool().await;
+        let mut update = story_update();
+        update.language = Some(" it-IT ".to_string());
+
+        let story = update_story(&pool, "story-1", update)
+            .await
+            .expect("update story language");
+
+        assert_eq!(story.language, "it-IT");
         assert_eq!(revision(&pool, "story-1").await, 8);
     }
 

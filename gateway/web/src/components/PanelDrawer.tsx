@@ -1,6 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { X } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
   commandDescriptors as resolveCommandDescriptors,
@@ -66,6 +65,8 @@ import { CustomSelect } from "./CustomSelect";
 import { visualGateReason } from "../presentation";
 import i18n from "../i18n";
 import { VisualAssetOperationEditor } from "./VisualAssetOperationEditor";
+import { DialogDrawerShell } from "./dialog/DialogDrawerShell";
+import { VisualAssetUpload } from "../features/visual-assets/upload/VisualAssetUpload";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -179,74 +180,14 @@ export function PanelDrawer({
   onSaveFilterChange,
 }: PanelDrawerProps) {
   const { t } = useTranslation(["drawer", "library"]);
-  const dialogRef = useRef<HTMLElement>(null);
-  const titleId = useId();
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const focusableElements = () => Array.from(dialog.querySelectorAll<HTMLElement>(
-      'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]',
-    )).filter((element) => element.getClientRects().length > 0 && element.getAttribute("aria-hidden") !== "true");
-
-    focusableElements()[0]?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        onCloseRef.current();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const focusable = focusableElements();
-      if (focusable.length === 0) {
-        event.preventDefault();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable.at(-1)!;
-      if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      previousFocus?.focus();
-    };
-  }, [overlay]);
-
   if (!overlay) return null;
   const activeModuleTab = moduleTab ?? selectedTab;
   return (
-    <div className="overlay-backdrop" role="presentation" onMouseDown={onClose}>
-      <section
-        ref={dialogRef}
-        className={`overlay-panel ${overlay === "module" ? "module-overlay" : ""} ${overlay === "new-story" ? "new-story-overlay" : ""} ${overlay === "options" ? "options-overlay" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onMouseDown={(event) => event.stopPropagation()}
-      >
-        <div className="overlay-head">
-          <h2 id={titleId}>{overlayTitle(overlay, activeModuleTab, t)}</h2>
-          <button
-            type="button"
-            className="square-button"
-            onClick={onClose}
-            aria-label={t("drawer:close")}
-            title={t("drawer:close")}
-          >
-            <X size={16} />
-          </button>
-        </div>
+    <DialogDrawerShell
+      title={overlayTitle(overlay, activeModuleTab, t)}
+      className={`${overlay === "module" ? "module-overlay" : ""} ${overlay === "new-story" ? "new-story-overlay" : ""} ${overlay === "options" ? "options-overlay" : ""}`}
+      onClose={onClose}
+    >
         {overlay === "help" && (
           <HelpContent commandDescriptors={commandDescriptors} />
         )}
@@ -309,8 +250,7 @@ export function PanelDrawer({
             onMapTravel={onMapTravel}
           />
         )}
-      </section>
-    </div>
+    </DialogDrawerShell>
   );
 }
 
@@ -442,7 +382,7 @@ function OptionsContent({
           <div><strong>{t("drawer:mapArt.title")}</strong><p>{t("drawer:mapArt.desc")}</p></div>
           <span className="settings-status">{mapBackground?.status === "ready" ? t("drawer:mapArt.ready") : mapBackground?.generation_eligible ? t("drawer:mapArt.queued") : t("drawer:mapArt.waiting")} · {t("drawer:mapArt.icons", { ready: readyMapIcons, total: mapIcons.length })}</span>
         </article>
-        <div data-setting-id="visual-profile"><VisualDirectionSettings profile={visualProfile} assets={visualAssets} jobs={visualJobs} operations={visualOperations} routeOperationCapabilities={visualOperationCapabilities} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} onAssetOperation={onVisualAssetOperation} /></div>
+        <div data-setting-id="visual-profile"><VisualDirectionSettings storyId={snapshot?.story.id || ""} profile={visualProfile} assets={visualAssets} jobs={visualJobs} operations={visualOperations} routeOperationCapabilities={visualOperationCapabilities} focusedAssetId={visualAssetFocusId} error={visualProfileError} busy={visualProfileBusy} onSave={onVisualProfileSave} onGenerate={onVisualAssetsGenerate} onReload={onVisualAssetsReload} onJobCancel={onVisualJobCancel} onCleanup={onVisualAssetsCleanup} onVersionsLoad={onVisualAssetVersionsLoad} onAssetPromptSave={onVisualAssetPromptSave} onVersionSelect={onVisualAssetVersionSelect} onSelectionStep={onVisualAssetSelectionStep} onAssetOperation={onVisualAssetOperation} /></div>
       </div>,
     },
     {
@@ -459,6 +399,7 @@ function OptionsContent({
 }
 
 function VisualDirectionSettings({
+  storyId,
   profile,
   assets,
   jobs,
@@ -478,6 +419,7 @@ function VisualDirectionSettings({
   onSelectionStep,
   onAssetOperation,
 }: {
+  storyId: string;
   profile: VisualProfile | null;
   assets: VisualAsset[];
   jobs: VisualGenerationJobView[];
@@ -904,6 +846,18 @@ function VisualDirectionSettings({
                       <p>{t("drawer:visuals.revised", { prompt: activeVersion.revised_prompt })}</p>
                     ) : null}
                   </div>
+                )}
+                {storyId && (
+                  <VisualAssetUpload
+                    storyId={storyId}
+                    assetId={selectedAsset.id}
+                    onUploaded={async () => {
+                      await onReload();
+                      const nextVersions = await onVersionsLoad(selectedAsset.id);
+                      setVersions(nextVersions);
+                      setVersionIndex(0);
+                    }}
+                  />
                 )}
                 <div className="model-actions">
                   <button

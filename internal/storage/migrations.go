@@ -62,6 +62,7 @@ func (db *DB) migrate() error {
 		{39, migrationV39},
 		{40, migrationV40},
 		{41, migrationV41},
+		{42, migrationV42},
 	}
 
 	for _, m := range migrations {
@@ -1846,4 +1847,27 @@ CREATE INDEX idx_image_operations_queue ON image_operations(status,created_at);
 CREATE INDEX idx_image_operations_asset ON image_operations(story_id,asset_id,created_at DESC);
 CREATE INDEX idx_image_masks_source ON image_masks(story_id,source_version_id);
 CREATE INDEX idx_visual_versions_parent ON visual_asset_versions(asset_id,parent_version_id,id DESC);
+`
+
+const migrationV42 = `
+ALTER TABLE visual_asset_versions ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'generated'
+	CHECK(source_kind IN ('generated','upload','imported'));
+
+CREATE TABLE visual_asset_uploads (
+	version_id INTEGER PRIMARY KEY REFERENCES visual_asset_versions(id) ON DELETE CASCADE,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+	branch_id TEXT NOT NULL,
+	original_filename_display TEXT NOT NULL DEFAULT '',
+	declared_mime TEXT NOT NULL DEFAULT '',
+	detected_mime TEXT NOT NULL CHECK(detected_mime IN ('image/png','image/jpeg','image/webp')),
+	byte_size INTEGER NOT NULL CHECK(byte_size > 0),
+	width INTEGER NOT NULL CHECK(width > 0),
+	height INTEGER NOT NULL CHECK(height > 0),
+	sha256 TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_visual_asset_uploads_asset
+	ON visual_asset_uploads(story_id,asset_id,branch_id,created_at DESC);
 `

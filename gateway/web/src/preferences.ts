@@ -52,7 +52,8 @@ export const defaultPreferences: AppPreferences = {
   readingFontWeight: 400,
   readingFontStyle: "normal",
   readingTextColor: DEFAULT_READING_COLOR,
-  showLeftRail: false,
+  desktopRailMode: "expanded",
+  showLeftRail: true,
   showInspector: false,
   wrapTranscript: true,
   showChoiceDetails: false,
@@ -74,7 +75,8 @@ export function loadPreferences(): AppPreferences {
 }
 
 export function savePreferences(preferences: AppPreferences) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences));
+  const { showLeftRail: _runtimeVisibility, ...persisted } = preferences;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
 }
 
 type LegacyPreferences = Partial<AppPreferences> & {
@@ -114,7 +116,8 @@ export function normalizePreferences(value: LegacyPreferences | null | undefined
     readingFontWeight: oneOfNumber(value?.readingFontWeight, [300, 400, 500, 600, 700], defaultPreferences.readingFontWeight),
     readingFontStyle: oneOf(value?.readingFontStyle, ["normal", "italic"], defaultPreferences.readingFontStyle),
     readingTextColor: normalizeColor(value?.readingTextColor, defaultPreferences.readingTextColor),
-    showLeftRail: typeof value?.showLeftRail === "boolean" ? value.showLeftRail : defaultPreferences.showLeftRail,
+    desktopRailMode: oneOf(value?.desktopRailMode, ["expanded", "collapsed"], defaultPreferences.desktopRailMode),
+    showLeftRail: true,
     showInspector: typeof value?.showInspector === "boolean" ? value.showInspector : defaultPreferences.showInspector,
     wrapTranscript: typeof value?.wrapTranscript === "boolean" ? value.wrapTranscript : defaultPreferences.wrapTranscript,
     showChoiceDetails: typeof value?.showChoiceDetails === "boolean" ? value.showChoiceDetails : defaultPreferences.showChoiceDetails,

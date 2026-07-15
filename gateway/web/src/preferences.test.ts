@@ -22,6 +22,7 @@ describe("normalizePreferences", () => {
         readingFontWeight: 600,
         readingFontStyle: "italic",
         readingTextColor: "#eeeeee",
+        desktopRailMode: "collapsed",
         showLeftRail: false,
         showInspector: false,
         wrapTranscript: false,
@@ -47,7 +48,8 @@ describe("normalizePreferences", () => {
       readingFontWeight: 600,
       readingFontStyle: "italic",
       readingTextColor: "#eeeeee",
-      showLeftRail: false,
+      desktopRailMode: "collapsed",
+      showLeftRail: true,
       showInspector: false,
       wrapTranscript: false,
       showChoiceDetails: true,
@@ -162,9 +164,17 @@ describe("loadPreferences and savePreferences", () => {
 
   it("persists normalized preferences", () => {
     const storage = stubLocalStorage();
-    savePreferences({ ...defaultPreferences, density: "comfortable", accent: "#ff91ad" });
-    expect(storage.get("oneday-browser-preferences-v2")).toContain("comfortable");
-    expect(loadPreferences()).toMatchObject({ density: "comfortable", accent: "#ff91ad" });
+    savePreferences({ ...defaultPreferences, density: "comfortable", accent: "#ff91ad", desktopRailMode: "collapsed", showLeftRail: false });
+    const stored = storage.get("oneday-browser-preferences-v2") ?? "";
+    expect(stored).toContain("comfortable");
+    expect(stored).not.toContain("showLeftRail");
+    expect(loadPreferences()).toMatchObject({ density: "comfortable", accent: "#ff91ad", desktopRailMode: "collapsed", showLeftRail: true });
+  });
+
+  it("does not restore a legacy hidden rail after refresh", () => {
+    stubLocalStorage();
+    localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ showLeftRail: false }));
+    expect(loadPreferences()).toMatchObject({ desktopRailMode: "expanded", showLeftRail: true });
   });
 
   it("migrates legacy named accent colors", () => {

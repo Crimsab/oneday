@@ -1,3 +1,4 @@
+mod asset_upload;
 mod assets;
 mod challenge;
 mod config;
@@ -125,6 +126,9 @@ async fn main() -> anyhow::Result<()> {
         visual_workers: Arc::new(Semaphore::new(4)),
         observability: observability.status(),
     });
+    asset_upload::cleanup_stale_upload_parts(&state.paths.visual_asset_dir)
+        .await
+        .context("cleaning stale visual asset upload parts")?;
     assets::spawn_visual_generation_maintenance(state.clone());
     assets::spawn_visual_generation_worker(state.clone());
     assets::spawn_image_operation_recovery(state.clone());

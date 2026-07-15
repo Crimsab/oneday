@@ -18,6 +18,7 @@ export type OverlayKind =
   "help" | "options" | "saves" | "new-story" | "meta" | "module" | null;
 
 export type DensityPreference = "compact" | "balanced" | "comfortable";
+export type DesktopRailMode = "expanded" | "collapsed";
 export type FontSourcePreference = "bundled" | "system" | "imported" | "online";
 export type FontStylePreference = "normal" | "italic";
 
@@ -37,6 +38,8 @@ export interface AppPreferences {
   readingFontWeight: number;
   readingFontStyle: FontStylePreference;
   readingTextColor: string;
+  desktopRailMode: DesktopRailMode;
+  /** Runtime visibility only. savePreferences deliberately omits this field. */
   showLeftRail: boolean;
   showInspector: boolean;
   wrapTranscript: boolean;
@@ -312,6 +315,7 @@ export interface StoryUpdatePayload {
   description?: string;
   genre?: string;
   tone?: string;
+  language?: string;
   is_archived?: boolean;
 }
 
@@ -769,7 +773,14 @@ export interface VisualAssetVersion {
   turn: number;
   branch_id: string;
   source_commit_id: string;
+  source_kind: "generated" | "upload" | "imported" | string;
   created_at: string;
+}
+
+export interface VisualAssetUploadResponse {
+  version_id: number;
+  selected: boolean;
+  visual_assets: VisualAssetsResponse;
 }
 
 export interface VisualGenerationJobView {

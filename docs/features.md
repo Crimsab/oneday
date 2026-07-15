@@ -28,6 +28,19 @@ OneDay tracks more than the transcript:
 The model proposes narrative changes. The engine validates and commits the
 structured consequences so browser and terminal never invent separate state.
 
+## Browser workspace
+
+- The navigation rail expands, collapses, or hides while remembering only the
+  last visible desktop mode. Mobile navigation remains an independent drawer.
+- Story Library searches active or archived summaries and keeps create, edit,
+  archive, restore, and guarded deletion out of the navigation rail.
+- The browser exports and imports a versioned UI theme containing only visual
+  preferences. Import shows a diff, warns about missing local fonts, and offers
+  one-step undo without including stories, provider settings, or gameplay data.
+- Supported desktop Chrome browsers expose optional per-message reading
+  translation below completed transcript messages. It uses the browser's
+  built-in Translator API and never adds a model call or rewrites saved text.
+
 ## Interaction that fits the scene
 
 Challenges can use stats, skills, items, relationships, dice, or story-specific
@@ -53,6 +66,9 @@ points, while a tactical adventure can enable them.
 - Spoken narration and character voices with cloud or local TTS.
 - Provider routing, ordered fallbacks, retryable background jobs, cache, and
   branch-aware asset lineage.
+- Manual PNG, JPEG, and static WebP uploads become additional branch-aware
+  versions. Selection is explicit, and later generation preserves a selected
+  manual upload.
 
 Media work is asynchronous and non-blocking. Text, map structure, labels, and
 story state remain authoritative when an image or audio provider is unavailable.

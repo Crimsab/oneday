@@ -4,6 +4,17 @@ import { readFile } from "node:fs/promises";
 const now = "2026-07-11T12:00:00Z";
 const story = { id: "story-1", name: "The Glass Archive", description: "A branching test story", genre: "mystery", tone: "focused", language: "en", is_archived: false, updated_at: now };
 
+async function openRail(page: Page) {
+  if (!(await page.locator("#story-navigation").isVisible())) {
+    await page.getByRole("button", { name: "Library" }).click();
+  }
+}
+
+async function openStoryLibrary(page: Page) {
+  await openRail(page);
+  await page.getByRole("button", { name: /active stor(y|ies)/i }).click();
+}
+
 function snapshot(turn = 4, branchId = "branch-main") {
   const messages = [
     { id: 1, session_id: "session-1", story_id: story.id, turn: 3, role: "assistant", content: "The archive doors wait in silence.", message_type: "narrative", metadata: {}, created_at: now, branch_id: branchId, source_commit_id: "commit-3" },
@@ -408,15 +419,19 @@ test("shows optional choice context including used attributes", async ({ page })
 test("keeps story actions above the rail and closes them on outside click", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /library/i }).click();
+  await openStoryLibrary(page);
   const navigationBorderWidths = await page.locator(".module-nav button").evaluateAll((buttons) => buttons.map((button) => getComputedStyle(button).borderTopWidth));
   expect(new Set(navigationBorderWidths)).toEqual(new Set(["1px"]));
   const createBox = await page.getByRole("button", { name: "New Story" }).boundingBox();
   const searchBox = await page.getByPlaceholder("Filter stories").boundingBox();
   expect(createBox).not.toBeNull();
   expect(searchBox).not.toBeNull();
-  expect(searchBox!.y - (createBox!.y + createBox!.height)).toBeGreaterThanOrEqual(6);
-  const storyRows = page.locator(".story-row");
+  const toolbarGap = Math.max(
+    createBox!.x - (searchBox!.x + searchBox!.width),
+    searchBox!.x - (createBox!.x + createBox!.width),
+  );
+  expect(toolbarGap).toBeGreaterThanOrEqual(6);
+  const storyRows = page.locator(".story-library-row");
   await expect(storyRows).toHaveCount(1);
   const storyBox = await storyRows.first().boundingBox();
   expect(storyBox?.height).toBeGreaterThanOrEqual(80);
@@ -424,14 +439,14 @@ test("keeps story actions above the rail and closes them on outside click", asyn
   const menu = page.getByRole("menu");
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Edit" })).toBeInViewport();
-  await page.getByRole("button", { name: "New Story" }).click({ position: { x: 4, y: 4 } });
+  await page.getByPlaceholder("Filter stories").click();
   await expect(menu).toHaveCount(0);
 });
 
 test("reviews a story preset before starting structured generation", async ({ page }) => {
   const requests = await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /library/i }).click();
+  await openStoryLibrary(page);
   await page.getByRole("button", { name: "New Story" }).click();
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("button", { name: "Dark fantasy" })).toBeVisible();
@@ -454,7 +469,7 @@ test("reviews a story preset before starting structured generation", async ({ pa
 test("sends a custom visual direction with the story draft", async ({ page }) => {
   const requests = await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: /library/i }).click();
+  await openStoryLibrary(page);
   await page.getByRole("button", { name: "New Story" }).click();
   const dialog = page.getByRole("dialog");
 
@@ -543,7 +558,7 @@ test("restores a message decision and only exposes branch navigation when altern
 test("keeps story branches inline and closes the menu outside or with escape", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Library" }).click();
+  await openRail(page);
   const toggle = page.getByRole("button", { name: /Story branches/ });
   await toggle.click();
   await expect(page.locator("#branch-menu")).toBeVisible();
@@ -721,7 +736,7 @@ test("keeps asset prompt edits stable and reveals completed image versions", asy
 test("opens a codex image directly in its editable visual asset workspace", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Library" }).click();
+  await openRail(page);
   await page.getByRole("button", { name: "Codex" }).click();
   const moduleSurface = page.viewportSize()!.width <= 1240 ? page.getByRole("dialog") : page.locator(".right-inspector");
   await moduleSurface.getByRole("button", { name: "Open image for Mira" }).click();
@@ -779,7 +794,7 @@ test("paints a full-resolution mask and submits inpainting without fallback", as
 test("uses the dedicated inventory-aware crafting conversation and separates achievements", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Library" }).click();
+  await openRail(page);
   await page.getByRole("button", { name: "Craft" }).click();
   const compact = page.viewportSize()!.width <= 1240;
   const craftSurface = compact ? page.getByRole("dialog") : page.locator(".right-inspector");
@@ -793,7 +808,7 @@ test("uses the dedicated inventory-aware crafting conversation and separates ach
   await expect(craftSurface.getByText("Prism key", { exact: true })).toBeVisible();
 
   if (compact) await craftSurface.getByRole("button", { name: "Close" }).click();
-  else await page.getByRole("button", { name: "Library" }).click();
+  else await openRail(page);
   await page.getByRole("button", { name: "Achievements" }).click();
   const achievementSurface = compact ? page.getByRole("dialog") : page.locator(".right-inspector");
   await expect(achievementSurface.getByRole("heading", { name: "Achievements" })).toBeVisible();
