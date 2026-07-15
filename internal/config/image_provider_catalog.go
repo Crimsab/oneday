@@ -176,8 +176,20 @@ func buildImageProviderCatalog(cfg ImageGenerationConfig) []ImageProviderCatalog
 			Default: definition.id == ImageProviderCodexOAuth, Configured: configured,
 			APIKeyConfigured: strings.TrimSpace(direct.APIKey) != "", Status: status,
 			BaseURL: direct.BaseURL, APIVersion: direct.APIVersion,
-			Models: models, ModelValidation: definition.modelValidation, Capabilities: definition.capabilities,
+			Models: models, ModelValidation: definition.modelValidation,
+			Capabilities: normalizedImageProviderCapabilities(definition.capabilities),
 		})
 	}
 	return entries
+}
+
+func normalizedImageProviderCapabilities(capabilities ImageProviderCapabilities) ImageProviderCapabilities {
+	// The gateway contract requires arrays, not null. Copy through a non-nil
+	// slice so providers without a size, aspect-ratio, or quality allowlist
+	// still serialize as [] and can be decoded by every generated client.
+	capabilities.Sizes = append([]string{}, capabilities.Sizes...)
+	capabilities.AspectRatios = append([]string{}, capabilities.AspectRatios...)
+	capabilities.Qualities = append([]string{}, capabilities.Qualities...)
+	capabilities.OutputFormats = append([]string{}, capabilities.OutputFormats...)
+	return capabilities
 }

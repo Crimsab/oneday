@@ -376,6 +376,9 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	if !settings.ImageGeneration.Available {
 		t.Fatalf("ImageGeneration.Available = false, status %q", settings.ImageGeneration.Status)
 	}
+	if settings.ImageGeneration.Status != "Codex OAuth via imagegen-bridge" {
+		t.Fatalf("ImageGeneration.Status = %q, want Codex imagegen-bridge status", settings.ImageGeneration.Status)
+	}
 	if !settings.ImageGeneration.APIKeyConfigured {
 		t.Fatalf("ImageGeneration.APIKeyConfigured = false")
 	}
@@ -401,6 +404,10 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	for _, provider := range settings.ImageProviders {
 		if provider.Capabilities.Edit {
 			t.Fatalf("provider %q advertises edit without an exposed edit operation", provider.ID)
+		}
+		if provider.Capabilities.Sizes == nil || provider.Capabilities.AspectRatios == nil ||
+			provider.Capabilities.Qualities == nil || provider.Capabilities.OutputFormats == nil {
+			t.Fatalf("provider %q exposes null capability arrays: %#v", provider.ID, provider.Capabilities)
 		}
 	}
 }

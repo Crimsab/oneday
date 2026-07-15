@@ -387,7 +387,7 @@ func imageGenerationAvailability(cfg ImageGenerationConfig) (bool, string) {
 
 func isOpenClawImageProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "openclaw", "openclaw-bridge", "codex-oauth":
+	case "openclaw", "openclaw-bridge":
 		return true
 	default:
 		return false
