@@ -1,10 +1,8 @@
 <div align="center">
 
-<img src="docs/assets/oneday-icon.png" alt="OneDay icon: a luminous path branching from an open doorway beneath a starry sky" width="160" />
-
 # OneDay
 
-<p><strong>Imagine any story. Live every possibility.</strong></p>
+<p><strong>Any story. Yours to live.</strong></p>
 
 [![CI](https://github.com/Crimsab/oneday/actions/workflows/ci.yml/badge.svg)](https://github.com/Crimsab/oneday/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Crimsab/oneday?display_name=tag&sort=semver)](https://github.com/Crimsab/oneday/releases/latest)
@@ -12,7 +10,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docs/docker.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-<!-- Hero slot: add docs/assets/oneday-hero.webp here when the final artwork is ready. -->
+<img src="docs/assets/oneday-hero.webp" alt="OneDay: a luminous doorway and branching path beneath a starry sky, with persistent worlds, relationships, images, voice, crafting, minigames, and multiple AI providers" width="100%" />
 
 OneDay turns any premise into a persistent, interactive world. Write any action,
 follow or reject suggested choices, and explore stories that remember what
