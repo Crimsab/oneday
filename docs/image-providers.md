@@ -1,33 +1,38 @@
 # Image provider compatibility
 
-OneDay has three image adapter families. The preferred path is the native
-imagegen-bridge contract because it keeps provider discovery, capabilities,
-fallbacks, revised prompts, and verified output metadata outside the story
-engine.
+OneDay exposes image providers as explicit, persisted choices. **Codex OAuth**
+is the first and default catalog entry. It uses imagegen-bridge as its Codex-only
+transport; imagegen-bridge is not a provider-neutral gateway and OneDay never
+routes vendor API keys through it.
 
-## Current matrix
+## Supported providers
 
-| Route | Status in OneDay | Authentication | Notes |
+| OneDay provider ID | Display name | Authentication | Adapter contract |
 | --- | --- | --- | --- |
-| imagegen-bridge → `codex-responses` | Default | Codex/ChatGPT OAuth | First-class bridge provider for `gpt-image-2`, `gpt-image-1.5`, `gpt-image-1`, and `gpt-image-1-mini`. |
-| imagegen-bridge → `codex-app-server` | Supported fallback | Codex/ChatGPT OAuth | Supports the Codex app-server lifecycle and a smaller parameter set. |
-| Future or third-party imagegen-bridge provider | Contract-ready | Provider-defined | OneDay forwards the registered provider/model route without requiring a new client adapter. The provider must exist in the running bridge. |
-| OpenAI Platform `/images/generations` | Supported directly | API key | Configure an OpenAI-compatible `base_url`, key, and model. This path is separate from Codex OAuth. |
-| LiteLLM or another OpenAI-compatible gateway | Supported conditionally | Gateway-defined | Works when the gateway implements the same `/images/generations` path and response schema. |
-| OpenClaw image bridge | Legacy compatibility | Bridge-defined | Uses the configured OpenClaw generation URL. It is not required by the preferred imagegen-bridge path. |
-| Provider-specific Gemini, fal, Replicate, Stability, Azure, or similar API | No direct adapter | Provider-defined | Use an imagegen-bridge provider or a compatible gateway. OneDay does not guess vendor-specific paths, headers, or payloads. |
+| `codex-oauth` | Codex OAuth | Existing Codex/ChatGPT OAuth in imagegen-bridge | Native imagegen-bridge `/v1/images`; `codex-responses` is recommended and `codex-app-server` is the Codex compatibility fallback. |
+| `openai` | OpenAI Platform | OpenAI Platform API key | Direct `/v1/images/generations`. This is separate from Codex OAuth. |
+| `openai-compatible` | OpenAI-compatible / LiteLLM | Endpoint API key | Direct `/images/generations`, only for gateways that implement the image request and response schema—not merely chat completions. |
+| `gemini` | Google Gemini | Gemini API key | Direct Gemini `v1beta/interactions` image response. |
+| `fal` | fal.ai | fal key | Direct queue API submission, bounded polling, and result download. |
+| `replicate` | Replicate | API token | Direct official-model prediction API with bounded polling. Models use `owner/model`. |
+| `stability` | Stability AI | Stability API key | Direct Stable Image Core v2beta multipart API. |
+| `azure-openai` | Azure OpenAI Images | Azure resource API key | Direct Azure OpenAI `/openai/v1/images/generations`; the model field is the deployment name. |
 
-The current imagegen-bridge release ships two built-in providers:
-`codex-responses` and `codex-app-server`. Its official OpenAI Platform provider
-is reserved but not implemented there; OneDay can still call the official
-OpenAI-compatible image endpoint through its direct adapter.
+Legacy `openclaw-bridge` configuration remains readable for compatibility but
+is not a catalog provider for new setups. OneDay does not advertise Imagen's
+separate Vertex AI `predict` surface: the current Google adapter implements the
+stable Gemini Developer API image contract without adding a heavyweight cloud
+SDK or pretending that Vertex credentials are interchangeable.
 
-## Preferred configuration
+## Codex OAuth configuration
 
 ```yaml
 ai:
   image_generation:
-    provider: imagegen-bridge
+    provider: codex-oauth
+    map_icon_provider: codex-oauth
+    model: gpt-image-2
+    map_icon_model: gpt-image-1
     imagegen_bridge_url: http://127.0.0.1:8787
     imagegen_bridge_token: ${ONEDAY_IMAGEGEN_BRIDGE_TOKEN}
     imagegen_bridge_provider: codex-responses
@@ -36,37 +41,83 @@ ai:
       - codex-app-server:gpt-image-2
     imagegen_bridge_fallback_policy: on_error
     imagegen_bridge_compatibility: normalize
-    auto_generate: true
 ```
 
-From Docker, replace the loopback host with
-`http://host.docker.internal:8787` when the bridge runs on the host.
+Only `codex-responses` and `codex-app-server` routes are accepted in bridge
+configuration. A third-party provider route is a validation error.
 
-## Direct OpenAI-compatible configuration
+## Direct provider configuration
+
+Scene art and map icons may use different providers and models. Credentials are
+stored server-side under `providers`; they are accepted as write-only Settings
+updates and are never returned by the API.
 
 ```yaml
 ai:
   image_generation:
-    provider: openai
-    base_url: https://api.openai.com/v1
-    api_key: ${ONEDAY_IMAGEGEN_API_KEY}
-    model: gpt-image-1
+    provider: gemini
+    model: gemini-3.1-flash-image
+    map_icon_provider: openai
     map_icon_model: gpt-image-1
-    auto_generate: true
+    providers:
+      openai:
+        base_url: https://api.openai.com/v1
+        api_key: ${ONEDAY_IMAGEGEN_OPENAI_API_KEY}
+        models: [gpt-image-1]
+      gemini:
+        base_url: https://generativelanguage.googleapis.com/v1beta
+        api_key: ${ONEDAY_IMAGEGEN_GEMINI_API_KEY}
+        models: [gemini-3.1-flash-image]
 ```
 
-Use this adapter only for endpoints that deliberately implement the familiar
-OpenAI image-generation contract. A text-completions-compatible endpoint is not
-automatically image-compatible.
+Official base URLs are defaults for OpenAI, Gemini, fal.ai, Replicate, and
+Stability. `openai-compatible` and `azure-openai` require an explicit endpoint.
+Azure also accepts `api_version` (default `preview`).
 
-## Capability and failure behavior
+## Settings contract and secret handling
 
-The native bridge validates provider/model capabilities before generation and
-returns the actual provider used for every fallback attempt. OneDay keeps image
-work asynchronous: an unavailable provider records a bounded failure without
-rolling back or blocking canonical story text.
+`GET /api/config/models` returns `image_providers` in stable display order and
+the selected `image_generation` route. Catalog entries contain ID, display
+name, authentication kind, redacted configuration status, safe endpoint and
+API version, configured models, model-validation mode, and capabilities.
 
-General scene art and map symbols may use different routes. Safety refusals,
-cancellation, and invalid requests are never silently rerouted as technical
-fallbacks. See [Generated media](media.md) and
-[Configuration](configuration.md) for all controls.
+`PUT /api/config/models` accepts provider-specific write-only updates under
+`image_generation.provider_configs`:
+
+```json
+{
+  "base_revision": "...",
+  "image_generation": {
+    "provider": "gemini",
+    "model": "gemini-3.1-flash-image",
+    "provider_configs": [{
+      "id": "gemini",
+      "api_key": "write-only",
+      "models": ["gemini-3.1-flash-image"]
+    }]
+  }
+}
+```
+
+Use `clear_api_key: true` to remove a vendor key. Codex bridge tokens use the
+separate write-only `imagegen_bridge_token` and
+`clear_imagegen_bridge_token`. Responses expose only `configured` and
+`api_key_configured`; keys and bridge tokens are never echoed. There is no
+connection-test endpoint: saving performs local contract validation, while an
+actual provider request occurs only as an explicit asynchronous generation job.
+
+Legacy `imagegen-bridge`, `imagegen_bridge`, and `bridge-native` provider IDs
+are normalized to `codex-oauth`. A legacy Codex bridge configuration with no
+image model defaults at runtime to the recommended `gpt-image-2` for scene art
+and map icons; new Settings writes persist the user's explicit selections.
+
+## Failure and retry behavior
+
+Provider/model routing is explicit. OneDay does not silently fall back between
+providers with different credentials or costs. Codex OAuth may use only its
+configured Codex-internal bridge fallback policy. Jobs have bounded attempts;
+authentication, validation, unsupported-parameter, invalid-response, and
+post-accept timeout errors are terminal. Only failures known to be safe to
+retry, such as connection failures, rate limits, and upstream 5xx responses,
+are requeued. The persisted asset metadata records the provider and model that
+actually produced the image.

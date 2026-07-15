@@ -26,6 +26,7 @@ export interface ModelRoutingDraft {
 
 export interface ImageGenerationDraft {
   provider: string;
+  mapIconProvider: string;
   baseUrl: string;
   model: string;
   mapIconModel: string;
@@ -147,10 +148,10 @@ export function modelRoutingIssues(
     if (!draft.imageGeneration.provider.trim()) {
       issues.push("Image generation provider is required when auto-generate is enabled.");
     }
-    if (!isImagegenBridgeProvider(draft.imageGeneration.provider) && !draft.imageGeneration.model.trim()) {
+    if (!draft.imageGeneration.model.trim()) {
       issues.push("Image generation model is required when auto-generate is enabled.");
     }
-    if (!isImagegenBridgeProvider(draft.imageGeneration.provider) && !draft.imageGeneration.mapIconModel.trim()) {
+    if (!draft.imageGeneration.mapIconModel.trim()) {
       issues.push("Transparent map icon model is required when auto-generate is enabled.");
     }
     if (draft.imageGeneration.timeoutSeconds <= 0) {
@@ -191,6 +192,7 @@ function imageGenerationDraft(
 ): ImageGenerationDraft {
   return {
     provider: settings.provider,
+    mapIconProvider: settings.map_icon_provider,
     baseUrl: settings.base_url,
     model: settings.model,
     mapIconModel: settings.map_icon_model,
@@ -224,6 +226,7 @@ function imageGenerationUpdate(
 ): ImageGenerationUpdate {
   return {
     provider: draft.provider.trim(),
+    map_icon_provider: draft.mapIconProvider.trim(),
     base_url: draft.baseUrl.trim(),
     model: draft.model.trim(),
     map_icon_model: draft.mapIconModel.trim(),
@@ -255,13 +258,13 @@ function imageGenerationUpdate(
 }
 
 function isOpenClawImageProvider(provider: string): boolean {
-  return ["openclaw", "openclaw-bridge", "codex-oauth"].includes(
+  return ["openclaw", "openclaw-bridge"].includes(
     provider.trim().toLowerCase(),
   );
 }
 
 function isImagegenBridgeProvider(provider: string): boolean {
-  return ["imagegen-bridge", "imagegen_bridge", "bridge-native"].includes(
+  return ["codex-oauth", "imagegen-bridge", "imagegen_bridge", "bridge-native"].includes(
     provider.trim().toLowerCase(),
   );
 }

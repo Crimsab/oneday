@@ -1020,6 +1020,9 @@
         "provider": {
           "type": "string"
         },
+        "map_icon_provider": {
+          "type": "string"
+        },
         "base_url": {
           "type": "string"
         },
@@ -1115,6 +1118,7 @@
       "type": "object",
       "required": [
         "provider",
+        "map_icon_provider",
         "base_url",
         "api_key_configured",
         "model",
@@ -1151,6 +1155,9 @@
         "provider": {
           "type": "string"
         },
+        "map_icon_provider": {
+          "type": "string"
+        },
         "base_url": {
           "type": "string"
         },
@@ -1165,6 +1172,12 @@
         },
         "imagegen_bridge_url": {
           "type": "string"
+        },
+        "imagegen_bridge_token": {
+          "type": "string"
+        },
+        "clear_imagegen_bridge_token": {
+          "type": "boolean"
         },
         "imagegen_bridge_provider": {
           "type": "string"
@@ -1228,10 +1241,152 @@
         },
         "append_negative_prompt": {
           "type": "boolean"
+        },
+        "provider_configs": {
+          "items": {
+            "$ref": "#/$defs/ImageProviderConfigUpdate"
+          },
+          "type": "array"
         }
       },
       "additionalProperties": false,
       "type": "object"
+    },
+    "ImageProviderCapabilities": {
+      "properties": {
+        "generate": {
+          "type": "boolean"
+        },
+        "edit": {
+          "type": "boolean"
+        },
+        "sizes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "aspect_ratios": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "qualities": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "output_formats": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "supports_transparency": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "generate",
+        "edit",
+        "sizes",
+        "aspect_ratios",
+        "qualities",
+        "output_formats",
+        "supports_transparency"
+      ]
+    },
+    "ImageProviderCatalogEntry": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "display_name": {
+          "type": "string"
+        },
+        "auth_type": {
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "configured": {
+          "type": "boolean"
+        },
+        "api_key_configured": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string"
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "api_version": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model_validation": {
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/ImageProviderCapabilities"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "display_name",
+        "auth_type",
+        "default",
+        "configured",
+        "api_key_configured",
+        "status",
+        "base_url",
+        "models",
+        "model_validation",
+        "capabilities"
+      ]
+    },
+    "ImageProviderConfigUpdate": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "api_key": {
+          "type": "string"
+        },
+        "clear_api_key": {
+          "type": "boolean"
+        },
+        "api_version": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id"
+      ]
     },
     "LoadResponse": {
       "properties": {
@@ -1712,6 +1867,12 @@
         "image_generation": {
           "$ref": "#/$defs/ImageGenerationSetting"
         },
+        "image_providers": {
+          "items": {
+            "$ref": "#/$defs/ImageProviderCatalogEntry"
+          },
+          "type": "array"
+        },
         "active": {
           "$ref": "#/$defs/ModelRoutingActive"
         },
@@ -1733,6 +1894,7 @@
         "ascii_models",
         "embedding_providers",
         "image_generation",
+        "image_providers",
         "active",
         "tts_status"
       ]

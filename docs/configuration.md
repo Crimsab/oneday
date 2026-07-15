@@ -50,28 +50,26 @@ replace the host with `host.docker.internal` when Ollama runs outside the contai
 Visual settings live under `ai.image_generation` and can be overridden with
 `ONEDAY_IMAGEGEN_*` variables.
 
-- [`imagegen-bridge`](https://github.com/Crimsab/imagegen-bridge) is the
-  preferred adapter. It calls the native `/v1/images`
-  contract and preserves provider routing, ordered fallbacks, compatibility
-  normalization, idempotency, revised prompts, and verified output metadata.
+- `codex-oauth` is the first/default provider and calls the Codex-only
+  [`imagegen-bridge`](https://github.com/Crimsab/imagegen-bridge) native
+  `/v1/images` contract.
 - The default route is `codex-responses` with
   `codex-app-server:gpt-image-2` as the ordered technical-error fallback. Both
   use Codex/ChatGPT OAuth; neither consumes `OPENAI_API_KEY`.
-- `imagegen_bridge_provider` and `imagegen_bridge_map_icon_provider` can route
-  general art and transparent icons independently. Models may be omitted to use
-  the bridge provider defaults.
+- `imagegen_bridge_provider` and `imagegen_bridge_map_icon_provider` accept only
+  `codex-responses` or `codex-app-server`. Provider and model are explicit;
+  `provider`/`model` and `map_icon_provider`/`map_icon_model` may differ.
 - `imagegen_bridge_fallbacks` accepts ordered `PROVIDER` or `PROVIDER:MODEL`
   entries. `imagegen_bridge_fallback_policy` is `on_unavailable` or `on_error`;
   `imagegen_bridge_compatibility` is `strict`, `normalize`, or `best_effort`.
 - The bridge bearer token belongs in `ONEDAY_IMAGEGEN_BRIDGE_TOKEN`, not in
   browser state or committed YAML. The Options panel reports only whether it is
   configured.
-- Legacy `openclaw-bridge` calls `openclaw_bridge_url`. Any other provider name
-  uses the OpenAI-compatible `base_url`, bearer `api_key`, and
-  `/images/generations`. This covers OpenAI Platform and compatible gateways
-  such as LiteLLM when their image route follows that contract. Provider APIs
-  with different paths, authentication headers, or payloads belong behind
-  `imagegen-bridge` rather than being guessed by OneDay.
+- Direct adapters are available for OpenAI Platform, compatible/LiteLLM image
+  endpoints, Gemini, fal.ai, Replicate, Stability, and Azure OpenAI. Their
+  endpoints, API keys, versions, and configured models live under
+  `ai.image_generation.providers`; keys are write-only through Settings.
+- Legacy `openclaw-bridge` still calls `openclaw_bridge_url`.
 - `auto_generate` controls background generation; failed work remains non-blocking.
 - `append_negative_prompt` enables saved negative direction. The native bridge
   receives it as `negative_prompt`; legacy adapters receive a merged prompt.

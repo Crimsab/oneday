@@ -77,20 +77,21 @@ ai:
   # Non-blocking visual asset generation for locations, characters, and story art.
   # Environment variables with ONEDAY_IMAGEGEN_* override these values at runtime.
   image_generation:
-    # Preferred: imagegen-bridge native API. Legacy openclaw-bridge and generic
-    # OpenAI-compatible /images/generations endpoints remain supported.
-    provider: "imagegen-bridge"
+    # Default provider: Codex OAuth through the Codex-only imagegen-bridge.
+    # Vendor providers below use separate direct OneDay adapters and API keys.
+    provider: "codex-oauth"
+    map_icon_provider: "codex-oauth"
     base_url: ""
     api_key: ""
     model: "gpt-image-2"
-    map_icon_model: "gpt-image-2"
+    map_icon_model: "gpt-image-1"
     openclaw_bridge_url: "http://127.0.0.1:8099/generate"
     imagegen_bridge_url: "http://127.0.0.1:8787"
     imagegen_bridge_token: "${ONEDAY_IMAGEGEN_BRIDGE_TOKEN}"
     imagegen_bridge_provider: "codex-responses"
     imagegen_bridge_map_icon_provider: "codex-responses"
-    # Ordered PROVIDER or PROVIDER:MODEL routes. Fallbacks require isolated sessions.
-    imagegen_bridge_fallbacks: ["codex-app-server:gpt-image-2"]
+    # Codex-only fallback routes. Fallbacks require isolated sessions.
+    imagegen_bridge_fallbacks: ["codex-app-server"]
     imagegen_bridge_fallback_policy: "on_error"
     imagegen_bridge_compatibility: "normalize"
     default_size: "1024x1024"
@@ -109,6 +110,38 @@ ai:
     # Enable only after the selected bridge or endpoint is reachable.
     auto_generate: false
     append_negative_prompt: true
+    # Direct vendor credentials remain server-side. Configure only providers
+    # you use; Settings responses expose booleans, never these values.
+    providers:
+      openai:
+        base_url: "https://api.openai.com/v1"
+        api_key: "${ONEDAY_IMAGEGEN_OPENAI_API_KEY}"
+        models: ["gpt-image-2", "gpt-image-1"]
+      openai-compatible:
+        base_url: ""
+        api_key: "${ONEDAY_IMAGEGEN_OPENAI_COMPATIBLE_API_KEY}"
+        models: []
+      gemini:
+        base_url: "https://generativelanguage.googleapis.com/v1beta"
+        api_key: "${ONEDAY_IMAGEGEN_GEMINI_API_KEY}"
+        models: ["gemini-3.1-flash-image"]
+      fal:
+        base_url: "https://queue.fal.run"
+        api_key: "${ONEDAY_IMAGEGEN_FAL_API_KEY}"
+        models: ["fal-ai/flux/schnell"]
+      replicate:
+        base_url: "https://api.replicate.com/v1"
+        api_key: "${ONEDAY_IMAGEGEN_REPLICATE_API_TOKEN}"
+        models: ["black-forest-labs/flux-schnell"]
+      stability:
+        base_url: "https://api.stability.ai/v2beta"
+        api_key: "${ONEDAY_IMAGEGEN_STABILITY_API_KEY}"
+        models: ["stable-image-core"]
+      azure-openai:
+        base_url: "${ONEDAY_IMAGEGEN_AZURE_OPENAI_ENDPOINT}"
+        api_key: "${ONEDAY_IMAGEGEN_AZURE_OPENAI_API_KEY}"
+        api_version: "preview"
+        models: []
 
   # Optional spoken narration and character voices. Providers are disabled by
   # default; text remains canonical when synthesis is unavailable.

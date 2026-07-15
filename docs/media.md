@@ -5,12 +5,11 @@ media is optional, asynchronous, and subordinate to committed text and state.
 The public template leaves automatic visual generation disabled until a
 provider is configured.
 
-## Images with imagegen-bridge
+## Codex OAuth images
 
-[`imagegen-bridge`](https://github.com/Crimsab/imagegen-bridge) is the preferred
-adapter. It gives OneDay one native contract while the bridge owns provider
-authentication, capability normalization, ordered fallback, revised prompts,
-idempotency, and output metadata.
+Codex OAuth is the default provider. OneDay calls
+[`imagegen-bridge`](https://github.com/Crimsab/imagegen-bridge) as a Codex-only
+transport; vendor keys and third-party routes never pass through the bridge.
 
 The default route is `codex-responses` with
 `codex-app-server:gpt-image-2` as the technical-error fallback. These routes use
@@ -19,11 +18,11 @@ Codex/ChatGPT OAuth, not `OPENAI_API_KEY`.
 ```yaml
 ai:
   image_generation:
-    provider: imagegen-bridge
+    provider: codex-oauth
     imagegen_bridge_url: http://127.0.0.1:8787
     imagegen_bridge_token: ${ONEDAY_IMAGEGEN_BRIDGE_TOKEN}
     imagegen_bridge_provider: codex-responses
-    imagegen_bridge_fallbacks: [codex-app-server:gpt-image-2]
+    imagegen_bridge_fallbacks: [codex-app-server]
     imagegen_bridge_fallback_policy: on_error
     imagegen_bridge_compatibility: normalize
     auto_generate: true
@@ -34,15 +33,13 @@ runs on the host. Keep the bearer token in `.env`.
 
 ## Other image endpoints
 
-Set `provider: openclaw-bridge` to call the legacy bridge URL. Any other
-provider name uses `base_url`, bearer `api_key`, and the OpenAI-compatible
-`/images/generations` contract. LiteLLM and external providers work through
-that route only when they implement the same path and payload; otherwise place
-their adapter in imagegen-bridge.
+Choose `openai`, `openai-compatible`, `gemini`, `fal`, `replicate`, `stability`,
+or `azure-openai` to use OneDay's direct adapter. LiteLLM works only when its
+image route implements the OpenAI Images schema. `openclaw-bridge` remains a
+legacy compatibility route.
 
 See [Image provider compatibility](image-providers.md) for the exact support
-matrix, including routes that require a bridge adapter rather than working
-directly.
+matrix and server-side credential layout.
 
 General art and map symbols can use independent provider/model routes. Size,
 aspect ratio, resolution, quality, format, background, and timeouts can be set

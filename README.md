@@ -136,13 +136,14 @@ Docker-host networking, RAG, and verification details.
 | LiteLLM / OpenAI-compatible | Self-hosted or managed model gateway |
 | OpenRouter | Direct hosted model routing |
 | Ollama / custom HTTP | Local RAG embeddings |
-| imagegen-bridge native API / OpenClaw / OpenAI-compatible API | Non-blocking story visuals with provider routing and fallbacks |
+| Codex OAuth, OpenAI, Gemini, fal.ai, Replicate, Stability, Azure, or compatible image APIs | Explicit non-blocking story visual providers |
 
 Narrative, utility, repair, embedding, ASCII, image, map-icon, and TTS paths can
-use separate models. Visual generation prefers imagegen-bridge with
-`codex-responses:gpt-image-2` as the primary route and
-`codex-app-server:gpt-image-2` as the default technical-error fallback. General
-art and transparent map symbols can still use independent providers and models.
+use separate models. Codex OAuth is the default visual provider and uses the
+Codex-only imagegen-bridge with `codex-responses` as its recommended route and
+`codex-app-server` as its compatibility fallback. Vendor API-key providers use
+separate direct OneDay adapters. General art and transparent map symbols can use
+independent providers and models.
 
 During story creation, visual direction can be Auto, Photorealistic, Cinematic
 Fantasy, Illustrated Fantasy, Anime, or a custom prompt. The selected direction
@@ -178,7 +179,7 @@ component boundaries.
 | [Feature tour](docs/features.md) | Player-facing capabilities and interfaces |
 | [Story systems](docs/story-systems.md) | Branches, challenges, minigames, crafting, investigations, projects, and conflict |
 | [Generated media](docs/media.md) | Images, maps, ASCII, TTS, providers, and failure behavior |
-| [Image providers](docs/image-providers.md) | Exact imagegen-bridge, OpenAI-compatible, and legacy adapter coverage |
+| [Image providers](docs/image-providers.md) | Codex OAuth and direct vendor adapter coverage |
 | [Observability](docs/observability.md) | Optional OpenTelemetry, Langfuse, local diagnostics, privacy, and verification |
 | [Configuration](docs/configuration.md) | Providers, RAG, visuals, game settings, and secrets |
 | [Docker](docs/docker.md) | Networking, persistence, updates, backups, and operations |

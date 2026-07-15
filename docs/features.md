@@ -63,8 +63,8 @@ story state remain authoritative when an image or audio provider is unavailable.
   or local embedding providers.
 - Narrative generation supports Codex CLI, Claude Code, LiteLLM-compatible
   endpoints, and OpenRouter with ordered fallback.
-- Visual generation supports imagegen-bridge, legacy OpenClaw bridge calls, and
-  OpenAI-compatible image endpoints.
+- Visual generation supports Codex OAuth through imagegen-bridge, direct vendor
+  adapters, legacy OpenClaw bridge calls, and compatible image endpoints.
 - Redacted lineage stays in SQLite; optional OpenTelemetry export connects to
   Langfuse, Tempo, Jaeger, or another OTLP receiver.
 - Story packs define reusable genre mechanics, stat schemas, world rules,

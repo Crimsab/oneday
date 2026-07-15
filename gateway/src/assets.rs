@@ -172,6 +172,8 @@ struct ImageGenerationConfig {
     model: String,
     map_icon_model: String,
     provider: String,
+    map_icon_provider: String,
+    providers: HashMap<String, crate::imagegen::ProviderConfig>,
     openclaw_bridge_url: String,
     imagegen_bridge_url: String,
     imagegen_bridge_token: String,
@@ -217,6 +219,7 @@ struct GatewayHttpProviderConfig {
 #[derive(Debug, Deserialize)]
 struct GatewayImageGenerationConfig {
     provider: Option<String>,
+    map_icon_provider: Option<String>,
     base_url: Option<String>,
     api_key: Option<String>,
     model: Option<String>,
@@ -244,6 +247,14 @@ struct GatewayImageGenerationConfig {
     timeout_seconds: Option<u64>,
     auto_generate: Option<bool>,
     append_negative_prompt: Option<bool>,
+    providers: Option<HashMap<String, GatewayImageProviderConfig>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GatewayImageProviderConfig {
+    base_url: Option<String>,
+    api_key: Option<String>,
+    api_version: Option<String>,
 }
 
 #[derive(Debug)]
@@ -1212,7 +1223,7 @@ pub async fn generate_visual_assets(
     let config = image_generation_config(&state)?;
     if !image_generation_available(&config) {
         return Err(anyhow!(
-            "image generation provider is not configured; configure imagegen-bridge, the legacy OpenClaw bridge, or an OpenAI-compatible base URL and API key"
+            "image generation provider is not configured; choose a catalog provider and configure its server-side credentials (Codex OAuth uses imagegen-bridge)"
         ));
     }
 
@@ -1418,6 +1429,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
     }
     let client = Client::builder()
         .timeout(Duration::from_secs(config.timeout_seconds))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .context("building image generation HTTP client")?;
 
@@ -1436,6 +1448,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             continue;
         }
         let generation_model = generation_model(&config, &job.asset);
+        let generation_provider = generation_provider(&config, &job.asset);
         let mut generation_trace = match crate::telemetry::start_image_generation(
             &state.pool,
             &job.asset.story_id,
@@ -1443,7 +1456,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             job.attempts,
             &job.asset.id,
             &job.asset.prompt,
-            &config.provider,
+            &generation_provider,
             &generation_model,
         )
         .await
@@ -1469,7 +1482,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             otel.kind = "client",
             otel.status_code = tracing::field::Empty,
             gen_ai.operation.name = "image_generation",
-            gen_ai.provider.name = %config.provider,
+            gen_ai.provider.name = %generation_provider,
             gen_ai.request.model = %generation_model,
             gen_ai.response.model = tracing::field::Empty,
             oneday.trace.id = %format!("image-job-{}", job.id),
@@ -1558,7 +1571,7 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 );
             }
             Err(err) => {
-                let error_class = crate::telemetry::classify_image_error(&err.to_string());
+                let error_class = crate::imagegen::error_code(&err);
                 image_span.record("otel.status_code", "ERROR");
                 image_span.record("error.type", error_class);
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
@@ -1592,7 +1605,8 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                     cancel_stale_lineage_job(&state.pool, &job).await?;
                     continue;
                 }
-                let terminal = job.attempts >= job.max_attempts;
+                let retryable = crate::imagegen::is_retryable(&err);
+                let terminal = job.attempts >= job.max_attempts || !retryable;
                 let error = err.to_string();
                 if let Some(trace) = generation_trace.take() {
                     if let Err(telemetry_err) = trace
@@ -1602,7 +1616,8 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                         tracing::warn!(job_id = job.id, error = %telemetry_err, "could not fail image generation telemetry");
                     }
                 }
-                mark_generation_job_failed_or_retry(&state.pool, &job, &error, &config).await?;
+                mark_generation_job_failed_or_retry(&state.pool, &job, &error, &config, retryable)
+                    .await?;
                 if terminal {
                     emit_visual_asset_event(
                         &state,
@@ -1942,9 +1957,10 @@ async fn mark_generation_job_failed_or_retry(
     job: &VisualGenerationJob,
     error: &str,
     config: &ImageGenerationConfig,
+    retryable: bool,
 ) -> anyhow::Result<()> {
     let message = compact_error(error);
-    if job.attempts >= job.max_attempts {
+    if job.attempts >= job.max_attempts || !retryable {
         mark_asset_failed(pool, job, &message, config).await?;
         mark_generation_job_terminal(pool, job.id, "failed", &message).await?;
         return Ok(());
@@ -2459,6 +2475,14 @@ fn generation_model(config: &ImageGenerationConfig, asset: &VisualAsset) -> Stri
     }
 }
 
+fn generation_provider(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
+    if asset.kind == "map_icon" {
+        clean_or(&config.map_icon_provider, &config.provider)
+    } else {
+        config.provider.trim().to_string()
+    }
+}
+
 fn generation_background(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
     if asset.kind == "map_icon" {
         "transparent".to_string()
@@ -2524,6 +2548,12 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
     let ai_config = file_config.ai.as_ref();
     let litellm = ai_config.and_then(|ai| ai.litellm.as_ref());
     let image_generation = ai_config.and_then(|ai| ai.image_generation.as_ref());
+    let provider = first_env(&["ONEDAY_IMAGEGEN_PROVIDER", "ONEDAY_IMAGE_PROVIDER"])
+        .or_else(|| image_config_string(image_generation, |config| &config.provider))
+        .unwrap_or_else(|| "codex-oauth".to_string());
+    let map_icon_provider = first_env(&["ONEDAY_IMAGEGEN_MAP_ICON_PROVIDER"])
+        .or_else(|| image_config_string(image_generation, |config| &config.map_icon_provider))
+        .unwrap_or_else(|| provider.clone());
     let config_base_url = litellm
         .and_then(|provider| provider.base_url.clone())
         .unwrap_or_default();
@@ -2539,7 +2569,6 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         "ONEDAY_IMAGEGEN_API_KEY",
         "ONEDAY_IMAGE_API_KEY",
         "ONEDAY_LITELLM_API_KEY",
-        "OPENAI_API_KEY",
     ])
     .or_else(|| {
         image_config_string(image_generation, |config| &config.api_key)
@@ -2550,19 +2579,27 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
     .unwrap_or_default();
     let model = first_env(&["ONEDAY_IMAGEGEN_MODEL", "ONEDAY_IMAGE_MODEL"])
         .or_else(|| image_config_string(image_generation, |config| &config.model))
-        .unwrap_or_default();
+        .unwrap_or_else(|| default_codex_image_model(&provider));
     let map_icon_model = first_env(&["ONEDAY_IMAGEGEN_MAP_ICON_MODEL"])
         .or_else(|| image_config_string(image_generation, |config| &config.map_icon_model))
-        .unwrap_or_else(|| "gpt-image-2".to_string());
+        .unwrap_or_else(|| {
+            let codex_default = default_codex_image_model(&map_icon_provider);
+            if codex_default.is_empty() && map_icon_provider == provider {
+                model.clone()
+            } else {
+                codex_default
+            }
+        });
+    let providers = image_provider_configs(image_generation);
 
     Ok(ImageGenerationConfig {
         base_url,
         api_key,
         model,
         map_icon_model,
-        provider: first_env(&["ONEDAY_IMAGEGEN_PROVIDER", "ONEDAY_IMAGE_PROVIDER"])
-            .or_else(|| image_config_string(image_generation, |config| &config.provider))
-            .unwrap_or_else(|| "imagegen-bridge".to_string()),
+        provider,
+        map_icon_provider,
+        providers,
         openclaw_bridge_url: first_env(&[
             "ONEDAY_IMAGEGEN_OPENCLAW_URL",
             "ONEDAY_OPENCLAW_IMAGEGEN_URL",
@@ -2582,14 +2619,14 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
             .or_else(|| {
                 image_config_string(image_generation, |config| &config.imagegen_bridge_provider)
             })
-            .unwrap_or_else(|| "codex-app-server".to_string()),
+            .unwrap_or_else(|| "codex-responses".to_string()),
         imagegen_bridge_map_icon_provider: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_MAP_ICON_PROVIDER"])
             .or_else(|| {
                 image_config_string(image_generation, |config| {
                     &config.imagegen_bridge_map_icon_provider
                 })
             })
-            .unwrap_or_else(|| "codex-app-server".to_string()),
+            .unwrap_or_else(|| "codex-responses".to_string()),
         imagegen_bridge_fallbacks: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_FALLBACKS"])
             .map(|value| split_config_list(&value))
             .or_else(|| {
@@ -2678,6 +2715,104 @@ fn image_config_string(
         .and_then(non_empty)
 }
 
+fn default_codex_image_model(provider: &str) -> String {
+    matches!(
+        crate::imagegen::adapter_kind(provider),
+        Some(crate::imagegen::AdapterKind::CodexOAuth)
+    )
+    .then_some("gpt-image-2")
+    .unwrap_or_default()
+    .to_string()
+}
+
+fn image_provider_configs(
+    image_generation: Option<&GatewayImageGenerationConfig>,
+) -> HashMap<String, crate::imagegen::ProviderConfig> {
+    const PROVIDERS: &[&str] = &[
+        "openai",
+        "openai-compatible",
+        "gemini",
+        "fal",
+        "replicate",
+        "stability",
+        "azure-openai",
+    ];
+    let mut result = HashMap::new();
+    for provider in PROVIDERS {
+        let configured = image_generation
+            .and_then(|config| config.providers.as_ref())
+            .and_then(|providers| providers.get(*provider));
+        let (base_url_env, api_key_env, version_env): (&[&str], &[&str], &[&str]) = match *provider
+        {
+            "openai" => (
+                &["ONEDAY_IMAGEGEN_OPENAI_BASE_URL"],
+                &["ONEDAY_IMAGEGEN_OPENAI_API_KEY", "OPENAI_API_KEY"],
+                &[],
+            ),
+            "openai-compatible" => (
+                &["ONEDAY_IMAGEGEN_OPENAI_COMPATIBLE_BASE_URL"],
+                &["ONEDAY_IMAGEGEN_OPENAI_COMPATIBLE_API_KEY"],
+                &[],
+            ),
+            "gemini" => (
+                &["ONEDAY_IMAGEGEN_GEMINI_BASE_URL"],
+                &[
+                    "ONEDAY_IMAGEGEN_GEMINI_API_KEY",
+                    "GEMINI_API_KEY",
+                    "GOOGLE_API_KEY",
+                ],
+                &[],
+            ),
+            "fal" => (
+                &["ONEDAY_IMAGEGEN_FAL_BASE_URL"],
+                &["ONEDAY_IMAGEGEN_FAL_API_KEY", "FAL_KEY"],
+                &[],
+            ),
+            "replicate" => (
+                &["ONEDAY_IMAGEGEN_REPLICATE_BASE_URL"],
+                &["ONEDAY_IMAGEGEN_REPLICATE_API_TOKEN", "REPLICATE_API_TOKEN"],
+                &[],
+            ),
+            "stability" => (
+                &["ONEDAY_IMAGEGEN_STABILITY_BASE_URL"],
+                &["ONEDAY_IMAGEGEN_STABILITY_API_KEY", "STABILITY_API_KEY"],
+                &[],
+            ),
+            "azure-openai" => (
+                &[
+                    "ONEDAY_IMAGEGEN_AZURE_OPENAI_ENDPOINT",
+                    "AZURE_OPENAI_ENDPOINT",
+                ],
+                &[
+                    "ONEDAY_IMAGEGEN_AZURE_OPENAI_API_KEY",
+                    "AZURE_OPENAI_API_KEY",
+                ],
+                &["ONEDAY_IMAGEGEN_AZURE_OPENAI_API_VERSION"],
+            ),
+            _ => (&[], &[], &[]),
+        };
+        let base_url = first_env(base_url_env)
+            .or_else(|| configured.and_then(|config| config.base_url.clone()))
+            .unwrap_or_default();
+        let api_key = first_env(api_key_env)
+            .or_else(|| configured.and_then(|config| config.api_key.clone()))
+            .map(|value| expand_env_refs(&value))
+            .unwrap_or_default();
+        let api_version = first_env(version_env)
+            .or_else(|| configured.and_then(|config| config.api_version.clone()))
+            .unwrap_or_default();
+        result.insert(
+            (*provider).to_string(),
+            crate::imagegen::ProviderConfig {
+                base_url,
+                api_key,
+                api_version,
+            },
+        );
+    }
+    result
+}
+
 fn split_config_list(value: &str) -> Vec<String> {
     value
         .split([',', '\n'])
@@ -2706,7 +2841,11 @@ fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
 }
 
 fn provider_label(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
-    format!("{}:{}", config.provider, generation_model(config, asset))
+    format!(
+        "{}:{}",
+        generation_provider(config, asset),
+        generation_model(config, asset)
+    )
 }
 
 fn actual_provider_label(
@@ -2724,8 +2863,10 @@ fn actual_provider_label(
 fn imagegen_adapter_config(config: &ImageGenerationConfig) -> crate::imagegen::AdapterConfig {
     crate::imagegen::AdapterConfig {
         provider: config.provider.clone(),
+        map_icon_provider: config.map_icon_provider.clone(),
         base_url: config.base_url.clone(),
         api_key: config.api_key.clone(),
+        providers: config.providers.clone(),
         openclaw_url: config.openclaw_bridge_url.clone(),
         bridge_url: config.imagegen_bridge_url.clone(),
         bridge_token: config.imagegen_bridge_token.clone(),
@@ -4181,6 +4322,8 @@ mod tests {
             model: "test-image-model".to_string(),
             map_icon_model: "openai/gpt-image-1".to_string(),
             provider: "test".to_string(),
+            map_icon_provider: "test".to_string(),
+            providers: HashMap::new(),
             openclaw_bridge_url: "http://openclaw-imagegen:8099/generate".to_string(),
             imagegen_bridge_url: "http://imagegen-bridge:8787".to_string(),
             imagegen_bridge_token: "bridge-token".to_string(),
@@ -4888,16 +5031,20 @@ mod tests {
     }
 
     #[test]
-    fn imagegen_bridge_uses_native_url_and_can_defer_model_selection() {
+    fn legacy_imagegen_bridge_alias_defaults_missing_models_to_codex_recommended() {
+        let provider = "imagegen-bridge";
+        let model = default_codex_image_model(provider);
         let config = ImageGenerationConfig {
-            provider: "imagegen-bridge".to_string(),
-            model: String::new(),
-            map_icon_model: String::new(),
+            provider: provider.to_string(),
+            model: model.clone(),
+            map_icon_model: model,
             base_url: String::new(),
             api_key: String::new(),
             imagegen_bridge_url: "http://imagegen-bridge:8787".to_string(),
             ..test_config()
         };
+        assert_eq!(config.model, "gpt-image-2");
+        assert_eq!(config.map_icon_model, "gpt-image-2");
         assert!(image_generation_available(&config));
     }
 

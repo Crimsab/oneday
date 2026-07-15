@@ -107,34 +107,45 @@ type ASCIIArtConfig struct {
 
 // ImageGenerationConfig controls non-blocking visual asset generation.
 type ImageGenerationConfig struct {
-	Provider                      string   `yaml:"provider"`
-	BaseURL                       string   `yaml:"base_url"`
-	APIKey                        string   `yaml:"api_key"`
-	Model                         string   `yaml:"model"`
-	MapIconModel                  string   `yaml:"map_icon_model"`
-	OpenClawBridgeURL             string   `yaml:"openclaw_bridge_url"`
-	ImagegenBridgeURL             string   `yaml:"imagegen_bridge_url"`
-	ImagegenBridgeToken           string   `yaml:"imagegen_bridge_token"`
-	ImagegenBridgeProvider        string   `yaml:"imagegen_bridge_provider"`
-	ImagegenBridgeMapIconProvider string   `yaml:"imagegen_bridge_map_icon_provider"`
-	ImagegenBridgeFallbacks       []string `yaml:"imagegen_bridge_fallbacks"`
-	ImagegenBridgeFallbackPolicy  string   `yaml:"imagegen_bridge_fallback_policy"`
-	ImagegenBridgeCompatibility   string   `yaml:"imagegen_bridge_compatibility"`
-	DefaultSize                   string   `yaml:"default_size"`
-	LocationSize                  string   `yaml:"location_size"`
-	CharacterSize                 string   `yaml:"character_size"`
-	DefaultResolution             string   `yaml:"default_resolution"`
-	LocationResolution            string   `yaml:"location_resolution"`
-	CharacterResolution           string   `yaml:"character_resolution"`
-	DefaultAspectRatio            string   `yaml:"default_aspect_ratio"`
-	LocationAspectRatio           string   `yaml:"location_aspect_ratio"`
-	CharacterAspectRatio          string   `yaml:"character_aspect_ratio"`
-	Quality                       string   `yaml:"quality"`
-	OutputFormat                  string   `yaml:"output_format"`
-	Background                    string   `yaml:"background"`
-	TimeoutSeconds                int      `yaml:"timeout_seconds"`
-	AutoGenerate                  bool     `yaml:"auto_generate"`
-	AppendNegativePrompt          bool     `yaml:"append_negative_prompt"`
+	Provider                      string                         `yaml:"provider"`
+	MapIconProvider               string                         `yaml:"map_icon_provider"`
+	BaseURL                       string                         `yaml:"base_url"`
+	APIKey                        string                         `yaml:"api_key"`
+	Model                         string                         `yaml:"model"`
+	MapIconModel                  string                         `yaml:"map_icon_model"`
+	OpenClawBridgeURL             string                         `yaml:"openclaw_bridge_url"`
+	ImagegenBridgeURL             string                         `yaml:"imagegen_bridge_url"`
+	ImagegenBridgeToken           string                         `yaml:"imagegen_bridge_token"`
+	ImagegenBridgeProvider        string                         `yaml:"imagegen_bridge_provider"`
+	ImagegenBridgeMapIconProvider string                         `yaml:"imagegen_bridge_map_icon_provider"`
+	ImagegenBridgeFallbacks       []string                       `yaml:"imagegen_bridge_fallbacks"`
+	ImagegenBridgeFallbackPolicy  string                         `yaml:"imagegen_bridge_fallback_policy"`
+	ImagegenBridgeCompatibility   string                         `yaml:"imagegen_bridge_compatibility"`
+	DefaultSize                   string                         `yaml:"default_size"`
+	LocationSize                  string                         `yaml:"location_size"`
+	CharacterSize                 string                         `yaml:"character_size"`
+	DefaultResolution             string                         `yaml:"default_resolution"`
+	LocationResolution            string                         `yaml:"location_resolution"`
+	CharacterResolution           string                         `yaml:"character_resolution"`
+	DefaultAspectRatio            string                         `yaml:"default_aspect_ratio"`
+	LocationAspectRatio           string                         `yaml:"location_aspect_ratio"`
+	CharacterAspectRatio          string                         `yaml:"character_aspect_ratio"`
+	Quality                       string                         `yaml:"quality"`
+	OutputFormat                  string                         `yaml:"output_format"`
+	Background                    string                         `yaml:"background"`
+	TimeoutSeconds                int                            `yaml:"timeout_seconds"`
+	AutoGenerate                  bool                           `yaml:"auto_generate"`
+	AppendNegativePrompt          bool                           `yaml:"append_negative_prompt"`
+	Providers                     map[string]ImageProviderConfig `yaml:"providers,omitempty"`
+}
+
+// ImageProviderConfig holds server-side credentials and endpoint overrides for
+// one direct image adapter. Secrets are never copied into gateway responses.
+type ImageProviderConfig struct {
+	BaseURL    string   `yaml:"base_url"`
+	APIKey     string   `yaml:"api_key"`
+	APIVersion string   `yaml:"api_version,omitempty"`
+	Models     []string `yaml:"models,omitempty"`
 }
 
 // GenerationConfig for AI text generation.
@@ -214,7 +225,8 @@ func Default() Config {
 				TimeoutSeconds: 25,
 			},
 			ImageGeneration: ImageGenerationConfig{
-				Provider:                      "imagegen-bridge",
+				Provider:                      "codex-oauth",
+				MapIconProvider:               "codex-oauth",
 				MapIconModel:                  "gpt-image-2",
 				OpenClawBridgeURL:             "http://127.0.0.1:8099/generate",
 				ImagegenBridgeURL:             "http://127.0.0.1:8787",
@@ -306,6 +318,21 @@ func (c *Config) Migrate() {
 	if strings.TrimSpace(c.AI.Generation.UtilityModel) == "" {
 		c.AI.Generation.UtilityModel = c.firstEnabledProviderModel()
 	}
+	// imagegen-bridge has always been OneDay's Codex OAuth transport. Normalize
+	// old transport-oriented names to the user-facing provider ID without
+	// changing any bridge-specific settings.
+	switch strings.ToLower(strings.TrimSpace(c.AI.ImageGeneration.Provider)) {
+	case "", "imagegen-bridge", "imagegen_bridge", "bridge-native":
+		c.AI.ImageGeneration.Provider = "codex-oauth"
+	}
+	if strings.TrimSpace(c.AI.ImageGeneration.MapIconProvider) == "" {
+		c.AI.ImageGeneration.MapIconProvider = c.AI.ImageGeneration.Provider
+	} else {
+		switch strings.ToLower(strings.TrimSpace(c.AI.ImageGeneration.MapIconProvider)) {
+		case "imagegen-bridge", "imagegen_bridge", "bridge-native":
+			c.AI.ImageGeneration.MapIconProvider = "codex-oauth"
+		}
+	}
 	c.ConfigVersion = 2
 }
 
@@ -370,14 +397,26 @@ func (c *Config) Validate() error {
 		if strings.TrimSpace(c.AI.ImageGeneration.Provider) == "" {
 			return fmt.Errorf("ai.image_generation.provider must not be empty when auto_generate is enabled")
 		}
-		if !isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && strings.TrimSpace(c.AI.ImageGeneration.Model) == "" {
+		if strings.TrimSpace(c.AI.ImageGeneration.Model) == "" {
 			return fmt.Errorf("ai.image_generation.model must not be empty when auto_generate is enabled")
 		}
-		if !isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && strings.TrimSpace(c.AI.ImageGeneration.MapIconModel) == "" {
+		if strings.TrimSpace(c.AI.ImageGeneration.MapIconModel) == "" {
 			return fmt.Errorf("ai.image_generation.map_icon_model must not be empty when auto_generate is enabled")
+		}
+		if !isSupportedImageProvider(c.AI.ImageGeneration.Provider) {
+			return fmt.Errorf("ai.image_generation.provider %q is not supported", c.AI.ImageGeneration.Provider)
+		}
+		if !isSupportedImageProvider(c.AI.ImageGeneration.MapIconProvider) {
+			return fmt.Errorf("ai.image_generation.map_icon_provider %q is not supported", c.AI.ImageGeneration.MapIconProvider)
 		}
 		if isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && strings.TrimSpace(c.AI.ImageGeneration.ImagegenBridgeURL) == "" {
 			return fmt.Errorf("ai.image_generation.imagegen_bridge_url must not be empty when imagegen-bridge auto-generation is enabled")
+		}
+		if !isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && !isOpenClawImageProvider(c.AI.ImageGeneration.Provider) {
+			configured, status := imageProviderConfigured(c.AI.ImageGeneration, c.AI.ImageGeneration.Provider)
+			if !configured {
+				return fmt.Errorf("ai.image_generation provider %q is not configured: %s", c.AI.ImageGeneration.Provider, status)
+			}
 		}
 		if c.AI.ImageGeneration.TimeoutSeconds <= 0 {
 			return fmt.Errorf("ai.image_generation.timeout_seconds must be positive when auto_generate is enabled")
@@ -391,8 +430,8 @@ func (c *Config) Validate() error {
 	}
 	for _, route := range c.AI.ImageGeneration.ImagegenBridgeFallbacks {
 		provider, _, _ := strings.Cut(strings.TrimSpace(route), ":")
-		if strings.TrimSpace(provider) == "" {
-			return fmt.Errorf("ai.image_generation.imagegen_bridge_fallbacks contains an empty provider route")
+		if provider != "codex-responses" && provider != "codex-app-server" {
+			return fmt.Errorf("ai.image_generation.imagegen_bridge_fallbacks may contain only codex-responses or codex-app-server routes")
 		}
 	}
 	switch c.AI.Embedding.Provider {
@@ -433,7 +472,18 @@ func (c *Config) Validate() error {
 
 func isImagegenBridgeProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
-	case "imagegen-bridge", "imagegen_bridge", "bridge-native":
+	case "codex-oauth", "imagegen-bridge", "imagegen_bridge", "bridge-native":
+		return true
+	default:
+		return false
+	}
+}
+
+func isSupportedImageProvider(provider string) bool {
+	switch strings.ToLower(strings.TrimSpace(provider)) {
+	case "codex-oauth", "imagegen-bridge", "imagegen_bridge", "bridge-native",
+		"openai", "openai-compatible", "litellm", "gemini", "fal", "replicate",
+		"stability", "azure-openai", "openclaw", "openclaw-bridge":
 		return true
 	default:
 		return false

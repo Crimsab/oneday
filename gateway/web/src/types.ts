@@ -94,12 +94,14 @@ export interface ModelSettings {
   ascii_models: string[];
   embedding_providers: string[];
   image_generation: ImageGenerationSetting;
+  image_providers: ImageProviderCatalogEntry[];
   active: ModelRoutingActive;
   tts_status: string;
 }
 
 export interface ImageGenerationSetting {
   provider: string;
+  map_icon_provider: string;
   base_url: string;
   api_key_configured: boolean;
   model: string;
@@ -131,6 +133,31 @@ export interface ImageGenerationSetting {
   status: string;
 }
 
+export interface ImageProviderCapabilities {
+  generate: boolean;
+  edit: boolean;
+  sizes: string[];
+  aspect_ratios: string[];
+  qualities: string[];
+  output_formats: string[];
+  supports_transparency: boolean;
+}
+
+export interface ImageProviderCatalogEntry {
+  id: string;
+  display_name: string;
+  auth_type: string;
+  default: boolean;
+  configured: boolean;
+  api_key_configured: boolean;
+  status: string;
+  base_url: string;
+  api_version?: string;
+  models: string[];
+  model_validation: string;
+  capabilities: ImageProviderCapabilities;
+}
+
 export interface ModelProviderUpdate {
   id: string;
   enabled?: boolean;
@@ -154,11 +181,14 @@ export interface ModelSettingsUpdate {
 
 export interface ImageGenerationUpdate {
   provider?: string;
+  map_icon_provider?: string;
   base_url?: string;
   model?: string;
   map_icon_model?: string;
   openclaw_bridge_url?: string;
   imagegen_bridge_url?: string;
+  imagegen_bridge_token?: string;
+  clear_imagegen_bridge_token?: boolean;
   imagegen_bridge_provider?: string;
   imagegen_bridge_map_icon_provider?: string;
   imagegen_bridge_fallbacks?: string[];
@@ -179,6 +209,16 @@ export interface ImageGenerationUpdate {
   timeout_seconds?: number;
   auto_generate?: boolean;
   append_negative_prompt?: boolean;
+  provider_configs?: ImageProviderConfigUpdate[];
+}
+
+export interface ImageProviderConfigUpdate {
+  id: string;
+  base_url?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+  api_version?: string;
+  models?: string[];
 }
 
 export interface Health {

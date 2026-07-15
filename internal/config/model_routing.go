@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -62,23 +63,25 @@ type ModelRoutingActive struct {
 }
 
 type ModelRoutingSettings struct {
-	ConfigPath         string                 `json:"config_path"`
-	ConfigRevision     string                 `json:"config_revision"`
-	ProviderPriority   []string               `json:"provider_priority"`
-	Providers          []ModelProviderSetting `json:"providers"`
-	NarrativeModels    []string               `json:"narrative_models"`
-	UtilityModels      []string               `json:"utility_models"`
-	RepairModels       []string               `json:"repair_models"`
-	ImageModels        []string               `json:"image_models"`
-	ASCIIModels        []string               `json:"ascii_models"`
-	EmbeddingProviders []string               `json:"embedding_providers"`
-	ImageGeneration    ImageGenerationSetting `json:"image_generation"`
-	Active             ModelRoutingActive     `json:"active"`
-	TTSStatus          string                 `json:"tts_status"`
+	ConfigPath         string                      `json:"config_path"`
+	ConfigRevision     string                      `json:"config_revision"`
+	ProviderPriority   []string                    `json:"provider_priority"`
+	Providers          []ModelProviderSetting      `json:"providers"`
+	NarrativeModels    []string                    `json:"narrative_models"`
+	UtilityModels      []string                    `json:"utility_models"`
+	RepairModels       []string                    `json:"repair_models"`
+	ImageModels        []string                    `json:"image_models"`
+	ASCIIModels        []string                    `json:"ascii_models"`
+	EmbeddingProviders []string                    `json:"embedding_providers"`
+	ImageGeneration    ImageGenerationSetting      `json:"image_generation"`
+	ImageProviders     []ImageProviderCatalogEntry `json:"image_providers"`
+	Active             ModelRoutingActive          `json:"active"`
+	TTSStatus          string                      `json:"tts_status"`
 }
 
 type ImageGenerationSetting struct {
 	Provider                      string   `json:"provider"`
+	MapIconProvider               string   `json:"map_icon_provider"`
 	BaseURL                       string   `json:"base_url"`
 	APIKeyConfigured              bool     `json:"api_key_configured"`
 	Model                         string   `json:"model"`
@@ -132,32 +135,47 @@ type ModelRoutingUpdate struct {
 }
 
 type ImageGenerationUpdate struct {
-	Provider                      *string   `json:"provider,omitempty"`
-	BaseURL                       *string   `json:"base_url,omitempty"`
-	Model                         *string   `json:"model,omitempty"`
-	MapIconModel                  *string   `json:"map_icon_model,omitempty"`
-	OpenClawBridgeURL             *string   `json:"openclaw_bridge_url,omitempty"`
-	ImagegenBridgeURL             *string   `json:"imagegen_bridge_url,omitempty"`
-	ImagegenBridgeProvider        *string   `json:"imagegen_bridge_provider,omitempty"`
-	ImagegenBridgeMapIconProvider *string   `json:"imagegen_bridge_map_icon_provider,omitempty"`
-	ImagegenBridgeFallbacks       *[]string `json:"imagegen_bridge_fallbacks,omitempty"`
-	ImagegenBridgeFallbackPolicy  *string   `json:"imagegen_bridge_fallback_policy,omitempty"`
-	ImagegenBridgeCompatibility   *string   `json:"imagegen_bridge_compatibility,omitempty"`
-	DefaultSize                   *string   `json:"default_size,omitempty"`
-	LocationSize                  *string   `json:"location_size,omitempty"`
-	CharacterSize                 *string   `json:"character_size,omitempty"`
-	DefaultResolution             *string   `json:"default_resolution,omitempty"`
-	LocationResolution            *string   `json:"location_resolution,omitempty"`
-	CharacterResolution           *string   `json:"character_resolution,omitempty"`
-	DefaultAspectRatio            *string   `json:"default_aspect_ratio,omitempty"`
-	LocationAspectRatio           *string   `json:"location_aspect_ratio,omitempty"`
-	CharacterAspectRatio          *string   `json:"character_aspect_ratio,omitempty"`
-	Quality                       *string   `json:"quality,omitempty"`
-	OutputFormat                  *string   `json:"output_format,omitempty"`
-	Background                    *string   `json:"background,omitempty"`
-	TimeoutSeconds                *int      `json:"timeout_seconds,omitempty"`
-	AutoGenerate                  *bool     `json:"auto_generate,omitempty"`
-	AppendNegativePrompt          *bool     `json:"append_negative_prompt,omitempty"`
+	Provider                      *string                     `json:"provider,omitempty"`
+	MapIconProvider               *string                     `json:"map_icon_provider,omitempty"`
+	BaseURL                       *string                     `json:"base_url,omitempty"`
+	Model                         *string                     `json:"model,omitempty"`
+	MapIconModel                  *string                     `json:"map_icon_model,omitempty"`
+	OpenClawBridgeURL             *string                     `json:"openclaw_bridge_url,omitempty"`
+	ImagegenBridgeURL             *string                     `json:"imagegen_bridge_url,omitempty"`
+	ImagegenBridgeToken           *string                     `json:"imagegen_bridge_token,omitempty"`
+	ClearImagegenBridgeToken      bool                        `json:"clear_imagegen_bridge_token,omitempty"`
+	ImagegenBridgeProvider        *string                     `json:"imagegen_bridge_provider,omitempty"`
+	ImagegenBridgeMapIconProvider *string                     `json:"imagegen_bridge_map_icon_provider,omitempty"`
+	ImagegenBridgeFallbacks       *[]string                   `json:"imagegen_bridge_fallbacks,omitempty"`
+	ImagegenBridgeFallbackPolicy  *string                     `json:"imagegen_bridge_fallback_policy,omitempty"`
+	ImagegenBridgeCompatibility   *string                     `json:"imagegen_bridge_compatibility,omitempty"`
+	DefaultSize                   *string                     `json:"default_size,omitempty"`
+	LocationSize                  *string                     `json:"location_size,omitempty"`
+	CharacterSize                 *string                     `json:"character_size,omitempty"`
+	DefaultResolution             *string                     `json:"default_resolution,omitempty"`
+	LocationResolution            *string                     `json:"location_resolution,omitempty"`
+	CharacterResolution           *string                     `json:"character_resolution,omitempty"`
+	DefaultAspectRatio            *string                     `json:"default_aspect_ratio,omitempty"`
+	LocationAspectRatio           *string                     `json:"location_aspect_ratio,omitempty"`
+	CharacterAspectRatio          *string                     `json:"character_aspect_ratio,omitempty"`
+	Quality                       *string                     `json:"quality,omitempty"`
+	OutputFormat                  *string                     `json:"output_format,omitempty"`
+	Background                    *string                     `json:"background,omitempty"`
+	TimeoutSeconds                *int                        `json:"timeout_seconds,omitempty"`
+	AutoGenerate                  *bool                       `json:"auto_generate,omitempty"`
+	AppendNegativePrompt          *bool                       `json:"append_negative_prompt,omitempty"`
+	ProviderConfigs               []ImageProviderConfigUpdate `json:"provider_configs,omitempty"`
+}
+
+// ImageProviderConfigUpdate is write-only configuration input. APIKey is
+// accepted on PUT but never appears in ModelRoutingSettings responses.
+type ImageProviderConfigUpdate struct {
+	ID          string    `json:"id"`
+	BaseURL     *string   `json:"base_url,omitempty"`
+	APIKey      *string   `json:"api_key,omitempty"`
+	ClearAPIKey bool      `json:"clear_api_key,omitempty"`
+	APIVersion  *string   `json:"api_version,omitempty"`
+	Models      *[]string `json:"models,omitempty"`
 }
 
 func ReadModelRoutingSettings(path string) (ModelRoutingSettings, error) {
@@ -284,6 +302,7 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 		ASCIIModels:        uniqueNonEmpty(cfg.AI.ASCIIArt.Model, activeNarrative),
 		EmbeddingProviders: []string{"auto", "litellm", "openrouter", "local"},
 		ImageGeneration:    buildImageGenerationSetting(cfg.AI.ImageGeneration),
+		ImageProviders:     buildImageProviderCatalog(cfg.AI.ImageGeneration),
 		Active: ModelRoutingActive{
 			Provider:             activeProvider,
 			NarrativeModel:       activeNarrative,
@@ -313,6 +332,7 @@ func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetti
 	fallbacks := append([]string{}, cfg.ImagegenBridgeFallbacks...)
 	return ImageGenerationSetting{
 		Provider:                      cfg.Provider,
+		MapIconProvider:               cfg.MapIconProvider,
 		BaseURL:                       cfg.BaseURL,
 		APIKeyConfigured:              strings.TrimSpace(cfg.APIKey) != "",
 		Model:                         cfg.Model,
@@ -346,17 +366,15 @@ func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetti
 }
 
 func imageGenerationAvailability(cfg ImageGenerationConfig) (bool, string) {
-	if strings.TrimSpace(cfg.Provider) == "" {
+	provider := canonicalImageProviderID(cfg.Provider)
+	if provider == "" {
 		return false, "missing provider"
 	}
-	if !isImagegenBridgeProvider(cfg.Provider) && strings.TrimSpace(cfg.Model) == "" {
+	if strings.TrimSpace(cfg.Model) == "" {
 		return false, "missing model"
 	}
-	if isImagegenBridgeProvider(cfg.Provider) {
-		if strings.TrimSpace(cfg.ImagegenBridgeURL) == "" {
-			return false, "missing imagegen-bridge URL"
-		}
-		return true, "configured through imagegen-bridge native API"
+	if !isSupportedImageProvider(provider) {
+		return false, "unsupported provider"
 	}
 	if isOpenClawImageProvider(cfg.Provider) {
 		if strings.TrimSpace(cfg.OpenClawBridgeURL) == "" {
@@ -364,13 +382,7 @@ func imageGenerationAvailability(cfg ImageGenerationConfig) (bool, string) {
 		}
 		return true, "configured through OpenClaw bridge"
 	}
-	if strings.TrimSpace(cfg.BaseURL) == "" {
-		return false, "missing base URL"
-	}
-	if strings.TrimSpace(cfg.APIKey) == "" {
-		return false, "missing API key"
-	}
-	return true, "configured through OpenAI-compatible image endpoint"
+	return imageProviderConfigured(cfg, provider)
 }
 
 func isOpenClawImageProvider(provider string) bool {
@@ -438,7 +450,9 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 		cfg.AI.ImageGeneration.Model = cleanString(*update.ImageModel)
 	}
 	if update.ImageGeneration != nil {
-		applyImageGenerationUpdate(&cfg.AI.ImageGeneration, *update.ImageGeneration)
+		if err := applyImageGenerationUpdate(&cfg.AI.ImageGeneration, *update.ImageGeneration); err != nil {
+			return err
+		}
 	}
 	if update.ASCIIModel != nil {
 		cfg.AI.ASCIIArt.Model = cleanString(*update.ASCIIModel)
@@ -458,9 +472,12 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 	return cfg.Validate()
 }
 
-func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerationUpdate) {
+func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerationUpdate) error {
 	if update.Provider != nil {
-		cfg.Provider = cleanString(*update.Provider)
+		cfg.Provider = canonicalImageProviderID(*update.Provider)
+	}
+	if update.MapIconProvider != nil {
+		cfg.MapIconProvider = canonicalImageProviderID(*update.MapIconProvider)
 	}
 	if update.BaseURL != nil {
 		cfg.BaseURL = cleanString(*update.BaseURL)
@@ -476,6 +493,15 @@ func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerati
 	}
 	if update.ImagegenBridgeURL != nil {
 		cfg.ImagegenBridgeURL = cleanString(*update.ImagegenBridgeURL)
+	}
+	if update.ImagegenBridgeToken != nil && update.ClearImagegenBridgeToken {
+		return fmt.Errorf("imagegen_bridge_token and clear_imagegen_bridge_token are mutually exclusive")
+	}
+	if update.ImagegenBridgeToken != nil {
+		cfg.ImagegenBridgeToken = strings.TrimSpace(*update.ImagegenBridgeToken)
+	}
+	if update.ClearImagegenBridgeToken {
+		cfg.ImagegenBridgeToken = ""
 	}
 	if update.ImagegenBridgeProvider != nil {
 		cfg.ImagegenBridgeProvider = cleanString(*update.ImagegenBridgeProvider)
@@ -536,6 +562,63 @@ func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerati
 	}
 	if update.AppendNegativePrompt != nil {
 		cfg.AppendNegativePrompt = *update.AppendNegativePrompt
+	}
+	if cfg.Providers == nil {
+		cfg.Providers = make(map[string]ImageProviderConfig)
+	}
+	seen := make(map[string]bool)
+	for _, providerUpdate := range update.ProviderConfigs {
+		id := canonicalImageProviderID(providerUpdate.ID)
+		if !isDirectImageProvider(id) {
+			return fmt.Errorf("provider_configs contains unsupported direct provider %q", providerUpdate.ID)
+		}
+		if seen[id] {
+			return fmt.Errorf("provider_configs contains duplicate provider %q", id)
+		}
+		seen[id] = true
+		if providerUpdate.APIKey != nil && providerUpdate.ClearAPIKey {
+			return fmt.Errorf("provider_configs[%s].api_key and clear_api_key are mutually exclusive", id)
+		}
+		direct := cfg.Providers[id]
+		if providerUpdate.BaseURL != nil {
+			direct.BaseURL = cleanString(*providerUpdate.BaseURL)
+			if direct.BaseURL != "" {
+				parsed, err := url.ParseRequestURI(direct.BaseURL)
+				if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+					return fmt.Errorf("provider_configs[%s].base_url must be an HTTP or HTTPS URL", id)
+				}
+			}
+		}
+		if providerUpdate.APIKey != nil {
+			direct.APIKey = strings.TrimSpace(*providerUpdate.APIKey)
+		}
+		if providerUpdate.ClearAPIKey {
+			direct.APIKey = ""
+		}
+		if providerUpdate.APIVersion != nil {
+			direct.APIVersion = cleanString(*providerUpdate.APIVersion)
+		}
+		if providerUpdate.Models != nil {
+			direct.Models = cleanStringSlice(*providerUpdate.Models)
+		}
+		cfg.Providers[id] = direct
+	}
+	if !isSupportedImageProvider(cfg.Provider) {
+		return fmt.Errorf("unknown image provider %q", cfg.Provider)
+	}
+	if !isSupportedImageProvider(cfg.MapIconProvider) {
+		return fmt.Errorf("unknown map icon image provider %q", cfg.MapIconProvider)
+	}
+	return nil
+}
+
+func isDirectImageProvider(provider string) bool {
+	switch canonicalImageProviderID(provider) {
+	case ImageProviderOpenAI, ImageProviderOpenAICompatible, ImageProviderGemini,
+		ImageProviderFal, ImageProviderReplicate, ImageProviderStability, ImageProviderAzureOpenAI:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -601,6 +684,9 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 			return setString(root, cfg.AI.ImageGeneration.Provider, "ai", "image_generation", "provider")
 		},
 		func() error {
+			return setString(root, cfg.AI.ImageGeneration.MapIconProvider, "ai", "image_generation", "map_icon_provider")
+		},
+		func() error {
 			return setString(root, cfg.AI.ImageGeneration.BaseURL, "ai", "image_generation", "base_url")
 		},
 		func() error { return setString(root, cfg.AI.ImageGeneration.Model, "ai", "image_generation", "model") },
@@ -612,6 +698,9 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 		},
 		func() error {
 			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeURL, "ai", "image_generation", "imagegen_bridge_url")
+		},
+		func() error {
+			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeToken, "ai", "image_generation", "imagegen_bridge_token")
 		},
 		func() error {
 			return setString(root, cfg.AI.ImageGeneration.ImagegenBridgeProvider, "ai", "image_generation", "imagegen_bridge_provider")
@@ -678,6 +767,29 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 	} {
 		if err := apply(); err != nil {
 			return nil, err
+		}
+	}
+	for id, provider := range cfg.AI.ImageGeneration.Providers {
+		if !isDirectImageProvider(id) {
+			continue
+		}
+		for _, apply := range []func() error{
+			func() error {
+				return setString(root, provider.BaseURL, "ai", "image_generation", "providers", id, "base_url")
+			},
+			func() error {
+				return setString(root, provider.APIKey, "ai", "image_generation", "providers", id, "api_key")
+			},
+			func() error {
+				return setString(root, provider.APIVersion, "ai", "image_generation", "providers", id, "api_version")
+			},
+			func() error {
+				return setStringSlice(root, provider.Models, "ai", "image_generation", "providers", id, "models")
+			},
+		} {
+			if err := apply(); err != nil {
+				return nil, err
+			}
 		}
 	}
 	var out strings.Builder

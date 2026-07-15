@@ -100,14 +100,15 @@ describe("model routing helpers", () => {
     );
   });
 
-  it("allows imagegen-bridge to select its default model and validates its URL", () => {
+  it("treats Codex OAuth as imagegen-bridge transport and validates its URL", () => {
     const bridgeSettings: ModelSettings = {
       ...settings,
       image_generation: {
         ...settings.image_generation,
-        provider: "imagegen-bridge",
-        model: "",
-        map_icon_model: "",
+        provider: "codex-oauth",
+        map_icon_provider: "codex-oauth",
+        model: "gpt-image-2",
+        map_icon_model: "gpt-image-2",
         imagegen_bridge_url: "http://imagegen-bridge:8787",
       },
     };
@@ -166,8 +167,10 @@ const settings: ModelSettings = {
   image_models: ["test-image-model", "openai/gpt-image-1"],
   ascii_models: ["test-ascii-model"],
   embedding_providers: ["auto", "litellm", "openrouter", "local"],
+  image_providers: [],
   image_generation: {
     provider: "openclaw-bridge",
+    map_icon_provider: "openclaw-bridge",
     base_url: "",
     api_key_configured: false,
     model: "test-image-model",

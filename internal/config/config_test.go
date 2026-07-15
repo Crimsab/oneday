@@ -58,8 +58,8 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.ImageGeneration.Model != "" {
 		t.Errorf("ImageGeneration.Model = %q, want empty default", cfg.AI.ImageGeneration.Model)
 	}
-	if cfg.AI.ImageGeneration.Provider != "imagegen-bridge" {
-		t.Errorf("ImageGeneration.Provider = %q, want imagegen-bridge", cfg.AI.ImageGeneration.Provider)
+	if cfg.AI.ImageGeneration.Provider != "codex-oauth" {
+		t.Errorf("ImageGeneration.Provider = %q, want codex-oauth", cfg.AI.ImageGeneration.Provider)
 	}
 	if cfg.AI.ImageGeneration.ImagegenBridgeProvider != "codex-responses" {
 		t.Errorf("ImageGeneration.ImagegenBridgeProvider = %q, want codex-responses", cfg.AI.ImageGeneration.ImagegenBridgeProvider)
@@ -352,6 +352,9 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	cfg.AI.ImageGeneration.APIKey = "test-secret-image-key"
 	cfg.AI.ImageGeneration.ImagegenBridgeToken = "test-secret-bridge-token"
 	cfg.AI.ImageGeneration.ImagegenBridgeFallbacks = []string{"codex-responses:gpt-image-2"}
+	cfg.AI.ImageGeneration.Providers = map[string]ImageProviderConfig{
+		"openai": {BaseURL: "https://api.openai.com/v1", APIKey: "test-secret-provider-key", Models: []string{"gpt-image-1"}},
+	}
 
 	settings := BuildModelRoutingSettings("/tmp/config.yaml", cfg, "revision-1")
 
@@ -388,6 +391,17 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	}
 	if strings.Contains(string(raw), "test-secret-bridge-token") {
 		t.Fatalf("model settings leaked imagegen-bridge token: %s", raw)
+	}
+	if strings.Contains(string(raw), "test-secret-provider-key") {
+		t.Fatalf("model settings leaked provider API key: %s", raw)
+	}
+	if len(settings.ImageProviders) == 0 || settings.ImageProviders[0].ID != "codex-oauth" || !settings.ImageProviders[0].Default {
+		t.Fatalf("image provider catalog must start with default Codex OAuth: %#v", settings.ImageProviders)
+	}
+	for _, provider := range settings.ImageProviders {
+		if provider.Capabilities.Edit {
+			t.Fatalf("provider %q advertises edit without an exposed edit operation", provider.ID)
+		}
 	}
 }
 
@@ -501,6 +515,9 @@ ai:
 	locationSize := "1792x1024"
 	timeoutSeconds := 181
 	autoGenerate := true
+	openAIBaseURL := "https://api.openai.com/v1"
+	openAIKey := "write-only-test-openai-key"
+	openAIModels := []string{"gpt-image-1"}
 	next, err := UpdateModelRoutingSettings(path, ModelRoutingUpdate{
 		BaseRevision: settings.ConfigRevision,
 		Providers: []ModelProviderUpdate{
@@ -513,6 +530,9 @@ ai:
 			LocationSize:      &locationSize,
 			TimeoutSeconds:    &timeoutSeconds,
 			AutoGenerate:      &autoGenerate,
+			ProviderConfigs: []ImageProviderConfigUpdate{{
+				ID: "openai", BaseURL: &openAIBaseURL, APIKey: &openAIKey, Models: &openAIModels,
+			}},
 		},
 	})
 	if err != nil {
@@ -520,6 +540,13 @@ ai:
 	}
 	if next.ConfigRevision == "" || next.ConfigRevision == settings.ConfigRevision {
 		t.Fatalf("revision was not updated: before=%q after=%q", settings.ConfigRevision, next.ConfigRevision)
+	}
+	nextJSON, err := json.Marshal(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(nextJSON, []byte(openAIKey)) {
+		t.Fatalf("updated settings echoed write-only provider API key")
 	}
 	out, err := os.ReadFile(path)
 	if err != nil {
@@ -537,6 +564,7 @@ ai:
 		"location_size: 1792x1024",
 		"timeout_seconds: 181",
 		"auto_generate: true",
+		"api_key: write-only-test-openai-key",
 	} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("updated config missing %q:\n%s", needle, text)
@@ -570,6 +598,8 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 	imageBaseURL := "http://127.0.0.1:4000/v1"
 	imageLocationSize := "1792x1024"
 	imageTimeout := 240
+	providerKey := "write-only-provider-key"
+	providerModels := []string{"custom-image-v1"}
 	ascii := "test-ascii-model"
 
 	err := ApplyModelRoutingUpdate(&cfg, ModelRoutingUpdate{
@@ -587,6 +617,9 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 			BaseURL:        &imageBaseURL,
 			LocationSize:   &imageLocationSize,
 			TimeoutSeconds: &imageTimeout,
+			ProviderConfigs: []ImageProviderConfigUpdate{{
+				ID: "openai-compatible", BaseURL: &imageBaseURL, APIKey: &providerKey, Models: &providerModels,
+			}},
 		},
 		ASCIIModel: &ascii,
 	})
@@ -610,6 +643,9 @@ func TestApplyModelRoutingUpdate(t *testing.T) {
 	}
 	if cfg.AI.ImageGeneration.LocationSize != imageLocationSize || cfg.AI.ImageGeneration.TimeoutSeconds != imageTimeout {
 		t.Fatalf("ImageGeneration detail fields not updated: %#v", cfg.AI.ImageGeneration)
+	}
+	if got := cfg.AI.ImageGeneration.Providers["openai-compatible"]; got.APIKey != providerKey || len(got.Models) != 1 || got.Models[0] != "custom-image-v1" {
+		t.Fatalf("provider-specific write-only config not updated: %#v", got)
 	}
 	if cfg.AI.ASCIIArt.Model != ascii {
 		t.Fatalf("ASCIIArt.Model = %q", cfg.AI.ASCIIArt.Model)
