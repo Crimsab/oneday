@@ -7,7 +7,7 @@ The public `compose.yaml` is portable and has no host-specific paths or networks
 
 Release images are published for `linux/amd64` as
 `ghcr.io/crimsab/oneday`. Pulling `latest` tracks the newest stable release;
-pin a version such as `1.8.0` for reproducible deployments.
+pin a version such as `1.9.0` for reproducible deployments.
 
 ```bash
 cp config.example.yaml config.yaml
@@ -21,6 +21,8 @@ docker compose up -d
 The service listens on `${ONEDAY_PORT:-8788}` and exposes `/api/health`.
 Compose persists application data in the `oneday_data` named volume and mounts
 `config.yaml` read/write so model settings saved in the browser reach the Go engine.
+Automatic images and TTS are off in the public template until their providers
+are configured; neither is required for story generation.
 
 ## Provider networking
 

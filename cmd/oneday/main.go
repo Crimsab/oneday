@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -31,6 +32,10 @@ import (
 
 func main() {
 	configureGatewayRequestContext()
+	if wantsHelp(os.Args[1:]) {
+		printUsage(os.Stdout)
+		return
+	}
 	if wantsVersion(os.Args[1:]) {
 		fmt.Println(buildinfo.Text("oneday"))
 		return
@@ -351,6 +356,35 @@ func wantsVersion(args []string) bool {
 	return false
 }
 
+func wantsHelp(args []string) bool {
+	for _, arg := range args {
+		switch arg {
+		case "help", "--help", "-h":
+			return true
+		}
+	}
+	return false
+}
+
+func printUsage(w io.Writer) {
+	fmt.Fprintln(w, `OneDay — imagine any story, live every possibility
+
+Usage:
+  oneday                         Start the terminal client
+  oneday setup [--reconfigure]   Configure narrative providers and RAG
+  oneday doctor [--json]         Check configuration and provider readiness
+  oneday config show --safe      Print effective configuration without secrets
+  oneday rag benchmark           Test the active embedding route
+  oneday rag reindex [--all]     Rebuild story embeddings
+  oneday story-packs list        Discover and validate story packs
+  oneday export [options]        Export story data
+  oneday version                 Print build information
+  oneday help                    Show this help
+
+The browser application is served by oneday-gateway. See docs/first-story.md
+and docs/getting-started.md for native and Docker setup.`)
+}
+
 func wantsDoctor(args []string) bool {
 	for _, arg := range args {
 		switch arg {
@@ -481,7 +515,7 @@ func runSetup(args []string) error {
 
 	fmt.Println()
 	fmt.Println("Choose AI provider:")
-	fmt.Println("  1) Codex OAuth (experimental, uses local `codex login`)")
+	fmt.Println("  1) Codex OAuth (uses local `codex login`)")
 	fmt.Println("  2) LiteLLM / homelab proxy")
 	fmt.Println("  3) OpenRouter")
 	fmt.Println("  4) Codex OAuth + local RAG embeddings")
@@ -1094,21 +1128,30 @@ func argValue(args []string, key string) string {
 }
 
 func runStoryPacksList() error {
-	packs, err := discoverStoryPacks([]string{"plugins/story-packs", "plugins/examples"})
+	return listStoryPacks([]string{"plugins/story-packs", "plugins/examples"}, os.Stdout)
+}
+
+func listStoryPacks(searchPaths []string, w io.Writer) error {
+	packs, err := discoverStoryPacks(searchPaths)
 	if err != nil {
 		return err
 	}
-	fmt.Println("OneDay story packs")
+	fmt.Fprintln(w, "OneDay story packs")
 	if len(packs) == 0 {
-		fmt.Println("No story packs found.")
+		fmt.Fprintln(w, "No story packs found.")
 		return nil
 	}
+	invalid := 0
 	for _, pack := range packs {
 		if err := validateStoryPack(pack); err != nil {
-			fmt.Printf("- %s (invalid: %v)\n", pack, err)
+			fmt.Fprintf(w, "- %s (invalid: %v)\n", pack, err)
+			invalid++
 			continue
 		}
-		fmt.Printf("- %s\n", pack)
+		fmt.Fprintf(w, "- %s\n", pack)
+	}
+	if invalid > 0 {
+		return fmt.Errorf("found %d invalid story pack(s)", invalid)
 	}
 	return nil
 }

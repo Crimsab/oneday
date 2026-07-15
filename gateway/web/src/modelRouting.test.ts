@@ -210,5 +210,5 @@ const settings: ModelSettings = {
     embedding_model: "test-embedding-model",
     codex_reasoning: "off",
   },
-  tts_status: "planned",
+  tts_status: "disabled",
 };

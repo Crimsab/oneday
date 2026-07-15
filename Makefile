@@ -4,7 +4,7 @@ ASCII_BENCH=oneday-ascii-benchmark
 BUILD_DIR=build
 LDFLAGS=$(shell bash ./scripts/build-ldflags.sh)
 
-.PHONY: test coverage vet verify qa-matrix qa-matrix-auto universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
+.PHONY: test coverage vet verify docs-check qa-matrix qa-matrix-auto universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
 
 test:
 	go test ./...
@@ -17,7 +17,10 @@ coverage:
 vet:
 	go vet ./...
 
-verify: test vet qa-matrix-auto
+verify: docs-check test vet qa-matrix-auto
+
+docs-check:
+	bun scripts/check-docs.ts
 
 qa-matrix:
 	./scripts/qa-matrix.sh

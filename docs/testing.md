@@ -1,5 +1,17 @@
 # Testing
 
+## Documentation
+
+Run the local documentation gate after changing Markdown or public guides:
+
+```bash
+bun scripts/check-docs.ts
+```
+
+It verifies tracked and newly added Markdown files, local link targets, heading
+anchors, and the required public guide indexes. CI runs the same script without
+making external network requests.
+
 OneDay spans a Go engine and terminal client, a Rust gateway, a React frontend,
 SQLite migrations, generated contracts, and a Docker image. A passing unit test
 in one layer is not sufficient release evidence.

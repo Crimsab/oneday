@@ -10,6 +10,9 @@ mkdir -p "${CARGO_TARGET_DIR}"
 step() { printf '\n== %s ==\n' "$1"; }
 run() { printf '+ %s\n' "$*"; "$@"; }
 
+step "Documentation"
+run bun scripts/check-docs.ts
+
 step "Go, migrations, compatibility, and authoring"
 run go test ./...
 run go vet ./...

@@ -90,6 +90,33 @@ func TestDefault(t *testing.T) {
 	}
 }
 
+func TestTTSStatusReflectsConfiguredProviders(t *testing.T) {
+	cfg := Default()
+	if got := ttsStatus(cfg.AI.TTS); got != "disabled" {
+		t.Fatalf("ttsStatus(default) = %q, want disabled", got)
+	}
+	cfg.AI.TTS.Local.Enabled = true
+	if got := ttsStatus(cfg.AI.TTS); got != "enabled" {
+		t.Fatalf("ttsStatus(local enabled) = %q, want enabled", got)
+	}
+}
+
+func TestPublicConfigExampleKeepsOptionalMediaDisabled(t *testing.T) {
+	cfg, err := Load("../../config.example.yaml")
+	if err != nil {
+		t.Fatalf("Load(config.example.yaml): %v", err)
+	}
+	if cfg.AI.ImageGeneration.AutoGenerate {
+		t.Fatal("public config must not auto-generate images before a provider is configured")
+	}
+	if cfg.AI.TTS.Local.Enabled || cfg.AI.TTS.Cloud.Enabled {
+		t.Fatal("public config must not enable TTS before a provider is configured")
+	}
+	if cfg.AI.TTS.OutputDir == "" || cfg.AI.TTS.Cloud.Model == "" || cfg.AI.TTS.Local.Model == "" {
+		t.Fatal("public config must document complete TTS defaults")
+	}
+}
+
 func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
 	cfg := Default()
 	cfg.ConfigVersion = 1

@@ -2,7 +2,7 @@
 
 # OneDay
 
-<p><strong>Persistent AI stories that remember, branch, and evolve</strong></p>
+<p><strong>Imagine any story. Live every possibility.</strong></p>
 
 [![CI](https://github.com/Crimsab/oneday/actions/workflows/ci.yml/badge.svg)](https://github.com/Crimsab/oneday/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Crimsab/oneday?display_name=tag&sort=semver)](https://github.com/Crimsab/oneday/releases/latest)
@@ -13,9 +13,13 @@
 <!-- Logo slot: add docs/assets/oneday-logo.svg above the title. -->
 <!-- Hero slot: add docs/assets/oneday-hero.webp here when the final artwork is ready. -->
 
-OneDay is a local-first narrative RPG with a browser interface and terminal
-client. The AI writes the story; the engine preserves causality, resolves
-mechanics, tracks the world, and keeps every branch coherent in SQLite.
+OneDay turns any premise into a persistent, interactive world. Write any action,
+follow or reject suggested choices, and explore stories that remember what
+happened and evolve around the consequences. Combat is optional; the genre,
+tone, language, rules, and play style belong to each story.
+
+**Any genre · Free-form actions · Branching timelines · Minigames · Crafting ·
+Investigations · Optional combat · Images and voices**
 
 [Get started](#quick-start) · [Documentation](docs/README.md) ·
 [Releases](https://github.com/Crimsab/oneday/releases) ·
@@ -23,30 +27,42 @@ mechanics, tracks the world, and keeps every branch coherent in SQLite.
 
 </div>
 
-## Why OneDay
+## More than generated prose
 
+- **Any story you can describe.** Mystery, romance, political drama, comedy,
+  horror, science fiction, slice of life, fantasy, or something entirely new.
 - **One world, not a disposable chat.** Characters, locations, factions,
   investigations, projects, achievements, inventory, and consequences persist.
 - **Real player agency.** Pick a suggested choice or write any action in your
   own words; the story is not limited to a dialogue tree.
+- **Systems that fit the scene.** Challenges, contextual minigames, crafting,
+  social confrontations, investigations, projects, and optional combat create
+  interaction without forcing every story into an RPG template.
 - **Branch without losing canon.** Fork decisions, explore alternate paths,
   restore snapshots, and navigate history with branch-aware world state.
-- **Deterministic mechanics.** The engine owns checks, challenges, combat,
-  crafting outcomes, and atomic state changes instead of trusting free-form prose.
+- **Consequences the engine can trust.** Checks, rewards, inventory changes,
+  relationships, crafting outcomes, and turn commits are resolved outside the
+  model's free-form prose.
 - **Long-term memory.** RAG summaries and embeddings keep long-running stories
   grounded without treating the entire transcript as one prompt.
 - **Optional generated media.** Scene art, character portraits, transparent map
   symbols, ambient ASCII, and spoken audio remain subordinate to canonical text.
 
-## A story system, not only a narrator
+## What lives inside a story
 
-| Narrative layer | Canonical engine |
+| Story experience | Persistent systems |
 | --- | --- |
-| Any genre, tone, language, and prose style | Versioned SQLite state shared by browser and TUI |
-| Free actions, dialogue, choices, and GM guidance | Atomic turn commits, idempotency, saves, and branches |
-| Persistent NPC voice, motives, relationships, and reputation | Deterministic challenges, combat, crafting, and rewards |
-| Model routing with fallbacks and repair passes | Typed Go ↔ Rust contracts and migration gates |
-| Story-specific visual direction and generated assets | Branch-aware asset lineage and failure-safe background jobs |
+| Any genre, tone, language, and writing style | Characters, locations, factions, relationships, reputation, and world events |
+| Free actions, dialogue, suggested choices, and story guidance | Atomic turns, saves, rewind, alternative branches, and searchable history |
+| Scene-aware challenges and minigames | Stats, skills, items, relationships, dice, outcomes, rewards, and fail-forward consequences |
+| Crafting, investigations, projects, social duels, and optional combat | Inventory, recipes, clues, suspects, leverage, fronts, achievements, and progression |
+| Scene art, portraits, maps, ASCII, and spoken audio | Branch-aware media lineage, provider routing, retries, and non-blocking failure |
+
+Automatic timing-free minigames include deduction, negotiation, pattern solving,
+bidding, courtroom exchanges, and comedy. The extension engine also supports
+riddles, memory, rock-paper-scissors, and quick-time definitions. Read the
+[feature tour](docs/features.md) and [story systems guide](docs/story-systems.md)
+for the complete behavior.
 
 ## Interfaces
 
@@ -83,7 +99,8 @@ curl -fsS http://localhost:8788/api/health
 ```
 
 Open [http://localhost:8788](http://localhost:8788). The first start creates and
-migrates the persistent database automatically.
+migrates the persistent database automatically. Visual and spoken media are
+optional and remain disabled until their providers are configured.
 
 Docker does not bundle host Codex or Claude CLI credentials. The standard
 container path is LiteLLM/OpenRouter; advanced users can add private CLI mounts
@@ -105,7 +122,8 @@ Release archives with Linux and Windows binaries are available on the
 [Releases page](https://github.com/Crimsab/oneday/releases). The complete browser
 stack is also published as `ghcr.io/crimsab/oneday:latest`.
 
-Read the full [getting-started guide](docs/getting-started.md) for provider,
+Read [Your first story](docs/first-story.md) for the shortest provider-to-story
+walkthrough, or the full [getting-started guide](docs/getting-started.md) for
 Docker-host networking, RAG, and verification details.
 
 ## AI providers and media
@@ -120,8 +138,10 @@ Docker-host networking, RAG, and verification details.
 | imagegen-bridge native API / OpenClaw / OpenAI-compatible API | Non-blocking story visuals with provider routing and fallbacks |
 
 Narrative, utility, repair, embedding, ASCII, image, map-icon, and TTS paths can
-use separate models. General visuals default to `openai/gpt-image-2`; transparent
-map symbols can use `openai/gpt-image-1` independently.
+use separate models. Visual generation prefers imagegen-bridge with
+`codex-responses:gpt-image-2` as the primary route and
+`codex-app-server:gpt-image-2` as the default technical-error fallback. General
+art and transparent map symbols can still use independent providers and models.
 
 During story creation, visual direction can be Auto, Photorealistic, Cinematic
 Fantasy, Illustrated Fantasy, Anime, or a custom prompt. The selected direction
@@ -141,7 +161,8 @@ React browser ─ Rust gateway ─ typed JSON bridge ┘
 
 The Go engine owns narrative prompts, mechanics, persistence, migrations, and
 canonical mutations. The Rust gateway owns HTTP, SSE, media jobs, and the typed
-bridge. React renders canonical state but never invents a second game state.
+bridge. React renders canonical story state but never invents a second source of
+truth.
 
 Read [Architecture](docs/architecture.md) and the
 [browser gateway contract](docs/browser-gateway.md) for the full turn flow and
@@ -152,8 +173,13 @@ component boundaries.
 | Guide | Covers |
 | --- | --- |
 | [Getting started](docs/getting-started.md) | Native and Docker installation |
+| [Your first story](docs/first-story.md) | Configure a provider and create the first world |
+| [Feature tour](docs/features.md) | Player-facing capabilities and interfaces |
+| [Story systems](docs/story-systems.md) | Branches, challenges, minigames, crafting, investigations, projects, and conflict |
+| [Generated media](docs/media.md) | Images, maps, ASCII, TTS, providers, and failure behavior |
 | [Configuration](docs/configuration.md) | Providers, RAG, visuals, game settings, and secrets |
 | [Docker](docs/docker.md) | Networking, persistence, updates, backups, and operations |
+| [Extensions](docs/extensions.md) | Story packs, challenge pools, and minigame definitions |
 | [Architecture](docs/architecture.md) | Components, contracts, turn flow, and canonical state |
 | [Troubleshooting](docs/troubleshooting.md) | Provider, RAG, media, browser, and CI failures |
 | [Development](docs/development.md) | Toolchains, layout, tests, and generated contracts |

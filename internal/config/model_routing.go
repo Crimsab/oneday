@@ -296,8 +296,15 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 			EmbeddingModel:       cfg.AI.Embedding.Model,
 			CodexReasoning:       firstNonEmpty(cfg.AI.Codex.Reasoning, "off"),
 		},
-		TTSStatus: "planned",
+		TTSStatus: ttsStatus(cfg.AI.TTS),
 	}
+}
+
+func ttsStatus(cfg TTSConfig) string {
+	if cfg.Local.Enabled || cfg.Cloud.Enabled {
+		return "enabled"
+	}
+	return "disabled"
 }
 
 func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetting {

@@ -14,6 +14,9 @@ At least one narrative provider must be configured. OneDay supports Codex CLI,
 Claude Code, LiteLLM-compatible endpoints, and OpenRouter. RAG embeddings are
 optional and can be remote or local through Ollama/custom HTTP.
 
+For the shortest walkthrough, including creation of the first world, see
+[Your first story](first-story.md).
+
 ## Terminal client
 
 Use Go 1.25.12 or newer. The repository's `toolchain` directive records the
@@ -79,6 +82,9 @@ curl -fsS http://localhost:8788/api/health
 Open `http://localhost:8788`. The first start creates and migrates the SQLite
 database automatically in the `oneday_data` named volume.
 
+Generated images and speech remain disabled until their providers are
+configured. They are optional and never block canonical text turns.
+
 Docker does not bundle your host Codex or Claude CLI credentials. Use
 LiteLLM/OpenRouter in the standard container setup, or create a private Compose
 override that mounts the relevant CLI binary and its authentication files.
@@ -110,5 +116,6 @@ docker compose ps
 docker compose logs --tail 100 oneday-gateway
 ```
 
-Continue with [Configuration](configuration.md) for all provider and media
-settings, or [Troubleshooting](troubleshooting.md) if a check fails.
+Continue with [Configuration](configuration.md) for all provider settings,
+[Generated media](media.md) for image and speech setup, or
+[Troubleshooting](troubleshooting.md) if a check fails.

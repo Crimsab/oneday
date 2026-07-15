@@ -14,7 +14,7 @@ ai:
     - codex
     - claude-code
 
-  # OpenAI Codex CLI (experimental; uses local `codex login` OAuth/API auth)
+  # OpenAI Codex CLI (uses local `codex login` OAuth/API auth)
   codex:
     enabled: false
     # Path to codex CLI binary (leave empty for PATH lookup)
@@ -106,8 +106,32 @@ ai:
     output_format: "png"
     background: ""
     timeout_seconds: 360
-    auto_generate: true
+    # Enable only after the selected bridge or endpoint is reachable.
+    auto_generate: false
     append_negative_prompt: true
+
+  # Optional spoken narration and character voices. Providers are disabled by
+  # default; text remains canonical when synthesis is unavailable.
+  tts:
+    output_dir: "./oneday_data/audio"
+    timeout_seconds: 45
+    provider_order: [local, cloud]
+    cloud:
+      enabled: false
+      base_url: "https://api.openai.com/v1"
+      api_key: "${ONEDAY_TTS_API_KEY}"
+      model: "gpt-4o-mini-tts"
+      voice: "alloy"
+      version: "1"
+      languages: [en, it]
+    local:
+      enabled: false
+      base_url: "http://127.0.0.1:5000"
+      api_key: ""
+      model: "piper"
+      voice: ""
+      version: "1"
+      languages: [en, it]
 
   # Generation settings
   generation:

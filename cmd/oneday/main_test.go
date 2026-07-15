@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/crimsab/oneday/internal/ai"
@@ -37,6 +38,25 @@ func TestWantsVersion(t *testing.T) {
 	for _, tc := range tests {
 		if got := wantsVersion(tc.args); got != tc.want {
 			t.Fatalf("wantsVersion(%v) = %v, want %v", tc.args, got, tc.want)
+		}
+	}
+}
+
+func TestHelpDoesNotRequireConfiguration(t *testing.T) {
+	for _, args := range [][]string{{"help"}, {"--help"}, {"-h"}, {"setup", "--help"}} {
+		if !wantsHelp(args) {
+			t.Fatalf("wantsHelp(%v) = false", args)
+		}
+	}
+	if wantsHelp([]string{"play"}) {
+		t.Fatal("wantsHelp(play) = true")
+	}
+
+	var output bytes.Buffer
+	printUsage(&output)
+	for _, expected := range []string{"Start the terminal client", "story-packs list", "docs/first-story.md"} {
+		if !bytes.Contains(output.Bytes(), []byte(expected)) {
+			t.Fatalf("help output missing %q:\n%s", expected, output.String())
 		}
 	}
 }
@@ -136,6 +156,27 @@ func TestValidateStoryPack(t *testing.T) {
 	}
 	if err := validateStoryPack(bad); err == nil {
 		t.Fatal("expected invalid story pack")
+	}
+}
+
+func TestListStoryPacksFailsWhenAnyPackIsInvalid(t *testing.T) {
+	dir := t.TempDir()
+	valid := "id: valid\nname: Valid\ndescription: Valid pack\n"
+	if err := os.WriteFile(filepath.Join(dir, "valid.yaml"), []byte(valid), 0644); err != nil {
+		t.Fatal(err)
+	}
+	invalid := "id: invalid\nname: Invalid\ndescription: Invalid pack\nchallenge_pools:\n  clues:\n    definitions: [{id: clue, kind: deduction, difficulty: 40}]\n"
+	if err := os.WriteFile(filepath.Join(dir, "invalid.yaml"), []byte(invalid), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var output bytes.Buffer
+	err := listStoryPacks([]string{dir}, &output)
+	if err == nil || !strings.Contains(err.Error(), "1 invalid story pack") {
+		t.Fatalf("listStoryPacks error = %v, output:\n%s", err, output.String())
+	}
+	if !strings.Contains(output.String(), "valid.yaml") || !strings.Contains(output.String(), "invalid:") {
+		t.Fatalf("unexpected list output:\n%s", output.String())
 	}
 }
 

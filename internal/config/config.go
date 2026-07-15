@@ -86,8 +86,8 @@ type EmbeddingConfig struct {
 	Local    LocalEmbeddingConfig `yaml:"local"`
 }
 
-// LocalEmbeddingConfig reserves config space for a future local embedding backend.
-// It is disabled by default and is not selected unless an implementation exists.
+// LocalEmbeddingConfig configures Ollama or a compatible local HTTP embedding backend.
+// It is disabled by default and selected only when explicitly enabled.
 type LocalEmbeddingConfig struct {
 	Enabled    bool   `yaml:"enabled"`
 	Type       string `yaml:"type"`

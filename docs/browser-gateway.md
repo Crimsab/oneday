@@ -66,7 +66,7 @@ game state.
   state.
 - Shared model/provider editor for Options, including provider priority,
   provider enablement, narrative/provider models, utility, repair, image/ascii,
-  embedding, Codex reasoning, and planned TTS status.
+  embedding, Codex reasoning, and current TTS status.
 - Large searchable Options workspace with category sidebar for interface,
   gameplay policy, spoken audio, visual/map generation, models, and runtime.
 - Automatic browser challenge host: the narrator signals a situation, the Go

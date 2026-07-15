@@ -82,6 +82,25 @@ The browser story wizard offers Auto, Photorealistic, Cinematic Fantasy,
 Illustrated Fantasy, Anime, and Custom visual styles. The style prompt is saved
 with the story so later assets remain consistent.
 
+The tracked public template sets `auto_generate: false`. Turn it on only after
+the selected bridge or compatible endpoint is reachable; otherwise OneDay will
+correctly preserve text turns but accumulate avoidable failed background jobs.
+
+## Spoken audio
+
+Speech settings live under `ai.tts`. OneDay implements two adapters:
+
+- `cloud` calls an OpenAI-compatible `/audio/speech` endpoint. Put its key in
+  `ONEDAY_TTS_API_KEY` and reference that variable from `config.yaml`.
+- `local` expects a Piper-compatible service with `/voices` and `/synthesize`.
+
+`provider_order` controls fallback, while each endpoint has independent
+`enabled`, `base_url`, `model`, `voice`, `version`, and `languages` fields.
+Generated audio is stored below `output_dir` and cached against committed text
+and voice settings. Both providers are disabled in the public template; text
+remains available when TTS is off or a job fails. See [Generated media](media.md)
+for complete examples and Docker-host addressing.
+
 ## Optional observability export
 
 OneDay always keeps redacted generation lineage and failure state in SQLite.
