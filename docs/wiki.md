@@ -38,8 +38,11 @@ Then open `http://127.0.0.1:8000`.
 
 ## GitHub Pages deployment
 
-`.github/workflows/docs.yml` builds a Pages artifact after documentation
-changes reach `main`, then deploys it to the protected `github-pages`
+`.github/workflows/docs.yml` builds and validates documentation changes on pull
+requests and on `main`. While the repository is private, it stops after that
+validation because the current GitHub plan does not provide private Pages.
+Once the repository is public, a documentation push or a manual workflow run
+builds a Pages artifact and deploys it to the protected `github-pages`
 environment. The deployment job receives only the permissions required by
 GitHub Pages: `pages: write` and `id-token: write`.
 

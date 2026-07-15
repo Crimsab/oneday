@@ -81,11 +81,11 @@ jobs:
         run: mkdocs build --strict
 
       - name: Configure GitHub Pages
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.repository.private == false
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
 
       - name: Upload GitHub Pages artifact
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && github.event.repository.private == false
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
         with:
           path: site
@@ -93,7 +93,7 @@ jobs:
 
   deploy:
     name: Deploy documentation
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && github.event.repository.private == false
     needs: build
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 10
