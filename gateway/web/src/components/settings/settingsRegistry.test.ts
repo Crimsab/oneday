@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { searchSettings, settingsCategories, settingsSearchEntries } from "./settingsRegistry";
+import { searchSettings, settingsCategories, settingsNavigationGroups, settingsSearchEntries } from "./settingsRegistry";
 
 describe("settings registry", () => {
   it("indexes every entry under a real category", () => {
@@ -13,5 +13,11 @@ describe("settings registry", () => {
     expect(searchSettings("known location icons").map((item) => item.id)).toContain("map-art");
     expect(searchSettings("provider fallback").map((item) => item.id)).toContain("provider-order");
     expect(searchSettings("   ")).toEqual([]);
+  });
+
+  it("groups each settings category exactly once", () => {
+    const grouped = settingsNavigationGroups.flatMap((group) => group.sections);
+    expect(grouped).toHaveLength(settingsCategories.length);
+    expect(new Set(grouped)).toEqual(new Set(settingsCategories.map((category) => category.id)));
   });
 });

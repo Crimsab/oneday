@@ -45,6 +45,7 @@ export const defaultPreferences: AppPreferences = {
   automaticChallenges: true,
   timingFreeChallenges: true,
   challengeCooldown: true,
+  showGenerationDiagnostics: false,
 };
 
 export function loadPreferences(): AppPreferences {
@@ -70,7 +71,7 @@ export function normalizePreferences(value: Partial<AppPreferences> | null | und
     accentHistory: normalizeColorHistory(value?.accentHistory),
     fontId: normalizeText(value?.fontId, defaultPreferences.fontId),
     fontFamily: normalizeText(value?.fontFamily, defaultPreferences.fontFamily),
-    fontSource: oneOf(value?.fontSource, ["bundled", "system", "imported"], defaultPreferences.fontSource),
+    fontSource: oneOf(value?.fontSource, ["bundled", "system", "imported", "online"], defaultPreferences.fontSource),
     fontScope: oneOf(value?.fontScope, ["reading", "interface", "all"], defaultPreferences.fontScope),
     readingFontSize: boundedNumber(value?.readingFontSize, 13, 26, defaultPreferences.readingFontSize),
     readingFontWeight: oneOfNumber(value?.readingFontWeight, [300, 400, 500, 600, 700], defaultPreferences.readingFontWeight),
@@ -83,6 +84,21 @@ export function normalizePreferences(value: Partial<AppPreferences> | null | und
     automaticChallenges: typeof value?.automaticChallenges === "boolean" ? value.automaticChallenges : defaultPreferences.automaticChallenges,
     timingFreeChallenges: typeof value?.timingFreeChallenges === "boolean" ? value.timingFreeChallenges : defaultPreferences.timingFreeChallenges,
     challengeCooldown: typeof value?.challengeCooldown === "boolean" ? value.challengeCooldown : defaultPreferences.challengeCooldown,
+    showGenerationDiagnostics: typeof value?.showGenerationDiagnostics === "boolean" ? value.showGenerationDiagnostics : defaultPreferences.showGenerationDiagnostics,
+  };
+}
+
+export function resetTypographyPreferences(preferences: AppPreferences): AppPreferences {
+  return {
+    ...preferences,
+    fontId: defaultPreferences.fontId,
+    fontFamily: defaultPreferences.fontFamily,
+    fontSource: defaultPreferences.fontSource,
+    fontScope: defaultPreferences.fontScope,
+    readingFontSize: defaultPreferences.readingFontSize,
+    readingFontWeight: defaultPreferences.readingFontWeight,
+    readingFontStyle: defaultPreferences.readingFontStyle,
+    readingTextColor: defaultPreferences.readingTextColor,
   };
 }
 

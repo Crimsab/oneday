@@ -53,6 +53,8 @@ import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { GameplaySettings } from "./settings/GameplaySettings";
+import { TypographySettings } from "./settings/TypographySettings";
+import { AdvancedSettings } from "./settings/AdvancedSettings";
 import { ImageGenerationSettings as ImageProviderEditor } from "./settings/ImageGenerationSettings";
 import type { ProviderConfigDraft } from "./settings/imageGenerationDraft";
 import { buildProviderConfigUpdates } from "./settings/imageGenerationDraft";
@@ -392,8 +394,12 @@ function OptionsContent({
 
   const sections: SettingsSection[] = [
     {
-      id: "general",
+      id: "appearance",
       content: <GeneralSettings preferences={preferences} onChange={onPreferencesChange} />,
+    },
+    {
+      id: "typography",
+      content: <TypographySettings preferences={preferences} onChange={onPreferencesChange} />,
     },
     {
       id: "gameplay",
@@ -419,16 +425,11 @@ function OptionsContent({
     },
     {
       id: "advanced",
-      content: <div className="option-grid" data-setting-id="runtime-status">
-        <div><span>{t("drawer:advanced.liveUpdates")}</span><strong>{snapshot ? t("drawer:advanced.live") : t("drawer:advanced.noStory")}</strong></div>
-        <div><span>{t("drawer:advanced.transport")}</span><strong>gateway-turn</strong></div>
-        <div><span>{t("drawer:advanced.capabilities")}</span><strong>{t("drawer:advanced.capabilitiesValue")}</strong></div>
-        <div><span>{t("drawer:advanced.theme")}</span><strong>Reference Amber Noir</strong></div>
-      </div>,
+      content: <AdvancedSettings preferences={preferences} hasSnapshot={Boolean(snapshot)} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />,
     },
   ];
 
-  return <div className="overlay-content options-content"><SettingsWorkspace sections={sections} initialSection={visualAssetFocusId ? "visuals" : "general"} /></div>;
+  return <div className="overlay-content options-content"><SettingsWorkspace sections={sections} initialSection={visualAssetFocusId ? "visuals" : "appearance"} /></div>;
 }
 
 function VisualDirectionSettings({

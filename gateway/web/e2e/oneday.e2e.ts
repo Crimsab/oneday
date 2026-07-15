@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 const now = "2026-07-11T12:00:00Z";
 const story = { id: "story-1", name: "The Glass Archive", description: "A branching test story", genre: "mystery", tone: "focused", language: "en", is_archived: false, updated_at: now };
@@ -348,6 +349,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
 }
 
 test("submits once, clears optimistically, and renders stream/challenge lifecycle", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ showGenerationDiagnostics: true })));
   const errors: string[] = [];
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
   const requests = await mockGateway(page, { holdAction: true });
@@ -899,6 +901,79 @@ test("generates committed audio and exposes per-story and per-character voice co
   expect(errors).toEqual([]);
 });
 
+test("personalizes scrollbar and fonts across reading, interface, and portals", async ({ page, isMobile }) => {
+  const fontBytes = await readFile(new URL("../node_modules/@fontsource-variable/ibm-plex-sans/files/ibm-plex-sans-latin-wght-normal.woff2", import.meta.url));
+  await page.route("https://fonts.example.test/qa-reader.woff2", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "font/woff2",
+      headers: { "access-control-allow-origin": "*", "cache-control": "no-store" },
+      body: fontBytes,
+    });
+  });
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Options" }).click();
+
+  for (const group of ["Personalization", "Experience", "System"]) {
+    const heading = page.getByText(group, { exact: true });
+    await expect(heading).toBeAttached();
+    if (isMobile) await expect(heading).toBeHidden();
+    else await expect(heading).toBeVisible();
+  }
+  await expect(page.locator(".settings-sidebar button.active")).toHaveCSS("border-top-width", "0px");
+
+  const themeBefore = await page.evaluate(() => ({
+    accent: getComputedStyle(document.documentElement).getPropertyValue("--accent").trim(),
+    scrollbar: getComputedStyle(document.documentElement).scrollbarColor,
+  }));
+  await page.getByRole("button", { name: /Accent/ }).click();
+  await page.getByLabel("Hex value").fill("#4f9cff");
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim())).toBe(themeBefore.accent);
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim())).toBe("#4f9cff");
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollbarColor)).not.toBe(themeBefore.scrollbar);
+
+  await page.getByRole("button", { name: /Typography/ }).click();
+  await page.getByRole("button", { name: "From URL" }).click();
+  await page.getByLabel("Direct font URL").fill("https://fonts.example.test/qa-reader.woff2");
+  await page.getByLabel("Library name").fill("QA Online Font");
+  await page.getByRole("button", { name: "Download and save" }).click();
+  await expect(page.getByRole("option", { name: /QA Online Font/ })).toBeVisible();
+
+  const selectedFamily = await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").fontFamily as string);
+  const assistant = page.locator(".transcript-message.assistant").first();
+  await expect.poll(() => assistant.evaluate((node) => getComputedStyle(node).fontFamily)).toContain(selectedFamily);
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily)).not.toContain(selectedFamily);
+
+  const scope = page.getByRole("combobox", { name: "Apply to" });
+  await scope.click();
+  await page.getByRole("option", { name: "Interface", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain(selectedFamily);
+  await expect.poll(() => assistant.evaluate((node) => getComputedStyle(node).fontFamily)).not.toContain(selectedFamily);
+
+  await scope.click();
+  await page.getByRole("option", { name: "Entire app", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => getComputedStyle(document.body).fontFamily)).toContain(selectedFamily);
+  await expect.poll(() => assistant.evaluate((node) => getComputedStyle(node).fontFamily)).toContain(selectedFamily);
+  await scope.click();
+  await expect(page.locator("body > .custom-select-menu")).toHaveCSS("font-family", new RegExp(selectedFamily));
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: "Edit QA Online Font" }).click();
+  await page.getByLabel("Library name").fill("QA Updated Font");
+  await page.getByRole("button", { name: "Download update" }).click();
+  await expect(page.getByRole("option", { name: /QA Updated Font/ })).toBeVisible();
+  await page.getByRole("button", { name: "Delete QA Updated Font" }).click();
+  await expect(page.getByRole("option", { name: /QA Updated Font/ })).toHaveCount(0);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").fontSource)).toBe("bundled");
+
+  await page.getByRole("button", { name: /Advanced/ }).click();
+  await expect(page.locator(".generation-diagnostics, .generation-diagnostics-inline")).toHaveCount(0);
+  await page.getByText("Show diagnostics in messages", { exact: true }).click();
+  await expect(page.locator(".generation-diagnostics, .generation-diagnostics-inline")).not.toHaveCount(0);
+});
+
 test("switches and persists interface locale without changing story or speech language", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");
@@ -907,7 +982,7 @@ test("switches and persists interface locale without changing story or speech la
   await language.click();
   await page.getByRole("option", { name: "Italiano" }).click();
 
-  await expect(page.getByRole("heading", { name: "Generali" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Aspetto" })).toBeVisible();
   await expect(page.getByText("Cambia i controlli e i messaggi di OneDay.")).toBeVisible();
   await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "it");

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultPreferences, loadPreferences, normalizeLocale, normalizePreferences, resolveLocale, savePreferences } from "./preferences";
+import { defaultPreferences, loadPreferences, normalizeLocale, normalizePreferences, resetTypographyPreferences, resolveLocale, savePreferences } from "./preferences";
 
 const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
 
@@ -27,6 +27,7 @@ describe("normalizePreferences", () => {
         automaticChallenges: false,
         timingFreeChallenges: false,
         challengeCooldown: false,
+        showGenerationDiagnostics: true,
       }),
     ).toEqual({
       locale: "it",
@@ -49,6 +50,7 @@ describe("normalizePreferences", () => {
       automaticChallenges: false,
       timingFreeChallenges: false,
       challengeCooldown: false,
+      showGenerationDiagnostics: true,
     });
 
     expect(
@@ -65,6 +67,26 @@ describe("normalizePreferences", () => {
         readingTextColor: "tomato",
       }),
     ).toEqual(defaultPreferences);
+  });
+
+  it("accepts online fonts and can reset only typography", () => {
+    const preferences = normalizePreferences({
+      fontId: "online:reader",
+      fontFamily: "OneDay Online reader",
+      fontSource: "online",
+      fontScope: "all",
+      readingFontSize: 23,
+      readingFontWeight: 700,
+      readingFontStyle: "italic",
+      readingTextColor: "#abcdef",
+      accent: "#123456",
+    });
+    expect(preferences.fontSource).toBe("online");
+    expect(resetTypographyPreferences(preferences)).toEqual({
+      ...defaultPreferences,
+      accent: "#123456",
+      locale: preferences.locale,
+    });
   });
 });
 

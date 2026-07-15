@@ -1,4 +1,5 @@
-export type SettingsSectionId = "general" | "gameplay" | "audio" | "visuals" | "models" | "advanced";
+export type SettingsSectionId = "appearance" | "typography" | "gameplay" | "audio" | "visuals" | "models" | "advanced";
+export type SettingsNavigationGroupId = "personalization" | "experience" | "system";
 
 export interface SettingsCategory {
   id: SettingsSectionId;
@@ -14,8 +15,14 @@ export interface SettingsSearchEntry {
   keywords: string[];
 }
 
+export interface SettingsNavigationGroup {
+  id: SettingsNavigationGroupId;
+  sections: SettingsSectionId[];
+}
+
 export const settingsCategories: SettingsCategory[] = [
-  { id: "general", title: "General", description: "Reading, layout, and interface preferences." },
+  { id: "appearance", title: "Appearance", description: "Interface color, density, language, and workspace layout." },
+  { id: "typography", title: "Typography", description: "Fonts, reading scale, style, color, and local library." },
   { id: "gameplay", title: "Gameplay", description: "Challenge behavior and accessibility policy." },
   { id: "audio", title: "Spoken audio", description: "Speech, voices, language, and pronunciation." },
   { id: "visuals", title: "Visuals and map", description: "Image direction, generated assets, and map art." },
@@ -23,15 +30,21 @@ export const settingsCategories: SettingsCategory[] = [
   { id: "advanced", title: "Advanced", description: "Runtime transport, capabilities, and diagnostics." },
 ];
 
+export const settingsNavigationGroups: SettingsNavigationGroup[] = [
+  { id: "personalization", sections: ["appearance", "typography"] },
+  { id: "experience", sections: ["gameplay", "audio", "visuals"] },
+  { id: "system", sections: ["models", "advanced"] },
+];
+
 export const settingsSearchEntries: SettingsSearchEntry[] = [
-  entry("interface-language", "general", "Interface language", "Change controls and interface messages without changing story or audio language.", "locale italian english controls messages"),
-  entry("density", "general", "Density", "Change spacing and information density.", "compact balanced comfortable spacing"),
-  entry("font-size", "general", "Font size", "Change the transcript and interface text scale.", "text reading accessibility large small"),
-  entry("typography", "general", "Typography", "Choose bundled, system, or imported fonts and customize reading style.", "font family system imported upload search preview weight italic color"),
-  entry("accent", "general", "Accent", "Choose the interface accent color.", "amber green blue rose theme colour color"),
-  entry("stories-sidebar", "general", "Stories sidebar", "Show or hide the stories and modules rail.", "left rail navigation"),
-  entry("inspector", "general", "Inspector panel", "Show or hide the canonical inspector.", "right rail panel"),
-  entry("transcript-wrap", "general", "Transcript wrap", "Wrap long narrative lines.", "reading prose line width"),
+  entry("interface-language", "appearance", "Interface language", "Change controls and interface messages without changing story or audio language.", "locale italian english controls messages"),
+  entry("density", "appearance", "Density", "Change spacing and information density.", "compact balanced comfortable spacing"),
+  entry("font-size", "appearance", "Interface scale", "Change the scale of controls and interface text.", "interface accessibility large small"),
+  entry("accent", "appearance", "Accent", "Choose the interface accent color.", "amber green blue rose theme colour color scrollbar"),
+  entry("stories-sidebar", "appearance", "Stories sidebar", "Show or hide the stories and modules rail.", "left rail navigation"),
+  entry("inspector", "appearance", "Inspector panel", "Show or hide the canonical inspector.", "right rail panel"),
+  entry("transcript-wrap", "appearance", "Transcript wrap", "Wrap long narrative lines.", "reading prose line width"),
+  entry("typography", "typography", "Typography", "Choose bundled, system, local, or online fonts and customize reading style.", "font family system imported online url download upload search preview weight italic color"),
   entry("automatic-challenges", "gameplay", "Automatic challenges", "NPC situations trigger challenges without a player chooser.", "minigame automatic npc challenge host"),
   entry("choice-details", "gameplay", "Choice context", "Show used attributes, risk, certainty, scope, and outcome hints below choices.", "choices tags requirements attributes stats risk outcomes metadata"),
   entry("timing-free", "gameplay", "Timing-free selection", "Prefer accessible challenges that do not require reflex timing.", "accessibility cooldown quick time reflex"),
@@ -55,6 +68,8 @@ export const settingsSearchEntries: SettingsSearchEntry[] = [
   entry("embedding-model", "models", "Embedding model", "Configure RAG embedding provider and model.", "vector memory rag"),
   entry("runtime-status", "advanced", "Runtime status", "Inspect transport, capabilities, and active theme.", "sse gateway turn diagnostics"),
   entry("configuration-revision", "advanced", "Configuration revision", "Inspect and reload the active model configuration.", "config version refresh"),
+  entry("generation-diagnostics", "advanced", "Generation diagnostics", "Show or hide provider timing and attempt details below story messages.", "trace telemetry provider debugging"),
+  entry("preferences-portability", "advanced", "Preference portability", "Export, import, or reset browser preferences.", "json backup restore defaults"),
 ];
 
 export function searchSettings(query: string): SettingsSearchEntry[] {

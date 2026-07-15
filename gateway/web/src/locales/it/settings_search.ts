@@ -2,7 +2,7 @@ export const settings_search = {
   "interface-language": ["Lingua dell’interfaccia", "Cambia controlli e messaggi senza modificare lingua della storia o dell’audio."],
   density: ["Densità", "Modifica spaziatura e densità delle informazioni."],
   "font-size": ["Dimensione caratteri", "Modifica la scala del testo della trascrizione e dell’interfaccia."],
-  typography: ["Tipografia", "Scegli font inclusi, di sistema o importati e personalizza lo stile di lettura."],
+  typography: ["Tipografia", "Scegli font inclusi, di sistema, importati o online e personalizza lo stile di lettura."],
   accent: ["Colore distintivo", "Scegli il colore distintivo dell’interfaccia."],
   "stories-sidebar": ["Barra delle storie", "Mostra o nasconde la barra di storie e moduli."],
   inspector: ["Pannello ispettore", "Mostra o nasconde l’ispettore canonico."],
@@ -30,4 +30,6 @@ export const settings_search = {
   "embedding-model": ["Modello di embedding", "Configura provider e modello di embedding RAG."],
   "runtime-status": ["Stato del runtime", "Esamina trasporto, funzionalità e tema attivo."],
   "configuration-revision": ["Revisione configurazione", "Esamina e ricarica la configurazione attiva dei modelli."],
+  "generation-diagnostics": ["Diagnostica della generazione", "Mostra provider, modello, latenza e metadati sotto i messaggi."],
+  "preferences-portability": ["Esporta, importa e ripristina", "Trasferisci o ripristina le preferenze locali di OneDay."],
 } as const;

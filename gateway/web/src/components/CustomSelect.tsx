@@ -105,7 +105,12 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
         disabled={disabled}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
-          if (event.key === "Escape") { setOpen(false); return; }
+          if (event.key === "Escape" && open) {
+            event.preventDefault();
+            event.stopPropagation();
+            setOpen(false);
+            return;
+          }
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             if (!open) setOpen(true);

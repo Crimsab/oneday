@@ -2,7 +2,6 @@ import type { AppPreferences } from "../../types";
 import { DEFAULT_ACCENT } from "../../preferences";
 import { CustomSelect } from "../CustomSelect";
 import { DeferredColorPicker } from "./DeferredColorPicker";
-import { TypographySettings } from "./TypographySettings";
 import { useTranslation } from "react-i18next";
 
 export function GeneralSettings({ preferences, onChange }: { preferences: AppPreferences; onChange: (preferences: AppPreferences) => void }) {
@@ -40,8 +39,6 @@ export function GeneralSettings({ preferences, onChange }: { preferences: AppPre
         <header><div><h4 id="general-color-title">{t("settings_ui:general.colorTitle")}</h4><p>{t("settings_ui:general.colorDesc")}</p></div></header>
         <DeferredColorPicker value={preferences.accent} defaultValue={DEFAULT_ACCENT} history={preferences.accentHistory} label={t("options:accent")} description={t("settings_ui:color.triggerHint")} onApply={applyAccent} />
       </section>
-
-      <TypographySettings preferences={preferences} onChange={onChange} />
 
       <section className="settings-group" aria-labelledby="general-layout-title">
         <header><div><h4 id="general-layout-title">{t("settings_ui:general.layoutTitle")}</h4><p>{t("settings_ui:general.layoutDesc")}</p></div></header>

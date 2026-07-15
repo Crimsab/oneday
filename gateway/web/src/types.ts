@@ -19,7 +19,7 @@ export type OverlayKind =
 
 export type DensityPreference = "compact" | "balanced" | "comfortable";
 export type FontSizePreference = "small" | "base" | "large";
-export type FontSourcePreference = "bundled" | "system" | "imported";
+export type FontSourcePreference = "bundled" | "system" | "imported" | "online";
 export type FontScopePreference = "reading" | "interface" | "all";
 export type FontStylePreference = "normal" | "italic";
 
@@ -44,6 +44,7 @@ export interface AppPreferences {
   automaticChallenges: boolean;
   timingFreeChallenges: boolean;
   challengeCooldown: boolean;
+  showGenerationDiagnostics: boolean;
 }
 
 export interface CraftConversationMessage {

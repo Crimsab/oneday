@@ -1,51 +1,64 @@
-import { ScanSearch, Search, Trash2, Upload } from "lucide-react";
+import { Link2, Pencil, RotateCcw, ScanSearch, Search, Trash2, Upload, X } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   bundledFontChoices,
   cssFontFamily,
-  deleteImportedFont,
+  deleteStoredFont,
   importFontFile,
-  listImportedFonts,
-  loadImportedFonts,
+  listStoredFonts,
+  loadStoredFonts,
+  MAX_STORED_FONT_BYTES,
   querySystemFonts,
+  saveOnlineFont,
   supportsLocalFontAccess,
   type FontChoice,
-  type ImportedFontRecord,
+  type OnlineFontRecord,
+  type StoredFontRecord,
 } from "../../fontLibrary";
-import { DEFAULT_FONT_FAMILY, DEFAULT_READING_COLOR } from "../../preferences";
+import { DEFAULT_FONT_FAMILY, DEFAULT_READING_COLOR, resetTypographyPreferences } from "../../preferences";
 import type { AppPreferences } from "../../types";
 import { CustomSelect } from "../CustomSelect";
 import { DeferredColorPicker } from "./DeferredColorPicker";
 
-const MAX_FONT_BYTES = 20 * 1024 * 1024;
-
 export function TypographySettings({ preferences, onChange }: { preferences: AppPreferences; onChange: (preferences: AppPreferences) => void }) {
   const { t } = useTranslation("settings_ui");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [imported, setImported] = useState<ImportedFontRecord[]>([]);
+  const [storedFonts, setStoredFonts] = useState<StoredFontRecord[]>([]);
+  const [libraryReady, setLibraryReady] = useState(false);
   const [systemFonts, setSystemFonts] = useState<FontChoice[]>([]);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLocaleLowerCase());
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
+  const [onlineOpen, setOnlineOpen] = useState(false);
+  const [onlineUrl, setOnlineUrl] = useState("");
+  const [onlineLabel, setOnlineLabel] = useState("");
+  const [editingOnline, setEditingOnline] = useState<OnlineFontRecord | null>(null);
   const update = <K extends keyof AppPreferences>(key: K, value: AppPreferences[K]) => onChange({ ...preferences, [key]: value });
 
   useEffect(() => {
     let current = true;
-    void loadImportedFonts()
-      .then((records) => { if (current) setImported(records); })
-      .catch((cause) => { if (current) setStatus(errorText(cause)); });
+    void loadStoredFonts()
+      .then((records) => { if (current) setStoredFonts(records); })
+      .catch((cause) => { if (current) setStatus(errorText(cause)); })
+      .finally(() => { if (current) setLibraryReady(true); });
     return () => { current = false; };
   }, []);
 
+  useEffect(() => {
+    if (!libraryReady || (preferences.fontSource !== "imported" && preferences.fontSource !== "online")) return;
+    if (storedFonts.some((font) => font.id === preferences.fontId)) return;
+    onChange({ ...preferences, fontId: "bundled:ibm-plex-sans", fontFamily: DEFAULT_FONT_FAMILY, fontSource: "bundled" });
+  }, [libraryReady, onChange, preferences, storedFonts]);
+
   const allFonts = useMemo(() => {
-    const choices: FontChoice[] = [...bundledFontChoices, ...systemFonts, ...imported];
+    const choices: FontChoice[] = [...bundledFontChoices, ...systemFonts, ...storedFonts];
     if (!choices.some((font) => font.id === preferences.fontId)) {
       choices.unshift({ id: preferences.fontId, family: preferences.fontFamily, label: preferences.fontFamily, source: preferences.fontSource });
     }
     return choices.filter((choice, index) => choices.findIndex((candidate) => candidate.id === choice.id) === index);
-  }, [imported, preferences.fontFamily, preferences.fontId, preferences.fontSource, systemFonts]);
+  }, [preferences.fontFamily, preferences.fontId, preferences.fontSource, storedFonts, systemFonts]);
 
   const filteredFonts = useMemo(() => {
     if (!deferredQuery) return allFonts;
@@ -69,13 +82,13 @@ export function TypographySettings({ preferences, onChange }: { preferences: App
     if (!files?.length) return;
     setBusy(true); setStatus("");
     try {
-      let selected: ImportedFontRecord | null = null;
+      let selected: StoredFontRecord | null = null;
       for (const file of Array.from(files)) {
-        if (file.size > MAX_FONT_BYTES) throw new Error(t("font.fileTooLarge", { name: file.name }));
+        if (file.size > MAX_STORED_FONT_BYTES) throw new Error(t("font.fileTooLarge", { name: file.name }));
         selected = await importFontFile(file);
       }
-      const records = await listImportedFonts();
-      setImported(records);
+      const records = await listStoredFonts();
+      setStoredFonts(records);
       if (selected) selectFont(selected);
       setStatus(t("font.imported", { count: files.length }));
     } catch (cause) {
@@ -86,18 +99,60 @@ export function TypographySettings({ preferences, onChange }: { preferences: App
     }
   };
 
-  const removeFont = async (font: ImportedFontRecord) => {
+  const openOnlineCreate = () => {
+    setEditingOnline(null);
+    setOnlineUrl("");
+    setOnlineLabel("");
+    setOnlineOpen(true);
+    setStatus("");
+  };
+
+  const openOnlineEdit = (font: OnlineFontRecord) => {
+    setEditingOnline(font);
+    setOnlineUrl(font.sourceUrl);
+    setOnlineLabel(font.label);
+    setOnlineOpen(true);
+    setStatus("");
+  };
+
+  const closeOnlineEditor = () => {
+    setOnlineOpen(false);
+    setEditingOnline(null);
+    setOnlineUrl("");
+    setOnlineLabel("");
+  };
+
+  const persistOnlineFont = async () => {
     setBusy(true); setStatus("");
     try {
-      await deleteImportedFont(font.id);
-      setImported((items) => items.filter((item) => item.id !== font.id));
+      const record = await saveOnlineFont({ id: editingOnline?.id, label: onlineLabel, sourceUrl: onlineUrl });
+      setStoredFonts(await listStoredFonts());
+      selectFont(record);
+      setStatus(t(editingOnline ? "font.onlineUpdated" : "font.onlineImported", { name: record.label }));
+      closeOnlineEditor();
+    } catch (cause) {
+      setStatus(errorText(cause));
+    } finally { setBusy(false); }
+  };
+
+  const removeFont = async (font: StoredFontRecord) => {
+    setBusy(true); setStatus("");
+    try {
+      await deleteStoredFont(font.id);
+      setStoredFonts((items) => items.filter((item) => item.id !== font.id));
       if (preferences.fontId === font.id) {
         onChange({ ...preferences, fontId: "bundled:ibm-plex-sans", fontFamily: DEFAULT_FONT_FAMILY, fontSource: "bundled" });
       }
+      if (editingOnline?.id === font.id) closeOnlineEditor();
       setStatus(t("font.removed", { name: font.label }));
     } catch (cause) {
       setStatus(errorText(cause));
     } finally { setBusy(false); }
+  };
+
+  const resetTypography = () => {
+    onChange(resetTypographyPreferences(preferences));
+    setStatus(t("font.resetDone"));
   };
 
   const previewStyle = {
@@ -110,24 +165,36 @@ export function TypographySettings({ preferences, onChange }: { preferences: App
 
   return (
     <section className="settings-group typography-settings" aria-labelledby="typography-title" data-setting-id="typography">
-      <header><div><h4 id="typography-title">{t("font.title")}</h4><p>{t("font.description")}</p></div></header>
+      <header>
+        <div><h4 id="typography-title">{t("font.title")}</h4><p>{t("font.description")}</p></div>
+        <button type="button" className="reset-typography-button" disabled={busy} onClick={resetTypography}><RotateCcw size={14} aria-hidden="true" /> {t("font.reset")}</button>
+      </header>
       <div className="font-browser">
         <div className="font-browser-toolbar">
           <label className="font-search"><Search size={15} aria-hidden="true" /><span className="sr-only">{t("font.search")}</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("font.search")} /></label>
           <button type="button" disabled={busy || !supportsLocalFontAccess()} onClick={() => void detectFonts()} title={!supportsLocalFontAccess() ? t("font.unsupported") : undefined}><ScanSearch size={15} aria-hidden="true" /> {t("font.detect")}</button>
           <button type="button" disabled={busy} onClick={() => fileInputRef.current?.click()}><Upload size={15} aria-hidden="true" /> {t("font.import")}</button>
+          <button type="button" disabled={busy} onClick={openOnlineCreate}><Link2 size={15} aria-hidden="true" /> {t("font.online")}</button>
           <input ref={fileInputRef} className="sr-only" type="file" accept=".woff,.woff2,.ttf,.otf,font/woff,font/woff2,font/ttf,font/otf" multiple onChange={(event) => void importFiles(event.target.files)} />
         </div>
+        {onlineOpen && <form className="font-online-form" onSubmit={(event) => { event.preventDefault(); void persistOnlineFont(); }}>
+          <div className="font-online-form-head"><div><strong>{editingOnline ? t("font.onlineEditTitle") : t("font.onlineTitle")}</strong><small>{t("font.onlineHint")}</small></div><button type="button" className="font-online-close" onClick={closeOnlineEditor} aria-label={t("common.cancel")}><X size={15} aria-hidden="true" /></button></div>
+          <label><span>{t("font.onlineUrl")}</span><input type="url" required value={onlineUrl} onChange={(event) => setOnlineUrl(event.target.value)} placeholder="https://example.com/font.woff2" /></label>
+          <label><span>{t("font.onlineName")}</span><input type="text" maxLength={120} value={onlineLabel} onChange={(event) => setOnlineLabel(event.target.value)} placeholder={t("font.onlineNameOptional")} /></label>
+          <div className="font-online-actions"><button type="button" onClick={closeOnlineEditor}>{t("common.cancel")}</button><button type="submit" className="primary-action" disabled={busy || !onlineUrl.trim()}>{editingOnline ? t("font.onlineUpdate") : t("font.onlineSave")}</button></div>
+        </form>}
         <div className="font-browser-body">
           <div className="font-choice-list" role="listbox" aria-label={t("font.available")}>
             {filteredFonts.slice(0, 120).map((font) => {
-              const importedFont = font.source === "imported" ? imported.find((item) => item.id === font.id) : null;
+              const storedFont = (font.source === "imported" || font.source === "online") ? storedFonts.find((item) => item.id === font.id) : null;
+              const onlineFont = storedFont?.source === "online" ? storedFont as OnlineFontRecord : null;
               return <div className={`font-choice-row ${preferences.fontId === font.id ? "selected" : ""}`} key={font.id}>
                 <button type="button" role="option" aria-selected={preferences.fontId === font.id} onClick={() => selectFont(font)}>
                   <span style={{ fontFamily: cssFontFamily(font.family) }}>{font.label}</span>
                   <small>{t(`font.source.${font.source}`)}{font.detail ? ` / ${font.detail}` : ""}</small>
                 </button>
-                {importedFont && <button type="button" className="font-delete-button" disabled={busy} onClick={() => void removeFont(importedFont)} aria-label={t("font.remove", { name: font.label })} title={t("font.remove", { name: font.label })}><Trash2 size={14} aria-hidden="true" /></button>}
+                {onlineFont && <button type="button" className="font-edit-button" disabled={busy} onClick={() => openOnlineEdit(onlineFont)} aria-label={t("font.edit", { name: font.label })} title={t("font.edit", { name: font.label })}><Pencil size={14} aria-hidden="true" /></button>}
+                {storedFont && <button type="button" className="font-delete-button" disabled={busy} onClick={() => void removeFont(storedFont)} aria-label={t("font.remove", { name: font.label })} title={t("font.remove", { name: font.label })}><Trash2 size={14} aria-hidden="true" /></button>}
               </div>;
             })}
             {!filteredFonts.length && <p className="font-empty">{t("font.noResults")}</p>}

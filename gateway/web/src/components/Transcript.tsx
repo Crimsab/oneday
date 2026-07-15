@@ -15,11 +15,12 @@ interface TranscriptProps {
   pendingTurn?: PendingTurnView | null;
   timeline: TimelineResponse | null;
   timelineBusy: boolean;
+  showDiagnostics?: boolean;
   onCheckoutBranch: (branchId: string) => Promise<void>;
   onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void>;
 }
 
-export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
+export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, timeline, timelineBusy, showDiagnostics = false, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
   const { t } = useTranslation(["flow", "surfaces"]);
   const ref = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
@@ -66,7 +67,7 @@ export function Transcript({ storyId, messages, hiddenBeforeId, pendingTurn, tim
           {messages.length ? t("transcriptCleared") : t("chooseTranscript")}
         </div>
       ) : (
-        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} ttsSettings={ttsSettings} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
+        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} message={message} ttsSettings={ttsSettings} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} showDiagnostics={showDiagnostics} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
     </div>
@@ -88,7 +89,7 @@ export function isTranscriptNearBottom(
   return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= threshold;
 }
 
-const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, ttsSettings, autoplay, timelineControls, timeline, timelineBusy, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; ttsSettings: StoryTTSSettings | null; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
+const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, ttsSettings, autoplay, timelineControls, timeline, timelineBusy, showDiagnostics, onCheckoutBranch, onRestoreDecision }: { storyId: string; message: MessageView; ttsSettings: StoryTTSSettings | null; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; showDiagnostics: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
   const { t } = useTranslation("surfaces");
   const [audioOpen, setAudioOpen] = useState(false);
   const isSystem = message.role === "system" || message.message_type === "state";
@@ -105,7 +106,7 @@ const TranscriptMessage = memo(function TranscriptMessage({ storyId, message, tt
       <div className="message-body">
         <MarkdownText className={contentLooksQuoted(content) ? "quoted" : undefined}>{content}</MarkdownText>
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={t("transcript.dialogue", { turn: message.turn })}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || t("transcript.unknownSpeaker")}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
-        <MessageDiagnostics message={message} />
+        {showDiagnostics && <MessageDiagnostics message={message} />}
         {ttsSettings && ttsSettings.mode !== "off" && message.role === "assistant" && Boolean(message.source_commit_id) && (
           autoplay || audioOpen
             ? <AudioControls storyId={storyId} messageId={message.id} settings={ttsSettings} autoplay={autoplay} />

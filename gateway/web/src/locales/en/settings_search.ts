@@ -2,7 +2,7 @@ export const settings_search = {
   "interface-language": ["Interface language", "Change controls and messages without changing story or audio language."],
   density: ["Density", "Change spacing and information density."],
   "font-size": ["Font size", "Change the transcript and interface text scale."],
-  typography: ["Typography", "Choose bundled, system, or imported fonts and customize reading style."],
+  typography: ["Typography", "Choose bundled, system, imported, or online fonts and customize reading style."],
   accent: ["Accent", "Choose the interface accent color."],
   "stories-sidebar": ["Stories sidebar", "Show or hide the stories and modules rail."],
   inspector: ["Inspector panel", "Show or hide the canonical inspector."],
@@ -30,4 +30,6 @@ export const settings_search = {
   "embedding-model": ["Embedding model", "Configure the RAG embedding provider and model."],
   "runtime-status": ["Runtime status", "Inspect transport, capabilities, and active theme."],
   "configuration-revision": ["Configuration revision", "Inspect and reload the active model configuration."],
+  "generation-diagnostics": ["Generation diagnostics", "Show provider, model, latency, and metadata beneath messages."],
+  "preferences-portability": ["Export, import, and reset", "Transfer or reset OneDay’s local preferences."],
 } as const;

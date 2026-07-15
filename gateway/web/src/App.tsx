@@ -48,7 +48,8 @@ import { restoreFailedDraft } from "./draftLifecycle";
 import { coalesceRequest, isCurrentAsyncSelection } from "./asyncState";
 import { clientId } from "./ids";
 import { defaultPreferences, loadPreferences, savePreferences } from "./preferences";
-import { cssFontFamily, loadImportedFonts } from "./fontLibrary";
+import { loadStoredFonts } from "./fontLibrary";
+import { preferenceCssVariables } from "./preferenceTheme";
 import i18n, { formatInterfaceNumber, setInterfaceLocale } from "./i18n";
 import {
   isVisualAssetTurnEvent,
@@ -463,7 +464,7 @@ function App() {
   }, [preferences]);
 
   useEffect(() => {
-    void loadImportedFonts().catch(() => undefined);
+    void loadStoredFonts().catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -1267,17 +1268,22 @@ function App() {
   };
 
   const visuals = useMemo(() => visualCatalog(visualAssets, snapshot), [snapshot, visualAssets]);
-  const selectedFont = cssFontFamily(preferences.fontFamily);
-  const defaultFont = cssFontFamily("IBM Plex Sans Variable");
-  const appStyle = {
-    "--accent": preferences.accent,
-    "--sans": preferences.fontScope === "interface" || preferences.fontScope === "all" ? selectedFont : defaultFont,
-    "--reading": preferences.fontScope === "reading" || preferences.fontScope === "all" ? selectedFont : defaultFont,
-    "--transcript-font-size": `${preferences.readingFontSize}px`,
-    "--reading-font-weight": preferences.readingFontWeight,
-    "--reading-font-style": preferences.readingFontStyle,
-    "--reading-color": preferences.readingTextColor,
-  } as CSSProperties;
+  const themeVariables = useMemo(() => preferenceCssVariables(preferences), [preferences]);
+  useEffect(() => {
+    const root = document.documentElement;
+    const previous = new Map<string, string>();
+    for (const [name, value] of Object.entries(themeVariables)) {
+      previous.set(name, root.style.getPropertyValue(name));
+      root.style.setProperty(name, String(value));
+    }
+    return () => {
+      for (const [name, value] of previous) {
+        if (value) root.style.setProperty(name, value);
+        else root.style.removeProperty(name);
+      }
+    };
+  }, [themeVariables]);
+  const appStyle = themeVariables as CSSProperties;
 
   return (
     <div
@@ -1340,6 +1346,7 @@ function App() {
               pendingTurn={pendingTurn}
               timeline={timeline}
               timelineBusy={sending || Boolean(storyMutatingId)}
+              showDiagnostics={preferences.showGenerationDiagnostics}
               onCheckoutBranch={checkoutBranch}
               onRestoreDecision={restoreDecision}
             />

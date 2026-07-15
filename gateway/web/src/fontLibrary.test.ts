@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dedupeSystemFonts, fontNameFromFile, isSupportedFontFile } from "./fontLibrary";
+import { dedupeSystemFonts, fontFormatFromBytes, fontNameFromFile, fontNameFromUrl, isSupportedFontFile, normalizeOnlineFontUrl } from "./fontLibrary";
 
 describe("font library helpers", () => {
   it("derives a readable name from common font files", () => {
@@ -20,5 +20,18 @@ describe("font library helpers", () => {
       { family: "Alpha Serif", fullName: "Alpha Serif", postscriptName: "AlphaSerif", style: "Regular" },
     ]);
     expect(choices.map((choice) => choice.label)).toEqual(["Alpha Serif", "Example Sans"]);
+  });
+
+  it("normalizes online font links and derives their labels", () => {
+    expect(normalizeOnlineFontUrl(" https://fonts.example/Atkinson-Hyperlegible.woff2 ")).toBe("https://fonts.example/Atkinson-Hyperlegible.woff2");
+    expect(fontNameFromUrl("https://fonts.example/Atkinson-Hyperlegible.woff2?v=2")).toBe("Atkinson Hyperlegible");
+    expect(() => normalizeOnlineFontUrl("file:///tmp/font.woff2")).toThrow();
+    expect(() => normalizeOnlineFontUrl("https://user:password@fonts.example/font.woff2")).toThrow();
+  });
+
+  it("detects real font containers from their binary signature", () => {
+    expect(fontFormatFromBytes(new Uint8Array([0x77, 0x4f, 0x46, 0x32]))).toBe("woff2");
+    expect(fontFormatFromBytes(new Uint8Array([0x4f, 0x54, 0x54, 0x4f]))).toBe("otf");
+    expect(fontFormatFromBytes(new Uint8Array([0x89, 0x50, 0x4e, 0x47]))).toBeNull();
   });
 });

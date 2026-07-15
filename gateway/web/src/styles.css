@@ -10,17 +10,17 @@
   --text: #f0eadc;
   --muted: #b5aa96;
   --faint: #7c7466;
-  --accent: #ffb238;
-  --accent-2: #d48a23;
+  --accent: #d09a48;
+  --accent-2: color-mix(in srgb, var(--accent) 78%, white);
   --good: #94bd6f;
   --warn: #f1a33f;
   --bad: #d26b6b;
   --danger: #d26b6b;
   --left-rail-width: 280px;
   --inspector-width: clamp(360px, 23vw, 440px);
-  --scrollbar-track: rgba(7, 8, 7, 0.78);
-  --scrollbar-thumb: #574936;
-  --scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 42%, #5a5042);
+  --scrollbar-track: color-mix(in srgb, var(--bg-2) 92%, transparent);
+  --scrollbar-thumb: color-mix(in srgb, var(--accent) 44%, var(--line));
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 68%, var(--line));
   --transcript-font-size: 15px;
   --control-height: 36px;
   --mono: "JetBrains Mono", "SFMono-Regular", "Consolas", "Liberation Mono", monospace;
@@ -48,15 +48,11 @@
   min-height: 42px;
   border: 2px solid transparent;
   border-radius: 999px;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--accent) 34%, #52616a), #2c3940)
-    padding-box;
+  background: var(--scrollbar-thumb) padding-box;
 }
 
 *::-webkit-scrollbar-thumb:hover {
-  background:
-    linear-gradient(180deg, var(--scrollbar-thumb-hover), #3c4b52)
-    padding-box;
+  background: var(--scrollbar-thumb-hover) padding-box;
 }
 
 *::-webkit-scrollbar-corner {
@@ -75,9 +71,9 @@ body,
 body {
   overflow-x: hidden;
   background:
-    linear-gradient(180deg, rgba(255, 178, 56, 0.035), transparent 210px),
-    radial-gradient(circle at 18% -14%, rgba(255, 178, 56, 0.11), transparent 34vw),
-    radial-gradient(circle at 78% 0%, rgba(121, 89, 47, 0.12), transparent 32vw),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 3.5%, transparent), transparent 210px),
+    radial-gradient(circle at 18% -14%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 34vw),
+    radial-gradient(circle at 78% 0%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 32vw),
     var(--bg);
   color: var(--text);
   font-family: var(--mono);
@@ -185,7 +181,7 @@ button {
   align-items: center;
   border-bottom: 1px solid var(--line);
   background:
-    linear-gradient(180deg, rgba(255, 178, 56, 0.055), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 5.5%, transparent), transparent),
     #11120f;
   min-width: 0;
 }
@@ -199,7 +195,7 @@ button {
   gap: 3px;
   border-bottom: 1px solid var(--line);
   background:
-    linear-gradient(180deg, rgba(255, 178, 56, 0.08), transparent),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 8%, transparent), transparent),
     #11120f;
   padding: 0 16px;
 }
@@ -1998,7 +1994,7 @@ input:disabled {
 .inspector-card[data-focused="true"] {
   border-color: color-mix(in srgb, var(--accent) 68%, var(--line));
   background:
-    linear-gradient(180deg, rgba(255, 178, 56, 0.09), rgba(255, 255, 255, 0.012)),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 9%, transparent), rgba(255, 255, 255, 0.012)),
     #11120f;
   box-shadow: inset 2px 0 0 var(--accent);
   outline: 0;
@@ -2279,7 +2275,7 @@ input:disabled {
   align-items: center;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line-soft));
   background:
-    linear-gradient(180deg, rgba(255, 178, 56, 0.055), transparent 130%),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 5.5%, transparent), transparent 130%),
     #111411;
   padding: 12px;
 }
@@ -2363,7 +2359,7 @@ input:disabled {
   align-items: center;
   border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
   background:
-    linear-gradient(135deg, rgba(255, 178, 56, 0.1), transparent 58%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 58%),
     #111514;
   padding: 8px 10px;
   color: var(--text);
@@ -2374,7 +2370,7 @@ input:disabled {
 .story-wizard-actions button:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 62%, var(--line));
   background:
-    linear-gradient(135deg, rgba(255, 178, 56, 0.15), transparent 60%),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 15%, transparent), transparent 60%),
     #171a16;
 }
 
@@ -4464,7 +4460,7 @@ button.ws-npc:focus-visible {
   border-color: color-mix(in srgb, var(--accent) 52%, var(--line-soft));
   outline: 0;
   background:
-    linear-gradient(180deg, rgba(255, 178, 56, 0.065), rgba(255, 255, 255, 0.008)),
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 6.5%, transparent), rgba(255, 255, 255, 0.008)),
     #0d1110;
 }
 
