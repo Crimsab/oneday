@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs;
+use tracing::Instrument;
 use uuid::Uuid;
 
 #[derive(Debug, Serialize)]
@@ -1461,8 +1462,34 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             "running",
             format!("Generating image for {}.", job.asset.subject),
         );
-        match generate_one_asset(&client, &state, &config, &job).await {
+        let image_span = tracing::info_span!(
+            target: "oneday_gateway::imagegen",
+            "image_generation",
+            otel.name = "image_generation",
+            otel.kind = "client",
+            otel.status_code = tracing::field::Empty,
+            gen_ai.operation.name = "image_generation",
+            gen_ai.provider.name = %config.provider,
+            gen_ai.request.model = %generation_model,
+            gen_ai.response.model = tracing::field::Empty,
+            oneday.trace.id = %format!("image-job-{}", job.id),
+            oneday.image.job.id = job.id,
+            oneday.image.asset.kind = %job.asset.kind,
+            oneday.image.provider = tracing::field::Empty,
+            error.type = tracing::field::Empty,
+        );
+        let generation_result = generate_one_asset(&client, &state, &config, &job)
+            .instrument(image_span.clone())
+            .await;
+        match generation_result {
             Ok(generated) => {
+                let (_, response_model) = generated
+                    .provider_label
+                    .split_once(':')
+                    .unwrap_or((generated.provider_label.as_str(), generation_model.as_str()));
+                image_span.record("otel.status_code", "OK");
+                image_span.record("gen_ai.response.model", response_model);
+                image_span.record("oneday.image.provider", generated.provider_label.as_str());
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
                         if let Err(err) = trace.cancel(&state.pool).await {
@@ -1531,6 +1558,9 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
                 );
             }
             Err(err) => {
+                let error_class = crate::telemetry::classify_image_error(&err.to_string());
+                image_span.record("otel.status_code", "ERROR");
+                image_span.record("error.type", error_class);
                 if visual_generation_job_is_cancelled(&state.pool, job.id).await? {
                     if let Some(trace) = generation_trace.take() {
                         if let Err(telemetry_err) = trace.cancel(&state.pool).await {

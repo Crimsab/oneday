@@ -1595,6 +1595,9 @@ mod tests {
             },
             turn_events,
             visual_workers: Arc::new(tokio::sync::Semaphore::new(4)),
+            observability: crate::observability::Status {
+                otlp_traces: "disabled",
+            },
         })
     }
 

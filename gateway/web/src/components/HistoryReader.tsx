@@ -5,6 +5,18 @@ import { readableStructuredText } from "../format";
 import type { ChapterView, MessageView, StorySnapshot } from "../types";
 import { MarkdownText } from "./MarkdownText";
 
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
   const id = useId();
   const [messages, setMessages] = useState<MessageView[]>([]);
@@ -78,22 +90,15 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     try {
 		if (format === "epub") {
 			const result = await getStoryEpub(snapshot.story.id);
-			const url = URL.createObjectURL(result.blob);
-			const link = document.createElement("a");
-			link.href = url;
-			link.download = result.filename;
-			link.click();
-			URL.revokeObjectURL(url);
+			downloadBlob(result.blob, result.filename);
 			return;
 		}
       const result = await getStoryExport(snapshot.story.id, format);
       const bytes = result.encoding === "base64" ? Uint8Array.from(atob(result.content), (character) => character.charCodeAt(0)) : result.content;
-      const url = URL.createObjectURL(new Blob([bytes], { type: result.content_type || (format === "json" || format === "replay" ? "application/json" : "text/markdown") }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(
+        new Blob([bytes], { type: result.content_type || (format === "json" || format === "replay" ? "application/json" : "text/markdown") }),
+        result.filename,
+      );
     } catch (reason) {
       setError(errorText(reason));
     } finally {
@@ -105,12 +110,7 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     setBusy(true);
     try {
       const result = await getTelemetryExport(snapshot.story.id);
-      const url = URL.createObjectURL(new Blob([result.content], { type: "application/x-ndjson" }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = result.filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      downloadBlob(new Blob([result.content], { type: "application/x-ndjson" }), result.filename);
     } catch (reason) {
       setError(errorText(reason));
     } finally {

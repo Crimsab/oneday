@@ -5,6 +5,7 @@ mod db;
 mod engine;
 mod events;
 mod imagegen;
+mod observability;
 #[allow(dead_code, clippy::derivable_impls)]
 mod gateway_protocol {
     include!(concat!(env!("OUT_DIR"), "/gateway_protocol.rs"));
@@ -28,7 +29,6 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tower_http::LatencyUnit;
 use tracing::Level;
-use tracing_subscriber::EnvFilter;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -36,6 +36,7 @@ pub struct AppState {
     pub paths: config::ResolvedPaths,
     pub turn_events: broadcast::Sender<events::TurnStreamEvent>,
     pub visual_workers: Arc<Semaphore>,
+    pub observability: observability::Status,
 }
 
 tokio::task_local! {
@@ -81,9 +82,7 @@ fn cache_control_for_path(path: &str) -> Option<&'static str> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
+    let observability = observability::Runtime::init()?;
 
     let args = config::Args::parse_args();
     let paths = config::resolve_paths(&args).context("resolving OneDay gateway paths")?;
@@ -123,6 +122,7 @@ async fn main() -> anyhow::Result<()> {
         paths,
         turn_events,
         visual_workers: Arc::new(Semaphore::new(4)),
+        observability: observability.status(),
     });
     assets::spawn_visual_generation_maintenance(state.clone());
     assets::spawn_visual_generation_worker(state.clone());

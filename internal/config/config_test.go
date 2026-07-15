@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -442,6 +443,13 @@ ai:
 	settings, err := ReadModelRoutingSettings(path)
 	if err != nil {
 		t.Fatal(err)
+	}
+	encodedSettings, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encodedSettings, []byte(`"imagegen_bridge_fallbacks":null`)) {
+		t.Fatalf("imagegen_bridge_fallbacks must serialize as an empty array: %s", encodedSettings)
 	}
 
 	nextModel := "test-litellm-model-updated"

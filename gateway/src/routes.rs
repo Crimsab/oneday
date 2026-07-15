@@ -172,6 +172,9 @@ async fn health(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::V
         "config_path": state.paths.config_path,
         "oneday_bin": state.paths.oneday_bin,
         "static_dir": state.paths.static_dir,
+        "observability": {
+            "otlp_traces": state.observability.otlp_traces,
+        },
     })))
 }
 

@@ -75,6 +75,32 @@ The browser story wizard offers Auto, Photorealistic, Cinematic Fantasy,
 Illustrated Fantasy, Anime, and Custom visual styles. The style prompt is saved
 with the story so later assets remain consistent.
 
+## Optional observability export
+
+OneDay always keeps redacted generation lineage and failure state in SQLite.
+It can additionally export runtime and image-generation spans to any
+OTLP/HTTP-protobuf backend without changing the application code.
+
+- Set `OTEL_EXPORTER_OTLP_ENDPOINT` to a collector base endpoint; the exporter
+  appends `/v1/traces`. Alternatively, set the signal-specific
+  `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` to the complete traces URL. Export is
+  disabled when neither endpoint exists.
+- `ONEDAY_OTEL_ENABLED=false` is an explicit kill switch. Set it to `true` to
+  require exporter initialization and fail startup on invalid exporter config.
+- Standard `OTEL_EXPORTER_OTLP_HEADERS`, `OTEL_TRACES_SAMPLER`,
+  `OTEL_TRACES_SAMPLER_ARG`, `OTEL_SERVICE_NAME`, and
+  `OTEL_RESOURCE_ATTRIBUTES` variables are supported. Headers and endpoints are
+  never returned by `/api/health` or written to OneDay's telemetry tables.
+- Image spans include job/asset kind, requested and resolved model, actual
+  provider, duration, and a bounded error class. Prompts, revised prompts,
+  bearer tokens, API keys, story text, and image bytes are not exported.
+
+For Langfuse, use its OTLP base endpoint (cloud or self-hosted) and provide the
+documented Basic authorization plus ingestion-version header through
+`OTEL_EXPORTER_OTLP_HEADERS`. The same setup works with an OpenTelemetry
+Collector, Grafana Tempo, Jaeger, and other OTLP receivers. The health response
+reports only `observability.otlp_traces` as `enabled` or `disabled`.
+
 ## Game and storage
 
 - `data_dir` contains `oneday.db`, generated visual/audio assets, and story data.

@@ -302,6 +302,8 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 
 func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetting {
 	available, status := imageGenerationAvailability(cfg)
+	// The Rust gateway contract expects an array even when no fallbacks are configured.
+	fallbacks := append([]string{}, cfg.ImagegenBridgeFallbacks...)
 	return ImageGenerationSetting{
 		Provider:                      cfg.Provider,
 		BaseURL:                       cfg.BaseURL,
@@ -313,7 +315,7 @@ func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetti
 		ImagegenBridgeTokenConfigured: strings.TrimSpace(cfg.ImagegenBridgeToken) != "",
 		ImagegenBridgeProvider:        cfg.ImagegenBridgeProvider,
 		ImagegenBridgeMapIconProvider: cfg.ImagegenBridgeMapIconProvider,
-		ImagegenBridgeFallbacks:       append([]string(nil), cfg.ImagegenBridgeFallbacks...),
+		ImagegenBridgeFallbacks:       fallbacks,
 		ImagegenBridgeFallbackPolicy:  cfg.ImagegenBridgeFallbackPolicy,
 		ImagegenBridgeCompatibility:   cfg.ImagegenBridgeCompatibility,
 		DefaultSize:                   cfg.DefaultSize,
