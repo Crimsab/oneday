@@ -51,6 +51,9 @@ import {
 } from "../visualStylePresets";
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
+import { ImageGenerationSettings as ImageProviderEditor } from "./settings/ImageGenerationSettings";
+import type { ProviderConfigDraft } from "./settings/imageGenerationDraft";
+import { buildProviderConfigUpdates } from "./settings/imageGenerationDraft";
 import { CustomSelect } from "./CustomSelect";
 import { visualGateReason } from "../presentation";
 import i18n from "../i18n";
@@ -1027,9 +1030,18 @@ function ModelRoutingSettings({
   );
   const [saveError, setSaveError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
+  const [providerConfigs, setProviderConfigs] = useState<Record<string, ProviderConfigDraft>>({});
+  const [dirtyProviderIds, setDirtyProviderIds] = useState<Set<string>>(new Set());
+  const [bridgeToken, setBridgeToken] = useState("");
+  const [clearBridgeToken, setClearBridgeToken] = useState(false);
+  const resetProviderConfigs = (settings: ModelSettings | null) => {
+    setProviderConfigs(Object.fromEntries((settings?.image_providers ?? []).map((provider) => [provider.id, { baseUrl: provider.base_url, apiVersion: provider.api_version ?? "", models: provider.models.join(", "), apiKey: "", clearApiKey: false }])));
+    setDirtyProviderIds(new Set()); setBridgeToken(""); setClearBridgeToken(false);
+  };
 
   useEffect(() => {
     setDraft(modelSettings ? draftFromModelSettings(modelSettings) : null);
+    resetProviderConfigs(modelSettings);
     setSaveError("");
   }, [modelSettings]);
 
@@ -1072,7 +1084,9 @@ function ModelRoutingSettings({
     setSaveError("");
     setSaveMessage("");
     try {
-      await onSave(updateFromDraft(modelSettings, draft));
+      const payload = updateFromDraft(modelSettings, draft);
+      payload.image_generation = { ...payload.image_generation, imagegen_bridge_token: bridgeToken || undefined, clear_imagegen_bridge_token: clearBridgeToken || undefined, provider_configs: buildProviderConfigUpdates(modelSettings.image_providers, providerConfigs, dirtyProviderIds) };
+      await onSave(payload);
       setSaveMessage(t("models.saved"));
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : String(error));
@@ -1096,8 +1110,28 @@ function ModelRoutingSettings({
     );
   }
 
-  const issues = modelRoutingIssues(modelSettings, draft);
+  const issues = modelRoutingIssues(modelSettings, draft, { providerConfigs, bridgeToken, clearBridgeToken });
   const dirty = hasModelRoutingChanges(modelSettings, draft);
+  const providerConfigDirty = dirtyProviderIds.size > 0 || Boolean(bridgeToken || clearBridgeToken);
+  const selectedImageProviderId = modelSettings.image_generation.provider.toLowerCase();
+  const selectedImageProvider = modelSettings.image_providers.find(
+    (provider) => provider.id === selectedImageProviderId,
+  );
+  const codexImageProvider = [
+    "codex-oauth",
+    "imagegen-bridge",
+    "imagegen_bridge",
+    "bridge-native",
+  ].includes(selectedImageProviderId);
+  const selectedImageProviderReady = codexImageProvider
+    ? Boolean(
+        selectedImageProvider?.configured ||
+          modelSettings.image_generation.imagegen_bridge_url.trim(),
+      )
+    : Boolean(
+        selectedImageProvider?.configured ||
+          modelSettings.image_generation.api_key_configured,
+      );
   const revision = modelSettings.config_revision
     ? modelSettings.config_revision.slice(0, 12)
     : t("models.unknown");
@@ -1131,24 +1165,22 @@ function ModelRoutingSettings({
           className={modelSettings.image_generation.available ? "ready" : "blocked"}
         >
           <span>{t("models.imageGeneration")}</span>
-          <strong>{modelSettings.image_generation.status}</strong>
+          <strong>{modelSettings.image_generation.available ? t("imageSettings.configured") : t("imageSettings.notConfigured")}</strong>
         </div>
         <div>
           <span>{t("models.provider")}</span>
           <strong>{modelSettings.image_generation.provider || t("models.notSet")}</strong>
         </div>
         <div>
-          <span>{t("models.credential")}</span>
+          <span>
+            {codexImageProvider
+              ? t("imageSettings.bridgeConnection")
+              : t("models.credential")}
+          </span>
           <strong>
-            {["imagegen-bridge", "imagegen_bridge", "bridge-native"].includes(
-              modelSettings.image_generation.provider.toLowerCase(),
-            )
-              ? modelSettings.image_generation.imagegen_bridge_token_configured
-                ? t("models.bridgeToken")
-                : t("models.bridgeMissing")
-              : modelSettings.image_generation.api_key_configured
-                ? t("models.keySet")
-                : t("models.keyMissing")}
+            {selectedImageProviderReady
+              ? t("imageSettings.configured")
+              : t("imageSettings.notConfigured")}
           </strong>
         </div>
       </div>
@@ -1156,15 +1188,6 @@ function ModelRoutingSettings({
         {t("models.note")}
       </p>
       <div className="settings-grid">
-        <datalist id="image-provider-options">
-          <option value="imagegen-bridge" label={t("providerLabels.native")} />
-          <option value="openai-compatible" label={t("providerLabels.compatible")} />
-          <option value="openclaw-bridge" label={t("providerLabels.legacy")} />
-        </datalist>
-        <datalist id="imagegen-bridge-provider-options">
-          <option value="codex-responses" label={t("providerLabels.responses")} />
-          <option value="codex-app-server" label={t("providerLabels.appServer")} />
-        </datalist>
         <label>
           <span>{t("models.priority")}</span>
           <CustomSelect
@@ -1223,138 +1246,7 @@ function ModelRoutingSettings({
             placeholder={t("models.fallbackPlaceholder")}
           />
         </label>
-        <label>
-          <span>{t("models.imageProvider")}</span>
-          <input
-            list="image-provider-options"
-            value={draft.imageGeneration.provider}
-            onChange={(event) =>
-              updateImageGeneration({ provider: event.target.value })
-            }
-            placeholder="imagegen-bridge"
-          />
-        </label>
-        <label>
-          <span>{t("models.imageModel")}</span>
-          <ModelInput
-            value={draft.imageGeneration.model}
-            options={modelSettings.image_models}
-            onChange={(value) => updateImageGeneration({ model: value })}
-          />
-        </label>
-        <label>
-          <span>{t("models.mapIconModel")}</span>
-          <ModelInput
-            value={draft.imageGeneration.mapIconModel}
-            options={modelSettings.image_models}
-            onChange={(value) => updateImageGeneration({ mapIconModel: value })}
-          />
-        </label>
-        <label>
-          <span>{t("models.openClawUrl")}</span>
-          <input
-            value={draft.imageGeneration.openClawBridgeUrl}
-            onChange={(event) =>
-              updateImageGeneration({ openClawBridgeUrl: event.target.value })
-            }
-            placeholder="http://127.0.0.1:8099/generate"
-          />
-        </label>
-        <label>
-          <span>{t("models.nativeUrl")}</span>
-          <input
-            value={draft.imageGeneration.imagegenBridgeUrl}
-            onChange={(event) =>
-              updateImageGeneration({ imagegenBridgeUrl: event.target.value })
-            }
-            placeholder="http://127.0.0.1:8787"
-          />
-        </label>
-        <label>
-          <span>{t("models.bridgeProvider")}</span>
-          <input
-            list="imagegen-bridge-provider-options"
-            value={draft.imageGeneration.imagegenBridgeProvider}
-            onChange={(event) =>
-              updateImageGeneration({ imagegenBridgeProvider: event.target.value })
-            }
-            placeholder="codex-responses"
-          />
-        </label>
-        <label>
-          <span>{t("models.mapBridgeProvider")}</span>
-          <input
-            list="imagegen-bridge-provider-options"
-            value={draft.imageGeneration.imagegenBridgeMapIconProvider}
-            onChange={(event) =>
-              updateImageGeneration({
-                imagegenBridgeMapIconProvider: event.target.value,
-              })
-            }
-            placeholder="codex-responses"
-          />
-        </label>
-        <label>
-          <span>{t("models.bridgeFallbacks")}</span>
-          <input
-            value={draft.imageGeneration.imagegenBridgeFallbacks}
-            onChange={(event) =>
-              updateImageGeneration({
-                imagegenBridgeFallbacks: event.target.value,
-              })
-            }
-            placeholder="codex-app-server:gpt-image-2"
-          />
-        </label>
-        <label>
-          <span>{t("models.fallbackPolicy")}</span>
-          <CustomSelect
-            value={draft.imageGeneration.imagegenBridgeFallbackPolicy}
-            ariaLabel={t("models.fallbackPolicy")}
-            onChange={(value) =>
-              updateImageGeneration({ imagegenBridgeFallbackPolicy: value })
-            }
-            options={[
-              { value: "on_unavailable", label: t("models.onUnavailable") },
-              { value: "on_error", label: t("models.onError") },
-            ]}
-          />
-        </label>
-        <label>
-          <span>{t("models.compatibility")}</span>
-          <CustomSelect
-            value={draft.imageGeneration.imagegenBridgeCompatibility}
-            ariaLabel={t("models.compatibility")}
-            onChange={(value) =>
-              updateImageGeneration({ imagegenBridgeCompatibility: value })
-            }
-            options={[
-              { value: "strict", label: t("models.strict") },
-              { value: "normalize", label: t("models.normalize") },
-              { value: "best_effort", label: t("models.bestEffort") },
-            ]}
-          />
-        </label>
-        <label>
-          <span>{t("models.baseUrl")}</span>
-          <input
-            value={draft.imageGeneration.baseUrl}
-            onChange={(event) =>
-              updateImageGeneration({ baseUrl: event.target.value })
-            }
-            placeholder="http://127.0.0.1:4000/v1"
-          />
-        </label>
-        <label>
-          <span>{t("models.defaultSize")}</span>
-          <input
-            value={draft.imageGeneration.defaultSize}
-            onChange={(event) =>
-              updateImageGeneration({ defaultSize: event.target.value })
-            }
-            placeholder="1024x1024"
-          />
-        </label>
+        <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
         <label>
           <span>{t("models.locationSize")}</span>
           <input
@@ -1378,41 +1270,6 @@ function ModelRoutingSettings({
         <label>
           <span>{t("models.outputFormat")}</span>
           <CustomSelect value={draft.imageGeneration.outputFormat} ariaLabel={t("models.outputFormat")} onChange={(value) => updateImageGeneration({ outputFormat: value })} options={["png", "jpeg", "webp"].map((format) => ({ value: format, label: format.toUpperCase() }))} />
-        </label>
-        <label>
-          <span>{t("models.timeout")}</span>
-          <input
-            type="number"
-            min={1}
-            value={draft.imageGeneration.timeoutSeconds}
-            onChange={(event) =>
-              updateImageGeneration({
-                timeoutSeconds: Number(event.target.value),
-              })
-            }
-          />
-        </label>
-        <label className="toggle-row">
-          <span>{t("models.auto")}</span>
-          <input
-            type="checkbox"
-            checked={draft.imageGeneration.autoGenerate}
-            onChange={(event) =>
-              updateImageGeneration({ autoGenerate: event.target.checked })
-            }
-          />
-        </label>
-        <label className="toggle-row">
-          <span>{t("models.appendNegative")}</span>
-          <input
-            type="checkbox"
-            checked={draft.imageGeneration.appendNegativePrompt}
-            onChange={(event) =>
-              updateImageGeneration({
-                appendNegativePrompt: event.target.checked,
-              })
-            }
-          />
         </label>
         <label>
           <span>{t("models.ascii")}</span>
@@ -1530,7 +1387,7 @@ function ModelRoutingSettings({
       <div className="model-actions">
         <button
           type="button"
-          onClick={() => setDraft(draftFromModelSettings(modelSettings))}
+          onClick={() => { setDraft(draftFromModelSettings(modelSettings)); resetProviderConfigs(modelSettings); }}
           disabled={busy}
         >
           {t("models.reset")}
@@ -1542,7 +1399,7 @@ function ModelRoutingSettings({
           type="button"
           className="primary-action"
           onClick={() => void save()}
-          disabled={busy || !dirty || issues.length > 0}
+          disabled={busy || (!dirty && !providerConfigDirty) || issues.length > 0}
         >
           {busy ? t("models.saving") : t("models.save")}
         </button>

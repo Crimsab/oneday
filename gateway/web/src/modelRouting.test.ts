@@ -7,7 +7,7 @@ import {
   splitModelList,
   updateFromDraft,
 } from "./modelRouting";
-import type { ModelSettings } from "./types";
+import type { ImageProviderCatalogEntry, ModelSettings } from "./types";
 
 describe("model routing helpers", () => {
   it("builds editable drafts from backend settings", () => {
@@ -121,7 +121,127 @@ describe("model routing helpers", () => {
       "imagegen-bridge needs its native API URL.",
     );
   });
+
+  it("accepts a fresh Codex bridge URL without an optional bearer token", () => {
+    const bridgeSettings = withImageProviders([
+      imageProvider("codex-oauth", { configured: false, base_url: "" }),
+    ]);
+    const draft = draftFromModelSettings(bridgeSettings);
+    draft.imageGeneration.autoGenerate = true;
+    draft.imageGeneration.provider = "codex-oauth";
+    draft.imageGeneration.mapIconProvider = "codex-oauth";
+    draft.imageGeneration.imagegenBridgeUrl = "http://localhost:8787";
+
+    expect(
+      modelRoutingIssues(bridgeSettings, draft, {
+        providerConfigs: {},
+        bridgeToken: "",
+        clearBridgeToken: false,
+      }),
+    ).toEqual([]);
+  });
+
+  it("accepts a fresh Gemini setup with a pending write-only key", () => {
+    const providerSettings = withImageProviders([
+      imageProvider("gemini", { base_url: "https://generativelanguage.googleapis.com" }),
+    ]);
+    const draft = draftFromModelSettings(providerSettings);
+    draft.imageGeneration.autoGenerate = true;
+    draft.imageGeneration.provider = "gemini";
+    draft.imageGeneration.mapIconProvider = "gemini";
+    draft.imageGeneration.model = "imagen-4.0-generate-001";
+    draft.imageGeneration.mapIconModel = "imagen-4.0-generate-001";
+
+    expect(
+      modelRoutingIssues(providerSettings, draft, {
+        providerConfigs: {
+          gemini: { baseUrl: "", apiKey: "pending-secret", clearApiKey: false },
+        },
+        bridgeToken: "",
+        clearBridgeToken: false,
+      }),
+    ).toEqual([]);
+  });
+
+  it("accepts a fresh compatible endpoint and a separately configured map provider", () => {
+    const providerSettings = withImageProviders([
+      imageProvider("openai-compatible", { base_url: "" }),
+      imageProvider("gemini", { base_url: "https://generativelanguage.googleapis.com" }),
+    ]);
+    const draft = draftFromModelSettings(providerSettings);
+    draft.imageGeneration.autoGenerate = true;
+    draft.imageGeneration.provider = "openai-compatible";
+    draft.imageGeneration.mapIconProvider = "gemini";
+    draft.imageGeneration.model = "custom-scene-model";
+    draft.imageGeneration.mapIconModel = "imagen-map-model";
+
+    expect(
+      modelRoutingIssues(providerSettings, draft, {
+        providerConfigs: {
+          "openai-compatible": {
+            baseUrl: "http://lite.homelab.local/v1",
+            apiKey: "pending-compatible-secret",
+            clearApiKey: false,
+          },
+          gemini: {
+            baseUrl: "",
+            apiKey: "pending-gemini-secret",
+            clearApiKey: false,
+          },
+        },
+        bridgeToken: "",
+        clearBridgeToken: false,
+      }),
+    ).toEqual([]);
+  });
 });
+
+function imageProvider(
+  id: string,
+  overrides: Partial<ImageProviderCatalogEntry> = {},
+): ImageProviderCatalogEntry {
+  return {
+    id,
+    display_name: id,
+    auth_type: "api-key",
+    default: id === "codex-oauth",
+    configured: false,
+    api_key_configured: false,
+    status: "",
+    base_url: "https://example.test",
+    models: [],
+    model_validation: "provider-defined",
+    capabilities: {
+      generate: true,
+      edit: false,
+      sizes: [],
+      aspect_ratios: [],
+      qualities: [],
+      output_formats: ["png"],
+      supports_transparency: false,
+    },
+    ...overrides,
+  };
+}
+
+function withImageProviders(
+  imageProviders: ImageProviderCatalogEntry[],
+): ModelSettings {
+  return {
+    ...settings,
+    image_providers: imageProviders,
+    image_generation: {
+      ...settings.image_generation,
+      provider: imageProviders[0]?.id ?? "codex-oauth",
+      map_icon_provider: imageProviders[0]?.id ?? "codex-oauth",
+      imagegen_bridge_url: "",
+      imagegen_bridge_token_configured: false,
+      api_key_configured: false,
+      available: false,
+      status: "",
+    },
+  };
+}
 
 const settings: ModelSettings = {
   config_path: "/opt/oneday/config.yaml",

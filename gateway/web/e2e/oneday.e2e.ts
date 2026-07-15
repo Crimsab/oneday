@@ -57,6 +57,94 @@ async function json(route: Route, body: unknown, status = 200) {
   await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
 
+function imageProvider(
+  id: string,
+  displayName: string,
+  options: { default?: boolean; configured?: boolean; baseUrl?: string; models?: string[]; modelValidation?: string } = {},
+) {
+  return {
+    id,
+    display_name: displayName,
+    auth_type: id === "codex-oauth" ? "codex_oauth" : id === "replicate" ? "api_token" : "api_key",
+    default: Boolean(options.default),
+    configured: Boolean(options.configured),
+    api_key_configured: Boolean(options.configured && id !== "codex-oauth"),
+    status: options.configured ? "configured" : "not configured",
+    base_url: options.baseUrl ?? "https://images.example.test/v1",
+    models: options.models ?? [],
+    model_validation: options.modelValidation ?? "catalog",
+    capabilities: {
+      generate: true,
+      edit: false,
+      sizes: ["1024x1024", "1536x1024"],
+      aspect_ratios: ["1:1", "3:2"],
+      qualities: ["standard", "high"],
+      output_formats: ["png", "webp"],
+      supports_transparency: false,
+    },
+  };
+}
+
+function modelSettingsFixture() {
+  return {
+    config_path: "/test/config.yaml",
+    config_revision: "revision-1",
+    provider_priority: ["codex"],
+    providers: [{ id: "codex", label: "Codex", enabled: true, model: "gpt-5.5", reasoning: "off", supports_model: true, supports_reasoning: true }],
+    narrative_models: ["gpt-5.5"],
+    utility_models: ["gpt-5.5"],
+    repair_models: ["gpt-5.5"],
+    image_models: ["gpt-image-2", "gpt-image-1"],
+    ascii_models: ["gpt-5.5"],
+    embedding_providers: ["auto"],
+    image_providers: [
+      imageProvider("codex-oauth", "Codex OAuth", { default: true, configured: true, baseUrl: "http://imagegen-bridge:8787", models: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"], modelValidation: "allowlist" }),
+      imageProvider("openai", "OpenAI Platform", { models: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"], modelValidation: "allowlist" }),
+      imageProvider("openai-compatible", "OpenAI-compatible / LiteLLM", { baseUrl: "", modelValidation: "configured" }),
+      imageProvider("gemini", "Google Gemini", { baseUrl: "https://generativelanguage.googleapis.com", models: ["gemini-3.1-flash-image", "gemini-3-pro-image"], modelValidation: "allowlist_or_gemini_image_model" }),
+      imageProvider("fal", "fal.ai", { models: ["fal-ai/flux/schnell", "fal-ai/nano-banana-2"], modelValidation: "vendor_slug" }),
+      imageProvider("replicate", "Replicate", { models: ["black-forest-labs/flux-schnell"], modelValidation: "owner_model_slug" }),
+      imageProvider("stability", "Stability AI", { models: ["stable-image-core"], modelValidation: "allowlist" }),
+      imageProvider("azure-openai", "Azure OpenAI Images", { baseUrl: "", models: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"], modelValidation: "deployment_name" }),
+    ],
+    image_generation: {
+      provider: "codex-oauth",
+      map_icon_provider: "codex-oauth",
+      base_url: "",
+      api_key_configured: false,
+      model: "gpt-image-2",
+      map_icon_model: "gpt-image-1",
+      openclaw_bridge_url: "",
+      imagegen_bridge_url: "http://imagegen-bridge:8787",
+      imagegen_bridge_token_configured: false,
+      imagegen_bridge_provider: "codex-responses",
+      imagegen_bridge_map_icon_provider: "codex-responses",
+      imagegen_bridge_fallbacks: ["codex-app-server:gpt-image-2"],
+      imagegen_bridge_fallback_policy: "on_unavailable",
+      imagegen_bridge_compatibility: "normalize",
+      default_size: "1024x1024",
+      location_size: "1536x1024",
+      character_size: "1024x1024",
+      default_resolution: "",
+      location_resolution: "",
+      character_resolution: "",
+      default_aspect_ratio: "1:1",
+      location_aspect_ratio: "3:2",
+      character_aspect_ratio: "1:1",
+      quality: "standard",
+      output_format: "png",
+      background: "",
+      timeout_seconds: 180,
+      auto_generate: false,
+      append_negative_prompt: true,
+      available: true,
+      status: "configured",
+    },
+    active: { provider: "codex", narrative_model: "gpt-5.5", utility_model: "gpt-5.5", repair_model: "gpt-5.5", repair_fallback_models: [], image_model: "gpt-image-2", ascii_model: "gpt-5.5", embedding_provider: "auto", embedding_model: "text-embedding-3-small", codex_reasoning: "off" },
+    tts_status: "disabled",
+  };
+}
+
 function automaticPatternMiniGame() {
   return { protocol_version: 1, id: "mini-auto-pattern", story_id: story.id, branch_id: "branch-main", turn: 4, seed: 7, definition: { id: "pattern-generic", kind: "pattern", prompt: "Decode the fractured seal by completing its pattern.", difficulty: 50, options: ["8", "9", "10"], rules: { selection_reason: "difficulty fit 50; 4 narrative tag matches; timing-free" } }, runtime: { phase: "active", revision: 1, state: {}, history: [{ action: "start" }] } };
 }
@@ -139,14 +227,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       return json(route, { assets: [{ id: "audio-2", story_id: story.id, source_message_id: 2, segment_index: 0, segment_kind: "narrator", status: "ready", duration_ms: 300, language_tag: "en" }], jobs: [{ id: "job-2", audio_asset_id: "audio-2", status: "succeeded", attempts: 1, max_attempts: 3 }] });
     }
     if (path === "/api/audio/audio-2") return route.fulfill({ status: 200, contentType: "audio/wav", body: Buffer.from("RIFFtest") });
-    if (path === "/api/config/models") return json(route, {
-      config_path: "/test/config.yaml", config_revision: "revision-1", provider_priority: ["codex"],
-      providers: [{ id: "codex", label: "Codex", enabled: true, model: "gpt-5.5", reasoning: "off", supports_model: true, supports_reasoning: true }],
-      narrative_models: ["gpt-5.5"], utility_models: ["gpt-5.5"], repair_models: ["gpt-5.5"], image_models: ["gpt-image-1"], ascii_models: ["gpt-5.5"], embedding_providers: ["auto"],
-      image_generation: { provider: "openclaw-bridge", base_url: "", api_key_configured: false, model: "openai/gpt-image-2", map_icon_model: "openai/gpt-image-1", openclaw_bridge_url: "http://image.test/generate", default_size: "1024x1024", location_size: "1536x1024", character_size: "1024x1024", default_resolution: "", location_resolution: "", character_resolution: "", default_aspect_ratio: "", location_aspect_ratio: "", character_aspect_ratio: "", quality: "", output_format: "png", background: "", timeout_seconds: 180, auto_generate: false, append_negative_prompt: true, available: true, status: "configured" },
-      active: { provider: "codex", narrative_model: "gpt-5.5", utility_model: "gpt-5.5", repair_model: "gpt-5.5", repair_fallback_models: [], image_model: "gpt-image-1", ascii_model: "gpt-5.5", embedding_provider: "auto", embedding_model: "text-embedding-3-small", codex_reasoning: "off" },
-      tts_status: "disabled",
-    });
+    if (path === "/api/config/models") return json(route, modelSettingsFixture());
     if (path === "/api/story-wizard") {
       wizardRequests += 1;
       const body = request.postDataJSON() as Record<string, unknown> & { action?: string; input?: string };
@@ -463,6 +544,82 @@ test("keeps modal focus contained and restores it after escape", async ({ page }
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(trigger).toBeFocused();
+});
+
+test("configures catalog-driven image providers without exposing saved secrets", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Options" }).click();
+  const dialog = page.getByRole("dialog", { name: "Options" });
+  await dialog.getByRole("button", { name: /AI and models/ }).click();
+
+  const providerChoices = dialog.getByRole("radiogroup", { name: "Image provider" });
+  await expect(providerChoices.getByRole("radio").first()).toContainText("Codex OAuth");
+  await expect(providerChoices.getByRole("radio").first()).toHaveAttribute("aria-checked", "true");
+  await expect(dialog.getByText("Uses your Codex subscription through imagegen-bridge. No OPENAI_API_KEY is required.")).toBeVisible();
+  await expect(dialog.getByLabel("Bridge token (optional)")).toHaveAttribute("type", "password");
+  await expect(dialog.getByText("bridge auth not configured")).toHaveCount(0);
+  const imageSettings = dialog.locator(".image-provider-settings");
+  const imageOverflow = await imageSettings.evaluate((element) => ({
+    scrollWidth: element.scrollWidth,
+    clientWidth: element.clientWidth,
+  }));
+  expect(imageOverflow.scrollWidth).toBeLessThanOrEqual(imageOverflow.clientWidth + 1);
+
+  const layout = page.viewportSize()!.width <= 1240 ? "mobile" : "desktop";
+  if (process.env.ONEDAY_QA_SCREENSHOTS) {
+    await imageSettings.scrollIntoViewIfNeeded();
+    await imageSettings.screenshot({
+      path: `/tmp/oneday-settings-final-${layout}-en-codex.png`,
+    });
+  }
+
+  await providerChoices.getByRole("radio", { name: /Google Gemini/ }).click();
+  await expect(dialog.getByText("Connect Google Gemini directly through OneDay’s dedicated adapter.")).toBeVisible();
+  const geminiConfig = dialog.getByRole("group", { name: "Image provider: Google Gemini" });
+  await expect(geminiConfig.getByLabel("API key")).toHaveAttribute("type", "password");
+
+  await dialog.getByLabel("Map icon provider").selectOption("openai-compatible");
+  await dialog.getByLabel("Map icon model").fill("custom-map-model");
+  const compatibleConfig = dialog.getByRole("group", { name: "Image provider: OpenAI-compatible / LiteLLM" });
+  await compatibleConfig.getByLabel("Provider URL").fill("http://lite.homelab.local/v1");
+  await compatibleConfig.getByLabel("Model").fill("custom-map-model");
+  if (process.env.ONEDAY_QA_SCREENSHOTS) {
+    await compatibleConfig.scrollIntoViewIfNeeded();
+    await imageSettings.screenshot({
+      path: `/tmp/oneday-settings-final-${layout}-en-dual-provider.png`,
+    });
+  }
+  await geminiConfig.getByLabel("API key").fill("test-gemini-secret");
+  await compatibleConfig.getByLabel("API key").fill("test-compatible-secret");
+  await dialog.getByLabel("Auto-generate visuals").check();
+
+  const saveRequest = page.waitForRequest(
+    (request) => request.url().endsWith("/api/config/models") && request.method() === "PUT",
+  );
+  await dialog.getByRole("button", { name: "Save model routing" }).click();
+  const payload = await (await saveRequest).postDataJSON();
+  expect(payload.image_generation.provider_configs).toEqual([
+    expect.objectContaining({ id: "openai-compatible", base_url: "http://lite.homelab.local/v1", api_key: "test-compatible-secret", models: ["custom-map-model"] }),
+    expect.objectContaining({ id: "gemini", api_key: "test-gemini-secret" }),
+  ]);
+  expect(payload.image_generation.provider_configs).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: "codex-oauth" })]),
+  );
+
+  await page.evaluate(() => localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ locale: "it" })));
+  await page.reload();
+  await page.getByRole("button", { name: "Opzioni" }).click();
+  const italianDialog = page.getByRole("dialog", { name: "Opzioni" });
+  await italianDialog.getByRole("button", { name: /IA e modelli/ }).click();
+  await expect(italianDialog.getByText("Usa l’abbonamento Codex tramite imagegen-bridge. Non richiede OPENAI_API_KEY.")).toBeVisible();
+  await expect(italianDialog.getByLabel("Token del bridge (facoltativo)")).toHaveAttribute("type", "password");
+  if (process.env.ONEDAY_QA_SCREENSHOTS) {
+    await italianDialog.locator(".image-provider-settings").scrollIntoViewIfNeeded();
+    await italianDialog.locator(".image-provider-settings").screenshot({
+      path: `/tmp/oneday-settings-final-${layout}-it-codex.png`,
+    });
+  }
 });
 
 test("does not render spoken audio controls while story speech is off", async ({ page }) => {

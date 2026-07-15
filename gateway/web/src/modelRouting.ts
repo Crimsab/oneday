@@ -119,6 +119,7 @@ export function hasModelRoutingChanges(
 export function modelRoutingIssues(
   settings: ModelSettings,
   draft: ModelRoutingDraft,
+  pending?: { providerConfigs: Record<string, { baseUrl: string; apiKey: string; clearApiKey: boolean }>; bridgeToken: string; clearBridgeToken: boolean },
 ): string[] {
   const providerIds = settings.providers.map((provider) => provider.id);
   const priority = completePriority(draft.providerPriority, providerIds);
@@ -164,25 +165,17 @@ export function modelRoutingIssues(
     ) {
       issues.push(i18n.t("model_issues:openClawUrl"));
     }
-    if (
-      isImagegenBridgeProvider(draft.imageGeneration.provider) &&
-      !draft.imageGeneration.imagegenBridgeUrl.trim()
-    ) {
-      issues.push(i18n.t("model_issues:nativeUrl"));
-    }
-    if (
-      !isImagegenBridgeProvider(draft.imageGeneration.provider) &&
-      !isOpenClawImageProvider(draft.imageGeneration.provider) &&
-      !draft.imageGeneration.baseUrl.trim()
-    ) {
-      issues.push(i18n.t("model_issues:baseUrl"));
-    }
-    if (
-      !isImagegenBridgeProvider(draft.imageGeneration.provider) &&
-      !isOpenClawImageProvider(draft.imageGeneration.provider) &&
-      !settings.image_generation.api_key_configured
-    ) {
-      issues.push(i18n.t("model_issues:apiKey"));
+    for (const id of new Set([draft.imageGeneration.provider, draft.imageGeneration.mapIconProvider])) {
+      if (isImagegenBridgeProvider(id)) {
+        if (!draft.imageGeneration.imagegenBridgeUrl.trim()) issues.push(i18n.t("model_issues:nativeUrl"));
+        continue;
+      }
+      const catalog = settings.image_providers.find((provider) => provider.id === id);
+      if (!catalog || isOpenClawImageProvider(id)) continue;
+      const config = pending?.providerConfigs[id];
+      if (!(config?.baseUrl.trim() || catalog.base_url.trim())) issues.push(i18n.t("model_issues:baseUrl"));
+      const keyReady = !config?.clearApiKey && (catalog.api_key_configured || Boolean(config?.apiKey.trim()));
+      if (!keyReady) issues.push(i18n.t("model_issues:apiKey"));
     }
   }
   return issues;
