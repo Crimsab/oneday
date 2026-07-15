@@ -34,11 +34,6 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - name: Use runner workspace for temporary files
-        run: |
-          echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-          echo "GOTMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
-
       - name: Run release-please
         id: release
         if: inputs.release_tag == ''
