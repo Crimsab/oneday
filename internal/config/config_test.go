@@ -402,12 +402,17 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 		t.Fatalf("image provider catalog must start with default Codex OAuth: %#v", settings.ImageProviders)
 	}
 	for _, provider := range settings.ImageProviders {
-		if provider.Capabilities.Edit {
-			t.Fatalf("provider %q advertises edit without an exposed edit operation", provider.ID)
+		if len(provider.Capabilities.Operations) == 0 {
+			t.Fatalf("provider %q exposes no structured operations", provider.ID)
 		}
 		if provider.Capabilities.Sizes == nil || provider.Capabilities.AspectRatios == nil ||
 			provider.Capabilities.Qualities == nil || provider.Capabilities.OutputFormats == nil {
 			t.Fatalf("provider %q exposes null capability arrays: %#v", provider.ID, provider.Capabilities)
+		}
+		for _, operation := range provider.Capabilities.Operations {
+			if operation.Models == nil || operation.Controls.OutputFormats == nil || operation.Controls.QualityValues == nil {
+				t.Fatalf("provider %q operation %q exposes null arrays: %#v", provider.ID, operation.Operation, operation)
+			}
 		}
 	}
 }

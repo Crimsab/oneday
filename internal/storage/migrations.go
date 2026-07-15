@@ -61,6 +61,7 @@ func (db *DB) migrate() error {
 		{38, migrationV38},
 		{39, migrationV39},
 		{40, migrationV40},
+		{41, migrationV41},
 	}
 
 	for _, m := range migrations {
@@ -1767,4 +1768,82 @@ END;
 
 INSERT INTO chat_messages_fts(chat_messages_fts) VALUES ('rebuild');
 INSERT INTO chapters_fts(chapters_fts) VALUES ('rebuild');
+`
+
+const migrationV41 = `
+ALTER TABLE visual_asset_versions ADD COLUMN parent_version_id INTEGER REFERENCES visual_asset_versions(id);
+ALTER TABLE visual_asset_versions ADD COLUMN operation_id TEXT;
+ALTER TABLE visual_asset_versions ADD COLUMN mask_id TEXT;
+
+CREATE TABLE image_masks (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+	source_version_id INTEGER NOT NULL REFERENCES visual_asset_versions(id),
+	semantics TEXT NOT NULL CHECK(semantics='edit_coverage'),
+	pixel_format TEXT NOT NULL CHECK(pixel_format='L8'),
+	width INTEGER NOT NULL CHECK(width>0),
+	height INTEGER NOT NULL CHECK(height>0),
+	orientation INTEGER NOT NULL DEFAULT 1 CHECK(orientation=1),
+	preserve_value INTEGER NOT NULL DEFAULT 0 CHECK(preserve_value=0),
+	editable_value INTEGER NOT NULL DEFAULT 255 CHECK(editable_value=255),
+	soft_edges INTEGER NOT NULL DEFAULT 0 CHECK(soft_edges IN (0,1)),
+	mime_type TEXT NOT NULL CHECK(mime_type='image/png'),
+	sha256 TEXT NOT NULL,
+	file_path TEXT NOT NULL,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id,source_version_id,sha256)
+);
+
+CREATE TABLE image_operations (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
+	operation TEXT NOT NULL CHECK(operation IN ('generate','edit','inpaint','image_transform','variation','reference_generate','outpaint')),
+	status TEXT NOT NULL CHECK(status IN ('queued','running','succeeded','failed','cancelled')),
+	provider TEXT NOT NULL,
+	model TEXT NOT NULL,
+	endpoint_id TEXT NOT NULL DEFAULT '',
+	model_version TEXT NOT NULL DEFAULT '',
+	deployment TEXT NOT NULL DEFAULT '',
+	source_version_id INTEGER REFERENCES visual_asset_versions(id),
+	parent_version_id INTEGER REFERENCES visual_asset_versions(id),
+	mask_id TEXT REFERENCES image_masks(id),
+	branch_id TEXT NOT NULL,
+	source_commit_id TEXT NOT NULL,
+	prompt TEXT NOT NULL,
+	negative_prompt TEXT NOT NULL DEFAULT '',
+	requested_parameters_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(requested_parameters_json)),
+	effective_parameters_json TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(effective_parameters_json)),
+	idempotency_key TEXT NOT NULL,
+	provider_request_id TEXT NOT NULL DEFAULT '',
+	result_version_id INTEGER REFERENCES visual_asset_versions(id),
+	error_code TEXT NOT NULL DEFAULT '',
+	error_summary TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	finished_at DATETIME,
+	UNIQUE(story_id,idempotency_key)
+);
+
+CREATE TABLE provider_capability_snapshots (
+	id TEXT PRIMARY KEY,
+	provider TEXT NOT NULL,
+	endpoint_id TEXT NOT NULL,
+	model TEXT NOT NULL,
+	model_version TEXT NOT NULL DEFAULT '',
+	credential_mode TEXT NOT NULL,
+	api_version TEXT NOT NULL DEFAULT '',
+	schema_revision TEXT NOT NULL,
+	capabilities_json TEXT NOT NULL CHECK(json_valid(capabilities_json)),
+	provenance TEXT NOT NULL CHECK(provenance IN ('static_verified','provider_schema','runtime_probe')),
+	schema_hash TEXT NOT NULL DEFAULT '',
+	verified_at DATETIME NOT NULL,
+	UNIQUE(provider,endpoint_id,model,model_version,api_version,schema_revision)
+);
+
+CREATE INDEX idx_image_operations_queue ON image_operations(status,created_at);
+CREATE INDEX idx_image_operations_asset ON image_operations(story_id,asset_id,created_at DESC);
+CREATE INDEX idx_image_masks_source ON image_masks(story_id,source_version_id);
+CREATE INDEX idx_visual_versions_parent ON visual_asset_versions(asset_id,parent_version_id,id DESC);
 `

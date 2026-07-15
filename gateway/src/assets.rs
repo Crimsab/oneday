@@ -1,5 +1,6 @@
 use crate::{db, error::PublicError, events::TurnStreamEvent, AppState};
 use anyhow::{anyhow, Context};
+use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -18,6 +19,7 @@ pub struct VisualAssetsResponse {
     pub profile: VisualProfile,
     pub assets: Vec<VisualAsset>,
     pub jobs: Vec<VisualGenerationJobView>,
+    pub operations: Vec<ImageOperationView>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -57,6 +59,108 @@ pub struct GenerateVisualAssetsRequest {
     pub allow_silhouette: bool,
     #[serde(default)]
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ImageOperationRequest {
+    pub operation: crate::imagegen::ImageOperation,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub endpoint_id: String,
+    #[serde(default)]
+    pub source_version_id: i64,
+    #[serde(default)]
+    pub source: Option<ImageOperationSource>,
+    #[serde(default)]
+    pub mask_png_base64: String,
+    #[serde(default)]
+    pub mask: Option<ImageOperationMaskInput>,
+    pub prompt: String,
+    #[serde(default)]
+    pub negative_prompt: String,
+    #[serde(default)]
+    pub output: ImageOperationOutput,
+    #[serde(default)]
+    pub controls: ImageOperationControls,
+    #[serde(default)]
+    pub fallback: ImageOperationFallback,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ImageOperationSource {
+    #[serde(default, alias = "versionId")]
+    pub version_id: i64,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ImageOperationMaskInput {
+    #[serde(default, alias = "pngBase64")]
+    pub png_base64: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ImageOperationControls {
+    #[serde(default)]
+    pub strength: Option<f64>,
+    #[serde(default)]
+    pub seed: Option<i64>,
+    #[serde(default)]
+    pub input_fidelity: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ImageOperationOutput {
+    #[serde(default)]
+    pub size: String,
+    #[serde(default)]
+    pub quality: String,
+    #[serde(default = "default_png_format")]
+    pub format: String,
+}
+
+fn default_png_format() -> String {
+    "png".to_string()
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ImageOperationFallback {
+    #[serde(default = "default_fallback_mode")]
+    pub mode: String,
+}
+
+impl Default for ImageOperationFallback {
+    fn default() -> Self {
+        Self {
+            mode: default_fallback_mode(),
+        }
+    }
+}
+
+fn default_fallback_mode() -> String {
+    "forbid".to_string()
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ImageOperationView {
+    pub id: String,
+    pub asset_id: String,
+    pub operation: String,
+    pub status: String,
+    pub provider: String,
+    pub model: String,
+    pub endpoint_id: String,
+    pub source_version_id: Option<i64>,
+    pub mask_id: String,
+    pub result_version_id: Option<i64>,
+    pub branch_id: String,
+    pub error_code: String,
+    pub error_summary: String,
+    pub created_at: String,
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -316,10 +420,12 @@ pub async fn visual_assets(
     ensure_asset_rows(pool, story_id, &specs).await?;
     let assets = list_assets(pool, story_id).await?;
     let jobs = list_visual_generation_jobs(pool, story_id).await?;
+    let operations = list_image_operations(pool, story_id).await?;
     Ok(VisualAssetsResponse {
         profile,
         assets,
         jobs,
+        operations,
     })
 }
 
@@ -530,6 +636,14 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
     ] {
         ensure_text_column(pool, table, column, definition).await?;
     }
+    for (column, definition) in [
+        ("parent_version_id", "INTEGER"),
+        ("operation_id", "TEXT"),
+        ("mask_id", "TEXT"),
+    ] {
+        ensure_text_column(pool, "visual_asset_versions", column, definition).await?;
+    }
+    ensure_image_operation_schema(pool).await?;
     ensure_visual_generation_job_schema(pool).await?;
     sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS visual_asset_branch_overrides (
@@ -568,6 +682,44 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
     .await?;
     normalize_location_asset_lineages(pool).await?;
     recover_stale_visual_jobs(pool).await?;
+    Ok(())
+}
+
+async fn ensure_image_operation_schema(pool: &SqlitePool) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS image_masks (
+            id TEXT PRIMARY KEY,story_id TEXT NOT NULL,asset_id TEXT NOT NULL,
+            source_version_id INTEGER NOT NULL,semantics TEXT NOT NULL CHECK(semantics='edit_coverage'),
+            pixel_format TEXT NOT NULL CHECK(pixel_format='L8'),width INTEGER NOT NULL,height INTEGER NOT NULL,
+            orientation INTEGER NOT NULL DEFAULT 1,preserve_value INTEGER NOT NULL DEFAULT 0,
+            editable_value INTEGER NOT NULL DEFAULT 255,soft_edges INTEGER NOT NULL DEFAULT 0,
+            mime_type TEXT NOT NULL CHECK(mime_type='image/png'),sha256 TEXT NOT NULL,file_path TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,UNIQUE(story_id,source_version_id,sha256)
+        )"#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS image_operations (
+            id TEXT PRIMARY KEY,story_id TEXT NOT NULL,asset_id TEXT NOT NULL,
+            operation TEXT NOT NULL,status TEXT NOT NULL,provider TEXT NOT NULL,model TEXT NOT NULL,
+            endpoint_id TEXT NOT NULL DEFAULT '',model_version TEXT NOT NULL DEFAULT '',deployment TEXT NOT NULL DEFAULT '',
+            source_version_id INTEGER,parent_version_id INTEGER,mask_id TEXT,branch_id TEXT NOT NULL,
+            source_commit_id TEXT NOT NULL,prompt TEXT NOT NULL,negative_prompt TEXT NOT NULL DEFAULT '',
+            requested_parameters_json TEXT NOT NULL DEFAULT '{}',effective_parameters_json TEXT NOT NULL DEFAULT '{}',
+            idempotency_key TEXT NOT NULL,provider_request_id TEXT NOT NULL DEFAULT '',result_version_id INTEGER,
+            error_code TEXT NOT NULL DEFAULT '',error_summary TEXT NOT NULL DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,finished_at DATETIME,
+            UNIQUE(story_id,idempotency_key)
+        )"#,
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_image_operations_queue ON image_operations(status,created_at)",
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -1278,6 +1430,706 @@ pub async fn generate_visual_assets(
     spawn_visual_generation_worker(state.clone());
 
     visual_assets(&state.pool, story_id).await
+}
+
+pub async fn create_image_operation(
+    state: Arc<AppState>,
+    story_id: &str,
+    asset_id: &str,
+    mut request: ImageOperationRequest,
+) -> anyhow::Result<VisualAssetsResponse> {
+    ensure_asset_belongs_to_story(&state.pool, story_id, asset_id).await?;
+    let route_asset = load_asset(&state.pool, story_id, asset_id)
+        .await?
+        .ok_or_else(|| {
+            PublicError::not_found("visual_asset_not_found", "visual asset not found")
+        })?;
+    let config = image_generation_config(&state)?;
+    if request.provider.trim().is_empty() {
+        request.provider = generation_provider(&config, &route_asset);
+    }
+    if request.model.trim().is_empty() {
+        request.model = generation_model(&config, &route_asset);
+    }
+    if request.source_version_id <= 0 {
+        request.source_version_id = request
+            .source
+            .as_ref()
+            .map_or(0, |source| source.version_id);
+    }
+    if request.mask_png_base64.trim().is_empty() {
+        request.mask_png_base64 = request
+            .mask
+            .as_ref()
+            .map(|mask| mask.png_base64.clone())
+            .unwrap_or_default();
+    }
+    if request.idempotency_key.trim().is_empty() || request.idempotency_key.len() > 200 {
+        return Err(PublicError::bad_request(
+            "INVALID_REQUEST",
+            "idempotency_key is required and must not exceed 200 characters",
+        )
+        .into());
+    }
+    if request.fallback.mode != "forbid" {
+        return Err(PublicError::bad_request(
+            "CAPABILITY_UNSUPPORTED",
+            "this endpoint never performs a lower-fidelity fallback; submit the alternative operation explicitly",
+        )
+        .into());
+    }
+    if request.controls.strength.is_some()
+        || request.controls.seed.is_some()
+        || request.controls.input_fidelity.is_some()
+    {
+        return Err(PublicError::bad_request(
+            "CAPABILITY_UNSUPPORTED",
+            "strength, seed, and input_fidelity are not implemented for this native operation",
+        )
+        .into());
+    }
+    if request.operation == crate::imagegen::ImageOperation::Generate {
+        return Err(PublicError::bad_request(
+            "INVALID_REQUEST",
+            "use the existing visual-assets/generate endpoint for generate jobs",
+        )
+        .into());
+    }
+    if request.source_version_id <= 0 {
+        return Err(PublicError::bad_request(
+            "INVALID_SOURCE_IMAGE",
+            "source_version_id must identify an existing asset version",
+        )
+        .into());
+    }
+    let (branch_id, source_commit_id) = active_timeline_lineage(&state.pool, story_id).await?;
+    let mut connection = state.pool.acquire().await?;
+    let visible = visible_version_ids_on(&mut connection, story_id, asset_id, &branch_id).await?;
+    if !visible.contains(&request.source_version_id) {
+        return Err(PublicError::not_found(
+            "visual_asset_version_not_found",
+            "source version is not visible on the active branch",
+        )
+        .into());
+    }
+    let source_path: String = sqlx::query_scalar(
+        "SELECT file_path FROM visual_asset_versions WHERE story_id=? AND asset_id=? AND id=?",
+    )
+    .bind(story_id)
+    .bind(asset_id)
+    .bind(request.source_version_id)
+    .fetch_one(&mut *connection)
+    .await?;
+    drop(connection);
+    let source_bytes = fs::read(&source_path).await.map_err(|_| {
+        PublicError::bad_request("INVALID_SOURCE_IMAGE", "source image file is unavailable")
+    })?;
+    let source = crate::imagegen::canonicalize_source(&source_bytes).map_err(|_| {
+        PublicError::bad_request(
+            "INVALID_SOURCE_IMAGE",
+            "source image is invalid or too large",
+        )
+    })?;
+
+    let mask = if request.mask_png_base64.trim().is_empty() {
+        None
+    } else {
+        let encoded = request.mask_png_base64.trim();
+        if encoded.len() > (8 * 1024 * 1024 * 4 / 3 + 16) {
+            return Err(
+                PublicError::bad_request("IMAGE_TOO_LARGE", "mask payload is too large").into(),
+            );
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(encoded)
+            .map_err(|_| PublicError::bad_request("INVALID_MASK", "mask_png_base64 is invalid"))?;
+        let mask = crate::imagegen::normalize_mask(&bytes)
+            .map_err(|_| PublicError::bad_request("INVALID_MASK", "mask must be a bounded PNG"))?;
+        if source.width != mask.width || source.height != mask.height {
+            return Err(PublicError::bad_request(
+                "MASK_DIMENSION_MISMATCH",
+                format!(
+                    "source is {}x{} but mask is {}x{}",
+                    source.width, source.height, mask.width, mask.height
+                ),
+            )
+            .into());
+        }
+        Some(mask)
+    };
+
+    let native = native_request_from_api(&request, source, mask.clone(), &config);
+    crate::imagegen::validate_native_request(&imagegen_adapter_config(&config), &native)
+        .map_err(public_image_operation_error)?;
+
+    let sanitized_request = sanitized_operation_request(&request, mask.as_ref())?;
+    let existing = sqlx::query(
+        "SELECT requested_parameters_json FROM image_operations WHERE story_id=? AND idempotency_key=?",
+    )
+    .bind(story_id)
+    .bind(request.idempotency_key.trim())
+    .fetch_optional(&state.pool)
+    .await?;
+    if let Some(existing) = existing {
+        if !same_operation_request(
+            &row_string(&existing, "requested_parameters_json"),
+            &sanitized_request,
+        ) {
+            return Err(PublicError::conflict(
+                "IDEMPOTENCY_CONFLICT",
+                "idempotency_key was already used for a different image operation",
+            )
+            .into());
+        }
+        let _ =
+            image_operation(&state.pool, story_id, request.idempotency_key.trim(), true).await?;
+        return visual_assets(&state.pool, story_id).await;
+    }
+
+    let operation_id = format!("image-operation-{}", Uuid::new_v4());
+    let mask_id = if let Some(mask) = &mask {
+        persist_operation_mask(&state, story_id, asset_id, request.source_version_id, mask).await?
+    } else {
+        String::new()
+    };
+    let insert = sqlx::query(
+        r#"INSERT INTO image_operations
+           (id,story_id,asset_id,operation,status,provider,model,endpoint_id,source_version_id,
+            parent_version_id,mask_id,branch_id,source_commit_id,prompt,negative_prompt,
+            requested_parameters_json,idempotency_key)
+           VALUES (?,?,?,?, 'queued',?,?,?,?,?,?,?,?,?,?,?,?)"#,
+    )
+    .bind(&operation_id)
+    .bind(story_id)
+    .bind(asset_id)
+    .bind(request.operation.as_str())
+    .bind(request.provider.trim())
+    .bind(request.model.trim())
+    .bind(request.endpoint_id.trim())
+    .bind(request.source_version_id)
+    .bind(request.source_version_id)
+    .bind(&mask_id)
+    .bind(&branch_id)
+    .bind(&source_commit_id)
+    .bind(request.prompt.trim())
+    .bind(request.negative_prompt.trim())
+    .bind(&sanitized_request)
+    .bind(request.idempotency_key.trim())
+    .execute(&state.pool)
+    .await;
+    if let Err(error) = insert {
+        if let Some((view, existing_request)) =
+            image_operation_by_key(&state.pool, story_id, request.idempotency_key.trim()).await?
+        {
+            if !same_operation_request(&existing_request, &sanitized_request) {
+                return Err(PublicError::conflict(
+                    "IDEMPOTENCY_CONFLICT",
+                    "idempotency_key was concurrently used for a different image operation",
+                )
+                .into());
+            }
+            let _ = view;
+            return visual_assets(&state.pool, story_id).await;
+        }
+        return Err(error.into());
+    }
+    spawn_image_operation_worker(state.clone(), operation_id.clone());
+    visual_assets(&state.pool, story_id).await
+}
+
+pub async fn get_image_operation(
+    pool: &SqlitePool,
+    story_id: &str,
+    operation_id: &str,
+) -> anyhow::Result<ImageOperationView> {
+    image_operation(pool, story_id, operation_id, false).await
+}
+
+async fn image_operation(
+    pool: &SqlitePool,
+    story_id: &str,
+    key: &str,
+    by_idempotency: bool,
+) -> anyhow::Result<ImageOperationView> {
+    let query = if by_idempotency {
+        "SELECT * FROM image_operations WHERE story_id=? AND idempotency_key=?"
+    } else {
+        "SELECT * FROM image_operations WHERE story_id=? AND id=?"
+    };
+    let row = sqlx::query(query)
+        .bind(story_id)
+        .bind(key)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| {
+            PublicError::not_found("IMAGE_OPERATION_NOT_FOUND", "image operation not found")
+        })?;
+    Ok(image_operation_view(&row))
+}
+
+async fn image_operation_by_key(
+    pool: &SqlitePool,
+    story_id: &str,
+    key: &str,
+) -> anyhow::Result<Option<(ImageOperationView, String)>> {
+    Ok(
+        sqlx::query("SELECT * FROM image_operations WHERE story_id=? AND idempotency_key=?")
+            .bind(story_id)
+            .bind(key)
+            .fetch_optional(pool)
+            .await?
+            .map(|row| {
+                let request = row_string(&row, "requested_parameters_json");
+                (image_operation_view(&row), request)
+            }),
+    )
+}
+
+fn sanitized_operation_request(
+    request: &ImageOperationRequest,
+    mask: Option<&crate::imagegen::MaskRaster>,
+) -> anyhow::Result<String> {
+    Ok(serde_json::to_string(&serde_json::json!({
+        "operation": request.operation.as_str(),
+        "provider": request.provider.trim().to_ascii_lowercase(),
+        "model": request.model.trim(),
+        "endpoint_id": request.endpoint_id.trim(),
+        "source_version_id": request.source_version_id,
+        "mask_sha256": mask.map(|value| value.sha256.as_str()).unwrap_or(""),
+        "prompt": request.prompt.trim(),
+        "negative_prompt": request.negative_prompt.trim(),
+        "output": request.output,
+        "controls": request.controls,
+        "fallback": request.fallback,
+    }))?)
+}
+
+fn same_operation_request(existing: &str, candidate: &str) -> bool {
+    serde_json::from_str::<Value>(existing).ok() == serde_json::from_str::<Value>(candidate).ok()
+}
+
+async fn list_image_operations(
+    pool: &SqlitePool,
+    story_id: &str,
+) -> anyhow::Result<Vec<ImageOperationView>> {
+    let rows = sqlx::query(
+        "SELECT * FROM image_operations WHERE story_id=? ORDER BY created_at DESC,id DESC LIMIT 50",
+    )
+    .bind(story_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.iter().map(image_operation_view).collect())
+}
+
+fn image_operation_view(row: &sqlx::sqlite::SqliteRow) -> ImageOperationView {
+    ImageOperationView {
+        id: row_string(row, "id"),
+        asset_id: row_string(row, "asset_id"),
+        operation: row_string(row, "operation"),
+        status: row_string(row, "status"),
+        provider: row_string(row, "provider"),
+        model: row_string(row, "model"),
+        endpoint_id: row_string(row, "endpoint_id"),
+        source_version_id: row.try_get("source_version_id").unwrap_or_default(),
+        mask_id: row_string(row, "mask_id"),
+        result_version_id: row.try_get("result_version_id").unwrap_or_default(),
+        branch_id: row_string(row, "branch_id"),
+        error_code: row_string(row, "error_code"),
+        error_summary: row_string(row, "error_summary"),
+        created_at: row_string(row, "created_at"),
+        updated_at: row_string(row, "updated_at"),
+    }
+}
+
+fn public_image_operation_error(error: anyhow::Error) -> PublicError {
+    let code = crate::imagegen::error_code(&error);
+    PublicError::bad_request(code, compact_error(&error.to_string()))
+}
+
+fn native_request_from_api(
+    request: &ImageOperationRequest,
+    source: crate::imagegen::CanonicalImage,
+    mask: Option<crate::imagegen::MaskRaster>,
+    config: &ImageGenerationConfig,
+) -> crate::imagegen::NativeImageRequest {
+    crate::imagegen::NativeImageRequest {
+        operation: request.operation,
+        provider: request.provider.trim().to_ascii_lowercase(),
+        model: request.model.trim().to_string(),
+        endpoint_id: request.endpoint_id.trim().to_string(),
+        prompt: request.prompt.trim().to_string(),
+        negative_prompt: request.negative_prompt.trim().to_string(),
+        source: Some(source),
+        mask,
+        size: clean_or(&request.output.size, &config.default_size),
+        quality: clean_or(&request.output.quality, &config.quality),
+        output_format: clean_or(&request.output.format, "png"),
+        idempotency_key: request.idempotency_key.trim().to_string(),
+    }
+}
+
+async fn persist_operation_mask(
+    state: &AppState,
+    story_id: &str,
+    asset_id: &str,
+    source_version_id: i64,
+    mask: &crate::imagegen::MaskRaster,
+) -> anyhow::Result<String> {
+    let existing: Option<String> = sqlx::query_scalar(
+        "SELECT id FROM image_masks WHERE story_id=? AND source_version_id=? AND sha256=?",
+    )
+    .bind(story_id)
+    .bind(source_version_id)
+    .bind(&mask.sha256)
+    .fetch_optional(&state.pool)
+    .await?;
+    if let Some(existing) = existing {
+        return Ok(existing);
+    }
+    let id = format!("image-mask-{}", Uuid::new_v4());
+    let directory = state
+        .paths
+        .visual_asset_dir
+        .join(slug(story_id))
+        .join("masks");
+    fs::create_dir_all(&directory).await?;
+    let path = directory.join(format!("{}.png", &mask.sha256[..24]));
+    fs::write(&path, &mask.png).await?;
+    sqlx::query(
+        r#"INSERT OR IGNORE INTO image_masks
+           (id,story_id,asset_id,source_version_id,semantics,pixel_format,width,height,orientation,
+            preserve_value,editable_value,soft_edges,mime_type,sha256,file_path)
+           VALUES (?,?,?,?,'edit_coverage','L8',?,?,1,0,255,?,'image/png',?,?)"#,
+    )
+    .bind(&id)
+    .bind(story_id)
+    .bind(asset_id)
+    .bind(source_version_id)
+    .bind(i64::from(mask.width))
+    .bind(i64::from(mask.height))
+    .bind(if mask.soft_edges { 1_i64 } else { 0_i64 })
+    .bind(&mask.sha256)
+    .bind(path.to_string_lossy().as_ref())
+    .execute(&state.pool)
+    .await?;
+    Ok(sqlx::query_scalar(
+        "SELECT id FROM image_masks WHERE story_id=? AND source_version_id=? AND sha256=?",
+    )
+    .bind(story_id)
+    .bind(source_version_id)
+    .bind(&mask.sha256)
+    .fetch_one(&state.pool)
+    .await?)
+}
+
+#[derive(Debug)]
+struct ImageOperationRecord {
+    id: String,
+    story_id: String,
+    asset_id: String,
+    operation: crate::imagegen::ImageOperation,
+    provider: String,
+    model: String,
+    endpoint_id: String,
+    source_version_id: i64,
+    mask_id: String,
+    branch_id: String,
+    source_commit_id: String,
+    prompt: String,
+    negative_prompt: String,
+    output: ImageOperationOutput,
+    idempotency_key: String,
+    source_file_path: String,
+    mask_file_path: String,
+}
+
+fn spawn_image_operation_worker(state: Arc<AppState>, operation_id: String) {
+    tokio::spawn(async move {
+        if let Err(error) = run_image_operation(state, &operation_id).await {
+            tracing::warn!(operation_id, error = %error, "image operation worker failed");
+        }
+    });
+}
+
+async fn run_image_operation(state: Arc<AppState>, operation_id: &str) -> anyhow::Result<()> {
+    let Some(record) = claim_image_operation(&state.pool, operation_id).await? else {
+        return Ok(());
+    };
+    let result = execute_image_operation(&state, &record).await;
+    match result {
+        Ok((asset, generated, effective)) => {
+            complete_image_operation(&state.pool, &record, &asset, &generated, &effective).await?;
+            emit_visual_asset_event(
+                &state,
+                "asset.ready",
+                &asset,
+                None,
+                "ready",
+                format!(
+                    "Image {} completed for {}.",
+                    record.operation.as_str(),
+                    asset.subject
+                ),
+            );
+        }
+        Err(error) => {
+            let code = crate::imagegen::error_code(&error);
+            let summary = compact_error(&error.to_string());
+            sqlx::query(
+                r#"UPDATE image_operations SET status='failed',error_code=?,error_summary=?,
+                   finished_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'"#,
+            )
+            .bind(code)
+            .bind(&summary)
+            .bind(&record.id)
+            .execute(&state.pool)
+            .await?;
+            if let Some(asset) = load_asset(&state.pool, &record.story_id, &record.asset_id).await?
+            {
+                emit_visual_asset_event(
+                    &state,
+                    "asset.failed",
+                    &asset,
+                    None,
+                    "failed",
+                    format!(
+                        "Image {} failed for {}.",
+                        record.operation.as_str(),
+                        asset.subject
+                    ),
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn claim_image_operation(
+    pool: &SqlitePool,
+    operation_id: &str,
+) -> anyhow::Result<Option<ImageOperationRecord>> {
+    let row = sqlx::query(
+        r#"UPDATE image_operations SET status='running',updated_at=CURRENT_TIMESTAMP
+           WHERE id=? AND status='queued'
+           RETURNING id,story_id,asset_id,operation,provider,model,endpoint_id,source_version_id,
+             COALESCE(mask_id,'') AS mask_id,branch_id,source_commit_id,prompt,negative_prompt,
+             requested_parameters_json,idempotency_key"#,
+    )
+    .bind(operation_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let operation = serde_json::from_value::<crate::imagegen::ImageOperation>(
+        serde_json::Value::String(row_string(&row, "operation")),
+    )?;
+    let requested: Value = serde_json::from_str(&row_string(&row, "requested_parameters_json"))?;
+    let output = serde_json::from_value::<ImageOperationOutput>(
+        requested
+            .get("output")
+            .cloned()
+            .unwrap_or(Value::Object(Default::default())),
+    )?;
+    let source_version_id = row.try_get("source_version_id").unwrap_or_default();
+    let source_file_path: String = sqlx::query_scalar(
+        "SELECT file_path FROM visual_asset_versions WHERE id=? AND story_id=? AND asset_id=?",
+    )
+    .bind(source_version_id)
+    .bind(row_string(&row, "story_id"))
+    .bind(row_string(&row, "asset_id"))
+    .fetch_one(pool)
+    .await?;
+    let mask_id = row_string(&row, "mask_id");
+    let mask_file_path = if mask_id.is_empty() {
+        String::new()
+    } else {
+        sqlx::query_scalar("SELECT file_path FROM image_masks WHERE id=?")
+            .bind(&mask_id)
+            .fetch_one(pool)
+            .await?
+    };
+    Ok(Some(ImageOperationRecord {
+        id: row_string(&row, "id"),
+        story_id: row_string(&row, "story_id"),
+        asset_id: row_string(&row, "asset_id"),
+        operation,
+        provider: row_string(&row, "provider"),
+        model: row_string(&row, "model"),
+        endpoint_id: row_string(&row, "endpoint_id"),
+        source_version_id,
+        mask_id,
+        branch_id: row_string(&row, "branch_id"),
+        source_commit_id: row_string(&row, "source_commit_id"),
+        prompt: row_string(&row, "prompt"),
+        negative_prompt: row_string(&row, "negative_prompt"),
+        output,
+        idempotency_key: row_string(&row, "idempotency_key"),
+        source_file_path,
+        mask_file_path,
+    }))
+}
+
+async fn execute_image_operation(
+    state: &AppState,
+    record: &ImageOperationRecord,
+) -> anyhow::Result<(VisualAsset, GeneratedAsset, Value)> {
+    let asset = load_asset(&state.pool, &record.story_id, &record.asset_id)
+        .await?
+        .ok_or_else(|| {
+            provider_operation_error("INVALID_SOURCE_IMAGE", "visual asset no longer exists")
+        })?;
+    let (branch_id, source_commit_id) =
+        active_timeline_lineage(&state.pool, &record.story_id).await?;
+    if branch_id != record.branch_id || source_commit_id != record.source_commit_id {
+        return Err(provider_operation_error(
+            "CANCELLED",
+            "active story lineage changed before image operation dispatch",
+        ));
+    }
+    let source_bytes = fs::read(&record.source_file_path)
+        .await
+        .context("reading source version")?;
+    let source = crate::imagegen::canonicalize_source(&source_bytes)
+        .map_err(|error| provider_operation_error("INVALID_SOURCE_IMAGE", error.to_string()))?;
+    let mask = if record.mask_file_path.is_empty() {
+        None
+    } else {
+        let bytes = fs::read(&record.mask_file_path)
+            .await
+            .context("reading normalized mask")?;
+        Some(
+            crate::imagegen::normalize_mask(&bytes)
+                .map_err(|error| provider_operation_error("INVALID_MASK", error.to_string()))?,
+        )
+    };
+    let config = image_generation_config(state)?;
+    let api_request = ImageOperationRequest {
+        operation: record.operation,
+        provider: record.provider.clone(),
+        model: record.model.clone(),
+        endpoint_id: record.endpoint_id.clone(),
+        source_version_id: record.source_version_id,
+        source: None,
+        mask_png_base64: String::new(),
+        mask: None,
+        prompt: record.prompt.clone(),
+        negative_prompt: record.negative_prompt.clone(),
+        output: record.output.clone(),
+        controls: ImageOperationControls::default(),
+        fallback: ImageOperationFallback::default(),
+        idempotency_key: record.idempotency_key.clone(),
+    };
+    let request = native_request_from_api(&api_request, source, mask, &config);
+    let adapter = imagegen_adapter_config(&config);
+    crate::imagegen::validate_native_request(&adapter, &request)?;
+    let client = Client::builder()
+        .timeout(Duration::from_secs(config.timeout_seconds))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()?;
+    let generated = crate::imagegen::operate(&client, &adapter, &request).await?;
+    let mut persisted =
+        persist_generated_asset(state, &asset, generated.bytes, &generated.output_format).await?;
+    persisted.revised_prompt = generated.revised_prompt;
+    persisted.provider_label = generated.provider_label;
+    Ok((
+        asset,
+        persisted,
+        serde_json::json!({
+            "operation": record.operation.as_str(),
+            "provider": record.provider,
+            "model": record.model,
+            "endpoint_id": record.endpoint_id,
+            "output_format": request.output_format,
+        }),
+    ))
+}
+
+fn provider_operation_error(code: &'static str, detail: impl Into<String>) -> anyhow::Error {
+    crate::imagegen::operation_error(code, detail)
+}
+
+async fn complete_image_operation(
+    pool: &SqlitePool,
+    record: &ImageOperationRecord,
+    asset: &VisualAsset,
+    generated: &GeneratedAsset,
+    effective: &Value,
+) -> anyhow::Result<i64> {
+    let mut transaction = pool.begin().await?;
+    let current: Option<String> = sqlx::query_scalar(
+        "SELECT status FROM image_operations WHERE id=? AND branch_id=? AND source_commit_id=?",
+    )
+    .bind(&record.id)
+    .bind(&record.branch_id)
+    .bind(&record.source_commit_id)
+    .fetch_optional(&mut *transaction)
+    .await?;
+    if current.as_deref() != Some("running") {
+        return Err(anyhow!("image operation is no longer publishable"));
+    }
+    let version_id: i64 = sqlx::query_scalar(
+        r#"INSERT INTO visual_asset_versions
+           (asset_id,story_id,kind,subject,url,file_path,prompt,revised_prompt,negative_prompt,provider,
+            turn,branch_id,source_commit_id,canonical_entity_id,canonical_location_id,form_id,
+            appearance_fingerprint,profile_revision_id,canon_status,parent_version_id,operation_id,mask_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"#,
+    )
+    .bind(&asset.id)
+    .bind(&asset.story_id)
+    .bind(&asset.kind)
+    .bind(&asset.subject)
+    .bind(&generated.url)
+    .bind(&generated.file_path)
+    .bind(&record.prompt)
+    .bind(&generated.revised_prompt)
+    .bind(&record.negative_prompt)
+    .bind(&generated.provider_label)
+    .bind(asset.turn)
+    .bind(&record.branch_id)
+    .bind(&record.source_commit_id)
+    .bind(&asset.canonical_entity_id)
+    .bind(&asset.canonical_location_id)
+    .bind(&asset.form_id)
+    .bind(&asset.appearance_fingerprint)
+    .bind(&asset.profile_revision_id)
+    .bind(&asset.canon_status)
+    .bind(record.source_version_id)
+    .bind(&record.id)
+    .bind(&record.mask_id)
+    .fetch_one(&mut *transaction)
+    .await?;
+    select_generated_version_on(
+        &mut transaction,
+        &record.story_id,
+        &record.asset_id,
+        &record.branch_id,
+        &record.source_commit_id,
+        version_id,
+    )
+    .await?;
+    set_branch_asset_status_on(
+        &mut transaction,
+        asset,
+        &record.branch_id,
+        &record.source_commit_id,
+        "ready",
+        "",
+        &generated.provider_label,
+    )
+    .await?;
+    sqlx::query(
+        r#"UPDATE image_operations SET status='succeeded',result_version_id=?,effective_parameters_json=?,
+           error_code='',error_summary='',finished_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+           WHERE id=? AND status='running'"#,
+    )
+    .bind(version_id)
+    .bind(serde_json::to_string(effective)?)
+    .bind(&record.id)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+    Ok(version_id)
 }
 
 pub async fn cancel_story_visual_jobs(pool: &SqlitePool, story_id: &str) -> anyhow::Result<u64> {

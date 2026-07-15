@@ -7,6 +7,7 @@ mod fal;
 mod gemini;
 mod openai;
 mod openclaw;
+mod operations;
 mod replicate;
 mod stability;
 
@@ -14,6 +15,11 @@ use common::compact_detail;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::fmt;
+
+pub(crate) use operations::{
+    canonicalize_source, normalize_mask, validate_native_request, CanonicalImage, ImageOperation,
+    MaskRaster, NativeImageRequest,
+};
 
 pub(super) const MAX_IMAGE_BYTES: usize = 32 * 1024 * 1024;
 pub(super) const MAX_RESPONSE_BYTES: usize = 48 * 1024 * 1024;
@@ -128,6 +134,46 @@ pub(crate) async fn generate(
             error
         } else {
             provider_error(provider, "invalid_response", error.to_string(), false)
+        }
+    })
+}
+
+pub(crate) async fn operate(
+    client: &Client,
+    config: &AdapterConfig,
+    request: &NativeImageRequest,
+) -> anyhow::Result<GeneratedImage> {
+    operations::validate_native_request(config, request)?;
+    // Capability and shape validation deliberately runs again at this last
+    // boundary so stale UI/catalog data cannot reach a provider.
+    let result = match adapter_kind(&request.provider) {
+        Some(AdapterKind::CodexOAuth) => codex_bridge::edit(client, config, request).await,
+        Some(AdapterKind::OpenAi) => openai::edit(client, config, request).await,
+        Some(AdapterKind::AzureOpenAi) => azure::edit(client, config, request).await,
+        Some(AdapterKind::Gemini) => gemini::edit(client, config, request).await,
+        Some(AdapterKind::Stability) => stability::edit(client, config, request).await,
+        _ => Err(provider_error(
+            &request.provider,
+            "CAPABILITY_UNSUPPORTED",
+            format!(
+                "{}:{} does not implement {}",
+                request.provider,
+                request.model,
+                request.operation.as_str()
+            ),
+            false,
+        )),
+    };
+    result.map_err(|error| {
+        if error.downcast_ref::<ProviderError>().is_some() {
+            error
+        } else {
+            provider_error(
+                &request.provider,
+                "PROVIDER_BAD_RESPONSE",
+                error.to_string(),
+                false,
+            )
         }
     })
 }
@@ -287,6 +333,10 @@ pub(crate) fn error_code(error: &anyhow::Error) -> &'static str {
         .chain()
         .find_map(|cause| cause.downcast_ref::<ProviderError>())
         .map_or("internal_error", |error| error.code)
+}
+
+pub(crate) fn operation_error(code: &'static str, detail: impl Into<String>) -> anyhow::Error {
+    provider_error("image-operation", code, detail, false)
 }
 
 pub(super) fn http_error(provider: &str, status: reqwest::StatusCode, raw: &[u8]) -> anyhow::Error {

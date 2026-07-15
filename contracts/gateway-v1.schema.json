@@ -560,6 +560,26 @@
         "commits"
       ]
     },
+    "CapabilityProvenance": {
+      "properties": {
+        "kind": {
+          "type": "string"
+        },
+        "verified_at": {
+          "type": "string"
+        },
+        "schema_revision": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "kind",
+        "verified_at",
+        "schema_revision"
+      ]
+    },
     "ChallengeModifier": {
       "properties": {
         "source": {
@@ -1030,6 +1050,40 @@
         "retryable"
       ]
     },
+    "ImageControlCapability": {
+      "properties": {
+        "negative_prompt": {
+          "type": "boolean"
+        },
+        "strength": {
+          "type": "boolean"
+        },
+        "seed": {
+          "type": "boolean"
+        },
+        "quality_values": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "output_formats": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "negative_prompt",
+        "strength",
+        "seed",
+        "quality_values",
+        "output_formats"
+      ]
+    },
     "ImageGenerationSetting": {
       "properties": {
         "provider": {
@@ -1267,13 +1321,107 @@
       "additionalProperties": false,
       "type": "object"
     },
-    "ImageProviderCapabilities": {
+    "ImageMaskCapability": {
       "properties": {
-        "generate": {
+        "required": {
           "type": "boolean"
         },
-        "edit": {
+        "kind": {
+          "type": "string"
+        },
+        "accepted_formats": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "soft_values": {
+          "type": "string"
+        },
+        "provider_semantics": {
+          "type": "string"
+        },
+        "adherence": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "required",
+        "kind",
+        "accepted_formats",
+        "soft_values",
+        "provider_semantics",
+        "adherence"
+      ]
+    },
+    "ImageOperationCapability": {
+      "properties": {
+        "operation": {
+          "type": "string"
+        },
+        "supported": {
           "type": "boolean"
+        },
+        "availability": {
+          "type": "string"
+        },
+        "endpoint_id": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "model_version": {
+          "type": "string"
+        },
+        "credential_mode": {
+          "type": "string"
+        },
+        "api_version": {
+          "type": "string"
+        },
+        "schema_revision": {
+          "type": "string"
+        },
+        "source_images": {
+          "$ref": "#/$defs/ImageSourceCapability"
+        },
+        "mask": {
+          "$ref": "#/$defs/ImageMaskCapability"
+        },
+        "controls": {
+          "$ref": "#/$defs/ImageControlCapability"
+        },
+        "provenance": {
+          "$ref": "#/$defs/CapabilityProvenance"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "operation",
+        "supported",
+        "availability",
+        "endpoint_id",
+        "models",
+        "credential_mode",
+        "schema_revision",
+        "controls",
+        "provenance"
+      ]
+    },
+    "ImageProviderCapabilities": {
+      "properties": {
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/ImageOperationCapability"
+          },
+          "type": "array"
         },
         "sizes": {
           "items": {
@@ -1306,8 +1454,7 @@
       "additionalProperties": false,
       "type": "object",
       "required": [
-        "generate",
-        "edit",
+        "operations",
         "sizes",
         "aspect_ratios",
         "qualities",
@@ -1401,6 +1548,29 @@
       "type": "object",
       "required": [
         "id"
+      ]
+    },
+    "ImageSourceCapability": {
+      "properties": {
+        "min": {
+          "type": "integer"
+        },
+        "max": {
+          "type": "integer"
+        },
+        "roles": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "min",
+        "max",
+        "roles"
       ]
     },
     "LoadResponse": {

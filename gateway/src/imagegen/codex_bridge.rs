@@ -1,12 +1,168 @@
 use super::common::*;
 use super::{
     provider_error, transport_error, AdapterConfig, GenerateRequest, GeneratedImage,
-    MAX_RESPONSE_BYTES,
+    NativeImageRequest, MAX_RESPONSE_BYTES,
 };
 use anyhow::{anyhow, Context};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+pub(super) async fn edit(
+    client: &Client,
+    config: &AdapterConfig,
+    request: &NativeImageRequest,
+) -> anyhow::Result<GeneratedImage> {
+    if request.mask.is_some() {
+        return Err(provider_error(
+            "codex-oauth",
+            "CAPABILITY_UNSUPPORTED",
+            "Codex OAuth providers currently reject raster masks",
+            false,
+        ));
+    }
+    let route = config.bridge_provider.trim();
+    if !matches!(route, "codex-responses" | "codex-app-server") {
+        return Err(provider_error(
+            "codex-oauth",
+            "configuration",
+            "imagegen-bridge provider must be codex-responses or codex-app-server",
+            false,
+        ));
+    }
+    verify_edit_capability(client, config, route, &request.model).await?;
+    let source = request.source.as_ref().expect("native request validated");
+    let mut form = reqwest::multipart::Form::new()
+        .text("prompt", request.prompt.clone())
+        .text("model", normalize_bridge_model(&request.model))
+        .text("provider", route.to_string())
+        .text("n", "1")
+        .text("response_format", "b64_json")
+        .text("output_format", normalize_format(&request.output_format))
+        .text(
+            "compatibility",
+            clean_or(&config.bridge_compatibility, "strict"),
+        )
+        .part(
+            "image",
+            reqwest::multipart::Part::bytes(source.png.clone())
+                .file_name("source.png")
+                .mime_str("image/png")?,
+        );
+    if !request.size.trim().is_empty() {
+        form = form.text("size", request.size.clone());
+    }
+    if !request.quality.trim().is_empty() {
+        form = form.text("quality", request.quality.clone());
+    }
+    let endpoint = format!(
+        "{}/v1/images/edits",
+        config.bridge_url.trim_end_matches('/')
+    );
+    let mut builder = client
+        .post(endpoint)
+        .header("Idempotency-Key", &request.idempotency_key)
+        .multipart(form);
+    if !config.bridge_token.trim().is_empty() {
+        builder = builder.bearer_auth(config.bridge_token.trim());
+    }
+    let response = builder.send().await.map_err(|error| {
+        transport_error("codex-oauth", "requesting imagegen-bridge edit", error)
+    })?;
+    let status = response.status();
+    let raw = read_limited(response, MAX_RESPONSE_BYTES).await?;
+    if !status.is_success() {
+        return Err(provider_error(
+            "codex-oauth",
+            bridge_status_code(status),
+            format!("HTTP {status}: {}", bridge_error_detail(&raw)),
+            matches!(status.as_u16(), 408 | 429 | 500..=599),
+        ));
+    }
+    let response: CompatibleBridgeResponse =
+        serde_json::from_slice(&raw).context("decoding imagegen-bridge edit response")?;
+    let first = response
+        .data
+        .first()
+        .ok_or_else(|| anyhow!("imagegen-bridge edit returned no images"))?;
+    let encoded = first
+        .b64_json
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| anyhow!("imagegen-bridge edit returned no b64_json"))?;
+    let format = normalize_format(&request.output_format);
+    Ok(GeneratedImage {
+        bytes: decode_and_validate(encoded, &format)?,
+        output_format: format,
+        revised_prompt: first.revised_prompt.clone().unwrap_or_default(),
+        provider_label: format!(
+            "codex-oauth/{}:{}",
+            response.imagegen_bridge.provider, response.imagegen_bridge.model
+        ),
+    })
+}
+
+async fn verify_edit_capability(
+    client: &Client,
+    config: &AdapterConfig,
+    provider: &str,
+    model: &str,
+) -> anyhow::Result<()> {
+    let mut endpoint = reqwest::Url::parse(&format!(
+        "{}/v1/providers/{provider}/capabilities",
+        config.bridge_url.trim_end_matches('/')
+    ))?;
+    endpoint.query_pairs_mut().append_pair("model", model);
+    let mut builder = client.get(endpoint);
+    if !config.bridge_token.trim().is_empty() {
+        builder = builder.bearer_auth(config.bridge_token.trim());
+    }
+    let response = builder.send().await.map_err(|error| {
+        transport_error(
+            "codex-oauth",
+            "probing imagegen-bridge edit capability",
+            error,
+        )
+    })?;
+    let status = response.status();
+    let raw = read_limited(response, MAX_RESPONSE_BYTES).await?;
+    if !status.is_success() {
+        return Err(provider_error(
+            "codex-oauth",
+            bridge_status_code(status),
+            format!(
+                "capability probe HTTP {status}: {}",
+                bridge_error_detail(&raw)
+            ),
+            matches!(status.as_u16(), 408 | 429 | 500..=599),
+        ));
+    }
+    let value: Value = serde_json::from_slice(&raw).context("decoding bridge capabilities")?;
+    let edits = value.get("edits").and_then(Value::as_bool) == Some(true);
+    let image_support = value
+        .pointer("/edit_images/support")
+        .and_then(Value::as_str)
+        .is_some_and(|support| support != "unsupported");
+    if !edits || !image_support {
+        return Err(provider_error(
+            "codex-oauth",
+            "CAPABILITY_UNSUPPORTED",
+            format!("bridge route {provider}:{model} does not advertise source-image edits"),
+            false,
+        ));
+    }
+    Ok(())
+}
+
+fn bridge_status_code(status: reqwest::StatusCode) -> &'static str {
+    match status.as_u16() {
+        400 | 404 | 409 | 422 => "invalid_request",
+        401 | 403 => "authentication",
+        408 | 429 => "rate_limited",
+        500..=599 => "upstream_unavailable",
+        _ => "upstream_error",
+    }
+}
 
 pub(super) async fn generate(
     client: &Client,
@@ -162,6 +318,24 @@ struct BridgeImageData {
     kind: String,
     b64_json: Option<String>,
     format: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompatibleBridgeResponse {
+    data: Vec<CompatibleBridgeImageData>,
+    imagegen_bridge: CompatibleBridgeMetadata,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompatibleBridgeImageData {
+    b64_json: Option<String>,
+    revised_prompt: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CompatibleBridgeMetadata {
+    provider: String,
+    model: String,
 }
 
 #[derive(Debug, Deserialize)]

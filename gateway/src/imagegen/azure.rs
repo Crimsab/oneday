@@ -1,12 +1,88 @@
 use super::common::*;
 use super::{
     http_error, provider_config, provider_error, transport_error, AdapterConfig, GenerateRequest,
-    GeneratedImage, MAX_RESPONSE_BYTES,
+    GeneratedImage, NativeImageRequest, MAX_RESPONSE_BYTES,
 };
 use anyhow::{anyhow, Context};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
+
+pub(super) async fn edit(
+    client: &Client,
+    config: &AdapterConfig,
+    request: &NativeImageRequest,
+) -> anyhow::Result<GeneratedImage> {
+    let direct = provider_config(config, &request.provider);
+    let format = normalize_format(&request.output_format);
+    if format == "webp" {
+        return Err(provider_error(
+            &request.provider,
+            "CAPABILITY_UNSUPPORTED",
+            "Azure image edits support png or jpeg output",
+            false,
+        ));
+    }
+    let source = request.source.as_ref().expect("native request validated");
+    let mut form = reqwest::multipart::Form::new()
+        .text("prompt", request.prompt.clone())
+        .text("n", "1")
+        .text("output_format", format.clone())
+        .part(
+            "image",
+            reqwest::multipart::Part::bytes(source.png.clone())
+                .file_name("source.png")
+                .mime_str("image/png")?,
+        );
+    if !request.size.trim().is_empty() {
+        form = form.text("size", request.size.clone());
+    }
+    if !request.quality.trim().is_empty() {
+        form = form.text("quality", request.quality.clone());
+    }
+    if let Some(mask) = &request.mask {
+        form = form.part(
+            "mask",
+            reqwest::multipart::Part::bytes(super::operations::alpha_edit_mask(mask)?)
+                .file_name("mask.png")
+                .mime_str("image/png")?,
+        );
+    }
+    let mut endpoint = reqwest::Url::parse(direct.base_url.trim_end_matches('/'))
+        .context("parsing Azure OpenAI endpoint")?;
+    {
+        let mut segments = endpoint
+            .path_segments_mut()
+            .map_err(|_| anyhow!("Azure OpenAI endpoint cannot be a base URL"))?;
+        segments.pop_if_empty();
+        segments.extend([
+            "openai",
+            "deployments",
+            request.model.trim(),
+            "images",
+            "edits",
+        ]);
+    }
+    endpoint.query_pairs_mut().append_pair(
+        "api-version",
+        if direct.api_version.trim().is_empty() {
+            "preview"
+        } else {
+            direct.api_version.trim()
+        },
+    );
+    let response = client
+        .post(endpoint)
+        .header("api-key", direct.api_key.trim())
+        .header("Idempotency-Key", &request.idempotency_key)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|error| {
+            transport_error(&request.provider, "requesting Azure image edit", error)
+        })?;
+    super::openai::decode_edit_response(client, response, request, &direct.base_url, &format).await
+}
 
 pub(super) async fn generate(
     client: &Client,

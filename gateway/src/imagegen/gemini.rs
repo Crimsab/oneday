@@ -8,6 +8,55 @@ use reqwest::Client;
 use serde::Deserialize;
 use serde_json::json;
 
+pub(super) async fn edit(
+    client: &Client,
+    config: &AdapterConfig,
+    request: &super::NativeImageRequest,
+) -> anyhow::Result<GeneratedImage> {
+    let direct = provider_config(config, &request.provider);
+    let source = request.source.as_ref().expect("native request validated");
+    let format = normalize_format(&request.output_format);
+    if format == "webp" {
+        return Err(provider_error(
+            &request.provider,
+            "CAPABILITY_UNSUPPORTED",
+            "Gemini interactions image edits support png or jpeg output in OneDay",
+            false,
+        ));
+    }
+    let response_format = json!({
+        "type": "image",
+        "mime_type": if format == "jpeg" { "image/jpeg" } else { "image/png" }
+    });
+    let payload = json!({
+        "model": request.model,
+        "input": [
+            {
+                "type": "image",
+                "data": base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    &source.png,
+                ),
+                "mime_type": "image/png"
+            },
+            {"type": "text", "text": request.prompt}
+        ],
+        "response_format": response_format
+    });
+    let endpoint = format!("{}/interactions", direct.base_url.trim_end_matches('/'));
+    let response = client
+        .post(endpoint)
+        .header("x-goog-api-key", direct.api_key.trim())
+        .header("Idempotency-Key", &request.idempotency_key)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|error| {
+            transport_error(&request.provider, "requesting Gemini image edit", error)
+        })?;
+    decode_response(response, &request.provider, &request.model, &format).await
+}
+
 pub(super) async fn generate(
     client: &Client,
     config: &AdapterConfig,
@@ -60,6 +109,15 @@ pub(super) async fn generate(
         .send()
         .await
         .map_err(|error| transport_error(provider, "requesting Gemini image", error))?;
+    decode_response(response, provider, &request.model, &format).await
+}
+
+async fn decode_response(
+    response: reqwest::Response,
+    provider: &str,
+    model: &str,
+    format: &str,
+) -> anyhow::Result<GeneratedImage> {
     let status = response.status();
     let raw = read_limited(response, MAX_RESPONSE_BYTES).await?;
     if !status.is_success() {
@@ -81,13 +139,13 @@ pub(super) async fn generate(
         .mime_type
         .as_deref()
         .and_then(format_from_mime)
-        .unwrap_or_else(|| format.clone());
+        .unwrap_or_else(|| format.to_string());
     let bytes = decode_and_validate(&image.data, &actual_format)?;
     Ok(GeneratedImage {
         bytes,
         output_format: actual_format,
         revised_prompt: String::new(),
-        provider_label: format!("{provider}:{}", request.model.trim()),
+        provider_label: format!("{provider}:{}", model.trim()),
     })
 }
 

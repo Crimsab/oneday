@@ -116,6 +116,14 @@ pub fn router(state: Arc<AppState>) -> Router {
             post(generate_visual_assets),
         )
         .route(
+            "/api/stories/:story_id/visual-assets/:asset_id/operations",
+            post(create_image_operation),
+        )
+        .route(
+            "/api/stories/:story_id/image-operations/:operation_id",
+            get(image_operation),
+        )
+        .route(
             "/api/stories/:story_id/visual-assets/jobs/:job_id/cancel",
             post(cancel_visual_generation_job),
         )
@@ -803,6 +811,26 @@ async fn generate_visual_assets(
 ) -> Result<Json<assets::VisualAssetsResponse>, ApiError> {
     Ok(Json(
         assets::generate_visual_assets(state.clone(), &story_id, payload).await?,
+    ))
+}
+
+async fn create_image_operation(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, asset_id)): Path<(String, String)>,
+    Json(payload): Json<assets::ImageOperationRequest>,
+) -> Result<(StatusCode, Json<assets::VisualAssetsResponse>), ApiError> {
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(assets::create_image_operation(state, &story_id, &asset_id, payload).await?),
+    ))
+}
+
+async fn image_operation(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, operation_id)): Path<(String, String)>,
+) -> Result<Json<assets::ImageOperationView>, ApiError> {
+    Ok(Json(
+        assets::get_image_operation(&state.pool, &story_id, &operation_id).await?,
     ))
 }
 
