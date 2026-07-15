@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.10.0](https://github.com/Crimsab/oneday/compare/v1.9.0...v1.10.0) (2026-07-15)
+
+
+### Features
+
+* **brand:** adopt the OneDay app icon ([47da14f](https://github.com/Crimsab/oneday/commit/47da14f3b67d55c445c27ca4b8aa5f84533bbb33))
+* **i18n:** add English and Italian interfaces ([866b1c9](https://github.com/Crimsab/oneday/commit/866b1c92943d1d97389d84603b45ec901c4e7560))
+* **i18n:** add English and Italian interfaces ([2227b17](https://github.com/Crimsab/oneday/commit/2227b177355c89fd0c4fc794f6e5ce5203a260b2))
+* **imagegen:** add explicit provider adapters ([40c922d](https://github.com/Crimsab/oneday/commit/40c922d2cc271c9f4ab9cc948cec89cfc10d1304))
+* prepare OneDay for public documentation ([91b2879](https://github.com/Crimsab/oneday/commit/91b2879ef368d49ebbd624ae6e59b1756ba6176f))
+* **settings:** redesign image provider configuration ([87a09fa](https://github.com/Crimsab/oneday/commit/87a09fa3559efaeea0562faea413be6b2f48b486))
+
+
+### Bug Fixes
+
+* **ci:** install required workflow runtimes ([a742753](https://github.com/Crimsab/oneday/commit/a7427535763cb7f184258e63c28e2b654eb26661))
+* **ci:** isolate runner temporary files ([1e92abe](https://github.com/Crimsab/oneday/commit/1e92abe8240f606005a879e3ca0a56c7ad7fbecc))
+* **ci:** keep temporary files off slow runner storage ([ff721f2](https://github.com/Crimsab/oneday/commit/ff721f21ae2d266f39bb2da56656eb718d0e7ada))
+* **imagegen:** serialize capability arrays consistently ([2bf8543](https://github.com/Crimsab/oneday/commit/2bf85438d4d0db17cda8cb28c5e4b1b650081bac))
+* **release:** isolate runner temporary files ([03e5139](https://github.com/Crimsab/oneday/commit/03e5139721323cf681471d6046c1f34fbcae9557))
+
 ## [1.9.0](https://github.com/Crimsab/oneday/compare/v1.8.0...v1.9.0) (2026-07-15)
 
 
