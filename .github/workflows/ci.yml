@@ -171,3 +171,53 @@ jobs:
 
       - name: Build gateway image
         run: docker build -f gateway/Dockerfile .
+
+  merge-release-pr:
+    name: Merge validated Release Please PR
+    if: ${{ success() && github.event_name == 'workflow_dispatch' && startsWith(github.ref_name, 'release-please--branches--main') }}
+    needs:
+      - workflow-lint
+      - secret-scan
+      - go-check
+      - gateway-rust-check
+      - gateway-web-check
+      - gateway-docker-build
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Merge exact validated release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$GITHUB_REF_NAME" \
+            --state open \
+            --json number,headRefOid \
+            --jq 'if length == 0 then "" else [.[0].number, .[0].headRefOid] | @tsv end')"
+
+          if [[ -z "$pr" ]]; then
+            echo "No open Release Please pull request found for $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+          IFS=$'\t' read -r number head_sha <<<"$pr"
+          if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+            echo "Refusing to merge: validated $GITHUB_SHA but pull request head is $head_sha" >&2
+            exit 1
+          fi
+
+          gh pr merge "$number" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch
+
+          # GITHUB_TOKEN merges do not emit another workflow run. Dispatch the
+          # release phase explicitly so the merged manifest is tagged/published.
+          gh workflow run release-please.yml --repo "$GITHUB_REPOSITORY" --ref main
