@@ -45,6 +45,7 @@ concurrency:
 jobs:
   build:
     name: Build documentation
+    if: ${{ github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please--branches--main') }}
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
     timeout-minutes: 15
 

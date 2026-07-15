@@ -202,10 +202,10 @@ cargo test --manifest-path gateway/Cargo.toml
 cd gateway/web && bun install --frozen-lockfile && bun run test && bun run build
 ```
 
-CI runs Go verification, reachable vulnerability scanning, and
-cross-compilation; Rust tests and Clippy; web unit and Playwright gates; a
-complete Docker build; workflow linting; and a Gitleaks source scan. Public
-pull requests run only on GitHub-hosted runners.
+One consolidated CI job runs Go verification, reachable vulnerability scanning,
+and cross-compilation; Rust tests and Clippy; web unit and Playwright gates; a
+complete Docker build with version smoke checks; workflow linting; and a
+Gitleaks source scan. Public pull requests run only on GitHub-hosted runners.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
@@ -216,7 +216,9 @@ upgrade and review the [changelog](CHANGELOG.md) for migration-sensitive changes
 
 Release Please turns Conventional Commits into a release PR, updates the
 changelog, creates the semantic version tag, and publishes Linux/Windows
-archives plus the versioned GHCR image after the release gates pass.
+archives plus the versioned GHCR image. The release PR is merged automatically
+only when its base is the exact `main` commit that passed full CI and its diff is
+limited to generated release metadata.
 
 ## Community and security
 

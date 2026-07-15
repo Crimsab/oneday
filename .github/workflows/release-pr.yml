@@ -1,0 +1,134 @@
+name: Release PR
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate-and-merge:
+    name: Validate and merge release metadata
+    if: ${{ startsWith(github.ref_name, 'release-please--branches--main') }}
+    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Validate release metadata and verified base
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pr="$(gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$GITHUB_REF_NAME" \
+            --state open \
+            --json number,headRefOid,baseRefOid,headRefName \
+            --jq 'if length == 0 then "" else [.[0].number, .[0].headRefOid, .[0].baseRefOid, .[0].headRefName] | @tsv end')"
+
+          if [[ -z "$pr" ]]; then
+            echo "No open Release Please pull request found for $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+          IFS=$'\t' read -r number head_sha base_sha branch <<<"$pr"
+          if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
+            echo "Release head changed: expected $GITHUB_SHA, found $head_sha" >&2
+            exit 1
+          fi
+
+          main_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$base_sha" != "$main_sha" ]]; then
+            echo "Main advanced from $base_sha to $main_sha; waiting for the next verified release update" >&2
+            exit 1
+          fi
+
+          successful_ci="$(gh api \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/commits/$base_sha/check-runs?per_page=100" \
+            --jq '[.check_runs[] | select(.name == "Full verification" and .conclusion == "success")] | length')"
+          if [[ "$successful_ci" -lt 1 ]]; then
+            echo "Base commit $base_sha has no successful Full verification check" >&2
+            exit 1
+          fi
+
+          mapfile -t changed_files < <(gh api \
+            --paginate \
+            "repos/$GITHUB_REPOSITORY/pulls/$number/files?per_page=100" \
+            --jq '.[].filename')
+
+          if [[ "${#changed_files[@]}" -eq 0 ]]; then
+            echo "Release pull request has no changed files" >&2
+            exit 1
+          fi
+
+          for file in "${changed_files[@]}"; do
+            case "$file" in
+              .release-please-manifest.json|CHANGELOG.md) ;;
+              *)
+                echo "Unexpected file in release pull request: $file" >&2
+                exit 1
+                ;;
+            esac
+          done
+
+          git diff --check "$base_sha...$head_sha"
+          version="$(jq -er '."."' .release-please-manifest.json)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release manifest version: $version" >&2
+            exit 1
+          fi
+          grep -Fq "## [$version]" CHANGELOG.md
+
+          {
+            echo "number=$number"
+            echo "head_sha=$head_sha"
+            echo "base_sha=$base_sha"
+            echo "branch=$branch"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Merge exact release commit and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ steps.release.outputs.number }}
+          HEAD_SHA: ${{ steps.release.outputs.head_sha }}
+          BASE_SHA: ${{ steps.release.outputs.base_sha }}
+          BRANCH: ${{ steps.release.outputs.branch }}
+        run: |
+          current_head="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$NUMBER" --jq '.head.sha')"
+          current_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq '.object.sha')"
+
+          if [[ "$current_head" != "$HEAD_SHA" || "$current_main" != "$BASE_SHA" ]]; then
+            echo "Release or main changed after validation; refusing to merge" >&2
+            exit 1
+          fi
+
+          merged="$(gh api \
+            --method PUT \
+            "repos/$GITHUB_REPOSITORY/pulls/$NUMBER/merge" \
+            -f merge_method=squash \
+            -f sha="$HEAD_SHA" \
+            --jq '.merged')"
+          if [[ "$merged" != "true" ]]; then
+            echo "GitHub did not merge release pull request $NUMBER" >&2
+            exit 1
+          fi
+
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$BRANCH" || true
+
+          # Merges performed by GITHUB_TOKEN do not emit another workflow run.
+          gh workflow run release-please.yml --repo "$GITHUB_REPOSITORY" --ref main

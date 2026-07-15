@@ -53,7 +53,9 @@ action composer without depending on a live model provider.
 
 ## Full CI coverage
 
-The `CI` workflow runs:
+The `CI` workflow uses one consolidated job so the private, single-runner pool
+does not pay a new ephemeral-runner startup cost between every language gate.
+It runs:
 
 - workflow syntax validation with Actionlint;
 - a Gitleaks scan of tracked content;
@@ -70,9 +72,11 @@ infrastructure.
 
 ## Release verification
 
-`make release-check` is the local release gate. The Release Please workflow
-repeats the relevant Go, Rust, web, browser, and packaging checks before it
-uploads Linux and Windows archives to a GitHub Release.
+`make release-check` remains the local release gate. In GitHub, the complete CI
+suite runs once on the exact `main` commit. The generated release PR validates
+only its manifest, changelog, base CI result, and immutable head SHA. After that
+metadata-only commit is merged, publication builds and smoke-checks release
+artifacts without repeating the Go, Rust, web, and browser suites.
 
 Before a user-facing release, also verify manually:
 

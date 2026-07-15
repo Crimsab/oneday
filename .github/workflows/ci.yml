@@ -7,6 +7,9 @@ on:
   pull_request:
     branches:
       - main
+    paths-ignore:
+      - ".release-please-manifest.json"
+      - "CHANGELOG.md"
   workflow_dispatch:
 
 permissions:
@@ -17,10 +20,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  workflow-lint:
-    name: Workflow lint
+  verify:
+    name: Full verification
     runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 5
+    timeout-minutes: 90
 
     steps:
       - name: Check out repository
@@ -29,26 +32,8 @@ jobs:
       - name: Lint GitHub Actions
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
 
-  secret-scan:
-    name: Secret scan
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 5
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
       - name: Scan tracked content
         run: docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:v8.30.1 dir --no-banner --redact /repo
-
-  go-check:
-    name: Go checks
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 30
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -56,12 +41,21 @@ jobs:
           go-version-file: go.mod
           cache: false
 
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97.0
+        with:
+          components: rustfmt, clippy
+
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.14
 
-      - name: Run verification gate
+      - name: Install web dependencies
+        working-directory: gateway/web
+        run: bun install --frozen-lockfile
+
+      - name: Run Go verification gate
         run: make verify
 
       - name: Scan Go dependencies for reachable vulnerabilities
@@ -92,20 +86,6 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-benchmark-windows-amd64.exe ./cmd/oneday-benchmark
           GOOS=windows GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-ascii-benchmark-windows-amd64.exe ./cmd/oneday-ascii-benchmark
 
-  gateway-rust-check:
-    name: Gateway Rust checks
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 30
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97.0
-        with:
-          components: rustfmt, clippy
-
       - name: Check gateway formatting
         continue-on-error: true
         run: cargo fmt --manifest-path gateway/Cargo.toml -- --check
@@ -118,36 +98,6 @@ jobs:
 
       - name: Build gateway
         run: cargo build --manifest-path gateway/Cargo.toml
-
-  gateway-web-check:
-    name: Gateway web checks
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 45
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Install dependencies
-        working-directory: gateway/web
-        run: bun install --frozen-lockfile
-
-      - name: Validate documentation
-        run: bun scripts/check-docs.ts
-
-      - name: Warm Go command cache
-        run: go build ./cmd/oneday
 
       - name: Run web tests
         working-directory: gateway/web
@@ -165,67 +115,20 @@ jobs:
         working-directory: gateway/web
         run: bun run test:e2e
 
-  gateway-docker-build:
-    name: Gateway Docker build
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 30
-    needs:
-      - gateway-rust-check
-      - gateway-web-check
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-
-      - name: Build gateway image
-        run: docker build -f gateway/Dockerfile .
-
-  merge-release-pr:
-    name: Merge validated Release Please PR
-    if: ${{ success() && github.event_name == 'workflow_dispatch' && startsWith(github.ref_name, 'release-please--branches--main') }}
-    needs:
-      - workflow-lint
-      - secret-scan
-      - go-check
-      - gateway-rust-check
-      - gateway-web-check
-      - gateway-docker-build
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 10
-    permissions:
-      actions: write
-      contents: write
-      pull-requests: write
-
-    steps:
-      - name: Merge exact validated release commit
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Build and smoke-test gateway image
         run: |
-          pr="$(gh pr list \
-            --repo "$GITHUB_REPOSITORY" \
-            --base main \
-            --head "$GITHUB_REF_NAME" \
-            --state open \
-            --json number,headRefOid \
-            --jq 'if length == 0 then "" else [.[0].number, .[0].headRefOid] | @tsv end')"
+          build_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          docker build \
+            -f gateway/Dockerfile \
+            --build-arg VERSION=ci \
+            --build-arg COMMIT="$GITHUB_SHA" \
+            --build-arg BUILD_DATE="$build_date" \
+            --build-arg DIRTY=false \
+            -t oneday-gateway:ci \
+            .
 
-          if [[ -z "$pr" ]]; then
-            echo "No open Release Please pull request found for $GITHUB_REF_NAME" >&2
-            exit 1
-          fi
-
-          IFS=$'\t' read -r number head_sha <<<"$pr"
-          if [[ "$head_sha" != "$GITHUB_SHA" ]]; then
-            echo "Refusing to merge: validated $GITHUB_SHA but pull request head is $head_sha" >&2
-            exit 1
-          fi
-
-          gh pr merge "$number" \
-            --repo "$GITHUB_REPOSITORY" \
-            --squash \
-            --delete-branch
-
-          # GITHUB_TOKEN merges do not emit another workflow run. Dispatch the
-          # release phase explicitly so the merged manifest is tagged/published.
-          gh workflow run release-please.yml --repo "$GITHUB_REPOSITORY" --ref main
+          version_output="$(docker run --rm --entrypoint oneday oneday-gateway:ci --version)"
+          printf '%s\n' "$version_output"
+          grep -Fqx 'oneday ci' <<<"$version_output"
+          grep -Fqx "commit: ${GITHUB_SHA:0:12}" <<<"$version_output"
+          grep -Fqx 'dirty: false' <<<"$version_output"
