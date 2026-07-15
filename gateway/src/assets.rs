@@ -1212,7 +1212,7 @@ pub async fn generate_visual_assets(
     let config = image_generation_config(&state)?;
     if !image_generation_available(&config) {
         return Err(anyhow!(
-            "image generation provider is not configured; set ONEDAY_IMAGEGEN_PROVIDER=openclaw-bridge or configure ONEDAY_IMAGEGEN_API_KEY/ONEDAY_LITELLM_API_KEY"
+            "image generation provider is not configured; configure imagegen-bridge, the legacy OpenClaw bridge, or an OpenAI-compatible base URL and API key"
         ));
     }
 
@@ -2657,7 +2657,7 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         timeout_seconds: first_env(&["ONEDAY_IMAGEGEN_TIMEOUT_SECONDS"])
             .and_then(|value| value.parse::<u64>().ok())
             .or_else(|| image_generation.and_then(|config| config.timeout_seconds))
-            .unwrap_or(180),
+            .unwrap_or(360),
         auto_generate: first_env(&["ONEDAY_IMAGEGEN_AUTOGENERATE"])
             .map(|value| parse_bool(&value))
             .or_else(|| image_generation.and_then(|config| config.auto_generate))

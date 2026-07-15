@@ -33,16 +33,17 @@ game state.
   directories. Use an HTTP provider in the standard container setup. Advanced
   operators may add a private Compose override for a local CLI integration,
   but credentials must remain read-only and outside the repository.
-- Browser visual asset generation supports
-  `ONEDAY_IMAGEGEN_PROVIDER=openclaw-bridge` and calls the configured
-  `ONEDAY_IMAGEGEN_OPENCLAW_URL` (for example a bridge on
-  `http://host.docker.internal:8099/generate`).
+- Browser visual asset generation prefers
+  `ONEDAY_IMAGEGEN_PROVIDER=imagegen-bridge`, with native provider/fallback
+  routing through `ONEDAY_IMAGEGEN_BRIDGE_URL`. The legacy `openclaw-bridge`
+  route and generic OpenAI-compatible image endpoints remain available.
   The gateway forwards prompt, output format, size, optional resolution/aspect
-  ratio/background, and stores provider `revised_prompt` values on asset
-  versions for audit.
+  ratio/background, and stores the actual provider/model plus provider
+  `revised_prompt` values on asset versions for audit.
 - To send the saved asset prompt exactly as-is, set
   `ONEDAY_IMAGEGEN_APPEND_NEGATIVE_PROMPT=false`; otherwise the gateway appends
-  the asset negative prompt as an `Avoid:` line before calling the provider.
+  the asset negative prompt as an `Avoid:` line for legacy providers; the native
+  bridge receives it as a separate policy-aware field.
 
 ## Browser Feature Inventory
 

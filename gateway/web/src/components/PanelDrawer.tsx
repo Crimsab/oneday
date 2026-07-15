@@ -1148,6 +1148,15 @@ function ModelRoutingSettings({
         configured.
       </p>
       <div className="settings-grid">
+        <datalist id="image-provider-options">
+          <option value="imagegen-bridge" label="Native provider-neutral bridge" />
+          <option value="openai-compatible" label="OpenAI-compatible images API" />
+          <option value="openclaw-bridge" label="Legacy OpenClaw bridge" />
+        </datalist>
+        <datalist id="imagegen-bridge-provider-options">
+          <option value="codex-responses" label="Codex Responses OAuth" />
+          <option value="codex-app-server" label="Codex app-server OAuth" />
+        </datalist>
         <label>
           <span>Provider priority</span>
           <CustomSelect
@@ -1209,6 +1218,7 @@ function ModelRoutingSettings({
         <label>
           <span>Image provider</span>
           <input
+            list="image-provider-options"
             value={draft.imageGeneration.provider}
             onChange={(event) =>
               updateImageGeneration({ provider: event.target.value })
@@ -1255,23 +1265,25 @@ function ModelRoutingSettings({
         <label>
           <span>imagegen-bridge provider</span>
           <input
+            list="imagegen-bridge-provider-options"
             value={draft.imageGeneration.imagegenBridgeProvider}
             onChange={(event) =>
               updateImageGeneration({ imagegenBridgeProvider: event.target.value })
             }
-            placeholder="codex-app-server"
+            placeholder="codex-responses"
           />
         </label>
         <label>
           <span>Map icon bridge provider</span>
           <input
+            list="imagegen-bridge-provider-options"
             value={draft.imageGeneration.imagegenBridgeMapIconProvider}
             onChange={(event) =>
               updateImageGeneration({
                 imagegenBridgeMapIconProvider: event.target.value,
               })
             }
-            placeholder="codex-app-server"
+            placeholder="codex-responses"
           />
         </label>
         <label>
@@ -1283,7 +1295,7 @@ function ModelRoutingSettings({
                 imagegenBridgeFallbacks: event.target.value,
               })
             }
-            placeholder="codex-responses:gpt-image-2"
+            placeholder="codex-app-server:gpt-image-2"
           />
         </label>
         <label>

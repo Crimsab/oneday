@@ -58,6 +58,21 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.ImageGeneration.Model != "" {
 		t.Errorf("ImageGeneration.Model = %q, want empty default", cfg.AI.ImageGeneration.Model)
 	}
+	if cfg.AI.ImageGeneration.Provider != "imagegen-bridge" {
+		t.Errorf("ImageGeneration.Provider = %q, want imagegen-bridge", cfg.AI.ImageGeneration.Provider)
+	}
+	if cfg.AI.ImageGeneration.ImagegenBridgeProvider != "codex-responses" {
+		t.Errorf("ImageGeneration.ImagegenBridgeProvider = %q, want codex-responses", cfg.AI.ImageGeneration.ImagegenBridgeProvider)
+	}
+	if len(cfg.AI.ImageGeneration.ImagegenBridgeFallbacks) != 1 || cfg.AI.ImageGeneration.ImagegenBridgeFallbacks[0] != "codex-app-server:gpt-image-2" {
+		t.Errorf("ImageGeneration.ImagegenBridgeFallbacks = %#v, want codex-app-server fallback", cfg.AI.ImageGeneration.ImagegenBridgeFallbacks)
+	}
+	if cfg.AI.ImageGeneration.ImagegenBridgeFallbackPolicy != "on_error" {
+		t.Errorf("ImageGeneration.ImagegenBridgeFallbackPolicy = %q, want on_error", cfg.AI.ImageGeneration.ImagegenBridgeFallbackPolicy)
+	}
+	if cfg.AI.ImageGeneration.TimeoutSeconds != 360 {
+		t.Errorf("ImageGeneration.TimeoutSeconds = %d, want 360", cfg.AI.ImageGeneration.TimeoutSeconds)
+	}
 	if cfg.AI.Embedding.Provider != "auto" {
 		t.Errorf("Embedding.Provider = %q, want auto", cfg.AI.Embedding.Provider)
 	}

@@ -49,7 +49,7 @@ export const settingsSearchEntries: SettingsSearchEntry[] = [
   entry("narrative-model", "models", "Narrative model", "Choose the primary story model.", "ai narrator"),
   entry("utility-model", "models", "Utility model", "Choose the model for supporting tasks.", "ai helper"),
   entry("repair-model", "models", "Repair model", "Configure structured-output repair and fallbacks.", "retry json"),
-  entry("image-model", "models", "Image generation model", "Configure provider, model, sizes, and output format.", "imagegen openai openclaw"),
+  entry("image-model", "models", "Image generation model", "Configure provider, model, sizes, and output format.", "imagegen codex responses openai litellm external openclaw"),
   entry("embedding-model", "models", "Embedding model", "Configure RAG embedding provider and model.", "vector memory rag"),
   entry("runtime-status", "advanced", "Runtime status", "Inspect transport, capabilities, and active theme.", "sse gateway turn diagnostics"),
   entry("configuration-revision", "advanced", "Configuration revision", "Inspect and reload the active model configuration.", "config version refresh"),

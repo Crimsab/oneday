@@ -213,7 +213,7 @@ function imageGenerationDraft(
     quality: settings.quality,
     outputFormat: settings.output_format,
     background: settings.background,
-    timeoutSeconds: settings.timeout_seconds || 180,
+    timeoutSeconds: settings.timeout_seconds || 360,
     autoGenerate: settings.auto_generate,
     appendNegativePrompt: settings.append_negative_prompt,
   };
@@ -248,7 +248,7 @@ function imageGenerationUpdate(
     background: draft.background.trim(),
     timeout_seconds: Number.isFinite(draft.timeoutSeconds)
       ? Math.max(1, Math.round(draft.timeoutSeconds))
-      : 180,
+      : 360,
     auto_generate: draft.autoGenerate,
     append_negative_prompt: draft.appendNegativePrompt,
   };

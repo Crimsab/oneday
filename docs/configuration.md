@@ -54,6 +54,9 @@ Visual settings live under `ai.image_generation` and can be overridden with
   preferred adapter. It calls the native `/v1/images`
   contract and preserves provider routing, ordered fallbacks, compatibility
   normalization, idempotency, revised prompts, and verified output metadata.
+- The default route is `codex-responses` with
+  `codex-app-server:gpt-image-2` as the ordered technical-error fallback. Both
+  use Codex/ChatGPT OAuth; neither consumes `OPENAI_API_KEY`.
 - `imagegen_bridge_provider` and `imagegen_bridge_map_icon_provider` can route
   general art and transparent icons independently. Models may be omitted to use
   the bridge provider defaults.
@@ -64,7 +67,11 @@ Visual settings live under `ai.image_generation` and can be overridden with
   browser state or committed YAML. The Options panel reports only whether it is
   configured.
 - Legacy `openclaw-bridge` calls `openclaw_bridge_url`. Any other provider name
-  uses the OpenAI-compatible `base_url`, `api_key`, and `/images/generations`.
+  uses the OpenAI-compatible `base_url`, bearer `api_key`, and
+  `/images/generations`. This covers OpenAI Platform and compatible gateways
+  such as LiteLLM when their image route follows that contract. Provider APIs
+  with different paths, authentication headers, or payloads belong behind
+  `imagegen-bridge` rather than being guessed by OneDay.
 - `auto_generate` controls background generation; failed work remains non-blocking.
 - `append_negative_prompt` enables saved negative direction. The native bridge
   receives it as `negative_prompt`; legacy adapters receive a merged prompt.

@@ -87,11 +87,11 @@ ai:
     openclaw_bridge_url: "http://127.0.0.1:8099/generate"
     imagegen_bridge_url: "http://127.0.0.1:8787"
     imagegen_bridge_token: "${ONEDAY_IMAGEGEN_BRIDGE_TOKEN}"
-    imagegen_bridge_provider: "codex-app-server"
-    imagegen_bridge_map_icon_provider: "codex-app-server"
+    imagegen_bridge_provider: "codex-responses"
+    imagegen_bridge_map_icon_provider: "codex-responses"
     # Ordered PROVIDER or PROVIDER:MODEL routes. Fallbacks require isolated sessions.
-    imagegen_bridge_fallbacks: []
-    imagegen_bridge_fallback_policy: "on_unavailable"
+    imagegen_bridge_fallbacks: ["codex-app-server:gpt-image-2"]
+    imagegen_bridge_fallback_policy: "on_error"
     imagegen_bridge_compatibility: "normalize"
     default_size: "1024x1024"
     location_size: "1536x1024"
