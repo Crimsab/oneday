@@ -24,6 +24,54 @@ separate Vertex AI `predict` surface: the current Google adapter implements the
 stable Gemini Developer API image contract without adding a heavyweight cloud
 SDK or pretending that Vertex credentials are interchangeable.
 
+## Native editing and inpainting
+
+OneDay keeps generation, contextual editing, raster inpainting, global
+image-to-image transforms, variations, reference generation, and outpainting
+as distinct operations. The Settings catalog exposes structured descriptors
+for the selected provider/model/endpoint; the gateway validates the same
+contract again immediately before dispatch.
+
+| Route | Contextual `edit` | Raster `inpaint` | Notes |
+| --- | --- | --- | --- |
+| Codex OAuth | Yes | No | `imagegen-bridge` attaches the source to the Codex turn. A mask is rejected with `CODEX_RASTER_MASK_UNSUPPORTED`; it is never converted into prompt text. |
+| OpenAI Platform GPT Image | Yes | Yes | Uses `/images/edits`; the internal coverage mask is converted to transparent-is-edit alpha. Mask adherence is provider best-effort. |
+| Azure OpenAI GPT Image deployment | Yes | Yes | Uses the deployment-specific Image Edit API and the same transparent-is-edit conversion. |
+| Gemini image model | Yes | No | Source-image semantic editing through `v1beta/interactions`; Gemini semantic masking is not treated as a raster mask. |
+| Stability AI | No | Yes | Uses `/stable-image/edit/inpaint`; the normalized black-preserve/white-edit mask is sent directly. |
+| fal.ai, Replicate | Not yet advertised | Not yet advertised | Their capabilities are endpoint/model-version specific. Generation remains supported; OneDay does not infer edit support from the provider name. |
+| OpenAI-compatible / LiteLLM | Disabled by default | Disabled by default | Transport compatibility alone does not prove equivalent image semantics or fallback fidelity. |
+
+The browser editor stores a full-resolution `L8` coverage raster independently
+from its red display overlay: `0` preserves a pixel, `255` allows editing, and
+intermediate values provide feathering. The original version is immutable.
+Every successful operation creates a child asset version with its parent,
+operation, mask, branch, and selected-version history preserved.
+
+Operations are asynchronous and never silently downgrade fidelity. The API
+returns `202 Accepted`, then exposes `queued`, `running`, `succeeded`, or
+`failed` in `operations` on the visual-assets response. Reusing an
+idempotency key with a different source, prompt, route, mask hash, or output
+contract returns `IDEMPOTENCY_CONFLICT`.
+
+```json
+{
+  "operation": "inpaint",
+  "source_version_id": 42,
+  "mask_png_base64": "<opaque grayscale PNG>",
+  "prompt": "Replace the lamp with a candle",
+  "fallback": { "mode": "forbid" },
+  "idempotency_key": "a-client-generated-uuid"
+}
+```
+
+Submit it to
+`POST /api/stories/{story_id}/visual-assets/{asset_id}/operations`. Provider
+and model default to the active Settings route; callers may provide them only
+when deliberately selecting another configured route. Status recovery is also
+available at
+`GET /api/stories/{story_id}/image-operations/{operation_id}`.
+
 ## Codex OAuth configuration
 
 ```yaml

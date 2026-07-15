@@ -45,7 +45,8 @@ Investigations · Optional combat · Images and voices**
 - **Long-term memory.** RAG summaries and embeddings keep long-running stories
   grounded without treating the entire transcript as one prompt.
 - **Optional generated media.** Scene art, character portraits, transparent map
-  symbols, ambient ASCII, and spoken audio remain subordinate to canonical text.
+  symbols, native source-image edits, brush-mask inpainting, ambient ASCII, and
+  spoken audio remain subordinate to canonical text.
 
 ## What lives inside a story
 
@@ -70,7 +71,8 @@ for the complete behavior.
 The React interface is served by a Rust/Axum gateway over the same Go engine and
 database as the terminal client. It includes the transcript, story library,
 free-action composer, command palette, history and branches, canonical state
-inspectors, maps, challenges, model settings, audio, and visual asset workflows.
+inspectors, maps, challenges, model settings, audio, and a full-resolution
+visual editor with brush/eraser masks, zoom, pan, and local stroke history.
 
 ### Terminal
 
