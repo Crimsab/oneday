@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.14.0](https://github.com/Crimsab/oneday/compare/v1.13.0...v1.14.0) (2026-07-15)
+
+
+### Features
+
+* **imagegen:** add native image editing operations ([493611d](https://github.com/Crimsab/oneday/commit/493611d7fc6774c8bc018ad2841015734fdb7afd))
+* **web:** add native image mask editor ([9ec181c](https://github.com/Crimsab/oneday/commit/9ec181cea82eb15b0528e71e5c674bb5fa6ba217))
+
+
+### Bug Fixes
+
+* **imagegen:** recover interrupted edit jobs safely ([5b790f5](https://github.com/Crimsab/oneday/commit/5b790f59dff62b414c1d25571274a9cfe37f1a52))
+
 ## [1.13.0](https://github.com/Crimsab/oneday/compare/v1.12.0...v1.13.0) (2026-07-15)
 
 
