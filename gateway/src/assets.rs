@@ -1851,6 +1851,46 @@ fn spawn_image_operation_worker(state: Arc<AppState>, operation_id: String) {
     });
 }
 
+pub fn spawn_image_operation_recovery(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        if let Err(error) = recover_image_operations(state).await {
+            tracing::warn!(error = %error, "image operation recovery stopped");
+        }
+    });
+}
+
+async fn recover_image_operations(state: Arc<AppState>) -> anyhow::Result<()> {
+    // A process exit may happen after an upstream accepted a paid request but
+    // before OneDay persisted the result. Retrying that state would risk a
+    // duplicate charge, so only never-dispatched queued rows are resumed.
+    recover_unknown_image_operation_outcomes(&state.pool).await?;
+
+    loop {
+        let operation_id: Option<String> = sqlx::query_scalar(
+            "SELECT id FROM image_operations WHERE status='queued' ORDER BY created_at,id LIMIT 1",
+        )
+        .fetch_optional(&state.pool)
+        .await?;
+        let Some(operation_id) = operation_id else {
+            return Ok(());
+        };
+        run_image_operation(state.clone(), &operation_id).await?;
+    }
+}
+
+async fn recover_unknown_image_operation_outcomes(pool: &SqlitePool) -> anyhow::Result<u64> {
+    Ok(sqlx::query(
+        r#"UPDATE image_operations
+           SET status='failed',error_code='PROVIDER_UNKNOWN_OUTCOME',
+               error_summary='The process stopped while the provider outcome was unknown; the operation was not retried.',
+               finished_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+           WHERE status='running'"#,
+    )
+    .execute(pool)
+    .await?
+    .rows_affected())
+}
+
 async fn run_image_operation(state: Arc<AppState>, operation_id: &str) -> anyhow::Result<()> {
     let Some(record) = claim_image_operation(&state.pool, operation_id).await? else {
         return Ok(());
@@ -5823,6 +5863,35 @@ mod tests {
         .await
         .expect("active job index");
         assert!(definition.contains("asset_id,branch_id"));
+    }
+
+    #[tokio::test]
+    async fn restart_never_retries_an_operation_with_unknown_provider_outcome() {
+        let pool = visual_job_pool().await;
+        sqlx::query(
+            r#"INSERT INTO image_operations
+               (id,story_id,asset_id,operation,status,provider,model,branch_id,source_commit_id,
+                prompt,requested_parameters_json,idempotency_key)
+               VALUES ('op-running','story','asset-location','edit','running','openai','gpt-image-2',
+                       'branch-main','commit-main','edit it','{}','key-running')"#,
+        )
+        .execute(&pool)
+        .await
+        .expect("insert running operation");
+
+        assert_eq!(
+            recover_unknown_image_operation_outcomes(&pool)
+                .await
+                .expect("recover outcomes"),
+            1
+        );
+        let row =
+            sqlx::query("SELECT status,error_code FROM image_operations WHERE id='op-running'")
+                .fetch_one(&pool)
+                .await
+                .expect("recovered operation");
+        assert_eq!(row_string(&row, "status"), "failed");
+        assert_eq!(row_string(&row, "error_code"), "PROVIDER_UNKNOWN_OUTCOME");
     }
 
     #[test]

@@ -127,6 +127,7 @@ async fn main() -> anyhow::Result<()> {
     });
     assets::spawn_visual_generation_maintenance(state.clone());
     assets::spawn_visual_generation_worker(state.clone());
+    assets::spawn_image_operation_recovery(state.clone());
     assets::spawn_automatic_visual_catchup(state.clone());
     let request_id_header = HeaderName::from_static("x-request-id");
     let trace_request_id_header = request_id_header.clone();
