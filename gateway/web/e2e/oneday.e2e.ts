@@ -440,6 +440,47 @@ test("creates a persistent AI translation job from the translation center", asyn
   expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
 });
 
+test("restores canonical module deep links across reload and browser history", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/stories/story-1/map");
+  await expect(page).toHaveURL(/\/stories\/story-1\/map$/);
+  const compact = page.viewportSize()!.width <= 1240;
+  const mapSurface = compact ? page.getByRole("dialog", { name: "Map" }) : page.locator(".right-inspector");
+  await expect(mapSurface.getByRole("heading", { name: "Map", exact: true })).toBeVisible();
+
+  await page.reload();
+  await expect(page).toHaveURL(/\/stories\/story-1\/map$/);
+  await expect((compact ? page.getByRole("dialog", { name: "Map" }) : page.locator(".right-inspector")).getByRole("heading", { name: "Map", exact: true })).toBeVisible();
+
+  if (compact) await page.getByRole("dialog", { name: "Map" }).getByRole("button", { name: "Close" }).click();
+  await openRail(page);
+  await page.locator("#story-navigation").getByRole("button", { name: "Codex", exact: true }).click();
+  await expect(page).toHaveURL(/\/stories\/story-1\/codex$/);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/stories\/story-1\/map$/);
+  await expect((compact ? page.getByRole("dialog", { name: "Map" }) : page.locator(".right-inspector")).getByRole("heading", { name: "Map", exact: true })).toBeVisible();
+  await page.goForward();
+  await expect(page).toHaveURL(/\/stories\/story-1\/codex$/);
+});
+
+test("routes the Story Library and Translation Center as recoverable surfaces", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/stories");
+  const library = page.getByRole("dialog", { name: "Story library" });
+  await expect(library).toBeVisible();
+  await library.getByRole("button", { name: "Close" }).click();
+  await expect(page).toHaveURL(/\/stories\/story-1\/history$/);
+
+  await page.goto("/stories/story-1/translations");
+  const translations = page.getByRole("dialog", { name: "Translation center" });
+  await expect(translations).toBeVisible();
+  await translations.getByRole("button", { name: "Close" }).click();
+  await expect(page).toHaveURL(/\/stories\/story-1\/history$/);
+
+  await page.goto("/stories/missing/map");
+  await expect(page).toHaveURL(/\/stories\/story-1\/history$/);
+});
+
 test("shows optional choice context including used attributes", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ density: "balanced", fontSize: "base", accent: "amber", showLeftRail: false, showInspector: false, wrapTranscript: true, showChoiceDetails: true }));
@@ -617,7 +658,7 @@ test("restores a message decision and only exposes branch navigation when altern
   const checkout = page.waitForResponse((response) => response.url().endsWith("/timeline") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Next alternative" }).click();
   await checkout;
-  await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
+  await expect(page.locator(".center-stage").getByText("Mira studies the fractured seal.").first()).toBeVisible();
 });
 
 test("keeps story branches inline and closes the menu outside or with escape", async ({ page }) => {
@@ -1186,13 +1227,13 @@ test("switches and persists interface locale without changing story or speech la
 
   await expect(page.getByRole("heading", { name: "Aspetto" })).toBeVisible();
   await expect(page.getByText("Cambia i controlli e i messaggi di OneDay.")).toBeVisible();
-  await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "it");
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem("oneday-browser-preferences-v2") || "{}").locale)).toBe("it");
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Opzioni" })).toBeVisible();
-  await expect(page.getByText("Mira studies the fractured seal.")).toBeVisible();
+  await expect(page.getByRole("main").getByText("Mira studies the fractured seal.")).toBeVisible();
   await page.getByRole("button", { name: "Opzioni" }).click();
   await page.getByRole("button", { name: /Audio parlato/ }).click();
   await expect(page.getByPlaceholder("en-US")).toHaveValue("en");

@@ -98,9 +98,20 @@ import { effectiveRouteCapabilities } from "./imageOperations";
 import type { SpatialEdge } from "./spatialMap";
 import { turnEventMessage } from "./presentation";
 import { activeStoryCount, railPresentation, toggleDesktopRailMode } from "./features/navigation/railState";
+import {
+  appRoutePath,
+  historyReturnRoute,
+  isModuleSection,
+  parseAppRoute,
+  resolveAppRoute,
+  sameAppRoute,
+  writeAppRoute,
+  type AppRoute,
+} from "./appRoute";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
 let didBootstrap = false;
+const initialAppRoute = typeof window === "undefined" ? null : parseAppRoute(window.location.pathname);
 const PanelDrawer = lazy(() => import("./components/PanelDrawer").then((module) => ({ default: module.PanelDrawer })));
 const StoryLibraryDrawer = lazy(() => import("./features/story-library/StoryLibraryDrawer").then((module) => ({ default: module.StoryLibraryDrawer })));
 type HealthState = { kind: "starting" } | { kind: "stories"; count: number } | { kind: "error"; message: string };
@@ -114,15 +125,16 @@ function initialOverlayFromLocation(): OverlayKind {
 function App() {
   const { t } = useTranslation(["common", "story", "notifications"]);
   const [stories, setStories] = useState<StorySummary[]>([]);
-  const [storyId, setStoryId] = useState("");
+  const [storyId, setStoryId] = useState(() => initialAppRoute?.kind === "story" ? initialAppRoute.storyId : "");
   const [snapshot, setSnapshot] = useState<StorySnapshot | null>(null);
   const [sync, setSync] = useState<SyncState>("Idle");
   const [health, setHealth] = useState<HealthState>({ kind: "starting" });
-  const [selectedTab, setSelectedTab] = useState<ModuleTab>("history");
+  const [selectedTab, setSelectedTab] = useState<ModuleTab>(() => initialAppRoute?.kind === "story" && isModuleSection(initialAppRoute.section) ? initialAppRoute.section : "history");
   const [moduleFocusId, setModuleFocusId] = useState<string | null>(null);
   const [moduleOverlayTab, setModuleOverlayTab] = useState<ModuleTab | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(() => initialOverlayFromLocation());
-  const [storyLibraryOpen, setStoryLibraryOpen] = useState(false);
+  const [storyLibraryOpen, setStoryLibraryOpen] = useState(() => initialAppRoute?.kind === "library");
+  const [translationCenterOpen, setTranslationCenterOpen] = useState(() => initialAppRoute?.kind === "story" && initialAppRoute.section === "translations");
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 860px)").matches);
   const [saveFilter, setSaveFilter] = useState("");
@@ -154,6 +166,9 @@ function App() {
   const pendingActionIdentity = useRef<PendingActionIdentity | null>(null);
   const actionSubmitInFlight = useRef(false);
   const storyIdRef = useRef(storyId);
+  const selectedTabRef = useRef(selectedTab);
+  const storiesRef = useRef(stories);
+  const storiesLoadedRef = useRef(false);
   const pausedRef = useRef(paused);
   const snapshotRequestVersion = useRef(0);
   const timelineRequestVersion = useRef(0);
@@ -162,6 +177,8 @@ function App() {
   const visualAssetsRequestVersion = useRef(0);
   const miniGameRequestVersion = useRef(0);
   storyIdRef.current = storyId;
+  selectedTabRef.current = selectedTab;
+  storiesRef.current = stories;
   pausedRef.current = paused;
   const healthText = health.kind === "starting"
     ? t("notifications:health.starting")
@@ -179,21 +196,67 @@ function App() {
     }
   }, []);
 
+  const applyAppRoute = useCallback((route: AppRoute) => {
+    setStoryLibraryOpen(route.kind === "library");
+    setTranslationCenterOpen(route.kind === "story" && route.section === "translations");
+    setMobileRailOpen(false);
+    if (route.kind === "library") {
+      setOverlay((current) => current === "module" ? null : current);
+      setModuleOverlayTab(null);
+      setModuleFocusId(null);
+      return;
+    }
+    if (route.storyId !== storyIdRef.current) setStoryId(route.storyId);
+    if (!isModuleSection(route.section)) {
+      setOverlay((current) => current === "module" ? null : current);
+      setModuleOverlayTab(null);
+      setModuleFocusId(null);
+      return;
+    }
+    setSelectedTab(route.section);
+    setModuleFocusId(null);
+    if (route.section !== "history" && window.matchMedia("(max-width: 1240px)").matches) {
+      setModuleOverlayTab(route.section);
+      setOverlay("module");
+    } else {
+      setModuleOverlayTab(null);
+      setOverlay((current) => current === "module" ? null : current);
+      setPreferences((value) => ({
+        ...defaultPreferences,
+        ...value,
+        showInspector: true,
+      }));
+    }
+  }, []);
+
+  const navigateAppRoute = useCallback((route: AppRoute, mode: "push" | "replace" = "push", returnTo?: AppRoute) => {
+    const current = parseAppRoute(window.location.pathname);
+    if (!current || !sameAppRoute(current, route) || mode === "replace") {
+      writeAppRoute(route, mode, returnTo ? { returnTo: appRoutePath(returnTo) } : {});
+    }
+    applyAppRoute(route);
+  }, [applyAppRoute]);
+
   const refreshStories = useCallback(async () => {
     setSync("Loading");
     try {
       const nextStories = await getStories();
       setStories(nextStories);
-      const selectedStoryId = storyIdRef.current;
-      setSync(selectedStoryId ? (pausedRef.current ? "Paused" : "Live") : "Idle");
-      if (!selectedStoryId && nextStories[0]) setStoryId(nextStories[0].id);
+      storiesRef.current = nextStories;
+      storiesLoadedRef.current = true;
+      const requested = parseAppRoute(window.location.pathname);
+      const resolved = resolveAppRoute(requested, nextStories);
+      const returnTo = historyReturnRoute(window.history.state);
+      writeAppRoute(resolved, "replace", returnTo ? { returnTo: appRoutePath(returnTo) } : {});
+      applyAppRoute(resolved);
+      setSync(resolved.kind === "story" ? (pausedRef.current ? "Paused" : "Live") : "Idle");
       return nextStories;
     } catch (error) {
       setSync("Error");
       setNotice(errorMessage(error));
       return [] as StorySummary[];
     }
-  }, []);
+  }, [applyAppRoute]);
 
   const refreshCommandDescriptors = useCallback(async () => {
     try {
@@ -287,6 +350,18 @@ function App() {
     void refreshModelSettings();
     void refreshStories();
   }, [refreshCommandDescriptors, refreshHealth, refreshModelSettings, refreshStories]);
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (!storiesLoadedRef.current) return;
+      const requested = parseAppRoute(window.location.pathname);
+      const resolved = resolveAppRoute(requested, storiesRef.current);
+      if (!requested || !sameAppRoute(requested, resolved)) writeAppRoute(resolved, "replace");
+      applyAppRoute(resolved);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [applyAppRoute]);
 
   useEffect(() => {
     if (!storyId) return;
@@ -495,22 +570,10 @@ function App() {
   }, [preferences.locale, refreshHealth]);
 
   const selectModuleTab = useCallback((tab: ModuleTab) => {
-    setModuleFocusId(null);
-    setModuleOverlayTab(null);
-    setSelectedTab(tab);
-    if (window.matchMedia("(max-width: 1240px)").matches) {
-      setModuleOverlayTab(tab);
-      setOverlay("module");
-      setMobileRailOpen(false);
-    } else {
-      setPreferences((value) => ({
-        ...defaultPreferences,
-        ...value,
-        showLeftRail: window.matchMedia("(max-width: 1600px)").matches ? false : value.showLeftRail,
-        showInspector: true,
-      }));
-    }
-  }, []);
+    const activeStoryId = storyIdRef.current;
+    if (!activeStoryId) return;
+    navigateAppRoute({ kind: "story", storyId: activeStoryId, section: tab });
+  }, [navigateAppRoute]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -552,14 +615,14 @@ function App() {
   const selectStory = (nextStoryId: string) => {
     if (nextStoryId === storyId) {
       void loadSnapshot(nextStoryId);
-      return;
+    } else {
+      setSnapshot(null);
+      setVisualAssets(null);
+      setVisualAssetsError("");
+      pendingActionIdentity.current = null;
+      setNotice("");
     }
-    setStoryId(nextStoryId);
-    setSnapshot(null);
-    setVisualAssets(null);
-    setVisualAssetsError("");
-    pendingActionIdentity.current = null;
-    setNotice("");
+    navigateAppRoute({ kind: "story", storyId: nextStoryId, section: selectedTabRef.current });
   };
 
   const handleUpdateStory = async (targetStoryId: string, payload: StoryUpdatePayload) => {
@@ -618,15 +681,16 @@ function App() {
       setStories(nextStories);
       void refreshHealth();
       if (targetStoryId === storyId) {
-        const nextActive = nextStories.find((story) => !story.is_archived) ?? nextStories[0] ?? null;
-        setStoryId(nextActive?.id ?? "");
+        const nextActive = nextStories.find((story) => !story.is_archived) ?? null;
         setSnapshot(null);
         setVisualAssets(null);
         setVisualAssetsError("");
         pendingActionIdentity.current = null;
         if (nextActive) {
+          navigateAppRoute({ kind: "story", storyId: nextActive.id, section: "history" }, "replace");
           await loadSnapshot(nextActive.id);
         } else {
+          navigateAppRoute({ kind: "library" }, "replace");
           setSync("Idle");
         }
       } else {
@@ -840,10 +904,9 @@ function App() {
       const response = await runStoryWizard(payload);
       if (response.snapshot) {
         setSnapshot(response.snapshot);
-        setStoryId(response.snapshot.story.id);
         setVisualAssets(null);
         setStories((items) => [response.snapshot!.story, ...items.filter((story) => story.id !== response.snapshot!.story.id)]);
-        selectModuleTab("history");
+        navigateAppRoute({ kind: "story", storyId: response.snapshot.story.id, section: "history" }, "replace");
         setOverlay(null);
         setHiddenBeforeMessageId(0);
         pendingActionIdentity.current = null;
@@ -1289,9 +1352,37 @@ function App() {
   };
 
   const openStoryLibrary = () => {
-    setOverlay(null);
-    setStoryLibraryOpen(true);
-    setMobileRailOpen(false);
+    const returnTo: AppRoute | undefined = storyIdRef.current
+      ? { kind: "story", storyId: storyIdRef.current, section: selectedTabRef.current }
+      : undefined;
+    navigateAppRoute({ kind: "library" }, "push", returnTo);
+  };
+
+  const closeRoutedSurface = () => {
+    const current = parseAppRoute(window.location.pathname);
+    if (current?.kind === "story" && current.section !== "translations") {
+      applyAppRoute(current);
+      return;
+    }
+    const returnTo = historyReturnRoute(window.history.state);
+    if (returnTo) {
+      window.history.back();
+      return;
+    }
+    navigateAppRoute(resolveAppRoute(null, storiesRef.current), "replace");
+  };
+
+  const setTranslationRouteOpen = (open: boolean) => {
+    if (!open) {
+      closeRoutedSurface();
+      return;
+    }
+    if (!storyIdRef.current) return;
+    navigateAppRoute(
+      { kind: "story", storyId: storyIdRef.current, section: "translations" },
+      "push",
+      { kind: "story", storyId: storyIdRef.current, section: selectedTabRef.current },
+    );
   };
 
   const openNewStoryFromLibrary = () => {
@@ -1366,6 +1457,8 @@ function App() {
         onToggleInspector={toggleInspector}
         onOpen={openOverlay}
         modelSettings={modelSettings}
+        translationCenterOpen={translationCenterOpen}
+        onTranslationCenterOpenChange={setTranslationRouteOpen}
       />
       <div className="workspace">
         {mobileRailOpen && <button type="button" className="mobile-rail-backdrop" aria-label={t("common:close")} onClick={() => setMobileRailOpen(false)} />}
@@ -1450,7 +1543,7 @@ function App() {
         activeStoryId={storyId}
         activeStoryTurn={snapshot?.world.current_turn}
         busyStoryId={storyMutatingId}
-        onClose={() => setStoryLibraryOpen(false)}
+        onClose={closeRoutedSurface}
         onNewStory={openNewStoryFromLibrary}
         onRefresh={refreshStories}
         onSelectStory={selectStory}

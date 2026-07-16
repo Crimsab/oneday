@@ -12,10 +12,12 @@ import { prepareBrowserTranslator, supportsBrowserTranslation, translateInBrowse
 
 const activeStatus = new Set(["queued", "running"]);
 
-export function TranslationCenter({ storyId, storyLanguage, modelSettings }: { storyId: string; storyLanguage: string; modelSettings: ModelSettings | null }) {
+export function TranslationCenter({ storyId, storyLanguage, modelSettings, open: controlledOpen, onOpenChange }: { storyId: string; storyLanguage: string; modelSettings: ModelSettings | null; open?: boolean; onOpenChange?: (open: boolean) => void }) {
   const { t, i18n } = useTranslation("batch_translation");
   const copy = useCallback((key: string, values?: Record<string, unknown>) => t(key, values), [t]);
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = onOpenChange ?? setInternalOpen;
   const [jobs, setJobs] = useState<TranslationJob[]>([]);
   const [chapters, setChapters] = useState<ChapterView[]>([]);
   const [glossary, setGlossary] = useState<TranslationGlossaryEntry[]>([]);

@@ -17,9 +17,11 @@ interface TopBarProps {
   onToggleInspector: () => void;
   onOpen: (overlay: OverlayKind) => void;
   modelSettings: ModelSettings | null;
+  translationCenterOpen: boolean;
+  onTranslationCenterOpenChange: (open: boolean) => void;
 }
 
-export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen, modelSettings }: TopBarProps) {
+export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen, modelSettings, translationCenterOpen, onTranslationCenterOpenChange }: TopBarProps) {
   const { t } = useTranslation("chrome");
   const clock = displayClock(snapshot);
   return (
@@ -34,7 +36,7 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, 
         </div>
       </div>
       <div className="top-actions">
-        {snapshot && <TranslationCenter storyId={snapshot.story.id} storyLanguage={snapshot.story.language} modelSettings={modelSettings} />}
+        {snapshot && <TranslationCenter storyId={snapshot.story.id} storyLanguage={snapshot.story.language} modelSettings={modelSettings} open={translationCenterOpen} onOpenChange={onTranslationCenterOpenChange} />}
         <button
           className="square-button"
           type="button"
