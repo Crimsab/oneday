@@ -11,6 +11,7 @@ Use this index to find the shortest path for what you are trying to do.
 - [Image provider compatibility](image-providers.md) — exact native, bridge, compatible, and unsupported routes.
 - [Observability and traces](observability.md) — local diagnostics, OpenTelemetry, Langfuse, privacy, and verification.
 - [Docker](docker.md) — container lifecycle, persistence, updates, and backups.
+- [Desktop client](desktop.md) — secure Tauri client, native integrations, packaging, and signed updates.
 - [Troubleshooting](troubleshooting.md) — diagnostics and common startup/provider failures.
 
 ## Explore the product
