@@ -19,6 +19,7 @@ export function StoryLibraryDetail({ story, onBack, onOpen }: { story: StorySumm
   const [cache, setCache] = useState<Partial<Record<DetailTab, DetailData>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const pending = loading || cache[tab] === undefined;
 
   useEffect(() => { setTab("overview"); setCache({}); }, [story.id]);
   useEffect(() => {
@@ -48,9 +49,9 @@ export function StoryLibraryDetail({ story, onBack, onOpen }: { story: StorySumm
       {tabs.map(({ id, icon: Icon }) => <button key={id} type="button" className={tab === id ? "active" : ""} aria-pressed={tab === id} onClick={() => setTab(id)}><Icon size={14} />{t(`detail.tabs.${id}`)}</button>)}
     </nav>
     <div className="story-detail-body">
-      {loading && <p className="story-detail-state">{t("detail.loading")}</p>}
+      {pending && <p className="story-detail-state">{t("detail.loading")}</p>}
       {error && <p className="story-detail-state error">{error}</p>}
-      {!loading && !error && <DetailContent tab={tab} value={cache[tab]} story={story} />}
+      {!pending && !error && <DetailContent tab={tab} value={cache[tab]} story={story} />}
     </div>
   </section>;
 }
