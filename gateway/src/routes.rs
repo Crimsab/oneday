@@ -22,8 +22,7 @@ use tower_http::services::{ServeDir, ServeFile};
 pub fn router(state: Arc<AppState>) -> Router {
     let static_dir = state.paths.static_dir.clone();
     let visual_asset_dir = state.paths.visual_asset_dir.clone();
-    let spa =
-        ServeDir::new(&static_dir).not_found_service(ServeFile::new(static_dir.join("index.html")));
+    let spa = ServeDir::new(&static_dir).fallback(ServeFile::new(static_dir.join("index.html")));
 
     Router::new()
         .route("/api/health", get(health))
