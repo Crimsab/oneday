@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.15.0](https://github.com/Crimsab/oneday/compare/v1.14.0...v1.15.0) (2026-07-16)
+
+
+### Features
+
+* add persistent translation and story portability ([7a580f4](https://github.com/Crimsab/oneday/commit/7a580f45c3d88188d4be8ae3af43223e72989f66))
+* complete story details, custom assets, and theme bundles ([55888ae](https://github.com/Crimsab/oneday/commit/55888ae36321784e092fb67316b484ad20d8355e))
+* **desktop:** add secure Tauri remote client ([43ac900](https://github.com/Crimsab/oneday/commit/43ac900d9801d34be2881a0409548faa1acf2002))
+* **web:** add canonical story routes ([8ef5957](https://github.com/Crimsab/oneday/commit/8ef5957ffd10de09c6de1ac9324beaf6b3da3217))
+* **web:** add server-connected PWA ([753d525](https://github.com/Crimsab/oneday/commit/753d5257db82d53f59aa4cbd45f91e8982bff2be))
+* **web:** add story library, uploads, themes, and translation ([922a2b6](https://github.com/Crimsab/oneday/commit/922a2b6a7bfbcf0d1fee2fba5ab2d9e06a1a1166))
+* **web:** expose story exports in the library ([8a8900c](https://github.com/Crimsab/oneday/commit/8a8900cd3d9f8ce1bcea5bc82008d977fbb69889))
+
+
+### Bug Fixes
+
+* **build:** include PWA config in gateway image ([5e2ad4a](https://github.com/Crimsab/oneday/commit/5e2ad4a55954abde0a8828df33037ccd34ea5476))
+* **gateway:** serve SPA routes with success status ([5218cf2](https://github.com/Crimsab/oneday/commit/5218cf2b1a0ed31dd434146cd4bed63e3b0ba015))
+* **web:** align translation controls with their engine ([9f29b0b](https://github.com/Crimsab/oneday/commit/9f29b0b8b2db55f7c2bb12863c56c3337d4d6fa9))
+* **web:** guard lazy story detail transitions ([c9a354f](https://github.com/Crimsab/oneday/commit/c9a354f6729aeecee4fd7f6e8659a3b9059d88cf))
+* **web:** harden translation center responses ([c842faa](https://github.com/Crimsab/oneday/commit/c842faa3b829e11cb470921116ae739432df4053))
+* **web:** integrate the collapsed story count badge ([9d4720e](https://github.com/Crimsab/oneday/commit/9d4720e0e62df3d3a53b52ad4d0f885ab2304ae0))
+* **web:** keep language picker inside viewport ([0f706b7](https://github.com/Crimsab/oneday/commit/0f706b70c2bf4d9dbe5dff3cfab86558881c3d98))
+* **web:** polish story portability controls ([6bd4433](https://github.com/Crimsab/oneday/commit/6bd44339d8a4c20656663482c180cd87806d27bf))
+* **web:** repair collapsed rail branding and layout ([47e686b](https://github.com/Crimsab/oneday/commit/47e686b8e7c3a54913948b506f45cfdd81b56506))
+* **web:** size story library content rows ([c094dd7](https://github.com/Crimsab/oneday/commit/c094dd7612d20f653c71b6d1ac5df6ca3cf490c3))
+
 ## [1.14.0](https://github.com/Crimsab/oneday/compare/v1.13.0...v1.14.0) (2026-07-15)
 
 
