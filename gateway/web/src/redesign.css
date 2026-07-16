@@ -115,7 +115,8 @@ summary:focus-visible {
 .translation-current progress { width: 100%; height: 7px; accent-color: var(--accent); }
 .translation-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 .translation-form-grid label { display: grid; gap: 5px; color: var(--muted); font-size: 0.6875rem; }
-.translation-form-grid select, .translation-glossary-form input { min-width: 0; min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding-inline: 9px; }
+.translation-glossary-form input { min-width: 0; min-height: 36px; border: 1px solid var(--line); border-radius: 6px; padding-inline: 9px; }
+.translation-form-grid .custom-select-trigger { min-height: 36px; font-size: .8125rem; }
 .translation-create .primary-button { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid color-mix(in srgb, var(--accent) 60%, var(--line)); background: color-mix(in srgb, var(--accent) 18%, #11171b); color: var(--text); padding-inline: 12px; }
 .translation-jobs { display: grid; gap: 7px; }
 .translation-job { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; min-height: 58px; border: 1px solid var(--line-soft); border-radius: 7px; background: #11171b; padding: 9px 10px; }
@@ -626,8 +627,8 @@ summary:focus-visible {
 .history-technical-export > div { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 0 8px 8px; }
 .history-export-workspace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .history-export-workspace > label { display: grid; gap: 5px; color: var(--faint); font-size: .6875rem; }
-.history-export-workspace select,
 .history-export-workspace input { min-width: 0; min-height: 34px; border: 1px solid var(--line-soft); border-radius: 6px; background: #0d1316; padding: 0 8px; color: var(--text); }
+.history-export-workspace .custom-select-trigger { min-height: 34px; font-size: .75rem; }
 .history-portable-export,
 .history-template-actions { grid-column: 1 / -1; }
 .history-portable-export { border: 1px solid var(--line-soft); border-radius: 7px; }
@@ -829,7 +830,7 @@ summary:focus-visible {
   .translation-center-drawer { width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
   .translation-form-grid { grid-template-columns: minmax(0, 1fr); }
   .translation-glossary-form { grid-template-columns: minmax(0, 1fr); }
-  .translation-form-grid select, .translation-glossary-form input { font-size: 1rem; }
+  .translation-form-grid .custom-select-trigger, .translation-glossary-form input { font-size: 1rem; }
   .translation-job { grid-template-columns: minmax(0, 1fr) auto; }
   .translation-job > svg { display: none; }
   .left-rail {

@@ -2,6 +2,7 @@ import { CheckCircle2, CircleStop, Languages, Pause, Play, Plus, RefreshCw, Tras
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getChapters } from "../../api";
+import { CustomSelect } from "../../components/CustomSelect";
 import { DialogDrawerShell } from "../../components/dialog/DialogDrawerShell";
 import type { ChapterView, ModelSettings } from "../../types";
 import { completeBrowserTranslationItem, createTranslationGlossary, createTranslationJob, deleteTranslationGlossary, deleteTranslationJob, estimateTranslationJob, listTranslationGlossary, listTranslationJobs, nextBrowserTranslationItem, runTranslationJobAction } from "./batchApi";
@@ -155,12 +156,12 @@ export function TranslationCenter({ storyId, storyLanguage, modelSettings }: { s
           <section className="translation-create">
             <h3>{copy("newJob")}</h3>
             <div className="translation-form-grid">
-              <label>{copy("scope")}<select value={scope} onChange={(event) => setScope(event.target.value as "story" | "chapter")}><option value="story">{copy("wholeStory")}</option><option value="chapter">{copy("chapter")}</option></select></label>
-              {scope === "chapter" && <label>{copy("chapter")}<select value={chapterId} onChange={(event) => setChapterId(event.target.value)}>{chapters.map((chapter) => <option key={chapter.id} value={chapter.id}>{chapter.title || `#${chapter.chapter_number}`}</option>)}</select></label>}
-              <label>{copy("language")}<select value={target} onChange={(event) => setTarget(event.target.value)}>{languages.map((language) => <option key={language.code} value={language.code}>{language.code.toUpperCase()} {language.name}</option>)}</select></label>
-              <label>{copy("engine")}<select value={engine} onChange={(event) => setEngine(event.target.value as TranslationEngine)}><option value="browser" disabled={!supportsBrowserTranslation()}>{copy("browser")}</option><option value="ai">{copy("ai")}</option></select></label>
-              {engine === "ai" && <><label>{copy("provider")}<select value={provider} onChange={(event) => setProvider(event.target.value)}>{enabledProviders.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label><label>{copy("model")}<select value={model} onChange={(event) => setModel(event.target.value)}>{models.map((item) => <option key={item} value={item}>{item}</option>)}</select></label></>}
-              <label>{copy("style")}<select value={style} onChange={(event) => setStyle(event.target.value as TranslationStyle)}><option value="faithful">{copy("faithful")}</option><option value="natural">{copy("natural")}</option><option value="literary">{copy("literary")}</option></select></label>
+              <label>{copy("scope")}<CustomSelect value={scope} ariaLabel={copy("scope")} onChange={(value) => setScope(value as "story" | "chapter")} options={[{ value: "story", label: copy("wholeStory") }, { value: "chapter", label: copy("chapter") }]} /></label>
+              {scope === "chapter" && <label>{copy("chapter")}<CustomSelect value={chapterId} ariaLabel={copy("chapter")} onChange={setChapterId} options={chapters.map((chapter) => ({ value: String(chapter.id), label: chapter.title || `#${chapter.chapter_number}` }))} /></label>}
+              <label>{copy("language")}<CustomSelect value={target} ariaLabel={copy("language")} onChange={setTarget} options={languages.map((language) => ({ value: language.code, label: `${language.code.toUpperCase()} ${language.name}` }))} /></label>
+              <label>{copy("engine")}<CustomSelect value={engine} ariaLabel={copy("engine")} onChange={(value) => setEngine(value as TranslationEngine)} options={[{ value: "browser", label: copy("browser"), disabled: !supportsBrowserTranslation() }, { value: "ai", label: copy("ai") }]} /></label>
+              {engine === "ai" && <><label>{copy("provider")}<CustomSelect value={provider} ariaLabel={copy("provider")} onChange={setProvider} options={enabledProviders.map((item) => ({ value: item.id, label: item.label }))} /></label><label>{copy("model")}<CustomSelect value={model} ariaLabel={copy("model")} onChange={setModel} options={models.map((item) => ({ value: item, label: item }))} /></label></>}
+              <label>{copy("style")}<CustomSelect value={style} ariaLabel={copy("style")} onChange={(value) => setStyle(value as TranslationStyle)} options={[{ value: "faithful", label: copy("faithful") }, { value: "natural", label: copy("natural") }, { value: "literary", label: copy("literary") }]} /></label>
             </div>
             {estimate && <p className="translation-estimate">{copy("estimate", { items: estimate.total_items, characters: estimate.total_characters.toLocaleString(i18n.language), cached: estimate.cache_hits })} {engine === "ai" ? copy("providerCost") : copy("localCost")}</p>}
             <button type="button" className="primary-button" disabled={busy || !estimate?.total_items || (engine === "ai" && !provider)} onClick={() => void start()}><Plus size={14} />{copy("start")}</button>

@@ -421,8 +421,13 @@ test("creates a persistent AI translation job from the translation center", asyn
   await page.getByRole("button", { name: "Open translation center" }).click();
   const dialog = page.getByRole("dialog", { name: "Translation center" });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Engine").selectOption("ai");
-  await expect(dialog.getByLabel("Provider")).toHaveValue("codex");
+  await expect(dialog.locator("select")).toHaveCount(0);
+  await dialog.getByRole("combobox", { name: "Engine" }).click();
+  await page.getByRole("option", { name: "AI" }).click();
+  await expect(dialog.getByRole("combobox", { name: "Provider" })).toContainText("Codex");
+  await dialog.getByRole("combobox", { name: "Style" }).click();
+  await page.getByRole("option", { name: "Literary" }).click();
+  await expect(dialog.getByRole("combobox", { name: "Style" })).toContainText("Literary");
   await expect(dialog.getByText(/4 items, 220 characters/)).toBeVisible();
   await dialog.getByRole("button", { name: "Start translation" }).click();
   await expect(dialog.getByText("0/4 items")).toBeVisible();
@@ -545,7 +550,9 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
     history.getByRole("button", { name: "Download" }).click(),
   ]);
   expect(download.suggestedFilename()).toBe("glass-archive-history.md");
-  await history.getByLabel("Format").selectOption("epub");
+  await expect(history.locator(".history-export-workspace select")).toHaveCount(0);
+  await history.getByRole("combobox", { name: "Format" }).click();
+  await page.getByRole("option", { name: "EPUB" }).click();
   const [epubDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Download" }).click()]);
   expect(epubDownload.suggestedFilename()).toBe("glass-archive.epub");
   await history.getByText("Technical exports", { exact: true }).click();

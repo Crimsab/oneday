@@ -6,6 +6,7 @@ import { readableStructuredText } from "../format";
 import { exportArchive, exportTemplate, type ArchiveOptions, type ReadableFormat, type ReadingMode } from "../features/portability/portabilityApi";
 import { encodeTemplateCode } from "../features/portability/templateCode";
 import type { ChapterView, MessageView, StorySnapshot } from "../types";
+import { CustomSelect } from "./CustomSelect";
 import { MarkdownText } from "./MarkdownText";
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -156,8 +157,8 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
       <details className="history-export-menu">
         <summary>{t("exportBranch")}</summary>
         <div className="history-export history-export-workspace">
-          <label><span>{t("portability:format")}</span><select value={format} onChange={(event) => setFormat(event.target.value as ReadableFormat)}><option value="markdown">Markdown</option><option value="html">HTML</option><option value="txt">TXT</option><option value="json">JSON</option><option value="epub">EPUB</option></select></label>
-          <label><span>{t("portability:languageVersion")}</span><select value={readingMode} onChange={(event) => setReadingMode(event.target.value as ReadingMode)}><option value="original">{t("portability:original")}</option><option value="translated">{t("portability:translated")}</option><option value="bilingual">{t("portability:bilingual")}</option></select></label>
+          <label><span>{t("portability:format")}</span><CustomSelect value={format} ariaLabel={t("portability:format")} onChange={(value) => setFormat(value as ReadableFormat)} options={["markdown", "html", "txt", "json", "epub"].map((value) => ({ value, label: value.toUpperCase() }))} /></label>
+          <label><span>{t("portability:languageVersion")}</span><CustomSelect value={readingMode} ariaLabel={t("portability:languageVersion")} onChange={(value) => setReadingMode(value as ReadingMode)} options={[{ value: "original", label: t("portability:original") }, { value: "translated", label: t("portability:translated") }, { value: "bilingual", label: t("portability:bilingual") }]} /></label>
           {readingMode !== "original" && <label><span>{t("portability:targetLanguage")}</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} placeholder="en" /></label>}
           <button type="button" className="primary" disabled={busy || (readingMode !== "original" && !targetLanguage.trim())} onClick={() => void exportAs(format)}>{t("portability:download")}</button>
           <details className="history-portable-export">
