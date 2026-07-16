@@ -115,7 +115,7 @@ export function StoryLibraryDrawer({
           </button>
         </div>
         {importOpen && <div className="story-library-import">
-          <label className="story-library-import-file"><span>{t("library:importFile")}</span><input type="file" accept=".zip,.json,.oneday.json,application/zip,application/json" disabled={importBusy} onChange={(event) => void importFile(event.target.files?.[0])} /></label>
+          <label className="story-library-import-file"><span>{t("library:importFile")}</span><span className="story-library-file-picker"><FileUp size={15} />{t("library:chooseFile")}<input className="sr-only" type="file" accept=".zip,.json,.oneday.json,application/zip,application/json" disabled={importBusy} onChange={(event) => void importFile(event.target.files?.[0])} /></span></label>
           <span>{t("library:orShareCode")}</span>
           <textarea value={importCode} onChange={(event) => setImportCode(event.target.value)} rows={3} placeholder="OD1:…" />
           <button type="button" disabled={importBusy || !importCode.trim()} onClick={() => void importShareCode()}>{t("library:importCode")}</button>
