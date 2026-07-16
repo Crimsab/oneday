@@ -4,7 +4,7 @@ WORKDIR /app
 FROM oven/bun:1@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS web-builder
 WORKDIR /app/gateway/web
 COPY gateway/web/package.json gateway/web/bun.lock ./
-COPY gateway/web/index.html gateway/web/tsconfig.json gateway/web/vite.config.ts ./
+COPY gateway/web/index.html gateway/web/tsconfig.json gateway/web/vite.config.ts gateway/web/pwa.config.ts ./
 COPY gateway/web/src src
 COPY gateway/web/public public
 COPY contracts /app/contracts
