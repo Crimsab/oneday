@@ -6,11 +6,13 @@ import App from "./App";
 import "./styles.css";
 import "./redesign.css";
 import { installSupportDiagnostics } from "./supportDiagnostics";
+import { PwaStatus } from "./features/pwa/PwaStatus";
 
 installSupportDiagnostics();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <App />
+    <PwaStatus />
   </StrictMode>,
 );

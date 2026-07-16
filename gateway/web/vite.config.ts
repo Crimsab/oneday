@@ -1,8 +1,18 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
+import { pwaManifest, pwaWorkbox } from "./pwa.config";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: "prompt",
+      injectRegister: false,
+      manifest: pwaManifest,
+      workbox: pwaWorkbox,
+    }),
+  ],
   build: {
     outDir: "dist",
     emptyOutDir: true,
