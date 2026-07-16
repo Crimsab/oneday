@@ -1,0 +1,12 @@
+export const batch_translation = {
+  open: "Apri centro traduzioni", label: "Traduci", title: "Centro traduzioni", current: "Traduzione attiva",
+  progress: "{{done}} di {{total}} elementi, {{progress}}%", newJob: "Nuova traduzione batch", scope: "Ambito", wholeStory: "Storia intera", chapter: "Capitolo",
+  language: "Lingua di destinazione", engine: "Motore", browser: "Browser", ai: "AI", provider: "Provider", model: "Modello", style: "Stile",
+  faithful: "Fedele", natural: "Naturale", literary: "Letterario", estimate: "{{items}} elementi, {{characters}} caratteri, {{cached}} in cache.",
+  providerCost: "Si applicano i costi del provider; OneDay non inventa una stima.", localCost: "Esecuzione locale senza costi API.", start: "Avvia traduzione",
+  jobs: "Traduzioni", noJobs: "Nessuna traduzione batch.", items: "elementi", failedItems: "falliti", pause: "Pausa", resume: "Riprendi", cancel: "Ferma",
+  retry: "Riprova i falliti", deleteJob: "Elimina job", deleteTranslations: "Elimina job e traduzioni", completed: "Completata", queued: "In coda", running: "In corso", paused: "In pausa",
+  partial: "Completata in parte", failed: "Fallita", cancelled: "Fermata", selection: "Selezione", glossary: "Glossario della storia", sourceTerm: "Termine sorgente",
+  equivalent: "Traduzione fissa", add: "Aggiungi mapping", preserve: "Mantieni invariato", unchanged: "invariato", removeTerm: "Rimuovi termine",
+  browserPaused: "Traduzione browser in pausa: {{error}}",
+} as const;

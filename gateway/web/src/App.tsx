@@ -1365,6 +1365,7 @@ function App() {
         onToggleLeftRail={toggleLeftRail}
         onToggleInspector={toggleInspector}
         onOpen={openOverlay}
+        modelSettings={modelSettings}
       />
       <div className="workspace">
         {mobileRailOpen && <button type="button" className="mobile-rail-backdrop" aria-label={t("common:close")} onClick={() => setMobileRailOpen(false)} />}

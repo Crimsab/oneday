@@ -885,6 +885,253 @@ pub async fn export_story(
     .context("joining Markdown export renderer")
 }
 
+pub async fn export_story_readable(
+    pool: &SqlitePool,
+    story_id: &str,
+    format: &str,
+    target_language: &str,
+    mode: &str,
+) -> anyhow::Result<StoryExport> {
+    let mode = match mode {
+        "translated" | "bilingual" => mode,
+        _ => "original",
+    };
+    if (mode == "original" || target_language.trim().is_empty())
+        && !format.eq_ignore_ascii_case("txt")
+        && !format.eq_ignore_ascii_case("html")
+    {
+        return export_story(pool, story_id, format).await;
+    }
+    let mut source = load_story_export_source(pool, story_id).await?;
+    let mut translations = std::collections::HashMap::new();
+    if mode != "original" && !target_language.trim().is_empty() {
+        let query = sqlx::query(
+            r#"SELECT content_kind,content_id,translated_text FROM content_translations WHERE story_id=? AND branch_id=? AND target_language=? ORDER BY created_at"#,
+        )
+            .bind(story_id)
+            .bind(&source.active_branch_id)
+            .bind(target_language.trim());
+        for row in query.fetch_all(pool).await? {
+            translations.insert(
+                (row.get::<String, _>(0), row.get::<String, _>(1)),
+                row.get::<String, _>(2),
+            );
+        }
+    }
+    let missing_label = if export_labels(&source.story.language).locale == "it" {
+        "[Traduzione non disponibile]"
+    } else {
+        "[Translation unavailable]"
+    };
+    let original_label = if export_labels(&source.story.language).locale == "it" {
+        "Originale"
+    } else {
+        "Original"
+    };
+    let translated_label = if export_labels(&source.story.language).locale == "it" {
+        "Traduzione"
+    } else {
+        "Translation"
+    };
+    if mode != "original" {
+        for message in &mut source.messages {
+            let translated = translations
+                .get(&("message".to_string(), message.id.to_string()))
+                .map(String::as_str)
+                .unwrap_or(missing_label);
+            message.content = if mode == "translated" {
+                translated.to_string()
+            } else {
+                format!(
+                    "**{original_label}**\n\n{}\n\n**{translated_label} ({})**\n\n{}",
+                    message.content,
+                    target_language.to_uppercase(),
+                    translated
+                )
+            };
+        }
+        for chapter in &mut source.chapters {
+            if let Some(title) =
+                translations.get(&("chapter_title".to_string(), chapter.id.to_string()))
+            {
+                chapter.title = if mode == "bilingual" {
+                    format!("{} — {title}", chapter.title)
+                } else {
+                    title.clone()
+                };
+            }
+            if let Some(summary) =
+                translations.get(&("chapter_summary".to_string(), chapter.id.to_string()))
+            {
+                chapter.summary = if mode == "bilingual" {
+                    format!(
+                        "**{original_label}**\n\n{}\n\n**{translated_label} ({})**\n\n{}",
+                        chapter.summary,
+                        target_language.to_uppercase(),
+                        summary
+                    )
+                } else {
+                    summary.clone()
+                };
+            }
+        }
+    }
+    let safe_name = if mode == "original" {
+        source.safe_name.clone()
+    } else {
+        format!(
+            "{}-{}-{}",
+            source.safe_name,
+            target_language.to_lowercase(),
+            mode
+        )
+    };
+    if format.eq_ignore_ascii_case("json") {
+        let payload = json!({"story":source.story,"active_branch_id":source.active_branch_id,"language":target_language,"mode":mode,"chapters":source.chapters,"messages":source.messages});
+        return Ok(StoryExport {
+            format: "json".into(),
+            filename: format!("{safe_name}.json"),
+            content: serde_json::to_string_pretty(&payload)?,
+            encoding: "utf-8".into(),
+            content_type: "application/json".into(),
+        });
+    }
+    if format.eq_ignore_ascii_case("txt") {
+        let mut content = format!("{}\n\n", source.story.name);
+        if !source.chapters.is_empty() {
+            content.push_str(&format!(
+                "{}\n\n",
+                export_labels(&source.story.language).chapters
+            ));
+            for chapter in &source.chapters {
+                content.push_str(&format!(
+                    "{}\n{}\n{}\n\n",
+                    strip_markdown_for_text(&chapter.title),
+                    export_turn_range(
+                        export_labels(&source.story.language),
+                        chapter.start_turn,
+                        chapter.end_turn
+                    ),
+                    strip_markdown_for_text(&chapter.summary)
+                ));
+            }
+            content.push_str(&format!(
+                "{}\n\n",
+                export_labels(&source.story.language).transcript
+            ));
+        }
+        for message in source.messages {
+            content.push_str(&format!(
+                "{} {} - {}\n{}\n\n",
+                export_labels(&source.story.language).turn,
+                message.turn,
+                export_role(export_labels(&source.story.language).locale, &message.role),
+                strip_markdown_for_text(&message.content)
+            ));
+        }
+        return Ok(StoryExport {
+            format: "txt".into(),
+            filename: format!("{safe_name}.txt"),
+            content,
+            encoding: "utf-8".into(),
+            content_type: "text/plain".into(),
+        });
+    }
+    if format.eq_ignore_ascii_case("html") {
+        let mut body = String::new();
+        if !source.chapters.is_empty() {
+            body.push_str(&format!(
+                "<section><h2>{}</h2>",
+                export_labels(&source.story.language).chapters
+            ));
+            for chapter in &source.chapters {
+                body.push_str(&format!(
+                    "<article><h3>{}</h3><small>{}</small><div>{}</div></article>",
+                    html_escape(&chapter.title),
+                    html_escape(&export_turn_range(
+                        export_labels(&source.story.language),
+                        chapter.start_turn,
+                        chapter.end_turn
+                    )),
+                    html_paragraphs(&chapter.summary)
+                ));
+            }
+            body.push_str("</section>");
+        }
+        for message in &source.messages {
+            body.push_str(&format!(
+                "<article><h2>{} {} - {}</h2><div>{}</div></article>",
+                export_labels(&source.story.language).turn,
+                message.turn,
+                html_escape(export_role(
+                    export_labels(&source.story.language).locale,
+                    &message.role
+                )),
+                html_paragraphs(&message.content)
+            ));
+        }
+        let content = format!(
+            r#"<!doctype html><html lang="{}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>{}</title><style>body{{max-width:760px;margin:0 auto;padding:40px 20px;background:#fbfaf7;color:#20211f;font:17px/1.65 system-ui,sans-serif}}article{{margin:48px 0}}h1,h2{{line-height:1.2}}h2{{font-size:1rem;color:#5d625e}}pre{{white-space:pre-wrap}}@media print{{body{{padding:0}}}}</style></head><body><h1>{}</h1>{}</body></html>"#,
+            html_escape(target_language),
+            html_escape(&source.story.name),
+            html_escape(&source.story.name),
+            body
+        );
+        return Ok(StoryExport {
+            format: "html".into(),
+            filename: format!("{safe_name}.html"),
+            content,
+            encoding: "utf-8".into(),
+            content_type: "text/html".into(),
+        });
+    }
+    if format.eq_ignore_ascii_case("epub") {
+        let bytes = tokio::task::spawn_blocking(move || {
+            build_epub(
+                &source.story,
+                &source.active_branch_id,
+                &source.chapters,
+                &source.messages,
+            )
+        })
+        .await
+        .context("joining translated EPUB renderer")??;
+        return Ok(StoryExport {
+            format: "epub".into(),
+            filename: format!("{safe_name}.epub"),
+            content: BASE64.encode(bytes),
+            encoding: "base64".into(),
+            content_type: "application/epub+zip".into(),
+        });
+    }
+    Ok(build_markdown_export(
+        source.story,
+        source.active_branch_id,
+        source.chapters,
+        source.messages,
+        safe_name,
+    ))
+}
+
+fn strip_markdown_for_text(value: &str) -> String {
+    value.replace("**", "").replace('`', "").replace("---", "")
+}
+
+fn html_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+fn html_paragraphs(value: &str) -> String {
+    value
+        .split("\n\n")
+        .map(|paragraph| format!("<p>{}</p>", html_escape(paragraph).replace('\n', "<br>")))
+        .collect()
+}
+
 struct StoryExportSource {
     story: StorySummary,
     active_branch_id: String,
@@ -2018,6 +2265,29 @@ mod tests {
         assert_eq!(payload["messages"].as_array().map(Vec::len), Some(3));
         assert_eq!(payload["chapters"].as_array().map(Vec::len), Some(1));
         assert_eq!(payload["chapters"][0]["title"], "Main Chapter");
+
+        let html = export_story_readable(&pool, "story-1", "html", "", "original")
+            .await
+            .expect("original HTML export");
+        assert_eq!(html.content_type, "text/html");
+        assert!(html.content.contains("first main message"));
+        let txt = export_story_readable(&pool, "story-1", "txt", "", "original")
+            .await
+            .expect("original text export");
+        assert_eq!(txt.content_type, "text/plain");
+        assert!(txt.content.contains("latest main message"));
+
+        sqlx::query("CREATE TABLE content_translations(id TEXT PRIMARY KEY,story_id TEXT,branch_id TEXT,content_kind TEXT,content_id TEXT,target_language TEXT,translated_text TEXT,created_at TEXT)")
+            .execute(&pool).await.expect("translation export fixture");
+        let first_message_id: i64 = sqlx::query_scalar("SELECT id FROM chat_messages WHERE story_id='story-1' AND branch_id='branch-main' ORDER BY id LIMIT 1")
+            .fetch_one(&pool).await.expect("message id");
+        sqlx::query("INSERT INTO content_translations VALUES('tr','story-1','branch-main','message',?,'it','primo messaggio','2026-01-02')")
+            .bind(first_message_id.to_string()).execute(&pool).await.expect("translation");
+        let translated = export_story_readable(&pool, "story-1", "json", "it", "translated")
+            .await
+            .expect("translated JSON export");
+        assert!(translated.content.contains("primo messaggio"));
+        assert!(translated.content.contains("Translation unavailable"));
 
         let epub = export_story(&pool, "story-1", "epub")
             .await

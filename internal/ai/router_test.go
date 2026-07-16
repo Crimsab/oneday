@@ -173,6 +173,19 @@ func TestRouterFallsBack(t *testing.T) {
 	}
 }
 
+func TestRouterCompleteWithProviderDoesNotFallback(t *testing.T) {
+	primary := &mockProvider{name: "primary", err: fmt.Errorf("unavailable")}
+	fallback := &mockProvider{name: "fallback", content: "must not be used"}
+	router, err := NewRouter([]Provider{primary, fallback})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := router.CompleteWithProvider(context.Background(), "primary", Request{}); err == nil {
+		t.Fatal("CompleteWithProvider succeeded despite the selected provider failure")
+	}
+}
+
 func TestRouterAllFail(t *testing.T) {
 	r, err := NewRouter([]Provider{
 		&mockProvider{name: "p1", err: fmt.Errorf("fail 1")},

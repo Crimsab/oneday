@@ -1,13 +1,15 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Archive, ArchiveRestore, Check, Info, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, FileUp, Info, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { DialogDrawerShell } from "../../components/dialog/DialogDrawerShell";
 import { compactText, displayTimestamp } from "../../format";
 import type { StorySummary, StoryUpdatePayload } from "../../types";
 import { activeStoryCount } from "../navigation/railState";
 import { filterStoryLibrary, type StoryLibraryStatus } from "./storyLibraryState";
 import { StoryLibraryDetail } from "./StoryLibraryDetail";
+import { importArchive, importTemplate } from "../portability/portabilityApi";
+import { decodeTemplateCode } from "../portability/templateCode";
 
 interface StoryLibraryDrawerProps {
   stories: StorySummary[];
@@ -41,6 +43,10 @@ export function StoryLibraryDrawer({
   const [query, setQuery] = useState("");
   const [editingStoryId, setEditingStoryId] = useState("");
   const [detailStoryId, setDetailStoryId] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
+  const [importCode, setImportCode] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
+  const [importError, setImportError] = useState("");
   const visibleStories = useMemo(() => filterStoryLibrary(stories, status, query), [query, status, stories]);
   const activeCount = activeStoryCount(stories);
   const archivedCount = stories.length - activeCount;
@@ -48,6 +54,30 @@ export function StoryLibraryDrawer({
   const chooseStory = (storyId: string) => {
     onSelectStory(storyId);
     onClose();
+  };
+
+  const finishImport = async (storyId: string) => {
+    await onRefresh();
+    setImportOpen(false);
+    setImportCode("");
+    onSelectStory(storyId);
+    onClose();
+  };
+
+  const importFile = async (file?: File) => {
+    if (!file) return;
+    setImportBusy(true); setImportError("");
+    try {
+      const result = file.name.toLowerCase().endsWith(".zip") ? await importArchive(file) : await importTemplate(await file.text());
+      await finishImport(result.story_id);
+    } catch (reason) { setImportError(reason instanceof Error ? reason.message : String(reason)); } finally { setImportBusy(false); }
+  };
+
+  const importShareCode = async () => {
+    setImportBusy(true); setImportError("");
+    try { await finishImport((await importTemplate(await decodeTemplateCode(importCode))).story_id); }
+    catch (reason) { setImportError(reason instanceof Error ? reason.message : String(reason)); }
+    finally { setImportBusy(false); }
   };
 
   return (
@@ -65,11 +95,21 @@ export function StoryLibraryDrawer({
           <button type="button" onClick={() => void onRefresh()} aria-label={t("chrome:refresh")} title={t("chrome:refresh")}>
             <RefreshCw size={16} />
           </button>
+          <button type="button" onClick={() => setImportOpen((value) => !value)} aria-expanded={importOpen}>
+            <FileUp size={16} />{t("library:importStory")}
+          </button>
           <button type="button" className="story-library-new" onClick={onNewStory}>
             <Plus size={16} />
             {t("chrome:newStory")}
           </button>
         </div>
+        {importOpen && <div className="story-library-import">
+          <label className="story-library-import-file"><span>{t("library:importFile")}</span><input type="file" accept=".zip,.json,.oneday.json,application/zip,application/json" disabled={importBusy} onChange={(event) => void importFile(event.target.files?.[0])} /></label>
+          <span>{t("library:orShareCode")}</span>
+          <textarea value={importCode} onChange={(event) => setImportCode(event.target.value)} rows={3} placeholder="OD1:…" />
+          <button type="button" disabled={importBusy || !importCode.trim()} onClick={() => void importShareCode()}>{t("library:importCode")}</button>
+          {importError && <p role="alert" className="inline-error">{importError}</p>}
+        </div>}
         <label className="story-library-search">
           <Search size={16} aria-hidden="true" />
           <span className="sr-only">{t("chrome:filter")}</span>

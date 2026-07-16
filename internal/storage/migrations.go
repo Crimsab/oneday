@@ -63,6 +63,7 @@ func (db *DB) migrate() error {
 		{40, migrationV40},
 		{41, migrationV41},
 		{42, migrationV42},
+		{43, migrationV43},
 	}
 
 	for _, m := range migrations {
@@ -1870,4 +1871,91 @@ CREATE TABLE visual_asset_uploads (
 
 CREATE INDEX idx_visual_asset_uploads_asset
 	ON visual_asset_uploads(story_id,asset_id,branch_id,created_at DESC);
+`
+
+const migrationV43 = `
+CREATE TABLE translation_glossary_entries (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	source_language TEXT NOT NULL DEFAULT '',
+	target_language TEXT NOT NULL DEFAULT '',
+	source_term TEXT NOT NULL,
+	target_term TEXT NOT NULL DEFAULT '',
+	mode TEXT NOT NULL DEFAULT 'translate' CHECK(mode IN ('translate','preserve')),
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(story_id,source_language,target_language,source_term)
+);
+
+CREATE TABLE content_translations (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	branch_id TEXT NOT NULL,
+	content_kind TEXT NOT NULL CHECK(content_kind IN ('message','chapter_title','chapter_summary')),
+	content_id TEXT NOT NULL,
+	content_hash TEXT NOT NULL,
+	source_language TEXT NOT NULL,
+	target_language TEXT NOT NULL,
+	engine TEXT NOT NULL CHECK(engine IN ('browser','ai')),
+	provider TEXT NOT NULL DEFAULT '',
+	model TEXT NOT NULL DEFAULT '',
+	style TEXT NOT NULL DEFAULT 'faithful' CHECK(style IN ('faithful','natural','literary')),
+	codec_version TEXT NOT NULL DEFAULT 'protected-v1',
+	translated_text TEXT NOT NULL,
+	character_count INTEGER NOT NULL DEFAULT 0,
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	last_accessed_at DATETIME,
+	UNIQUE(story_id,branch_id,content_kind,content_id,content_hash,source_language,target_language,engine,provider,model,style,codec_version)
+);
+
+CREATE TABLE translation_jobs (
+	id TEXT PRIMARY KEY,
+	story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+	branch_id TEXT NOT NULL,
+	scope_kind TEXT NOT NULL CHECK(scope_kind IN ('chapter','story','selection')),
+	scope_id TEXT NOT NULL DEFAULT '',
+	source_language TEXT NOT NULL,
+	target_language TEXT NOT NULL,
+	engine TEXT NOT NULL CHECK(engine IN ('browser','ai')),
+	provider TEXT NOT NULL DEFAULT '',
+	model TEXT NOT NULL DEFAULT '',
+	style TEXT NOT NULL DEFAULT 'faithful' CHECK(style IN ('faithful','natural','literary')),
+	status TEXT NOT NULL CHECK(status IN ('queued','running','paused','completed','partial','failed','cancelled')),
+	total_items INTEGER NOT NULL DEFAULT 0,
+	completed_items INTEGER NOT NULL DEFAULT 0,
+	failed_items INTEGER NOT NULL DEFAULT 0,
+	cached_items INTEGER NOT NULL DEFAULT 0,
+	total_characters INTEGER NOT NULL DEFAULT 0,
+	processed_characters INTEGER NOT NULL DEFAULT 0,
+	error_code TEXT NOT NULL DEFAULT '',
+	error_summary TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	started_at DATETIME,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	completed_at DATETIME
+);
+
+CREATE TABLE translation_job_items (
+	id TEXT PRIMARY KEY,
+	job_id TEXT NOT NULL REFERENCES translation_jobs(id) ON DELETE CASCADE,
+	ordinal INTEGER NOT NULL,
+	content_kind TEXT NOT NULL,
+	content_id TEXT NOT NULL,
+	content_hash TEXT NOT NULL,
+	source_text TEXT NOT NULL,
+	status TEXT NOT NULL CHECK(status IN ('pending','running','cache_hit','completed','failed','cancelled')),
+	translation_id TEXT REFERENCES content_translations(id) ON DELETE SET NULL,
+	attempt_count INTEGER NOT NULL DEFAULT 0,
+	error_code TEXT NOT NULL DEFAULT '',
+	error_summary TEXT NOT NULL DEFAULT '',
+	created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	UNIQUE(job_id,ordinal)
+);
+
+CREATE INDEX idx_translation_jobs_story ON translation_jobs(story_id,created_at DESC);
+CREATE INDEX idx_translation_jobs_queue ON translation_jobs(engine,status,updated_at);
+CREATE INDEX idx_translation_items_queue ON translation_job_items(job_id,status,ordinal);
+CREATE INDEX idx_translations_lookup ON content_translations(story_id,branch_id,target_language,content_kind,content_id,created_at DESC);
+CREATE INDEX idx_translation_glossary_story ON translation_glossary_entries(story_id,target_language,source_term);
 `

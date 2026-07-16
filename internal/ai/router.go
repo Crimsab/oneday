@@ -59,6 +59,21 @@ func (r *Router) Complete(ctx context.Context, req Request) (Response, error) {
 	return Response{}, err
 }
 
+// CompleteWithProvider runs a request only on the explicitly selected provider.
+// It intentionally does not fall back: callers use it when provider choice is
+// part of the user-visible operation identity (for example a translation job).
+func (r *Router) CompleteWithProvider(ctx context.Context, provider string, req Request) (Response, error) {
+	provider = strings.TrimSpace(provider)
+	for _, candidate := range r.providers {
+		if candidate.Name() != provider {
+			continue
+		}
+		selected := &Router{providers: []Provider{candidate}, recorder: r.recorder}
+		return selected.Complete(ctx, req)
+	}
+	return Response{}, fmt.Errorf("AI provider %q is not configured", provider)
+}
+
 // Providers returns the list of providers in priority order.
 func (r *Router) Providers() []Provider {
 	return r.providers

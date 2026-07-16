@@ -217,6 +217,13 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayTranslate(os.Args[1:]) {
+		if err := runGatewayTranslate(gatewayContext(), cfg, router, os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway translation failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if wantsGatewayMeta(os.Args[1:]) {
 		if err := runGatewayMeta(gatewayContext(), cfg, db, router, os.Stdin, os.Stdout); err != nil {
 			fmt.Fprintf(os.Stderr, "Gateway meta failed: %v\n", err)
@@ -479,6 +486,10 @@ func wantsGatewayStoryWizard(args []string) bool {
 
 func wantsGatewayStoryEnhance(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-story-enhance"
+}
+
+func wantsGatewayTranslate(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-translate"
 }
 
 func wantsGatewayMiniGameStart(args []string) bool {

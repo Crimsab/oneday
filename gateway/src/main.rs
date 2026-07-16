@@ -8,12 +8,14 @@ mod error;
 mod events;
 mod imagegen;
 mod observability;
+mod portability;
 #[allow(dead_code, clippy::derivable_impls)]
 mod gateway_protocol {
     include!(concat!(env!("OUT_DIR"), "/gateway_protocol.rs"));
 }
 mod routes;
 mod telemetry;
+mod translation;
 
 use anyhow::Context;
 use axum::body::Body;
@@ -129,10 +131,14 @@ async fn main() -> anyhow::Result<()> {
     asset_upload::cleanup_stale_upload_parts(&state.paths.visual_asset_dir)
         .await
         .context("cleaning stale visual asset upload parts")?;
+    portability::cleanup_orphan_imports(&state)
+        .await
+        .context("cleaning orphan story imports")?;
     assets::spawn_visual_generation_maintenance(state.clone());
     assets::spawn_visual_generation_worker(state.clone());
     assets::spawn_image_operation_recovery(state.clone());
     assets::spawn_automatic_visual_catchup(state.clone());
+    translation::spawn_worker(state.clone());
     let request_id_header = HeaderName::from_static("x-request-id");
     let trace_request_id_header = request_id_header.clone();
     let app: Router = routes::router(state)

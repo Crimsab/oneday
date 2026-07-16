@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"sort"
 	"strings"
 	"time"
 
@@ -45,6 +46,24 @@ type gatewayStoryWizardResponse = gatewayprotocol.StoryWizardResponse
 type gatewayStoryEnhanceResponse = gatewayprotocol.StoryEnhanceResponse
 type gatewayModelSettingsResponse = gatewayprotocol.ModelSettingsResponse
 type gatewaySchemaPreflightResponse = gatewayprotocol.SchemaPreflightResponse
+
+type gatewayTranslateRequest struct {
+	Text           string            `json:"text"`
+	SourceLanguage string            `json:"source_language"`
+	TargetLanguage string            `json:"target_language"`
+	Provider       string            `json:"provider"`
+	Model          string            `json:"model"`
+	Style          string            `json:"style"`
+	Glossary       map[string]string `json:"glossary,omitempty"`
+}
+
+type gatewayTranslateResponse struct {
+	Text      string `json:"text,omitempty"`
+	Provider  string `json:"provider,omitempty"`
+	Model     string `json:"model,omitempty"`
+	LatencyMs int64  `json:"latency_ms,omitempty"`
+	Error     string `json:"error,omitempty"`
+}
 
 type gatewayMiniGameRequest = gatewayprotocol.MiniGameRequest
 type gatewayMiniGameResponse = gatewayprotocol.MiniGameResponse
@@ -623,6 +642,70 @@ func runGatewayStoryEnhance(ctx context.Context, cfg config.Config, router *ai.R
 		return fmt.Errorf("writing gateway-story-enhance response: %w", err)
 	}
 	return nil
+}
+
+func runGatewayTranslate(ctx context.Context, cfg config.Config, router *ai.Router, in io.Reader, out io.Writer) error {
+	var req gatewayTranslateRequest
+	if err := json.NewDecoder(io.LimitReader(in, 2<<20)).Decode(&req); err != nil {
+		return json.NewEncoder(out).Encode(gatewayTranslateResponse{Error: "invalid translation request"})
+	}
+	req.Text = strings.TrimSpace(req.Text)
+	req.Provider = strings.TrimSpace(req.Provider)
+	req.Model = strings.TrimSpace(req.Model)
+	req.SourceLanguage = strings.TrimSpace(req.SourceLanguage)
+	req.TargetLanguage = strings.TrimSpace(req.TargetLanguage)
+	if req.Text == "" || req.Provider == "" || req.TargetLanguage == "" {
+		return json.NewEncoder(out).Encode(gatewayTranslateResponse{Error: "text, provider and target_language are required"})
+	}
+	style := strings.ToLower(strings.TrimSpace(req.Style))
+	if style != "natural" && style != "literary" {
+		style = "faithful"
+	}
+	glossary := "(none)"
+	if len(req.Glossary) > 0 {
+		keys := make([]string, 0, len(req.Glossary))
+		for source := range req.Glossary {
+			keys = append(keys, source)
+		}
+		sort.Strings(keys)
+		var lines []string
+		for _, source := range keys {
+			lines = append(lines, source+" => "+req.Glossary[source])
+		}
+		glossary = strings.Join(lines, "\n")
+	}
+	maxTokens := cfg.AI.Generation.MaxTokens
+	if maxTokens < 512 {
+		maxTokens = 2048
+	}
+	if maxTokens > 8192 {
+		maxTokens = 8192
+	}
+	prompt := strings.Join([]string{
+		"Source language: " + req.SourceLanguage,
+		"Target language: " + req.TargetLanguage,
+		"Style: " + style,
+		"Glossary (exact mappings; a term mapped to itself must be preserved):\n" + glossary,
+		"Text:\n" + req.Text,
+	}, "\n\n")
+	translationCtx := ai.WithTelemetry(ctx, ai.TelemetryMetadata{Stage: "translation", PromptProfile: "translation", PromptTemplate: "protected-v1"})
+	resp, err := router.CompleteWithProvider(translationCtx, req.Provider, ai.Request{
+		Model: req.Model,
+		Messages: []ai.Message{
+			{Role: ai.RoleSystem, Content: "Translate only the supplied text. Return only the translation. Preserve every token shaped like [[ODP_0001]] byte-for-byte and in the same multiplicity. Do not add commentary or markdown fences. Faithful means minimal rewriting; natural means fluent wording; literary may preserve voice and rhythm without inventing facts."},
+			{Role: ai.RoleUser, Content: prompt},
+		},
+		Temperature: map[string]float64{"faithful": 0.1, "natural": 0.25, "literary": 0.45}[style],
+		MaxTokens:   maxTokens,
+	})
+	if err != nil {
+		return json.NewEncoder(out).Encode(gatewayTranslateResponse{Error: ai.SafeErrorSummary(err)})
+	}
+	text := cleanupEnhancedStoryText(resp.Content)
+	if text == "" {
+		return json.NewEncoder(out).Encode(gatewayTranslateResponse{Error: "translation returned empty text"})
+	}
+	return json.NewEncoder(out).Encode(gatewayTranslateResponse{Text: text, Provider: resp.Provider, Model: resp.Model, LatencyMs: resp.LatencyMs})
 }
 
 func cleanupEnhancedStoryText(text string) string {

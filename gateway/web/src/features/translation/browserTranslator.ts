@@ -74,6 +74,18 @@ export async function translateInBrowser({
   }
 }
 
+export async function prepareBrowserTranslator(sourceLanguage: string, targetLanguage: string, signal?: AbortSignal): Promise<void> {
+  const source = primaryLanguage(sourceLanguage);
+  const target = primaryLanguage(targetLanguage);
+  if (source === target) return;
+  const factory = (globalThis as BuiltInAiGlobal).Translator;
+  if (!factory) throw new Error("browser_translation_unavailable");
+  const availability = await factory.availability({ sourceLanguage: source, targetLanguage: target });
+  if (availability === "unavailable") throw new Error("language_pair_unavailable");
+  const translator = await factory.create({ sourceLanguage: source, targetLanguage: target, signal });
+  translator.destroy?.();
+}
+
 export async function detectLanguageInBrowser(text: string, signal?: AbortSignal): Promise<string | null> {
   const factory = (globalThis as BuiltInAiGlobal).LanguageDetector;
   if (!factory || !text.trim()) return null;

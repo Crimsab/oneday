@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { BookOpen, CircleHelp, Clock3, Hash, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Settings } from "lucide-react";
 import { displayClock } from "../format";
 import type { OverlayKind, StorySnapshot, SyncState } from "../types";
+import type { ModelSettings } from "../types";
+import { TranslationCenter } from "../features/translation/TranslationCenter";
 
 interface TopBarProps {
   snapshot: StorySnapshot | null;
@@ -14,9 +16,10 @@ interface TopBarProps {
   onToggleLeftRail: () => void;
   onToggleInspector: () => void;
   onOpen: (overlay: OverlayKind) => void;
+  modelSettings: ModelSettings | null;
 }
 
-export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen }: TopBarProps) {
+export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen, modelSettings }: TopBarProps) {
   const { t } = useTranslation("chrome");
   const clock = displayClock(snapshot);
   return (
@@ -31,6 +34,7 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, 
         </div>
       </div>
       <div className="top-actions">
+        {snapshot && <TranslationCenter storyId={snapshot.story.id} storyLanguage={snapshot.story.language} modelSettings={modelSettings} />}
         <button
           className="square-button"
           type="button"

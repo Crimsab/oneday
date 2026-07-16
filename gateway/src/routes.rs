@@ -1,6 +1,6 @@
 use crate::{
     assets, db, engine, error::PublicError, events::TurnStreamEvent, gateway_protocol as protocol,
-    telemetry, AppState,
+    portability, telemetry, translation, AppState,
 };
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
@@ -9,6 +9,7 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
 use axum::{Json, Router};
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -35,6 +36,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/story-enhance", post(story_enhance))
         .route("/api/stories", get(stories).post(create_story))
         .route(
+            "/api/stories/import",
+            post(import_story_archive).layer(DefaultBodyLimit::max(520 * 1024 * 1024)),
+        )
+        .route(
+            "/api/stories/import-template",
+            post(import_world_template).layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
+        )
+        .route(
             "/api/stories/:story_id",
             patch(update_story).delete(delete_story),
         )
@@ -49,6 +58,43 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories/:story_id/agency-events", get(agency_events))
         .route("/api/stories/:story_id/chapters", get(chapters))
         .route("/api/stories/:story_id/export", get(export_story))
+        .route("/api/stories/:story_id/archive", post(export_story_archive))
+        .route(
+            "/api/stories/:story_id/world-template",
+            get(export_world_template),
+        )
+        .route(
+            "/api/stories/:story_id/translations/jobs",
+            get(translation_jobs).post(create_translation_job),
+        )
+        .route(
+            "/api/stories/:story_id/translations/jobs/estimate",
+            post(estimate_translation_job),
+        )
+        .route(
+            "/api/stories/:story_id/translations/jobs/:job_id",
+            get(translation_job).delete(delete_translation_job),
+        )
+        .route(
+            "/api/stories/:story_id/translations/jobs/:job_id/:action",
+            post(translation_job_action),
+        )
+        .route(
+            "/api/stories/:story_id/translations/jobs/:job_id/browser-next",
+            get(next_browser_translation_item),
+        )
+        .route(
+            "/api/stories/:story_id/translations/jobs/:job_id/items/:item_id",
+            post(complete_browser_translation_item),
+        )
+        .route(
+            "/api/stories/:story_id/translations/glossary",
+            get(translation_glossary).post(create_translation_glossary),
+        )
+        .route(
+            "/api/stories/:story_id/translations/glossary/:entry_id",
+            put(update_translation_glossary).delete(delete_translation_glossary),
+        )
         .route(
             "/api/stories/:story_id/messages/:message_id/diagnostics",
             get(message_diagnostics),
@@ -702,6 +748,10 @@ struct PageQuery {
     q: String,
     #[serde(default)]
     format: String,
+    #[serde(default)]
+    language: String,
+    #[serde(default)]
+    mode: String,
 }
 
 async fn history(
@@ -744,7 +794,22 @@ async fn export_story(
     Query(query): Query<PageQuery>,
 ) -> Result<Response, ApiError> {
     if query.format.eq_ignore_ascii_case("epub") {
-        let (filename, bytes) = db::export_story_epub(&state.pool, &story_id).await?;
+        let (filename, bytes) = if query.language.trim().is_empty() || query.mode == "original" {
+            db::export_story_epub(&state.pool, &story_id).await?
+        } else {
+            let export = db::export_story_readable(
+                &state.pool,
+                &story_id,
+                "epub",
+                &query.language,
+                &query.mode,
+            )
+            .await?;
+            (
+                export.filename,
+                BASE64.decode(export.content).map_err(anyhow::Error::from)?,
+            )
+        };
         let mut headers = HeaderMap::new();
         headers.insert(
             header::CONTENT_TYPE,
@@ -757,7 +822,221 @@ async fn export_story(
         );
         return Ok((headers, bytes).into_response());
     }
-    Ok(Json(db::export_story(&state.pool, &story_id, &query.format).await?).into_response())
+    Ok(Json(
+        db::export_story_readable(
+            &state.pool,
+            &story_id,
+            &query.format,
+            &query.language,
+            &query.mode,
+        )
+        .await?,
+    )
+    .into_response())
+}
+
+async fn export_story_archive(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(options): Json<portability::ArchiveOptions>,
+) -> Result<Response, ApiError> {
+    let (filename, bytes) = portability::export_story_archive(state, &story_id, options).await?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/zip"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+            .map_err(anyhow::Error::from)?,
+    );
+    Ok((headers, bytes).into_response())
+}
+
+async fn import_story_archive(
+    State(state): State<Arc<AppState>>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<portability::ImportResult>), ApiError> {
+    let mut archive = None;
+    while let Some(field) = multipart.next_field().await.map_err(anyhow::Error::from)? {
+        if field.name() == Some("file") {
+            let bytes = field.bytes().await.map_err(anyhow::Error::from)?;
+            if bytes.len() > 512 * 1024 * 1024 {
+                return Err(ApiError::from(anyhow::Error::from(
+                    PublicError::payload_too_large(
+                        "archive_too_large",
+                        "Story archive exceeds the import limit.",
+                    ),
+                )));
+            }
+            archive = Some(bytes.to_vec());
+            break;
+        }
+    }
+    let bytes = archive.ok_or_else(|| {
+        anyhow::Error::from(PublicError::bad_request(
+            "missing_archive",
+            "Choose a OneDay ZIP archive.",
+        ))
+    })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(portability::import_story_archive(state, bytes).await?),
+    ))
+}
+
+async fn export_world_template(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Response, ApiError> {
+    let (filename, bytes) = portability::export_world_template(&state.pool, &story_id).await?;
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json; charset=utf-8"),
+    );
+    headers.insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+            .map_err(anyhow::Error::from)?,
+    );
+    Ok((headers, bytes).into_response())
+}
+
+async fn import_world_template(
+    State(state): State<Arc<AppState>>,
+    body: axum::body::Bytes,
+) -> Result<(StatusCode, Json<portability::ImportResult>), ApiError> {
+    Ok((
+        StatusCode::CREATED,
+        Json(portability::import_world_template(state, &body).await?),
+    ))
+}
+
+async fn translation_jobs(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<Vec<translation::JobView>>, ApiError> {
+    Ok(Json(translation::list_jobs(&state.pool, &story_id).await?))
+}
+
+async fn translation_job(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, job_id)): Path<(String, String)>,
+) -> Result<Json<translation::JobView>, ApiError> {
+    Ok(Json(
+        translation::get_job(&state.pool, &story_id, &job_id).await?,
+    ))
+}
+
+async fn estimate_translation_job(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<translation::CreateJobRequest>,
+) -> Result<Json<translation::EstimateView>, ApiError> {
+    Ok(Json(
+        translation::estimate(&state.pool, &story_id, &payload).await?,
+    ))
+}
+
+async fn create_translation_job(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<translation::CreateJobRequest>,
+) -> Result<(StatusCode, Json<translation::JobView>), ApiError> {
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(translation::create_job(&state.pool, &story_id, payload).await?),
+    ))
+}
+
+async fn translation_job_action(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, job_id, action)): Path<(String, String, String)>,
+) -> Result<Json<translation::JobView>, ApiError> {
+    Ok(Json(
+        translation::job_action(&state.pool, &story_id, &job_id, &action).await?,
+    ))
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+struct TranslationDeleteQuery {
+    #[serde(default)]
+    delete_translations: bool,
+}
+
+async fn delete_translation_job(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, job_id)): Path<(String, String)>,
+    Query(query): Query<TranslationDeleteQuery>,
+) -> Result<StatusCode, ApiError> {
+    translation::delete_job(&state.pool, &story_id, &job_id, query.delete_translations).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn next_browser_translation_item(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, job_id)): Path<(String, String)>,
+) -> Result<Json<Option<translation::BrowserItemView>>, ApiError> {
+    Ok(Json(
+        translation::next_browser_item(&state.pool, &story_id, &job_id).await?,
+    ))
+}
+
+async fn complete_browser_translation_item(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, job_id, item_id)): Path<(String, String, String)>,
+    Json(payload): Json<translation::CompleteBrowserItemRequest>,
+) -> Result<Json<translation::JobView>, ApiError> {
+    Ok(Json(
+        translation::complete_browser_item(
+            &state.pool,
+            &story_id,
+            &job_id,
+            &item_id,
+            payload.translated_text,
+        )
+        .await?,
+    ))
+}
+
+async fn translation_glossary(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<Vec<translation::GlossaryEntry>>, ApiError> {
+    Ok(Json(
+        translation::list_glossary(&state.pool, &story_id).await?,
+    ))
+}
+
+async fn create_translation_glossary(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<translation::GlossaryEntryRequest>,
+) -> Result<(StatusCode, Json<translation::GlossaryEntry>), ApiError> {
+    Ok((
+        StatusCode::CREATED,
+        Json(translation::upsert_glossary(&state.pool, &story_id, None, payload).await?),
+    ))
+}
+
+async fn update_translation_glossary(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, entry_id)): Path<(String, String)>,
+    Json(payload): Json<translation::GlossaryEntryRequest>,
+) -> Result<Json<translation::GlossaryEntry>, ApiError> {
+    Ok(Json(
+        translation::upsert_glossary(&state.pool, &story_id, Some(&entry_id), payload).await?,
+    ))
+}
+
+async fn delete_translation_glossary(
+    State(state): State<Arc<AppState>>,
+    Path((story_id, entry_id)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    translation::delete_glossary(&state.pool, &story_id, &entry_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn message_diagnostics(

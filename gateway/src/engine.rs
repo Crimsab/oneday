@@ -810,6 +810,50 @@ pub async fn story_enhance(
     Ok(parsed)
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct TranslationRequest {
+    pub text: String,
+    pub source_language: String,
+    pub target_language: String,
+    pub provider: String,
+    pub model: String,
+    pub style: String,
+    pub glossary: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TranslationResponse {
+    pub text: Option<String>,
+    pub error: Option<String>,
+}
+
+pub async fn translate(
+    state: Arc<AppState>,
+    request: TranslationRequest,
+) -> anyhow::Result<TranslationResponse> {
+    let (response, status_ok, stderr) =
+        call_gateway::<_, TranslationResponse>(state, "gateway-translate", &request).await?;
+    if let Some(error) = response.error.as_deref().filter(|value| !value.is_empty()) {
+        return Err(anyhow!("translation_failed: {error}"));
+    }
+    if !status_ok {
+        return Err(anyhow!(
+            "gateway-translate failed: {}",
+            compact_stderr(&stderr)
+        ));
+    }
+    if response
+        .text
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .is_empty()
+    {
+        return Err(anyhow!("gateway-translate returned no translation"));
+    }
+    Ok(response)
+}
+
 pub async fn submit_meta(
     state: Arc<AppState>,
     story_id: &str,

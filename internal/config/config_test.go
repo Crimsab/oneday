@@ -508,6 +508,11 @@ ai:
 	if err := os.WriteFile(path, raw, 0640); err != nil {
 		t.Fatal(err)
 	}
+	// os.WriteFile respects the process umask; force the fixture mode so this
+	// test verifies that the atomic rewrite preserves an existing 0640 file.
+	if err := os.Chmod(path, 0640); err != nil {
+		t.Fatal(err)
+	}
 	settings, err := ReadModelRoutingSettings(path)
 	if err != nil {
 		t.Fatal(err)

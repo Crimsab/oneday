@@ -3,6 +3,8 @@ import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getChapters, getHistory, getStoryEpub, getStoryExport, getTelemetryExport } from "../api";
 import { readableStructuredText } from "../format";
+import { exportArchive, exportTemplate, type ArchiveOptions, type ReadableFormat, type ReadingMode } from "../features/portability/portabilityApi";
+import { encodeTemplateCode } from "../features/portability/templateCode";
 import type { ChapterView, MessageView, StorySnapshot } from "../types";
 import { MarkdownText } from "./MarkdownText";
 
@@ -19,7 +21,7 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
-  const { t } = useTranslation(["flow", "surfaces"]);
+  const { t } = useTranslation(["flow", "surfaces", "portability"]);
   const id = useId();
   const [messages, setMessages] = useState<MessageView[]>([]);
   const [chapters, setChapters] = useState<ChapterView[]>([]);
@@ -29,6 +31,10 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
 	const [debouncedQuery, setDebouncedQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [format, setFormat] = useState<ReadableFormat>("markdown");
+  const [readingMode, setReadingMode] = useState<ReadingMode>("original");
+  const [targetLanguage, setTargetLanguage] = useState("en");
+  const [archiveOptions, setArchiveOptions] = useState<ArchiveOptions>({ history: true, saves: true, visual_assets: true, audio: true, translations: true, world_detail: true });
 
 	useEffect(() => {
 		const timer = globalThis.setTimeout(() => setDebouncedQuery(query), 250);
@@ -87,18 +93,18 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     }
   };
 
-  const exportAs = async (format: "markdown" | "json" | "epub" | "replay") => {
+  const exportAs = async (selectedFormat: ReadableFormat | "replay") => {
     setBusy(true);
     try {
-		if (format === "epub") {
-			const result = await getStoryEpub(snapshot.story.id);
+		if (selectedFormat === "epub") {
+			const result = await getStoryEpub(snapshot.story.id, targetLanguage, readingMode);
 			downloadBlob(result.blob, result.filename);
 			return;
 		}
-      const result = await getStoryExport(snapshot.story.id, format);
+      const result = await getStoryExport(snapshot.story.id, selectedFormat, targetLanguage, readingMode);
       const bytes = result.encoding === "base64" ? Uint8Array.from(atob(result.content), (character) => character.charCodeAt(0)) : result.content;
       downloadBlob(
-        new Blob([bytes], { type: result.content_type || (format === "json" || format === "replay" ? "application/json" : "text/markdown") }),
+        new Blob([bytes], { type: result.content_type || (selectedFormat === "json" || selectedFormat === "replay" ? "application/json" : "text/markdown") }),
         result.filename,
       );
     } catch (reason) {
@@ -106,6 +112,26 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const exportPortableArchive = async () => {
+    setBusy(true); setError("");
+    try {
+      const result = await exportArchive(snapshot.story.id, archiveOptions);
+      downloadBlob(result.blob, result.filename);
+    } catch (reason) { setError(errorText(reason)); } finally { setBusy(false); }
+  };
+
+  const exportWorldTemplate = async (asCode: boolean) => {
+    setBusy(true); setError("");
+    try {
+      const result = await exportTemplate(snapshot.story.id);
+      if (asCode) {
+        await navigator.clipboard.writeText(await encodeTemplateCode(result.text));
+      } else {
+        downloadBlob(new Blob([result.text], { type: "application/json" }), result.filename);
+      }
+    } catch (reason) { setError(errorText(reason)); } finally { setBusy(false); }
   };
 
   const exportTelemetry = async () => {
@@ -129,10 +155,19 @@ export function HistoryReader({ snapshot }: { snapshot: StorySnapshot }) {
       </label>
       <details className="history-export-menu">
         <summary>{t("exportBranch")}</summary>
-        <div className="history-export">
-          <button type="button" disabled={busy} onClick={() => void exportAs("markdown")}>{t("surfaces:history.markdown")}</button>
-          <button type="button" disabled={busy} onClick={() => void exportAs("json")}>{t("surfaces:history.json")}</button>
-          <button type="button" disabled={busy} onClick={() => void exportAs("epub")}>{t("surfaces:history.epub")}</button>
+        <div className="history-export history-export-workspace">
+          <label><span>{t("portability:format")}</span><select value={format} onChange={(event) => setFormat(event.target.value as ReadableFormat)}><option value="markdown">Markdown</option><option value="html">HTML</option><option value="txt">TXT</option><option value="json">JSON</option><option value="epub">EPUB</option></select></label>
+          <label><span>{t("portability:languageVersion")}</span><select value={readingMode} onChange={(event) => setReadingMode(event.target.value as ReadingMode)}><option value="original">{t("portability:original")}</option><option value="translated">{t("portability:translated")}</option><option value="bilingual">{t("portability:bilingual")}</option></select></label>
+          {readingMode !== "original" && <label><span>{t("portability:targetLanguage")}</span><input value={targetLanguage} onChange={(event) => setTargetLanguage(event.target.value)} placeholder="en" /></label>}
+          <button type="button" className="primary" disabled={busy || (readingMode !== "original" && !targetLanguage.trim())} onClick={() => void exportAs(format)}>{t("portability:download")}</button>
+          <details className="history-portable-export">
+            <summary>{t("portability:portableArchive")}</summary>
+            <div className="history-archive-options">
+              {(Object.keys(archiveOptions) as Array<keyof ArchiveOptions>).map((key) => <label key={key}><input type="checkbox" checked={archiveOptions[key]} onChange={(event) => setArchiveOptions((value) => ({ ...value, [key]: event.target.checked }))} />{t(`portability:archiveOptions.${key}`)}</label>)}
+              <button type="button" disabled={busy} onClick={() => void exportPortableArchive()}>{t("portability:downloadArchive")}</button>
+            </div>
+          </details>
+          <div className="history-template-actions"><button type="button" disabled={busy} onClick={() => void exportWorldTemplate(false)}>{t("portability:worldTemplate")}</button><button type="button" disabled={busy} onClick={() => void exportWorldTemplate(true)}>{t("portability:copyCode")}</button></div>
           <details className="history-technical-export">
             <summary>{t("surfaces:history.technical")}</summary>
             <div>

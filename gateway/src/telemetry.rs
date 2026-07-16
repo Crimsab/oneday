@@ -260,6 +260,7 @@ fn usage_from_row(row: &sqlx::sqlite::SqliteRow) -> UsageView {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn start_image_generation(
     pool: &SqlitePool,
     story_id: &str,

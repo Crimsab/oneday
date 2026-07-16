@@ -1,0 +1,12 @@
+export const batch_translation = {
+  open: "Open translation center", label: "Translate", title: "Translation center", current: "Current translation",
+  progress: "{{done}} of {{total}} items, {{progress}}%", newJob: "New batch translation", scope: "Scope", wholeStory: "Whole story", chapter: "Chapter",
+  language: "Target language", engine: "Engine", browser: "Browser", ai: "AI", provider: "Provider", model: "Model", style: "Style",
+  faithful: "Faithful", natural: "Natural", literary: "Literary", estimate: "{{items}} items, {{characters}} characters, {{cached}} cached.",
+  providerCost: "Provider billing applies; OneDay does not invent a price estimate.", localCost: "Runs locally with no API charge.", start: "Start translation",
+  jobs: "Translation jobs", noJobs: "No batch translations yet.", items: "items", failedItems: "failed", pause: "Pause", resume: "Resume", cancel: "Stop",
+  retry: "Retry failed items", deleteJob: "Delete job", deleteTranslations: "Delete job and its translations", completed: "Completed", queued: "Queued", running: "Running", paused: "Paused",
+  partial: "Partially completed", failed: "Failed", cancelled: "Stopped", selection: "Selection", glossary: "Story glossary", sourceTerm: "Source term",
+  equivalent: "Fixed translation", add: "Add mapping", preserve: "Keep unchanged", unchanged: "unchanged", removeTerm: "Remove term",
+  browserPaused: "Browser translation paused: {{error}}",
+} as const;

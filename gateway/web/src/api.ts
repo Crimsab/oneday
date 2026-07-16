@@ -320,9 +320,10 @@ export async function getTimeline(storyId:string, signal?:AbortSignal):Promise<T
 export function updateTimeline(storyId:string,payload:TimelineEnvelope):Promise<TimelineMutationResponse> { return request<TimelineMutationResponse>(`/api/stories/${encodeURIComponent(storyId)}/timeline`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}); }
 export function getHistory(storyId:string,cursor?:number,search="",signal?:AbortSignal):Promise<HistoryPage> { const query=new URLSearchParams({limit:"40",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<HistoryPage>(`/api/stories/${encodeURIComponent(storyId)}/history?${query}`,{signal}); }
 export function getChapters(storyId:string,cursor?:number,search="",signal?:AbortSignal):Promise<ChapterPage> { const query=new URLSearchParams({limit:"30",q:search}); if(cursor)query.set("cursor",String(cursor)); return request<ChapterPage>(`/api/stories/${encodeURIComponent(storyId)}/chapters?${query}`,{signal}); }
-export function getStoryExport(storyId:string,format:"markdown"|"json"|"epub"|"replay"):Promise<StoryExport> { return request<StoryExport>(`/api/stories/${encodeURIComponent(storyId)}/export?format=${format}`); }
-export async function getStoryEpub(storyId:string):Promise<{filename:string;blob:Blob}> {
-	const response = await fetchWithTimeout(`/api/stories/${encodeURIComponent(storyId)}/export?format=epub`);
+export function getStoryExport(storyId:string,format:"markdown"|"html"|"txt"|"json"|"epub"|"replay",language="",mode:"original"|"translated"|"bilingual"="original"):Promise<StoryExport> { const query=new URLSearchParams({format}); if(language)query.set("language",language); if(mode!=="original")query.set("mode",mode); return request<StoryExport>(`/api/stories/${encodeURIComponent(storyId)}/export?${query}`); }
+export async function getStoryEpub(storyId:string,language="",mode:"original"|"translated"|"bilingual"="original"):Promise<{filename:string;blob:Blob}> {
+	const query=new URLSearchParams({format:"epub"}); if(language)query.set("language",language); if(mode!=="original")query.set("mode",mode);
+	const response = await fetchWithTimeout(`/api/stories/${encodeURIComponent(storyId)}/export?${query}`);
 	if (!response.ok) {
 		const payload = await response.json().catch(() => ({})) as ErrorPayload;
 		throw new ApiRequestError(localizedError(payload, response.status), response.status, payload);
