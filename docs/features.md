@@ -33,10 +33,15 @@ structured consequences so browser and terminal never invent separate state.
 - The navigation rail expands, collapses, or hides while remembering only the
   last visible desktop mode. Mobile navigation remains an independent drawer.
 - Story Library searches active or archived summaries and keeps create, edit,
-  archive, restore, and guarded deletion out of the navigation rail.
+  archive, restore, and guarded deletion out of the navigation rail. Its detail
+  pane loads overview, branches, chapters, saves, timeline, and visual assets
+  only when selected; cards never fetch full story snapshots.
 - The browser exports and imports a versioned UI theme containing only visual
-  preferences. Import shows a diff, warns about missing local fonts, and offers
-  one-step undo without including stories, provider settings, or gameplay data.
+  preferences. JSON remains the default format; an optional ZIP can include
+  user-authorized WOFF2 fonts with hash verification, extraction limits, and an
+  IndexedDB recovery journal. Import shows a diff, warns about missing local
+  fonts, and offers one-step undo without including stories, provider settings,
+  or gameplay data.
 - Supported desktop Chrome browsers expose optional per-message reading
   translation below completed transcript messages. It uses the browser's
   built-in Translator API and never adds a model call or rewrites saved text.
@@ -69,6 +74,9 @@ points, while a tactical adventure can enable them.
 - Manual PNG, JPEG, and static WebP uploads become additional branch-aware
   versions. Selection is explicit, and later generation preserves a selected
   manual upload.
+- A manual upload may also create a new custom, world, location, or character
+  asset on the active branch; it is stored as a draft-canon user asset and is
+  never treated as generated canonical evidence.
 
 Media work is asynchronous and non-blocking. Text, map structure, labels, and
 story state remain authoritative when an image or audio provider is unavailable.

@@ -24,10 +24,15 @@ pub const MAX_UPLOAD_REQUEST_BYTES: usize = MAX_UPLOAD_BYTES + 64 * 1024;
 struct UploadMetadata {
     #[serde(default, alias = "selectAfterUpload")]
     select_after_upload: bool,
+    #[serde(default, alias = "displayName")]
+    display_name: String,
+    #[serde(default, alias = "assetKind")]
+    asset_kind: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct VisualAssetUploadResponse {
+    pub asset_id: String,
     pub version_id: i64,
     pub selected: bool,
     pub visual_assets: assets::VisualAssetsResponse,
@@ -249,10 +254,169 @@ async fn persist_received_upload(
     };
 
     Ok(VisualAssetUploadResponse {
+        asset_id: asset_id.to_string(),
         version_id,
         selected,
         visual_assets: assets::visual_assets(&state.pool, story_id).await?,
     })
+}
+
+pub async fn upload_new_visual_asset(
+    state: Arc<AppState>,
+    story_id: &str,
+    multipart: Multipart,
+) -> anyhow::Result<VisualAssetUploadResponse> {
+    let received = receive_multipart(&state.paths.visual_asset_dir, multipart).await?;
+    let result = persist_new_visual_asset(&state, story_id, &received).await;
+    if result.is_err() {
+        remove_if_present(&received.temp_path).await;
+    }
+    result
+}
+
+async fn persist_new_visual_asset(
+    state: &AppState,
+    story_id: &str,
+    received: &ReceivedUpload,
+) -> anyhow::Result<VisualAssetUploadResponse> {
+    let display_name = received.metadata.display_name.trim();
+    if display_name.is_empty() || display_name.chars().count() > 100 {
+        return Err(PublicError::bad_request(
+            "invalid_visual_asset_name",
+            "displayName must contain between 1 and 100 characters",
+        )
+        .into());
+    }
+    let kind = received.metadata.asset_kind.trim().to_ascii_lowercase();
+    if !matches!(kind.as_str(), "custom" | "world" | "location" | "character") {
+        return Err(PublicError::bad_request(
+            "invalid_visual_asset_kind",
+            "assetKind must be custom, world, location, or character",
+        )
+        .into());
+    }
+    let bytes = fs::read(&received.temp_path).await?;
+    let normalized = normalize_upload(&bytes, &received.declared_mime)?;
+    if normalized.png.len() > MAX_NORMALIZED_BYTES {
+        return Err(PublicError::unprocessable_entity(
+            "visual_upload_normalized_too_large",
+            "normalized image exceeds the 64 MiB storage limit",
+        )
+        .into());
+    }
+    fs::write(&received.temp_path, &normalized.png).await?;
+    let asset_id = format!("custom-{}", Uuid::new_v4());
+    let story_slug = slug(story_id);
+    let filename = format!(
+        "{}-upload-{}-{}.png",
+        slug(&asset_id),
+        &normalized.sha256[..16],
+        Uuid::new_v4()
+    );
+    let final_dir = state.paths.visual_asset_dir.join(&story_slug);
+    fs::create_dir_all(&final_dir).await?;
+    let final_path = final_dir.join(&filename);
+    fs::rename(&received.temp_path, &final_path).await?;
+    let url = format!("/generated/assets/{story_slug}/{filename}");
+    let db_result = persist_new_asset_rows(
+        &state.pool,
+        story_id,
+        &asset_id,
+        display_name,
+        &kind,
+        received,
+        &normalized,
+        &final_path,
+        &url,
+    )
+    .await;
+    let version_id = match db_result {
+        Ok(id) => id,
+        Err(error) => {
+            remove_if_present(&final_path).await;
+            return Err(error);
+        }
+    };
+    Ok(VisualAssetUploadResponse {
+        asset_id,
+        version_id,
+        selected: true,
+        visual_assets: assets::visual_assets(&state.pool, story_id).await?,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn persist_new_asset_rows(
+    pool: &sqlx::SqlitePool,
+    story_id: &str,
+    asset_id: &str,
+    display_name: &str,
+    kind: &str,
+    received: &ReceivedUpload,
+    normalized: &NormalizedUpload,
+    final_path: &Path,
+    url: &str,
+) -> anyhow::Result<i64> {
+    let mut tx = pool.begin().await?;
+    let row = sqlx::query(
+        r#"SELECT s.active_branch_id,b.head_commit_id,COALESCE(w.current_turn,0) AS current_turn
+           FROM stories s JOIN story_branches b ON b.id=s.active_branch_id
+           LEFT JOIN world_state w ON w.story_id=s.id WHERE s.id=?"#,
+    )
+    .bind(story_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| PublicError::not_found("story_not_found", "story not found"))?;
+    let branch_id: String = row.try_get("active_branch_id")?;
+    let source_commit_id: String = row.try_get("head_commit_id")?;
+    let turn: i64 = row.try_get("current_turn")?;
+    let lineage_key = format!("custom:{asset_id}");
+    let fingerprint = format!("upload:{}", normalized.sha256);
+    sqlx::query(
+        r#"INSERT INTO visual_assets
+           (id,story_id,kind,subject,lineage_key,appearance_fingerprint,canon_status,gate_state,gate_reason,
+            generation_eligible,prompt,negative_prompt,status,url,file_path,provider,source,turn,branch_id,source_commit_id)
+           VALUES (?,?,?,?,?,?,'draft','manual_upload','User-provided image',0,'','','ready',?,?,'manual-upload','upload',?,?,?)"#,
+    ).bind(asset_id).bind(story_id).bind(kind).bind(display_name).bind(&lineage_key).bind(&fingerprint)
+      .bind(url).bind(final_path.to_string_lossy().as_ref()).bind(turn).bind(&branch_id).bind(&source_commit_id)
+      .execute(&mut *tx).await?;
+    let version_id: i64 = sqlx::query_scalar(
+        r#"INSERT INTO visual_asset_versions
+           (asset_id,story_id,kind,subject,url,file_path,provider,turn,branch_id,source_commit_id,
+            appearance_fingerprint,canon_status,source_kind)
+           VALUES (?,?,?,?,?,?,'manual-upload',?,?,?,?,?,'upload') RETURNING id"#,
+    )
+    .bind(asset_id)
+    .bind(story_id)
+    .bind(kind)
+    .bind(display_name)
+    .bind(url)
+    .bind(final_path.to_string_lossy().as_ref())
+    .bind(turn)
+    .bind(&branch_id)
+    .bind(&source_commit_id)
+    .bind(&fingerprint)
+    .bind("draft")
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query(
+        r#"INSERT INTO visual_asset_uploads
+           (version_id,story_id,asset_id,branch_id,original_filename_display,declared_mime,detected_mime,byte_size,width,height,sha256)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)"#,
+    ).bind(version_id).bind(story_id).bind(asset_id).bind(&branch_id).bind(&received.original_filename)
+      .bind(&received.declared_mime).bind(normalized.detected_mime).bind(received.byte_size as i64)
+      .bind(i64::from(normalized.width)).bind(i64::from(normalized.height)).bind(&normalized.sha256).execute(&mut *tx).await?;
+    assets::select_new_version_on(
+        &mut tx,
+        story_id,
+        asset_id,
+        &branch_id,
+        &source_commit_id,
+        version_id,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(version_id)
 }
 
 async fn persist_upload_rows(
@@ -665,6 +829,9 @@ mod tests {
                 id TEXT PRIMARY KEY,story_id TEXT NOT NULL,kind TEXT NOT NULL,subject TEXT NOT NULL,
                 canonical_entity_id TEXT NOT NULL DEFAULT '',canonical_location_id TEXT NOT NULL DEFAULT '',
                 form_id TEXT NOT NULL DEFAULT '',appearance_fingerprint TEXT NOT NULL DEFAULT '',
+                lineage_key TEXT NOT NULL DEFAULT '',gate_state TEXT NOT NULL DEFAULT 'eligible',gate_reason TEXT NOT NULL DEFAULT '',
+                generation_eligible INTEGER NOT NULL DEFAULT 1,status TEXT NOT NULL DEFAULT 'pending',url TEXT NOT NULL DEFAULT '',
+                file_path TEXT NOT NULL DEFAULT '',provider TEXT NOT NULL DEFAULT '',source TEXT NOT NULL DEFAULT '',
                 profile_revision_id TEXT,canon_status TEXT NOT NULL DEFAULT 'draft',prompt TEXT NOT NULL DEFAULT '',
                 negative_prompt TEXT NOT NULL DEFAULT '',turn INTEGER NOT NULL DEFAULT 0,branch_id TEXT NOT NULL,
                 source_commit_id TEXT NOT NULL,created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"#,
@@ -689,9 +856,11 @@ mod tests {
                 prompt_override TEXT NOT NULL DEFAULT '',negative_prompt_override TEXT NOT NULL DEFAULT '',
                 status_override TEXT NOT NULL DEFAULT '',error_override TEXT NOT NULL DEFAULT '',
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(asset_id,branch_id))"#,
+            r#"CREATE TABLE world_state (story_id TEXT PRIMARY KEY,current_turn INTEGER NOT NULL DEFAULT 0)"#,
             r#"INSERT INTO stories VALUES ('story','branch-main')"#,
             r#"INSERT INTO story_branches (id,story_id,head_commit_id) VALUES ('branch-main','story','commit-main')"#,
             r#"INSERT INTO turn_commits VALUES ('commit-main',NULL)"#,
+            r#"INSERT INTO world_state VALUES ('story',7)"#,
             r#"INSERT INTO visual_assets (id,story_id,kind,subject,appearance_fingerprint,branch_id,source_commit_id)
                VALUES ('asset','story','location','Dock','dock','branch-main','commit-main')"#,
         ] {
@@ -711,6 +880,7 @@ mod tests {
             byte_size: 42,
             metadata: UploadMetadata {
                 select_after_upload,
+                ..UploadMetadata::default()
             },
         };
         let (first, selected) = persist_upload_rows(
@@ -760,5 +930,40 @@ mod tests {
                 .await
                 .unwrap();
         assert_eq!(source_kind, "upload");
+
+        let custom_received = ReceivedUpload {
+            temp_path: PathBuf::from("/tmp/unused-custom.part"),
+            original_filename: "custom.png".into(),
+            declared_mime: "image/png".into(),
+            byte_size: 42,
+            metadata: UploadMetadata {
+                display_name: "Custom cover".into(),
+                asset_kind: "custom".into(),
+                select_after_upload: true,
+            },
+        };
+        let custom_version = persist_new_asset_rows(
+            &pool,
+            "story",
+            "custom-fixture",
+            "Custom cover",
+            "custom",
+            &custom_received,
+            &normalized,
+            Path::new("/tmp/custom.png"),
+            "/generated/assets/story/custom.png",
+        )
+        .await
+        .unwrap();
+        let custom_source: String =
+            sqlx::query_scalar("SELECT source_kind FROM visual_asset_versions WHERE id=?")
+                .bind(custom_version)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        let selected_custom: i64 = sqlx::query_scalar("SELECT selected_version_id FROM visual_asset_selection_states WHERE asset_id='custom-fixture'")
+            .fetch_one(&pool).await.unwrap();
+        assert_eq!(custom_source, "upload");
+        assert_eq!(selected_custom, custom_version);
     }
 }

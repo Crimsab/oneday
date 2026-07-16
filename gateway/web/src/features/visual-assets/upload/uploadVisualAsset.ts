@@ -49,3 +49,31 @@ export function uploadVisualAssetVersion({
     request.send(data);
   });
 }
+
+export function uploadNewVisualAsset({
+  storyId, file, displayName, assetKind, signal, onProgress,
+}: Omit<VisualAssetUploadOptions, "assetId" | "selectAfterUpload"> & { displayName: string; assetKind: "custom" | "world" | "location" | "character" }): Promise<VisualAssetUploadResponse> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    const data = new FormData();
+    data.append("file", file, file.name);
+    data.append("metadata", JSON.stringify({ displayName, assetKind, selectAfterUpload: true }));
+    const abort = () => request.abort();
+    signal?.addEventListener("abort", abort, { once: true });
+    request.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress?.(Math.max(0, Math.min(1, event.loaded / event.total)));
+    });
+    request.addEventListener("load", () => {
+      signal?.removeEventListener("abort", abort);
+      let payload: unknown = null;
+      try { payload = request.responseText ? JSON.parse(request.responseText) : null; } catch { /* handled below */ }
+      if (request.status >= 200 && request.status < 300 && payload) { onProgress?.(1); resolve(payload as VisualAssetUploadResponse); return; }
+      const message = typeof payload === "object" && payload && "error" in payload ? String((payload as { error: unknown }).error) : `Upload failed (${request.status || 0})`;
+      reject(new Error(message));
+    });
+    request.addEventListener("error", () => reject(new Error("Upload failed because the server could not be reached.")));
+    request.addEventListener("abort", () => reject(new DOMException("Upload cancelled", "AbortError")));
+    request.open("POST", `/api/stories/${encodeURIComponent(storyId)}/visual-assets/upload`);
+    request.send(data);
+  });
+}

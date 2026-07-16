@@ -1,8 +1,9 @@
 import type { FontSourcePreference } from "./types";
 
 const DATABASE_NAME = "oneday-font-library";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const STORE_NAME = "fonts";
+const JOURNAL_STORE_NAME = "theme_import_journal";
 export const MAX_STORED_FONT_BYTES = 20 * 1024 * 1024;
 
 export interface FontChoice {
@@ -185,9 +186,37 @@ export async function listStoredFonts(): Promise<StoredFontRecord[]> {
 }
 
 export async function loadStoredFonts(): Promise<StoredFontRecord[]> {
+  await recoverInterruptedThemeFontImport();
   const records = await listStoredFonts();
   const registrations = await Promise.allSettled(records.map(registerStoredFont));
   return records.filter((_, index) => registrations[index].status === "fulfilled");
+}
+
+export async function stageThemeFonts(records: StoredFontRecord[]): Promise<void> {
+  await withNamedStore("readwrite", JOURNAL_STORE_NAME, (store) => store.put({ id: "active", fontIds: records.map((record) => record.id), createdAt: new Date().toISOString() }));
+  for (const record of records) {
+    await registerStoredFont(record);
+    await withStore("readwrite", (store) => store.put(record));
+  }
+}
+
+export async function commitThemeFontImport(): Promise<void> {
+  await withNamedStore("readwrite", JOURNAL_STORE_NAME, (store) => store.delete("active"));
+}
+
+export async function rollbackThemeFontImport(records: StoredFontRecord[]): Promise<void> {
+  for (const record of records) await deleteStoredFont(record.id);
+  await commitThemeFontImport();
+}
+
+async function recoverInterruptedThemeFontImport(): Promise<void> {
+  const journal = await withNamedStore<{ id: string; fontIds: string[] } | undefined>("readonly", JOURNAL_STORE_NAME, (store) => store.get("active"));
+  if (!journal) return;
+  for (const id of journal.fontIds) {
+    unregisterStoredFont(id);
+    await withStore("readwrite", (store) => store.delete(id));
+  }
+  await commitThemeFontImport();
 }
 
 export async function deleteStoredFont(id: string): Promise<void> {
@@ -278,9 +307,24 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!request.result.objectStoreNames.contains(STORE_NAME)) {
         request.result.createObjectStore(STORE_NAME, { keyPath: "id" });
       }
+      if (!request.result.objectStoreNames.contains(JOURNAL_STORE_NAME)) {
+        request.result.createObjectStore(JOURNAL_STORE_NAME, { keyPath: "id" });
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error ?? new Error("Impossibile aprire la libreria font"));
+  });
+}
+
+async function withNamedStore<T = void>(mode: IDBTransactionMode, storeName: string, action: (store: IDBObjectStore) => IDBRequest): Promise<T> {
+  const database = await openDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(storeName, mode);
+    const request = action(transaction.objectStore(storeName));
+    request.onsuccess = () => resolve(request.result as T);
+    request.onerror = () => reject(request.error ?? new Error("Operazione font non riuscita"));
+    transaction.oncomplete = () => database.close();
+    transaction.onabort = () => { database.close(); reject(transaction.error ?? new Error("Operazione font interrotta")); };
   });
 }
 

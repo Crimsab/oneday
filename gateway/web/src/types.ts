@@ -337,6 +337,18 @@ export interface StoryDeletePlan {
   retained_asset_files: string[];
 }
 
+export interface StoryOverview {
+  story: StorySummary;
+  active_branch_id: string;
+  revision: number;
+  current_turn: number;
+  branch_count: number;
+  chapter_count: number;
+  save_count: number;
+  message_count: number;
+  asset_count: number;
+}
+
 export interface RecordView {
   id: string;
   name: string;
@@ -778,6 +790,7 @@ export interface VisualAssetVersion {
 }
 
 export interface VisualAssetUploadResponse {
+  asset_id: string;
   version_id: number;
   selected: boolean;
   visual_assets: VisualAssetsResponse;

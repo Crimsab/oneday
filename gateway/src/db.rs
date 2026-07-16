@@ -34,6 +34,19 @@ pub struct StoryDeleteCount {
     pub rows: i64,
 }
 
+#[derive(Debug, Serialize)]
+pub struct StoryOverview {
+    pub story: StorySummary,
+    pub active_branch_id: String,
+    pub revision: i64,
+    pub current_turn: i64,
+    pub branch_count: i64,
+    pub chapter_count: i64,
+    pub save_count: i64,
+    pub message_count: i64,
+    pub asset_count: i64,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct StoryUpdate {
     pub name: Option<String>,
@@ -422,6 +435,34 @@ pub async fn story_version(pool: &SqlitePool, story_id: &str) -> anyhow::Result<
     let version = story_version_for_branch(&mut *tx, story_id, &branch_id).await?;
     tx.commit().await?;
     Ok(version)
+}
+
+pub async fn story_overview(pool: &SqlitePool, story_id: &str) -> anyhow::Result<StoryOverview> {
+    let story = load_story(pool, story_id).await?;
+    let row = sqlx::query(
+        r#"SELECT s.active_branch_id, s.revision,
+                  COALESCE(w.current_turn, 0) AS current_turn,
+                  (SELECT COUNT(*) FROM story_branches b WHERE b.story_id=s.id) AS branch_count,
+                  (SELECT COUNT(*) FROM chapters c WHERE c.story_id=s.id AND c.branch_id=s.active_branch_id) AS chapter_count,
+                  (SELECT COUNT(*) FROM saves v WHERE v.story_id=s.id AND v.branch_id=s.active_branch_id) AS save_count,
+                  (SELECT COUNT(*) FROM chat_messages m WHERE m.story_id=s.id AND m.branch_id=s.active_branch_id) AS message_count,
+                  (SELECT COUNT(*) FROM visual_assets a WHERE a.story_id=s.id AND a.branch_id=s.active_branch_id) AS asset_count
+           FROM stories s LEFT JOIN world_state w ON w.story_id=s.id WHERE s.id=?"#,
+    )
+    .bind(story_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(StoryOverview {
+        story,
+        active_branch_id: row.try_get("active_branch_id")?,
+        revision: row.try_get("revision")?,
+        current_turn: row.try_get("current_turn")?,
+        branch_count: row.try_get("branch_count")?,
+        chapter_count: row.try_get("chapter_count")?,
+        save_count: row.try_get("save_count")?,
+        message_count: row.try_get("message_count")?,
+        asset_count: row.try_get("asset_count")?,
+    })
 }
 
 async fn story_version_for_branch<'e, E>(
@@ -1254,6 +1295,15 @@ async fn load_saves(
             })
         })
         .collect()
+}
+
+pub async fn story_saves(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<SaveView>> {
+    let mut conn = pool.acquire().await?;
+    let branch_id: String = sqlx::query_scalar("SELECT active_branch_id FROM stories WHERE id = ?")
+        .bind(story_id)
+        .fetch_one(&mut *conn)
+        .await?;
+    load_saves(&mut conn, story_id, &branch_id).await
 }
 
 fn latest_choices(

@@ -67,6 +67,7 @@ import i18n from "../i18n";
 import { VisualAssetOperationEditor } from "./VisualAssetOperationEditor";
 import { DialogDrawerShell } from "./dialog/DialogDrawerShell";
 import { VisualAssetUpload } from "../features/visual-assets/upload/VisualAssetUpload";
+import { NewVisualAssetUpload } from "../features/visual-assets/upload/NewVisualAssetUpload";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -734,6 +735,7 @@ function VisualDirectionSettings({
               </button>
             ))}
           </div>
+          {storyId && <NewVisualAssetUpload storyId={storyId} onUploaded={async (assetId) => { await onReload(); setSelectedAssetId(assetId); }} />}
           {visibleJobs.length > 0 && (
             <div className="visual-job-list" aria-label={t("drawer:visuals.jobs")}>
               {visibleJobs.map((job) => (

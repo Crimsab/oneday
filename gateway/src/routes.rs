@@ -39,6 +39,7 @@ pub fn router(state: Arc<AppState>) -> Router {
             patch(update_story).delete(delete_story),
         )
         .route("/api/stories/:story_id/delete-plan", get(story_delete_plan))
+        .route("/api/stories/:story_id/overview", get(story_overview))
         .route("/api/stories/:story_id/snapshot", get(snapshot))
         .route(
             "/api/stories/:story_id/timeline",
@@ -57,6 +58,12 @@ pub fn router(state: Arc<AppState>) -> Router {
             get(export_telemetry),
         )
         .route("/api/stories/:story_id/visual-assets", get(visual_assets))
+        .route(
+            "/api/stories/:story_id/visual-assets/upload",
+            post(upload_new_visual_asset).layer(DefaultBodyLimit::max(
+                crate::asset_upload::MAX_UPLOAD_REQUEST_BYTES,
+            )),
+        )
         .route(
             "/api/stories/:story_id/minigames",
             get(active_minigame).post(start_minigame),
@@ -144,7 +151,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/stories/:story_id/craft", post(craft))
         .route("/api/stories/:story_id/actions", post(submit_action))
         .route("/api/stories/:story_id/meta", post(submit_meta))
-        .route("/api/stories/:story_id/saves", post(create_save))
+        .route(
+            "/api/stories/:story_id/saves",
+            get(story_saves).post(create_save),
+        )
         .route(
             "/api/stories/:story_id/saves/:save_id/load",
             post(load_save),
@@ -640,6 +650,20 @@ async fn snapshot(
     Ok(Json(db::snapshot(&state.pool, &story_id).await?))
 }
 
+async fn story_overview(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<db::StoryOverview>, ApiError> {
+    Ok(Json(db::story_overview(&state.pool, &story_id).await?))
+}
+
+async fn story_saves(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+) -> Result<Json<Vec<db::SaveView>>, ApiError> {
+    Ok(Json(db::story_saves(&state.pool, &story_id).await?))
+}
+
 async fn timeline(
     State(state): State<Arc<AppState>>,
     Path(story_id): Path<String>,
@@ -791,6 +815,23 @@ async fn upload_visual_asset_version(
             )
             .await?,
         ),
+    ))
+}
+
+async fn upload_new_visual_asset(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    multipart: Multipart,
+) -> Result<
+    (
+        StatusCode,
+        Json<crate::asset_upload::VisualAssetUploadResponse>,
+    ),
+    ApiError,
+> {
+    Ok((
+        StatusCode::CREATED,
+        Json(crate::asset_upload::upload_new_visual_asset(state, &story_id, multipart).await?),
     ))
 }
 

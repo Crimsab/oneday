@@ -37,6 +37,8 @@ import type {
   StoryWizardEnvelope,
   StoryWizardResponse,
   StorySummary,
+  StoryOverview,
+  SaveView,
   StoryUpdatePayload,
   VisualAssetsResponse,
   VisualAssetCleanupRequest,
@@ -280,6 +282,14 @@ export function getSnapshot(storyId: string): Promise<StorySnapshot> {
   return request<StorySnapshot>(`/api/stories/${encodeURIComponent(storyId)}/snapshot`);
 }
 
+export function getStoryOverview(storyId: string, signal?: AbortSignal): Promise<StoryOverview> {
+  return request<StoryOverview>(`/api/stories/${encodeURIComponent(storyId)}/overview`, { signal });
+}
+
+export function getStorySaves(storyId: string, signal?: AbortSignal): Promise<SaveView[]> {
+  return request<SaveView[]>(`/api/stories/${encodeURIComponent(storyId)}/saves`, { signal });
+}
+
 export function sendCraftMessage(
   storyId: string,
   message: string,
@@ -292,12 +302,12 @@ export function sendCraftMessage(
   });
 }
 
-export async function getTimeline(storyId:string):Promise<TimelineResponse> {
+export async function getTimeline(storyId:string, signal?:AbortSignal):Promise<TimelineResponse> {
   const path = `/api/stories/${encodeURIComponent(storyId)}/timeline`;
   let lastError: unknown;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await request<TimelineResponse>(path);
+      return await request<TimelineResponse>(path, { signal });
     } catch (error) {
       lastError = error;
       const retryable = error instanceof ApiRequestError ? error.status >= 500 : error instanceof TypeError;
@@ -324,8 +334,8 @@ export async function getStoryEpub(storyId:string):Promise<{filename:string;blob
 export function getMessageDiagnostics(storyId:string,messageId:number):Promise<GenerationDiagnostics> { return request<GenerationDiagnostics>(`/api/stories/${encodeURIComponent(storyId)}/messages/${encodeURIComponent(String(messageId))}/diagnostics`); }
 export function getTelemetryExport(storyId:string,limit=1000):Promise<TelemetryExport> { return request<TelemetryExport>(`/api/stories/${encodeURIComponent(storyId)}/telemetry/export?limit=${encodeURIComponent(String(limit))}`); }
 
-export function getVisualAssets(storyId: string): Promise<VisualAssetsResponse> {
-  return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-assets`);
+export function getVisualAssets(storyId: string, signal?: AbortSignal): Promise<VisualAssetsResponse> {
+  return request<VisualAssetsResponse>(`/api/stories/${encodeURIComponent(storyId)}/visual-assets`, { signal });
 }
 
 export function getActiveMiniGame(storyId: string): Promise<MiniGameResponse> {

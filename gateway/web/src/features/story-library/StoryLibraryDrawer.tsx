@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Archive, ArchiveRestore, Check, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Info, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { DialogDrawerShell } from "../../components/dialog/DialogDrawerShell";
 import { compactText, displayTimestamp } from "../../format";
 import type { StorySummary, StoryUpdatePayload } from "../../types";
 import { activeStoryCount } from "../navigation/railState";
 import { filterStoryLibrary, type StoryLibraryStatus } from "./storyLibraryState";
+import { StoryLibraryDetail } from "./StoryLibraryDetail";
 
 interface StoryLibraryDrawerProps {
   stories: StorySummary[];
@@ -39,6 +40,7 @@ export function StoryLibraryDrawer({
   const [status, setStatus] = useState<StoryLibraryStatus>("active");
   const [query, setQuery] = useState("");
   const [editingStoryId, setEditingStoryId] = useState("");
+  const [detailStoryId, setDetailStoryId] = useState("");
   const visibleStories = useMemo(() => filterStoryLibrary(stories, status, query), [query, status, stories]);
   const activeCount = activeStoryCount(stories);
   const archivedCount = stories.length - activeCount;
@@ -74,7 +76,7 @@ export function StoryLibraryDrawer({
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("chrome:filter")} />
         </label>
       </div>
-      <div className="story-library-content">
+      <div className={`story-library-content ${detailStoryId ? "has-detail" : ""}`}>
         {visibleStories.length === 0 ? (
           <div className="story-library-empty">
             <strong>{query.trim() ? t("chrome:noMatches") : status === "archived" ? t("library:noArchivedStories") : t("chrome:noStories")}</strong>
@@ -92,6 +94,7 @@ export function StoryLibraryDrawer({
                 busy={busyStoryId === story.id}
                 onSelect={() => chooseStory(story.id)}
                 onEdit={() => setEditingStoryId(story.id)}
+                onDetails={() => setDetailStoryId(story.id)}
                 onCancelEdit={() => setEditingStoryId("")}
                 onSave={async (payload) => {
                   await onUpdateStory(story.id, payload);
@@ -103,6 +106,11 @@ export function StoryLibraryDrawer({
             ))}
           </div>
         )}
+        {detailStoryId && stories.find((story) => story.id === detailStoryId) && <StoryLibraryDetail
+          story={stories.find((story) => story.id === detailStoryId)!}
+          onBack={() => setDetailStoryId("")}
+          onOpen={() => chooseStory(detailStoryId)}
+        />}
       </div>
     </DialogDrawerShell>
   );
@@ -116,13 +124,14 @@ interface StoryLibraryRowProps {
   busy: boolean;
   onSelect: () => void;
   onEdit: () => void;
+  onDetails: () => void;
   onCancelEdit: () => void;
   onSave: (payload: StoryUpdatePayload) => Promise<void>;
   onSetArchived: (archived: boolean) => Promise<void>;
   onDelete: () => Promise<void>;
 }
 
-function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit, onCancelEdit, onSave, onSetArchived, onDelete }: StoryLibraryRowProps) {
+function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit, onDetails, onCancelEdit, onSave, onSetArchived, onDelete }: StoryLibraryRowProps) {
   const { t } = useTranslation("library");
   const [draft, setDraft] = useState(() => storyDraft(story));
   const resetDraft = () => setDraft(storyDraft(story));
@@ -161,6 +170,7 @@ function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit,
         label={t("manage", { name: story.name || story.id })}
         archived={story.is_archived}
         busy={busy}
+        onDetails={onDetails}
         onEdit={() => { resetDraft(); onEdit(); }}
         onSetArchived={() => onSetArchived(!story.is_archived)}
         onDelete={onDelete}
@@ -169,7 +179,7 @@ function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit,
   );
 }
 
-function StoryActionsMenu({ label, archived, busy, onEdit, onSetArchived, onDelete }: { label: string; archived: boolean; busy: boolean; onEdit: () => void; onSetArchived: () => Promise<void>; onDelete: () => Promise<void> }) {
+function StoryActionsMenu({ label, archived, busy, onEdit, onDetails, onSetArchived, onDelete }: { label: string; archived: boolean; busy: boolean; onEdit: () => void; onDetails: () => void; onSetArchived: () => Promise<void>; onDelete: () => Promise<void> }) {
   const { t } = useTranslation("library");
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -181,7 +191,7 @@ function StoryActionsMenu({ label, archived, busy, onEdit, onSetArchived, onDele
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
     const width = 180;
-    const estimatedHeight = 126;
+    const estimatedHeight = 164;
     const top = rect.bottom + estimatedHeight > window.innerHeight - 8 ? rect.top - estimatedHeight - 4 : rect.bottom + 4;
     setPosition({ top: Math.max(8, top), left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) });
   };
@@ -219,6 +229,7 @@ function StoryActionsMenu({ label, archived, busy, onEdit, onSetArchived, onDele
       <button ref={triggerRef} type="button" className="story-library-menu-trigger" aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((value) => !value)}><MoreHorizontal size={17} /></button>
       {open && createPortal(
         <div ref={menuRef} className="story-row-menu" role="menu" style={position}>
+          <button type="button" role="menuitem" onClick={() => run(onDetails)} disabled={busy}><Info size={14} />{t("details")}</button>
           <button type="button" role="menuitem" onClick={() => run(onEdit)} disabled={busy}><Pencil size={14} />{t("edit")}</button>
           <button type="button" role="menuitem" onClick={() => run(onSetArchived)} disabled={busy}>{archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{archived ? t("restore") : t("archive")}</button>
           <button type="button" role="menuitem" className="danger-action" onClick={() => run(onDelete)} disabled={busy}><Trash2 size={14} />{t("delete")}</button>
