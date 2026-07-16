@@ -178,6 +178,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   let visualSelectedVersion = 21;
   let visualGenerationQueued = false;
   let imageOperations: any[] = [];
+  let translationJobs: any[] = [];
   let visualVersions = [{ id: 21, asset_id: "asset-mira-new", story_id: story.id, kind: "character", subject: "Mira", canonical_entity_id: "npc-mira", canonical_location_id: "", form_id: "form-mira-restored", appearance_fingerprint: "mira-restored", profile_revision_id: "profile-1", canon_status: "canonical", url: "/assets/mira.png", prompt: "Mira restored portrait", revised_prompt: "", negative_prompt: "", provider: "mock", turn: 4, branch_id: "branch-main", source_commit_id: "commit-4", created_at: now }];
   const currentVisualResponse = () => {
     const response: any = visualResponse(visualCanUndo, visualCanRedo);
@@ -218,6 +219,15 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     }
     if (path === "/api/health") return json(route, { status: "ok", stories: 1 });
     if (path === "/api/stories" && request.method() === "GET") return json(route, [story]);
+    if (path.endsWith("/translations/jobs/estimate") && request.method() === "POST") return json(route, { total_items: 4, total_characters: 220, cache_hits: 0 });
+    if (path.endsWith("/translations/jobs") && request.method() === "GET") return json(route, translationJobs);
+    if (path.endsWith("/translations/jobs") && request.method() === "POST") {
+      const body = request.postDataJSON();
+      const job = { ...body, id: "translation-job-1", story_id: story.id, branch_id: "branch-main", status: "queued", total_items: 4, completed_items: 0, failed_items: 0, cached_items: 0, total_characters: 220, processed_characters: 0, error_code: "", error_summary: "", created_at: now, updated_at: now };
+      translationJobs = [job];
+      return json(route, job, 201);
+    }
+    if (path.endsWith("/translations/glossary") && request.method() === "GET") return json(route, []);
     if (path.endsWith("/agency-events")) return json(route, [{ id: 1, story_id: story.id, branch_id: "branch-main", commit_id: "commit-4", canonical_turn: 4, entity_id: "npc-mira", entity_name: "Mira", action: "pursues_goal", summary: "Mira advances an offscreen goal.", created_at: now }]);
     if (path === "/api/contracts/commands") return json(route, []);
     if (path === "/api/tts/voices" || path === "/api/tts/providers") return json(route, {
@@ -405,6 +415,21 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   expect(errors).toEqual([]);
 });
 
+test("creates a persistent AI translation job from the translation center", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open translation center" }).click();
+  const dialog = page.getByRole("dialog", { name: "Translation center" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("Engine").selectOption("ai");
+  await expect(dialog.getByLabel("Provider")).toHaveValue("codex");
+  await expect(dialog.getByText(/4 items, 220 characters/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Start translation" }).click();
+  await expect(dialog.getByText("0/4 items")).toBeVisible();
+  const overflow = await dialog.evaluate((element) => ({ width: element.scrollWidth, viewport: element.clientWidth }));
+  expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
+});
+
 test("shows optional choice context including used attributes", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ density: "balanced", fontSize: "base", accent: "amber", showLeftRail: false, showInspector: false, wrapTranscript: true, showChoiceDetails: true }));
@@ -426,11 +451,11 @@ test("keeps story actions above the rail and closes them on outside click", asyn
   const searchBox = await page.getByPlaceholder("Filter stories").boundingBox();
   expect(createBox).not.toBeNull();
   expect(searchBox).not.toBeNull();
-  const toolbarGap = Math.max(
-    createBox!.x - (searchBox!.x + searchBox!.width),
-    searchBox!.x - (createBox!.x + createBox!.width),
-  );
-  expect(toolbarGap).toBeGreaterThanOrEqual(6);
+  const overlaps = createBox!.x < searchBox!.x + searchBox!.width
+    && createBox!.x + createBox!.width > searchBox!.x
+    && createBox!.y < searchBox!.y + searchBox!.height
+    && createBox!.y + createBox!.height > searchBox!.y;
+  expect(overlaps).toBe(false);
   const storyRows = page.locator(".story-library-row");
   await expect(storyRows).toHaveCount(1);
   const storyBox = await storyRows.first().boundingBox();
@@ -517,10 +542,11 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   await history.getByText("Export this branch", { exact: true }).click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    history.getByRole("button", { name: "Export Markdown" }).click(),
+    history.getByRole("button", { name: "Download" }).click(),
   ]);
   expect(download.suggestedFilename()).toBe("glass-archive-history.md");
-  const [epubDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Export EPUB" }).click()]);
+  await history.getByLabel("Format").selectOption("epub");
+  const [epubDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Download" }).click()]);
   expect(epubDownload.suggestedFilename()).toBe("glass-archive.epub");
   await history.getByText("Technical exports", { exact: true }).click();
   const [replayDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Export media replay" }).click()]);
@@ -808,7 +834,7 @@ test("uses the dedicated inventory-aware crafting conversation and separates ach
   await expect(craftSurface.getByText("Prism key", { exact: true })).toBeVisible();
 
   if (compact) await craftSurface.getByRole("button", { name: "Close" }).click();
-  else await openRail(page);
+  await openRail(page);
   await page.getByRole("button", { name: "Achievements" }).click();
   const achievementSurface = compact ? page.getByRole("dialog") : page.locator(".right-inspector");
   await expect(achievementSurface.getByRole("heading", { name: "Achievements" })).toBeVisible();
@@ -988,7 +1014,7 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
   });
   await mockGateway(page);
   await page.goto("/");
-  await page.getByRole("button", { name: "Show library" }).click();
+  await openRail(page);
   await page.getByRole("button", { name: "Options" }).click();
 
   for (const group of ["Personalization", "Experience", "System"]) {
@@ -1069,6 +1095,8 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
   await page.getByRole("button", { name: /Gameplay/ }).click();
   await page.locator("label.minigame-preference", { hasText: "Deduction" }).locator('input[type="checkbox"]').uncheck();
   await page.locator(".options-overlay").getByRole("button", { name: "Close" }).click();
+  const hideLibrary = page.getByRole("button", { name: "Hide library" });
+  if (await hideLibrary.isVisible()) await hideLibrary.click();
   const policyRequest = page.waitForRequest((request) => request.url().endsWith("/actions") && request.method() === "POST");
   await page.getByPlaceholder("What do you want to try?").fill("Test an allowed challenge fallback");
   await page.getByRole("button", { name: "Send action" }).click();

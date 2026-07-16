@@ -12,14 +12,19 @@ async function batchRequest<T>(path: string, init?: RequestInit): Promise<T> {
 
 const root = (storyId: string) => `/api/stories/${encodeURIComponent(storyId)}/translations`;
 
-export const listTranslationJobs = (storyId: string) => batchRequest<TranslationJob[]>(`${root(storyId)}/jobs`);
+async function batchList<T>(path: string): Promise<T[]> {
+  const payload = await batchRequest<unknown>(path);
+  if (!Array.isArray(payload)) throw new Error("The translation service returned an unreadable response.");
+  return payload as T[];
+}
+
+export const listTranslationJobs = (storyId: string) => batchList<TranslationJob>(`${root(storyId)}/jobs`);
 export const estimateTranslationJob = (storyId: string, request: TranslationJobRequest) => batchRequest<TranslationEstimate>(`${root(storyId)}/jobs/estimate`, { method: "POST", body: JSON.stringify(request) });
 export const createTranslationJob = (storyId: string, request: TranslationJobRequest) => batchRequest<TranslationJob>(`${root(storyId)}/jobs`, { method: "POST", body: JSON.stringify(request) });
 export const runTranslationJobAction = (storyId: string, jobId: string, action: "pause" | "resume" | "cancel" | "retry") => batchRequest<TranslationJob>(`${root(storyId)}/jobs/${encodeURIComponent(jobId)}/${action}`, { method: "POST" });
 export const deleteTranslationJob = (storyId: string, jobId: string, deleteTranslations: boolean) => batchRequest<void>(`${root(storyId)}/jobs/${encodeURIComponent(jobId)}?delete_translations=${deleteTranslations}`, { method: "DELETE" });
 export const nextBrowserTranslationItem = (storyId: string, jobId: string) => batchRequest<BrowserTranslationItem | null>(`${root(storyId)}/jobs/${encodeURIComponent(jobId)}/browser-next`);
 export const completeBrowserTranslationItem = (storyId: string, jobId: string, itemId: string, translatedText: string) => batchRequest<TranslationJob>(`${root(storyId)}/jobs/${encodeURIComponent(jobId)}/items/${encodeURIComponent(itemId)}`, { method: "POST", body: JSON.stringify({ translated_text: translatedText }) });
-export const listTranslationGlossary = (storyId: string) => batchRequest<TranslationGlossaryEntry[]>(`${root(storyId)}/glossary`);
+export const listTranslationGlossary = (storyId: string) => batchList<TranslationGlossaryEntry>(`${root(storyId)}/glossary`);
 export const createTranslationGlossary = (storyId: string, entry: Omit<TranslationGlossaryEntry, "id">) => batchRequest<TranslationGlossaryEntry>(`${root(storyId)}/glossary`, { method: "POST", body: JSON.stringify(entry) });
 export const deleteTranslationGlossary = (storyId: string, entryId: string) => batchRequest<void>(`${root(storyId)}/glossary/${encodeURIComponent(entryId)}`, { method: "DELETE" });
-
