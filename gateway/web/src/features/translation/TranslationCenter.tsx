@@ -7,7 +7,7 @@ import { DialogDrawerShell } from "../../components/dialog/DialogDrawerShell";
 import type { ChapterView, ModelSettings } from "../../types";
 import { completeBrowserTranslationItem, createTranslationGlossary, createTranslationJob, deleteTranslationGlossary, deleteTranslationJob, estimateTranslationJob, listTranslationGlossary, listTranslationJobs, nextBrowserTranslationItem, runTranslationJobAction } from "./batchApi";
 import type { TranslationEngine, TranslationEstimate, TranslationGlossaryEntry, TranslationJob, TranslationJobRequest, TranslationStyle } from "./batchTypes";
-import { languageCatalog } from "./languageCatalog";
+import { languageCatalog, languageFlagUrl } from "./languageCatalog";
 import { prepareBrowserTranslator, supportsBrowserTranslation, translateInBrowser } from "./browserTranslator";
 
 const activeStatus = new Set(["queued", "running"]);
@@ -44,7 +44,7 @@ export function TranslationCenter({ storyId, storyLanguage, modelSettings }: { s
     engine,
     provider: engine === "ai" ? provider : "",
     model: engine === "ai" ? model : "",
-    style,
+    style: engine === "ai" ? style : "faithful",
   }), [chapterId, engine, model, provider, scope, storyLanguage, style, target]);
 
   const refresh = useCallback(async () => {
@@ -158,10 +158,10 @@ export function TranslationCenter({ storyId, storyLanguage, modelSettings }: { s
             <div className="translation-form-grid">
               <label>{copy("scope")}<CustomSelect value={scope} ariaLabel={copy("scope")} onChange={(value) => setScope(value as "story" | "chapter")} options={[{ value: "story", label: copy("wholeStory") }, { value: "chapter", label: copy("chapter") }]} /></label>
               {scope === "chapter" && <label>{copy("chapter")}<CustomSelect value={chapterId} ariaLabel={copy("chapter")} onChange={setChapterId} options={chapters.map((chapter) => ({ value: String(chapter.id), label: chapter.title || `#${chapter.chapter_number}` }))} /></label>}
-              <label>{copy("language")}<CustomSelect value={target} ariaLabel={copy("language")} onChange={setTarget} options={languages.map((language) => ({ value: language.code, label: `${language.code.toUpperCase()} ${language.name}` }))} /></label>
+              <label>{copy("language")}<CustomSelect value={target} ariaLabel={copy("language")} onChange={setTarget} options={languages.map((language) => ({ value: language.code, label: language.name, iconSrc: languageFlagUrl(language.code) }))} /></label>
               <label>{copy("engine")}<CustomSelect value={engine} ariaLabel={copy("engine")} onChange={(value) => setEngine(value as TranslationEngine)} options={[{ value: "browser", label: copy("browser"), disabled: !supportsBrowserTranslation() }, { value: "ai", label: copy("ai") }]} /></label>
               {engine === "ai" && <><label>{copy("provider")}<CustomSelect value={provider} ariaLabel={copy("provider")} onChange={setProvider} options={enabledProviders.map((item) => ({ value: item.id, label: item.label }))} /></label><label>{copy("model")}<CustomSelect value={model} ariaLabel={copy("model")} onChange={setModel} options={models.map((item) => ({ value: item, label: item }))} /></label></>}
-              <label>{copy("style")}<CustomSelect value={style} ariaLabel={copy("style")} onChange={(value) => setStyle(value as TranslationStyle)} options={[{ value: "faithful", label: copy("faithful") }, { value: "natural", label: copy("natural") }, { value: "literary", label: copy("literary") }]} /></label>
+              {engine === "ai" && <label>{copy("style")}<CustomSelect value={style} ariaLabel={copy("style")} onChange={(value) => setStyle(value as TranslationStyle)} options={[{ value: "faithful", label: copy("faithful") }, { value: "natural", label: copy("natural") }, { value: "literary", label: copy("literary") }]} /></label>}
             </div>
             {estimate && <p className="translation-estimate">{copy("estimate", { items: estimate.total_items, characters: estimate.total_characters.toLocaleString(i18n.language), cached: estimate.cache_hits })} {engine === "ai" ? copy("providerCost") : copy("localCost")}</p>}
             <button type="button" className="primary-button" disabled={busy || !estimate?.total_items || (engine === "ai" && !provider)} onClick={() => void start()}><Plus size={14} />{copy("start")}</button>

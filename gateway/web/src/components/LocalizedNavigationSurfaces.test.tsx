@@ -83,7 +83,7 @@ describe("localized navigation surfaces", () => {
     const select = renderToStaticMarkup(
       <CustomSelect
         value="canonical-id"
-        options={[{ value: "canonical-id", label: "Voce canonica" }]}
+        options={[{ value: "canonical-id", label: "Voce canonica", iconSrc: "/flags/example.svg" }]}
         onChange={() => undefined}
       />,
     );
@@ -94,5 +94,7 @@ describe("localized navigation surfaces", () => {
     expect(palette).toContain("/advance");
     expect(select).toContain('aria-label="Seleziona un’opzione"');
     expect(select).toContain("Voce canonica");
+    expect(select).toContain('src="/flags/example.svg"');
+    expect(select).toContain('alt=""');
   });
 });

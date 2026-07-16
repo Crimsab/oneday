@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 export interface SelectOption {
   value: string;
   label: string;
+  iconSrc?: string;
   disabled?: boolean;
 }
 
@@ -91,6 +92,13 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
     window.requestAnimationFrame(() => triggerRef.current?.focus());
   };
 
+  const optionLabel = (option: SelectOption | undefined) => (
+    <span className="custom-select-option-label">
+      {option?.iconSrc && <img src={option.iconSrc} alt="" aria-hidden="true" />}
+      <span>{option?.label ?? value}</span>
+    </span>
+  );
+
   return (
     <div className={`custom-select ${className}`.trim()}>
       <button
@@ -123,7 +131,7 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
           }
         }}
       >
-        <span>{selected?.label ?? value}</span>
+        {optionLabel(selected)}
         <ChevronDown size={14} aria-hidden="true" />
       </button>
       {open && createPortal(
@@ -146,7 +154,7 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
               onPointerMove={() => setActiveIndex(index)}
               onClick={() => choose(option)}
             >
-              <span>{option.label}</span>
+              {optionLabel(option)}
               {option.value === value && <Check size={14} aria-hidden="true" />}
             </button>
           ))}

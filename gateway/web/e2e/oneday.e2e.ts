@@ -424,6 +424,9 @@ test("creates a persistent AI translation job from the translation center", asyn
   const dialog = page.getByRole("dialog", { name: "Translation center" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("select")).toHaveCount(0);
+  await expect(dialog.getByRole("combobox", { name: "Style" })).toHaveCount(0);
+  await expect(dialog.getByRole("combobox", { name: "Target language" }).locator("img")).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Target language" })).not.toContainText(/^EN\b/);
   await dialog.getByRole("combobox", { name: "Engine" }).click();
   await page.getByRole("option", { name: "AI" }).click();
   await expect(dialog.getByRole("combobox", { name: "Provider" })).toContainText("Codex");

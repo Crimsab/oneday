@@ -384,6 +384,9 @@ summary:focus-visible {
 .custom-select { min-width: 0; width: 100%; }
 .custom-select-trigger { width: 100%; min-height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); border-radius: 7px; background: #0f1518; padding: 0 10px; color: var(--text); cursor: pointer; font: inherit; text-align: left; }
 .custom-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom-select-option-label { min-width: 0; display: inline-flex; align-items: center; gap: 8px; overflow: hidden; }
+.custom-select-option-label > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.custom-select-option-label img { flex: 0 0 auto; width: 20px; height: 15px; border-radius: 2px; object-fit: cover; box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
 .custom-select-trigger:hover:not(:disabled),
 .custom-select-trigger[aria-expanded="true"] { border-color: color-mix(in srgb, var(--accent) 46%, var(--line)); background: #151c20; }
 .custom-select-trigger:disabled { cursor: not-allowed; opacity: .5; }
