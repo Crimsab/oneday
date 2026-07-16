@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Archive, ArchiveRestore, Check, FileUp, Info, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, FileDown, FileUp, Info, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { DialogDrawerShell } from "../../components/dialog/DialogDrawerShell";
 import { compactText, displayTimestamp } from "../../format";
 import type { StorySummary, StoryUpdatePayload } from "../../types";
@@ -10,6 +10,7 @@ import { filterStoryLibrary, type StoryLibraryStatus } from "./storyLibraryState
 import { StoryLibraryDetail } from "./StoryLibraryDetail";
 import { importArchive, importTemplate } from "../portability/portabilityApi";
 import { decodeTemplateCode } from "../portability/templateCode";
+import { StoryExportDialog } from "../portability/StoryExportWorkspace";
 
 interface StoryLibraryDrawerProps {
   stories: StorySummary[];
@@ -47,9 +48,12 @@ export function StoryLibraryDrawer({
   const [importCode, setImportCode] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [importError, setImportError] = useState("");
+  const [exportStoryId, setExportStoryId] = useState("");
   const visibleStories = useMemo(() => filterStoryLibrary(stories, status, query), [query, status, stories]);
   const activeCount = activeStoryCount(stories);
   const archivedCount = stories.length - activeCount;
+  const activeStory = stories.find((story) => story.id === activeStoryId);
+  const exportStory = stories.find((story) => story.id === exportStoryId);
 
   const chooseStory = (storyId: string) => {
     onSelectStory(storyId);
@@ -80,6 +84,10 @@ export function StoryLibraryDrawer({
     finally { setImportBusy(false); }
   };
 
+  if (exportStory) {
+    return <StoryExportDialog storyId={exportStory.id} storyName={exportStory.name || exportStory.id} onClose={() => setExportStoryId("")} />;
+  }
+
   return (
     <DialogDrawerShell title={t("chrome:library")} className="story-library-drawer" onClose={onClose}>
       <div className="story-library-toolbar">
@@ -97,6 +105,9 @@ export function StoryLibraryDrawer({
           </button>
           <button type="button" onClick={() => setImportOpen((value) => !value)} aria-expanded={importOpen}>
             <FileUp size={16} />{t("library:importStory")}
+          </button>
+          <button type="button" disabled={!activeStory} onClick={() => activeStory && setExportStoryId(activeStory.id)}>
+            <FileDown size={16} />{t("library:exportStory")}
           </button>
           <button type="button" className="story-library-new" onClick={onNewStory}>
             <Plus size={16} />
@@ -135,6 +146,7 @@ export function StoryLibraryDrawer({
                 onSelect={() => chooseStory(story.id)}
                 onEdit={() => setEditingStoryId(story.id)}
                 onDetails={() => setDetailStoryId(story.id)}
+                onExport={() => setExportStoryId(story.id)}
                 onCancelEdit={() => setEditingStoryId("")}
                 onSave={async (payload) => {
                   await onUpdateStory(story.id, payload);
@@ -165,13 +177,14 @@ interface StoryLibraryRowProps {
   onSelect: () => void;
   onEdit: () => void;
   onDetails: () => void;
+  onExport: () => void;
   onCancelEdit: () => void;
   onSave: (payload: StoryUpdatePayload) => Promise<void>;
   onSetArchived: (archived: boolean) => Promise<void>;
   onDelete: () => Promise<void>;
 }
 
-function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit, onDetails, onCancelEdit, onSave, onSetArchived, onDelete }: StoryLibraryRowProps) {
+function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit, onDetails, onExport, onCancelEdit, onSave, onSetArchived, onDelete }: StoryLibraryRowProps) {
   const { t } = useTranslation("library");
   const [draft, setDraft] = useState(() => storyDraft(story));
   const resetDraft = () => setDraft(storyDraft(story));
@@ -211,6 +224,7 @@ function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit,
         archived={story.is_archived}
         busy={busy}
         onDetails={onDetails}
+        onExport={onExport}
         onEdit={() => { resetDraft(); onEdit(); }}
         onSetArchived={() => onSetArchived(!story.is_archived)}
         onDelete={onDelete}
@@ -219,7 +233,7 @@ function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit,
   );
 }
 
-function StoryActionsMenu({ label, archived, busy, onEdit, onDetails, onSetArchived, onDelete }: { label: string; archived: boolean; busy: boolean; onEdit: () => void; onDetails: () => void; onSetArchived: () => Promise<void>; onDelete: () => Promise<void> }) {
+function StoryActionsMenu({ label, archived, busy, onEdit, onDetails, onExport, onSetArchived, onDelete }: { label: string; archived: boolean; busy: boolean; onEdit: () => void; onDetails: () => void; onExport: () => void; onSetArchived: () => Promise<void>; onDelete: () => Promise<void> }) {
   const { t } = useTranslation("library");
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -231,7 +245,7 @@ function StoryActionsMenu({ label, archived, busy, onEdit, onDetails, onSetArchi
     if (!trigger) return;
     const rect = trigger.getBoundingClientRect();
     const width = 180;
-    const estimatedHeight = 164;
+    const estimatedHeight = 202;
     const top = rect.bottom + estimatedHeight > window.innerHeight - 8 ? rect.top - estimatedHeight - 4 : rect.bottom + 4;
     setPosition({ top: Math.max(8, top), left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) });
   };
@@ -270,6 +284,7 @@ function StoryActionsMenu({ label, archived, busy, onEdit, onDetails, onSetArchi
       {open && createPortal(
         <div ref={menuRef} className="story-row-menu" role="menu" style={position}>
           <button type="button" role="menuitem" onClick={() => run(onDetails)} disabled={busy}><Info size={14} />{t("details")}</button>
+          <button type="button" role="menuitem" onClick={() => run(onExport)} disabled={busy}><FileDown size={14} />{t("exportStory")}</button>
           <button type="button" role="menuitem" onClick={() => run(onEdit)} disabled={busy}><Pencil size={14} />{t("edit")}</button>
           <button type="button" role="menuitem" onClick={() => run(onSetArchived)} disabled={busy}>{archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}{archived ? t("restore") : t("archive")}</button>
           <button type="button" role="menuitem" className="danger-action" onClick={() => run(onDelete)} disabled={busy}><Trash2 size={14} />{t("delete")}</button>

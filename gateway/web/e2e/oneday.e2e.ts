@@ -356,6 +356,8 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     if (path.endsWith("/chapters")) return json(route, { items: snapshot().panels.chapters, next_cursor: null });
     if (path.endsWith("/messages/2/diagnostics")) return json(route, { run_id: "run-2", trace_id: "trace-2", parent_run_id: "", story_id: story.id, branch_id: "branch-main", source_commit_id: "commit-4", message_id: 2, stage: "narrator", status: "succeeded", prompt_profile: "narrator", prompt_revision: 3, prompt_hash: "sha256:redacted", requested_streaming: true, observed_streaming: true, ttft_ms: 180, duration_ms: 1250, usage: { input_tokens: 200, output_tokens: 121, reasoning_tokens: 40, cached_input_tokens: 0, total_tokens: 321, cost_usd: 0.003 }, error_class: "", created_at: now, finished_at: now, attempts: [{ sequence: 1, provider: "codex", requested_model: "gpt-5.5", resolved_model: "gpt-5.5", requested_streaming: true, observed_streaming: true, status: "succeeded", ttft_ms: 180, duration_ms: 1250, usage: { input_tokens: 200, output_tokens: 121, reasoning_tokens: 40, cached_input_tokens: 0, total_tokens: 321, cost_usd: 0.003 }, retry_reason: "", error_class: "" }] });
     if (path.endsWith("/telemetry/export")) return json(route, { format: "jsonl", filename: "glass-archive-generation-telemetry.jsonl", content: "{\"run_id\":\"run-2\"}\n", count: 1, truncated: false });
+    if (path.endsWith("/archive") && request.method() === "POST") return route.fulfill({ status: 200, contentType: "application/zip", headers: { "content-disposition": 'attachment; filename="glass-archive-oneday.zip"' }, body: Buffer.from("PK ONEDAY") });
+    if (path.endsWith("/world-template")) return route.fulfill({ status: 200, contentType: "application/json", headers: { "content-disposition": 'attachment; filename="glass-archive-world.oneday.json"' }, body: JSON.stringify({ kind: "oneday-world-template", version: 1, story: { name: story.name } }) });
     if (path.endsWith("/export")) {
       const format = url.searchParams.get("format") || "markdown";
       if (format === "epub") return route.fulfill({ status: 200, contentType: "application/epub+zip", headers: { "content-disposition": 'attachment; filename="glass-archive.epub"' }, body: Buffer.from("PK EPUB") });
@@ -473,6 +475,33 @@ test("keeps story actions above the rail and closes them on outside click", asyn
   await expect(menu).toHaveCount(0);
 });
 
+test("exposes complete story export directly from story management", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await openStoryLibrary(page);
+
+  const library = page.getByRole("dialog", { name: "Story library" });
+  await expect(library.getByRole("button", { name: "Export", exact: true })).toBeVisible();
+  await library.getByRole("button", { name: "Export", exact: true }).click();
+
+  const exporter = page.getByRole("dialog", { name: "Export The Glass Archive" });
+  await expect(exporter.getByText("Reading copy", { exact: true })).toBeVisible();
+  await expect(exporter.getByText("Portable story archive", { exact: true })).toBeVisible();
+  await expect(exporter.getByText("World template", { exact: true })).toBeVisible();
+  await expect(exporter.locator("select")).toHaveCount(0);
+  const [archiveDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    exporter.getByRole("button", { name: "Download OneDay ZIP" }).click(),
+  ]);
+  expect(archiveDownload.suggestedFilename()).toBe("glass-archive-oneday.zip");
+
+  await exporter.getByRole("button", { name: "Close" }).click();
+  const reopenedLibrary = page.getByRole("dialog", { name: "Story library" });
+  await reopenedLibrary.getByRole("button", { name: "Manage The Glass Archive" }).click();
+  await page.getByRole("menuitem", { name: "Export" }).click();
+  await expect(page.getByRole("dialog", { name: "Export The Glass Archive" })).toBeVisible();
+});
+
 test("reviews a story preset before starting structured generation", async ({ page }) => {
   const requests = await mockGateway(page);
   await page.goto("/");
@@ -547,13 +576,13 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   await history.getByText("Export this branch", { exact: true }).click();
   const [download] = await Promise.all([
     page.waitForEvent("download"),
-    history.getByRole("button", { name: "Download" }).click(),
+    history.getByRole("button", { name: "Download", exact: true }).click(),
   ]);
   expect(download.suggestedFilename()).toBe("glass-archive-history.md");
-  await expect(history.locator(".history-export-workspace select")).toHaveCount(0);
+  await expect(history.locator(".story-export-workspace select")).toHaveCount(0);
   await history.getByRole("combobox", { name: "Format" }).click();
   await page.getByRole("option", { name: "EPUB" }).click();
-  const [epubDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Download" }).click()]);
+  const [epubDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Download", exact: true }).click()]);
   expect(epubDownload.suggestedFilename()).toBe("glass-archive.epub");
   await history.getByText("Technical exports", { exact: true }).click();
   const [replayDownload] = await Promise.all([page.waitForEvent("download"), history.getByRole("button", { name: "Export media replay" }).click()]);

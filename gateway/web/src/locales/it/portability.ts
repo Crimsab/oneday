@@ -1,5 +1,5 @@
 export const portability = {
-  format: "Formato", languageVersion: "Versione del testo", original: "Originale", translated: "Tradotta", bilingual: "Originale + traduzione", targetLanguage: "Lingua di destinazione", download: "Scarica",
-  portableArchive: "Archivio portabile della storia", downloadArchive: "Scarica ZIP OneDay", worldTemplate: "Template del mondo", copyCode: "Copia codice",
+  exportTitle: "Esporta {{name}}", format: "Formato", languageVersion: "Versione del testo", original: "Originale", translated: "Tradotta", bilingual: "Originale + traduzione", targetLanguage: "Lingua di destinazione", download: "Scarica",
+  readableCopy: "Copia da leggere", readableCopyHelp: "Esporta la storia impaginata in Markdown, HTML, TXT, JSON o EPUB.", portableArchive: "Archivio portabile della storia", portableArchiveHelp: "Conserva stato, rami e asset per continuare la storia in un'altra installazione.", downloadArchive: "Scarica ZIP OneDay", worldTemplate: "Template del mondo", worldTemplateHelp: "Condividi solo mondo e impostazioni di partenza, senza la cronologia giocata.", downloadTemplate: "Scarica template", copyCode: "Copia codice", codeCopied: "Codice copiato negli appunti.",
   archiveOptions: { history: "Cronologia e rami", saves: "Salvataggi", visual_assets: "Asset visuali", audio: "Audio", translations: "Traduzioni", world_detail: "Canone dettagliato del mondo" },
 } as const;
