@@ -595,6 +595,33 @@ test("keeps story branches inline and closes the menu outside or with escape", a
   await expect(page.locator("#branch-menu")).toHaveCount(0);
 });
 
+test("keeps the collapsed rail controls inside a short desktop viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await mockGateway(page);
+  await page.goto("/");
+  await openRail(page);
+
+  await expect(page.locator(".rail-brand strong")).toHaveText("OneDay");
+  await page.getByRole("button", { name: "Collapse library" }).click();
+
+  const rail = page.locator("#story-navigation");
+  await expect(rail).toHaveClass(/rail-collapsed/);
+  const geometry = await rail.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const toggle = element.querySelector<HTMLElement>(".rail-collapse-toggle")!.getBoundingClientRect();
+    const navigation = element.querySelector<HTMLElement>(".module-nav")!;
+    return {
+      railBottom: bounds.bottom,
+      toggleBottom: toggle.bottom,
+      toggleHeight: toggle.height,
+      navigationHeight: navigation.getBoundingClientRect().height,
+    };
+  });
+  expect(geometry.toggleBottom).toBeLessThanOrEqual(geometry.railBottom + 1);
+  expect(geometry.toggleHeight).toBeLessThanOrEqual(56);
+  expect(geometry.navigationHeight).toBeGreaterThan(100);
+});
+
 test("keeps modal focus contained and restores it after escape", async ({ page }) => {
   await mockGateway(page);
   await page.goto("/");

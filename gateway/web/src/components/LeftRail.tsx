@@ -56,7 +56,7 @@ export function LeftRail({
         <img src="/brand/oneday-mark.png" alt="" />
         {expanded && (
           <span>
-            <strong className="sr-only">OneDay</strong>
+            <strong>OneDay</strong>
             <small>{healthText}</small>
           </span>
         )}
