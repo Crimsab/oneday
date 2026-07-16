@@ -1430,10 +1430,12 @@ summary:focus-visible {
 .rail-stories-button { margin: 8px; padding: 0 11px; color: var(--text); font-weight: 650; }
 .rail-stories-button:hover,
 .rail-collapse-toggle:hover { border-color: var(--line-soft); background: rgba(255,255,255,.045); color: var(--text); }
-.rail-stories-button strong { min-width: 25px; height: 21px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line)); border-radius: 999px; color: var(--text); font-size: .6875rem; }
+.rail-stories-button strong { min-width: 25px; height: 21px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 999px; background: #11171b; color: var(--text); font-size: .6875rem; font-variant-numeric: tabular-nums; }
 .rail-collapse-toggle { min-height: 40px; margin: 7px 8px 9px; padding: 0 10px; border-top: 1px solid var(--line-soft); border-radius: 0; color: var(--faint); font-size: .75rem; }
 .left-rail.rail-collapsed .rail-stories-button,
 .left-rail.rail-collapsed .rail-collapse-toggle { justify-content: center; padding-inline: 0; }
+.left-rail.rail-collapsed .rail-stories-button { position: relative; width: 42px; min-height: 42px; margin: 9px auto 7px; }
+.left-rail.rail-collapsed .rail-stories-count { position: absolute; inset-block-start: -5px; inset-inline-end: -5px; min-width: 19px; height: 19px; padding-inline: 4px; border-color: rgba(255,255,255,.16); background: #0d1114; box-shadow: 0 0 0 2px #0d1114; font-size: .625rem; line-height: 1; }
 .left-rail.rail-collapsed .module-nav { min-block-size: 0; padding-inline: 8px; }
 .left-rail.rail-collapsed .module-group { gap: 4px; }
 .left-rail.rail-collapsed .module-nav button { min-height: 38px; display: grid; grid-template-columns: 1fr; place-items: center; padding: 0; }

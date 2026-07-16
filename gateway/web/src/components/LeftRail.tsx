@@ -69,8 +69,8 @@ export function LeftRail({
         aria-label={storiesLabel}
         title={storiesLabel}
       >
-        <LibraryBig size={18} />
-        {expanded ? <span>{t("library:storiesCount", { count: activeStoryCount })}</span> : <strong>{activeStoryCount}</strong>}
+        <LibraryBig size={18} aria-hidden="true" />
+        {expanded ? <span>{t("library:storiesCount", { count: activeStoryCount })}</span> : <strong className="rail-stories-count">{activeStoryCount > 99 ? "99+" : activeStoryCount}</strong>}
       </button>
 
       {expanded && (

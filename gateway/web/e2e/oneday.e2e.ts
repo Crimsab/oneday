@@ -648,17 +648,23 @@ test("keeps the collapsed rail controls inside a short desktop viewport", async 
   const geometry = await rail.evaluate((element) => {
     const bounds = element.getBoundingClientRect();
     const toggle = element.querySelector<HTMLElement>(".rail-collapse-toggle")!.getBoundingClientRect();
+    const stories = element.querySelector<HTMLElement>(".rail-stories-button")!.getBoundingClientRect();
+    const count = element.querySelector<HTMLElement>(".rail-stories-count")!.getBoundingClientRect();
     const navigation = element.querySelector<HTMLElement>(".module-nav")!;
     return {
       railBottom: bounds.bottom,
       toggleBottom: toggle.bottom,
       toggleHeight: toggle.height,
       navigationHeight: navigation.getBoundingClientRect().height,
+      storiesCenterDelta: Math.abs((stories.left + stories.width / 2) - (bounds.left + bounds.width / 2)),
+      countInsideRail: count.left >= bounds.left && count.right <= bounds.right,
     };
   });
   expect(geometry.toggleBottom).toBeLessThanOrEqual(geometry.railBottom + 1);
   expect(geometry.toggleHeight).toBeLessThanOrEqual(56);
   expect(geometry.navigationHeight).toBeGreaterThan(100);
+  expect(geometry.storiesCenterDelta).toBeLessThanOrEqual(1);
+  expect(geometry.countInsideRail).toBe(true);
 });
 
 test("keeps modal focus contained and restores it after escape", async ({ page }) => {
