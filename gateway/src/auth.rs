@@ -17,7 +17,9 @@ use uuid::Uuid;
 const SESSION_COOKIE: &str = "oneday_session";
 const SECURE_SESSION_COOKIE: &str = "__Host-oneday_session";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
-const MIN_BOOTSTRAP_TOKEN_BYTES: usize = 32;
+const MIN_CREDENTIAL_BYTES: usize = 32;
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http:; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data: blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'";
+const PERMISSIONS_POLICY: &str = "camera=(), microphone=(), geolocation=(), payment=()";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CredentialKind {
@@ -40,8 +42,9 @@ enum Rejection {
 #[derive(Debug)]
 struct Credentials {
     bootstrap_hash: Option<[u8; 32]>,
-    session_hash: Option<[u8; 32]>,
-    session_expires_at: Option<Instant>,
+    browser_session_hash: Option<[u8; 32]>,
+    browser_session_expires_at: Option<Instant>,
+    direct_bearer_hash: Option<[u8; 32]>,
 }
 
 #[derive(Debug)]
@@ -52,43 +55,72 @@ pub struct AuthState {
 
 pub struct Startup {
     pub state: Arc<AuthState>,
-    pub bootstrap_token: String,
-    pub generated_token: bool,
+    pub interactive_bootstrap_url: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum BootstrapProvision {
+    Configured,
+    GenerateForInteractiveTerminal,
 }
 
 impl AuthState {
-    pub fn initialize(addr: SocketAddr, configured_hosts: &[String]) -> anyhow::Result<Startup> {
+    pub fn initialize(
+        addr: SocketAddr,
+        configured_hosts: &[String],
+        stderr_is_terminal: bool,
+    ) -> anyhow::Result<Startup> {
         let mut allowed_hosts = listener_hosts(addr);
         for raw in configured_hosts {
             allowed_hosts.insert(validate_allowed_host(raw)?);
         }
 
-        let configured_token = std::env::var("ONEDAY_GATEWAY_BOOTSTRAP_TOKEN")
-            .ok()
-            .map(|token| token.trim().to_string())
-            .filter(|token| !token.is_empty());
-        let generated_token = configured_token.is_none();
-        let bootstrap_token = configured_token.unwrap_or_else(random_token);
-        if bootstrap_token.len() < MIN_BOOTSTRAP_TOKEN_BYTES {
-            return Err(anyhow!(
-                "ONEDAY_GATEWAY_BOOTSTRAP_TOKEN must contain at least {MIN_BOOTSTRAP_TOKEN_BYTES} characters"
-            ));
+        let configured_bootstrap = environment_secret("ONEDAY_GATEWAY_BOOTSTRAP_TOKEN");
+        let direct_bearer = environment_secret("ONEDAY_GATEWAY_AUTH_TOKEN");
+        let provision = bootstrap_provision(
+            configured_bootstrap.as_deref(),
+            stderr_is_terminal,
+            addr.ip().is_loopback(),
+        )?;
+        let bootstrap_token = match provision {
+            BootstrapProvision::Configured => configured_bootstrap
+                .as_deref()
+                .expect("configured bootstrap provision has a token")
+                .to_string(),
+            BootstrapProvision::GenerateForInteractiveTerminal => random_token(),
+        };
+        validate_credential("ONEDAY_GATEWAY_BOOTSTRAP_TOKEN", &bootstrap_token)?;
+        if let Some(token) = direct_bearer.as_deref() {
+            validate_credential("ONEDAY_GATEWAY_AUTH_TOKEN", token)?;
+            validate_separate_credentials(&bootstrap_token, token)?;
         }
 
+        let interactive_bootstrap_url = (provision
+            == BootstrapProvision::GenerateForInteractiveTerminal)
+            .then(|| bootstrap_url(addr, &bootstrap_token));
+
         Ok(Startup {
-            state: Arc::new(Self::new(&bootstrap_token, allowed_hosts)),
-            bootstrap_token,
-            generated_token,
+            state: Arc::new(Self::new(
+                &bootstrap_token,
+                direct_bearer.as_deref(),
+                allowed_hosts,
+            )),
+            interactive_bootstrap_url,
         })
     }
 
-    fn new(bootstrap_token: &str, allowed_hosts: HashSet<String>) -> Self {
+    fn new(
+        bootstrap_token: &str,
+        direct_bearer: Option<&str>,
+        allowed_hosts: HashSet<String>,
+    ) -> Self {
         Self {
             allowed_hosts,
             credentials: Mutex::new(Credentials {
                 bootstrap_hash: Some(token_hash(bootstrap_token)),
-                session_hash: None,
-                session_expires_at: None,
+                browser_session_hash: None,
+                browser_session_expires_at: None,
+                direct_bearer_hash: direct_bearer.map(token_hash),
             }),
         }
     }
@@ -104,8 +136,8 @@ impl AuthState {
 
         let session_token = random_token();
         credentials.bootstrap_hash = None;
-        credentials.session_hash = Some(token_hash(&session_token));
-        credentials.session_expires_at = Some(Instant::now() + SESSION_TTL);
+        credentials.browser_session_hash = Some(token_hash(&session_token));
+        credentials.browser_session_expires_at = Some(Instant::now() + SESSION_TTL);
         Ok(session_token)
     }
 
@@ -117,32 +149,48 @@ impl AuthState {
                 return None;
             }
             return self
-                .session_matches(token.trim())
+                .bearer_matches(token.trim())
                 .then_some(CredentialKind::Bearer);
         }
 
         let token = cookie_value(headers, SECURE_SESSION_COOKIE)
             .or_else(|| cookie_value(headers, SESSION_COOKIE))?;
-        self.session_matches(token)
+        self.browser_session_matches(token)
             .then_some(CredentialKind::Cookie)
     }
 
-    fn session_matches(&self, presented: &str) -> bool {
+    fn bearer_matches(&self, presented: &str) -> bool {
+        let presented_hash = token_hash(presented);
+        let direct_matches = self
+            .credentials
+            .lock()
+            .ok()
+            .and_then(|credentials| credentials.direct_bearer_hash)
+            .is_some_and(|expected| constant_time_eq(&expected, &presented_hash));
+        let browser_matches = self.browser_session_matches_hash(&presented_hash);
+        direct_matches | browser_matches
+    }
+
+    fn browser_session_matches(&self, presented: &str) -> bool {
+        self.browser_session_matches_hash(&token_hash(presented))
+    }
+
+    fn browser_session_matches_hash(&self, presented_hash: &[u8; 32]) -> bool {
         let Ok(mut credentials) = self.credentials.lock() else {
             return false;
         };
         if credentials
-            .session_expires_at
+            .browser_session_expires_at
             .is_some_and(|expires_at| Instant::now() >= expires_at)
         {
-            credentials.session_hash = None;
-            credentials.session_expires_at = None;
+            credentials.browser_session_hash = None;
+            credentials.browser_session_expires_at = None;
             return false;
         }
         credentials
-            .session_hash
+            .browser_session_hash
             .as_ref()
-            .is_some_and(|expected| constant_time_eq(expected, &token_hash(presented)))
+            .is_some_and(|expected| constant_time_eq(expected, presented_hash))
     }
 
     fn authorize_request(&self, request: &Request<Body>) -> Result<Access, Rejection> {
@@ -270,13 +318,11 @@ fn bootstrap_response(headers: &HeaderMap, session_token: String, redirect: bool
     if let Ok(cookie) = HeaderValue::from_str(&cookie) {
         response.headers_mut().insert(header::SET_COOKIE, cookie);
     }
+    apply_common_security_headers(response.headers_mut());
+    apply_document_security_headers(response.headers_mut());
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    response.headers_mut().insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("no-referrer"),
-    );
     response
 }
 
@@ -294,6 +340,8 @@ fn rejection_response(rejection: Rejection) -> Response {
         ),
     };
     let mut response = (status, Json(json!({ "error": message, "code": code }))).into_response();
+    apply_common_security_headers(response.headers_mut());
+    apply_document_security_headers(response.headers_mut());
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
@@ -308,6 +356,19 @@ fn rejection_response(rejection: Rejection) -> Response {
 
 fn apply_security_headers(response: &mut Response, path: &str, access: Access) {
     let headers = response.headers_mut();
+    apply_common_security_headers(headers);
+    if path == "/api/auth/bootstrap" || is_static_spa_path(path) {
+        apply_document_security_headers(headers);
+    }
+    if path.starts_with("/api/")
+        || path.starts_with("/generated/")
+        || matches!(access, Access::Authenticated(_))
+    {
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    }
+}
+
+fn apply_common_security_headers(headers: &mut HeaderMap) {
     headers.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
@@ -320,12 +381,17 @@ fn apply_security_headers(response: &mut Response, path: &str, access: Access) {
         header::HeaderName::from_static("x-frame-options"),
         HeaderValue::from_static("DENY"),
     );
-    if path.starts_with("/api/")
-        || path.starts_with("/generated/")
-        || matches!(access, Access::Authenticated(_))
-    {
-        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
-    }
+    headers.insert(
+        header::HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static(PERMISSIONS_POLICY),
+    );
+}
+
+fn apply_document_security_headers(headers: &mut HeaderMap) {
+    headers.insert(
+        header::HeaderName::from_static("content-security-policy"),
+        HeaderValue::from_static(CONTENT_SECURITY_POLICY),
+    );
 }
 
 fn is_public_request(method: &Method, path: &str) -> bool {
@@ -335,6 +401,10 @@ fn is_public_request(method: &Method, path: &str) -> bool {
     if method == Method::POST && path == "/api/auth/bootstrap" {
         return true;
     }
+    is_static_spa_path(path)
+}
+
+fn is_static_spa_path(path: &str) -> bool {
     path != "/api"
         && path != "/generated"
         && !path.starts_with("/api/")
@@ -465,6 +535,47 @@ fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
         .flat_map(|value| value.split(';'))
         .filter_map(|part| part.trim().split_once('='))
         .find_map(|(cookie_name, value)| (cookie_name == name).then_some(value))
+}
+
+fn environment_secret(name: &str) -> Option<String> {
+    std::env::var(name)
+        .ok()
+        .map(|token| token.trim().to_string())
+        .filter(|token| !token.is_empty())
+}
+
+fn bootstrap_provision(
+    configured_token: Option<&str>,
+    stderr_is_terminal: bool,
+    listener_is_loopback: bool,
+) -> anyhow::Result<BootstrapProvision> {
+    if configured_token.is_some() {
+        return Ok(BootstrapProvision::Configured);
+    }
+    if stderr_is_terminal && listener_is_loopback {
+        return Ok(BootstrapProvision::GenerateForInteractiveTerminal);
+    }
+    Err(anyhow!(
+        "ONEDAY_GATEWAY_BOOTSTRAP_TOKEN is required unless the gateway is started on loopback from an interactive terminal"
+    ))
+}
+
+fn validate_credential(name: &str, token: &str) -> anyhow::Result<()> {
+    if token.len() < MIN_CREDENTIAL_BYTES {
+        return Err(anyhow!(
+            "{name} must contain at least {MIN_CREDENTIAL_BYTES} bytes"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_separate_credentials(bootstrap: &str, direct_bearer: &str) -> anyhow::Result<()> {
+    if constant_time_eq(&token_hash(bootstrap), &token_hash(direct_bearer)) {
+        return Err(anyhow!(
+            "ONEDAY_GATEWAY_AUTH_TOKEN and ONEDAY_GATEWAY_BOOTSTRAP_TOKEN must be distinct"
+        ));
+    }
+    Ok(())
 }
 
 fn random_token() -> String {
@@ -675,6 +786,7 @@ mod tests {
     fn test_state() -> AuthState {
         AuthState::new(
             "bootstrap-token-with-at-least-thirty-two-characters",
+            None,
             HashSet::from(["localhost:8788".to_string()]),
         )
     }
@@ -733,7 +845,71 @@ mod tests {
             state.exchange_bootstrap("bootstrap-token-with-at-least-thirty-two-characters"),
             Err(Rejection::Unauthorized)
         );
-        assert!(state.session_matches(&session));
+        assert!(state.browser_session_matches(&session));
+    }
+
+    #[test]
+    fn direct_bearer_is_separate_from_one_shot_bootstrap() {
+        let bootstrap = "browser-bootstrap-token-with-thirty-two-plus-characters";
+        let direct = "desktop-per-launch-bearer-with-thirty-two-plus-characters";
+        let state = AuthState::new(
+            bootstrap,
+            Some(direct),
+            HashSet::from(["localhost:8788".to_string()]),
+        );
+
+        let mut native = request(Method::GET, "/api/stories");
+        native.headers_mut().insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {direct}")).unwrap(),
+        );
+        assert_eq!(
+            state.authorize_request(&native),
+            Ok(Access::Authenticated(CredentialKind::Bearer))
+        );
+        let mut ambient_cookie = request(Method::GET, "/api/stories");
+        ambient_cookie.headers_mut().insert(
+            header::COOKIE,
+            HeaderValue::from_str(&format!("{SESSION_COOKIE}={direct}")).unwrap(),
+        );
+        assert_eq!(
+            state.authorize_request(&ambient_cookie),
+            Err(Rejection::Unauthorized)
+        );
+        assert_eq!(
+            state.exchange_bootstrap(direct),
+            Err(Rejection::Unauthorized)
+        );
+
+        let browser_session = state
+            .exchange_bootstrap(bootstrap)
+            .expect("the independent bootstrap token remains valid");
+        assert!(state.browser_session_matches(&browser_session));
+        assert_eq!(
+            state.exchange_bootstrap(bootstrap),
+            Err(Rejection::Unauthorized)
+        );
+        assert!(!format!("{state:?}").contains(direct));
+    }
+
+    #[test]
+    fn startup_generation_requires_an_interactive_loopback_terminal() {
+        assert_eq!(
+            bootstrap_provision(None, true, true).unwrap(),
+            BootstrapProvision::GenerateForInteractiveTerminal
+        );
+        assert_eq!(
+            bootstrap_provision(Some("operator-supplied-token"), false, false).unwrap(),
+            BootstrapProvision::Configured
+        );
+        assert!(bootstrap_provision(None, false, true).is_err());
+        assert!(bootstrap_provision(None, true, false).is_err());
+        assert!(validate_credential("ONEDAY_GATEWAY_AUTH_TOKEN", "too-short").is_err());
+        assert!(validate_separate_credentials(
+            "same-credential-with-thirty-two-plus-characters",
+            "same-credential-with-thirty-two-plus-characters"
+        )
+        .is_err());
     }
 
     #[test]
@@ -856,5 +1032,45 @@ mod tests {
         let cookie = local.headers()[header::SET_COOKIE].to_str().unwrap();
         assert!(cookie.contains("HttpOnly; SameSite=Strict"));
         assert!(!cookie.contains("; Secure"));
+    }
+
+    #[test]
+    fn static_and_bootstrap_responses_receive_a_compatible_csp_baseline() {
+        let mut static_response = Response::new(Body::empty());
+        apply_security_headers(&mut static_response, "/", Access::Public);
+        let static_csp = static_response.headers()["content-security-policy"]
+            .to_str()
+            .unwrap();
+        for directive in [
+            "default-src 'self'",
+            "script-src 'self'",
+            "style-src 'self' 'unsafe-inline'",
+            "connect-src 'self' https: http:",
+            "img-src 'self' data: blob:",
+            "media-src 'self' blob:",
+            "object-src 'none'",
+            "base-uri 'none'",
+            "frame-src 'none'",
+            "frame-ancestors 'none'",
+        ] {
+            assert!(static_csp.contains(directive), "missing {directive}");
+        }
+        assert_eq!(
+            static_response.headers()["permissions-policy"],
+            PERMISSIONS_POLICY
+        );
+
+        let headers =
+            HeaderMap::from_iter([(header::HOST, HeaderValue::from_static("localhost:8788"))]);
+        let bootstrap = bootstrap_response(&headers, "session".into(), true);
+        assert_eq!(
+            bootstrap.headers()["content-security-policy"],
+            CONTENT_SECURITY_POLICY
+        );
+        assert_eq!(
+            bootstrap.headers()[header::X_CONTENT_TYPE_OPTIONS],
+            "nosniff"
+        );
+        assert_eq!(bootstrap.headers()[header::REFERRER_POLICY], "no-referrer");
     }
 }

@@ -25,6 +25,7 @@ use axum::middleware::{self, Next};
 use axum::response::Response;
 use axum::Router;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use std::io::{IsTerminal, Write};
 use std::net::SocketAddr;
 use std::process::Command;
 use std::sync::Arc;
@@ -92,8 +93,9 @@ async fn main() -> anyhow::Result<()> {
     let args = config::Args::parse_args();
     let paths = config::resolve_paths(&args).context("resolving OneDay gateway paths")?;
     let addr: SocketAddr = args.addr.parse().context("parsing --addr")?;
-    let auth = auth::AuthState::initialize(addr, &args.allowed_hosts)
-        .context("initializing gateway authentication")?;
+    let auth =
+        auth::AuthState::initialize(addr, &args.allowed_hosts, std::io::stderr().is_terminal())
+            .context("initializing gateway authentication")?;
     if let Some(parent) = paths.db_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating data directory {}", parent.display()))?;
@@ -176,15 +178,13 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("binding {addr}"))?;
 
     tracing::info!("OneDay gateway listening on http://{addr}");
-    if auth.generated_token {
-        tracing::warn!(
-            "Open this one-shot gateway bootstrap URL once: {}",
-            auth::bootstrap_url(addr, &auth.bootstrap_token)
-        );
-    } else {
-        tracing::info!(
-            "Gateway bootstrap token loaded from ONEDAY_GATEWAY_BOOTSTRAP_TOKEN; its value is not logged"
-        );
+    if let Some(url) = auth.interactive_bootstrap_url.as_deref() {
+        let mut terminal = std::io::stderr().lock();
+        writeln!(
+            terminal,
+            "OneDay one-shot bootstrap URL (credential; shown only in this terminal):\n{url}"
+        )
+        .context("writing interactive gateway bootstrap URL")?;
     }
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
