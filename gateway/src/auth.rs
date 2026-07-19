@@ -18,7 +18,7 @@ const SESSION_COOKIE: &str = "oneday_session";
 const SECURE_SESSION_COOKIE: &str = "__Host-oneday_session";
 const SESSION_TTL: Duration = Duration::from_secs(12 * 60 * 60);
 const MIN_CREDENTIAL_BYTES: usize = 32;
-const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http:; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data: blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'";
+const CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data: blob:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'none'; frame-src 'none'; frame-ancestors 'none'; form-action 'self'";
 const PERMISSIONS_POLICY: &str = "camera=(), microphone=(), geolocation=(), payment=()";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -61,6 +61,7 @@ pub struct Startup {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BootstrapProvision {
     Configured,
+    Disabled,
     GenerateForInteractiveTerminal,
 }
 
@@ -77,31 +78,36 @@ impl AuthState {
 
         let configured_bootstrap = environment_secret("ONEDAY_GATEWAY_BOOTSTRAP_TOKEN");
         let direct_bearer = environment_secret("ONEDAY_GATEWAY_AUTH_TOKEN");
+        if let Some(token) = configured_bootstrap.as_deref() {
+            validate_credential("ONEDAY_GATEWAY_BOOTSTRAP_TOKEN", token)?;
+        }
+        if let Some(token) = direct_bearer.as_deref() {
+            validate_credential("ONEDAY_GATEWAY_AUTH_TOKEN", token)?;
+        }
+        if let (Some(bootstrap), Some(direct)) =
+            (configured_bootstrap.as_deref(), direct_bearer.as_deref())
+        {
+            validate_separate_credentials(bootstrap, direct)?;
+        }
         let provision = bootstrap_provision(
-            configured_bootstrap.as_deref(),
+            configured_bootstrap.is_some(),
+            direct_bearer.is_some(),
             stderr_is_terminal,
             addr.ip().is_loopback(),
         )?;
-        let bootstrap_token = match provision {
-            BootstrapProvision::Configured => configured_bootstrap
-                .as_deref()
-                .expect("configured bootstrap provision has a token")
-                .to_string(),
-            BootstrapProvision::GenerateForInteractiveTerminal => random_token(),
+        let (bootstrap_token, interactive_bootstrap_url) = match provision {
+            BootstrapProvision::Configured => (configured_bootstrap, None),
+            BootstrapProvision::Disabled => (None, None),
+            BootstrapProvision::GenerateForInteractiveTerminal => {
+                let token = random_token();
+                let url = bootstrap_url(addr, &token);
+                (Some(token), Some(url))
+            }
         };
-        validate_credential("ONEDAY_GATEWAY_BOOTSTRAP_TOKEN", &bootstrap_token)?;
-        if let Some(token) = direct_bearer.as_deref() {
-            validate_credential("ONEDAY_GATEWAY_AUTH_TOKEN", token)?;
-            validate_separate_credentials(&bootstrap_token, token)?;
-        }
-
-        let interactive_bootstrap_url = (provision
-            == BootstrapProvision::GenerateForInteractiveTerminal)
-            .then(|| bootstrap_url(addr, &bootstrap_token));
 
         Ok(Startup {
             state: Arc::new(Self::new(
-                &bootstrap_token,
+                bootstrap_token.as_deref(),
                 direct_bearer.as_deref(),
                 allowed_hosts,
             )),
@@ -110,14 +116,14 @@ impl AuthState {
     }
 
     fn new(
-        bootstrap_token: &str,
+        bootstrap_token: Option<&str>,
         direct_bearer: Option<&str>,
         allowed_hosts: HashSet<String>,
     ) -> Self {
         Self {
             allowed_hosts,
             credentials: Mutex::new(Credentials {
-                bootstrap_hash: Some(token_hash(bootstrap_token)),
+                bootstrap_hash: bootstrap_token.map(token_hash),
                 browser_session_hash: None,
                 browser_session_expires_at: None,
                 direct_bearer_hash: direct_bearer.map(token_hash),
@@ -545,12 +551,16 @@ fn environment_secret(name: &str) -> Option<String> {
 }
 
 fn bootstrap_provision(
-    configured_token: Option<&str>,
+    bootstrap_configured: bool,
+    direct_bearer_configured: bool,
     stderr_is_terminal: bool,
     listener_is_loopback: bool,
 ) -> anyhow::Result<BootstrapProvision> {
-    if configured_token.is_some() {
+    if bootstrap_configured {
         return Ok(BootstrapProvision::Configured);
+    }
+    if direct_bearer_configured {
+        return Ok(BootstrapProvision::Disabled);
     }
     if stderr_is_terminal && listener_is_loopback {
         return Ok(BootstrapProvision::GenerateForInteractiveTerminal);
@@ -785,7 +795,7 @@ mod tests {
 
     fn test_state() -> AuthState {
         AuthState::new(
-            "bootstrap-token-with-at-least-thirty-two-characters",
+            Some("bootstrap-token-with-at-least-thirty-two-characters"),
             None,
             HashSet::from(["localhost:8788".to_string()]),
         )
@@ -853,7 +863,7 @@ mod tests {
         let bootstrap = "browser-bootstrap-token-with-thirty-two-plus-characters";
         let direct = "desktop-per-launch-bearer-with-thirty-two-plus-characters";
         let state = AuthState::new(
-            bootstrap,
+            Some(bootstrap),
             Some(direct),
             HashSet::from(["localhost:8788".to_string()]),
         );
@@ -893,23 +903,77 @@ mod tests {
     }
 
     #[test]
-    fn startup_generation_requires_an_interactive_loopback_terminal() {
+    fn startup_provisioning_handles_interactive_configured_and_direct_only_modes() {
         assert_eq!(
-            bootstrap_provision(None, true, true).unwrap(),
+            bootstrap_provision(false, false, true, true).unwrap(),
             BootstrapProvision::GenerateForInteractiveTerminal
         );
         assert_eq!(
-            bootstrap_provision(Some("operator-supplied-token"), false, false).unwrap(),
+            bootstrap_provision(true, false, false, false).unwrap(),
             BootstrapProvision::Configured
         );
-        assert!(bootstrap_provision(None, false, true).is_err());
-        assert!(bootstrap_provision(None, true, false).is_err());
+        assert_eq!(
+            bootstrap_provision(true, true, false, true).unwrap(),
+            BootstrapProvision::Configured
+        );
+        assert_eq!(
+            bootstrap_provision(false, true, false, true).unwrap(),
+            BootstrapProvision::Disabled
+        );
+        assert_eq!(
+            bootstrap_provision(false, true, true, true).unwrap(),
+            BootstrapProvision::Disabled
+        );
+        assert!(bootstrap_provision(false, false, false, true).is_err());
+        assert!(bootstrap_provision(false, false, true, false).is_err());
         assert!(validate_credential("ONEDAY_GATEWAY_AUTH_TOKEN", "too-short").is_err());
         assert!(validate_separate_credentials(
             "same-credential-with-thirty-two-plus-characters",
             "same-credential-with-thirty-two-plus-characters"
         )
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn direct_bearer_only_authenticates_while_browser_bootstrap_is_disabled() {
+        let direct = "standalone-direct-bearer-with-thirty-two-plus-characters";
+        let state = Arc::new(AuthState::new(
+            None,
+            Some(direct),
+            HashSet::from(["localhost:8788".to_string()]),
+        ));
+
+        let mut protected = request(Method::GET, "/api/stories");
+        protected.headers_mut().insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {direct}")).unwrap(),
+        );
+        assert_eq!(
+            state.authorize_request(&protected),
+            Ok(Access::Authenticated(CredentialKind::Bearer))
+        );
+
+        let headers =
+            HeaderMap::from_iter([(header::HOST, HeaderValue::from_static("localhost:8788"))]);
+        let bootstrap_get_response = bootstrap_get(
+            Extension(state.clone()),
+            headers.clone(),
+            Query(BootstrapQuery {
+                token: direct.to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(bootstrap_get_response.status(), StatusCode::UNAUTHORIZED);
+
+        let bootstrap_post_response = bootstrap_post(
+            Extension(state),
+            headers,
+            Json(BootstrapRequest {
+                token: direct.to_string(),
+            }),
+        )
+        .await;
+        assert_eq!(bootstrap_post_response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
@@ -1045,7 +1109,6 @@ mod tests {
             "default-src 'self'",
             "script-src 'self'",
             "style-src 'self' 'unsafe-inline'",
-            "connect-src 'self' https: http:",
             "img-src 'self' data: blob:",
             "media-src 'self' blob:",
             "object-src 'none'",
@@ -1055,6 +1118,14 @@ mod tests {
         ] {
             assert!(static_csp.contains(directive), "missing {directive}");
         }
+        let connect_src = static_csp
+            .split(';')
+            .map(str::trim)
+            .find(|directive| directive.starts_with("connect-src"))
+            .expect("CSP has a connect-src directive");
+        assert_eq!(connect_src, "connect-src 'self'");
+        assert!(!connect_src.contains("http:"));
+        assert!(!connect_src.contains("https:"));
         assert_eq!(
             static_response.headers()["permissions-policy"],
             PERMISSIONS_POLICY
