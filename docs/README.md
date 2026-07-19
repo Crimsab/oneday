@@ -25,6 +25,7 @@ Use this index to find the shortest path for what you are trying to do.
 - [Extensions and story packs](extensions.md) — reusable schemas, rules, challenge pools, and presentation direction.
 - [Development](development.md) — toolchains, test gates, repository layout, and contribution workflow.
 - [Testing](testing.md) — local verification, CI coverage, browser checks, and release confidence.
+- [First-run and portability matrix](first-run-matrix.md) — repeatable, credential-free first-run proofs and their boundaries.
 - [Documentation site](wiki.md) — Material for MkDocs, local preview, and GitHub Pages deployment.
 - [Benchmarks](benchmarks/README.md) — reproducible model, ASCII, and schema reliability comparisons.
 - [Project roadmap](project-roadmap.md) — current improvement themes and contribution opportunities.
