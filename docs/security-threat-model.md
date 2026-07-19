@@ -35,11 +35,12 @@ boundary and must be treated as data movement.
 
 ### Loopback, Host, Origin, and CSRF
 
-The gateway listens on loopback by default. Its browser bootstrap token is
-one-shot: exchanging it creates a short-lived session, invalidates the
-bootstrap token in memory, and sets an HttpOnly, `SameSite=Strict` cookie. A
-secure public origin receives a secure host-only cookie. Browser session,
-bootstrap, and direct bearer credentials are distinct values.
+The gateway listens on loopback by default. Its browser bootstrap credential is
+one-shot: exchanging it consumes the credential, invalidates it in memory, and
+issues a browser session that expires after 12 hours. The session is set in an
+HttpOnly, `SameSite=Strict` cookie; a secure public origin receives a secure
+host-only cookie. Browser session, bootstrap, and direct bearer credentials are
+distinct values.
 
 For every request, the gateway validates a single `Host` header against the
 listener and configured allowed hosts. Authenticated mutations validate a
