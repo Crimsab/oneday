@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -393,11 +394,23 @@ func TestMediaSetupChoicesConfigureOnlyMedia(t *testing.T) {
 	t.Run("bridge keeps an omitted token", func(t *testing.T) {
 		cfg := base
 		cfg.AI.ImageGeneration.ImagegenBridgeToken = "kept-token"
-		if err := configureImageChoice(bufio.NewReader(strings.NewReader("4\nhttp://127.0.0.1:8787\n\n")), &cfg, loc); err != nil {
+		if err := configureImageChoice(bufio.NewReader(strings.NewReader("4\nhttp://127.0.0.1:8787\ngpt-image-2\n\n")), &cfg, loc); err != nil {
 			t.Fatal(err)
 		}
-		if cfg.AI.ImageGeneration.AutoGenerate || cfg.AI.ImageGeneration.Provider != config.ImageProviderCodexOAuth || cfg.AI.ImageGeneration.ImagegenBridgeToken != "kept-token" {
+		if !cfg.AI.ImageGeneration.AutoGenerate || cfg.AI.ImageGeneration.Provider != config.ImageProviderCodexOAuth || cfg.AI.ImageGeneration.ImagegenBridgeToken != "kept-token" || cfg.AI.ImageGeneration.Model != "gpt-image-2" || cfg.AI.ImageGeneration.MapIconModel != "gpt-image-2" {
 			t.Fatalf("bridge image config = %#v", cfg.AI.ImageGeneration)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("bridge configuration must validate: %v", err)
+		}
+		report := setup.Run(context.Background(), cfg, "test", setup.Dependencies{
+			Narrative: func(context.Context, config.Config) error { return nil },
+			HTTPGet:   func(context.Context, string) error { return nil },
+		})
+		for _, probe := range report.Probes {
+			if probe.Name == "image" && probe.Code != "IMAGE_READY" {
+				t.Fatalf("bridge image readiness = %#v", probe)
+			}
 		}
 	})
 
@@ -422,6 +435,103 @@ func TestMediaSetupChoicesConfigureOnlyMedia(t *testing.T) {
 		}
 		if !cfg.AI.TTS.Local.Enabled || cfg.AI.TTS.Cloud.Enabled || cfg.AI.TTS.Local.Model != "piper" {
 			t.Fatalf("local tts config = %#v", cfg.AI.TTS)
+		}
+	})
+
+	t.Run("blank choices preserve configured media", func(t *testing.T) {
+		cfg := base
+		cfg.AI.ImageGeneration = config.ImageGenerationConfig{
+			Provider: config.ImageProviderOpenAI, MapIconProvider: config.ImageProviderOpenAI, Model: "image-model", MapIconModel: "image-model", AutoGenerate: true,
+			Providers: map[string]config.ImageProviderConfig{config.ImageProviderOpenAI: {BaseURL: "https://images.example.test/v1", APIKey: "kept-image-secret", Models: []string{"image-model"}}},
+		}
+		cfg.AI.TTS = config.TTSConfig{Cloud: config.TTSEndpoint{Enabled: true, BaseURL: "https://speech.example.test/v1", APIKey: "kept-tts-secret", Model: "speech", Voice: "voice"}, Local: config.TTSEndpoint{Enabled: true, BaseURL: "http://127.0.0.1:5000", Model: "piper", Voice: "local"}}
+		beforeImage, beforeTTS := cfg.AI.ImageGeneration, cfg.AI.TTS
+		if err := configureImageChoice(bufio.NewReader(strings.NewReader("\n")), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		if err := configureTTSChoice(bufio.NewReader(strings.NewReader("\n")), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(cfg.AI.ImageGeneration, beforeImage) || !reflect.DeepEqual(cfg.AI.TTS, beforeTTS) {
+			t.Fatalf("blank media choices changed configuration: image=%#v tts=%#v", cfg.AI.ImageGeneration, cfg.AI.TTS)
+		}
+	})
+}
+
+func TestMediaCredentialsRequireReentryAfterOriginChange(t *testing.T) {
+	loc := appi18n.New(appi18n.English)
+	newOrigin := "https://new.example.test/v1"
+
+	newHosted := func() config.Config {
+		cfg := config.Default()
+		cfg.AI.ImageGeneration.Provider = config.ImageProviderOpenAI
+		cfg.AI.ImageGeneration.Providers = map[string]config.ImageProviderConfig{config.ImageProviderOpenAI: {BaseURL: "https://old.example.test/v1", APIKey: "old-image-secret"}}
+		return cfg
+	}
+	newLocal := func() config.Config {
+		cfg := config.Default()
+		cfg.AI.ImageGeneration.Provider = config.ImageProviderOpenAICompatible
+		cfg.AI.ImageGeneration.Providers = map[string]config.ImageProviderConfig{config.ImageProviderOpenAICompatible: {BaseURL: "https://old.example.test/v1", APIKey: "old-local-secret", AuthMode: "bearer", CapabilityProbeURL: "https://old.example.test/health"}}
+		return cfg
+	}
+	newBridge := func() config.Config {
+		cfg := config.Default()
+		cfg.AI.ImageGeneration.ImagegenBridgeURL = "https://old.example.test"
+		cfg.AI.ImageGeneration.ImagegenBridgeToken = "old-bridge-secret"
+		return cfg
+	}
+
+	tests := []struct {
+		name   string
+		secret string
+		run    func(*config.Config) error
+	}{
+		{
+			name: "hosted image", secret: "old-image-secret",
+			run: func(cfg *config.Config) error {
+				return configureImageChoice(bufio.NewReader(strings.NewReader("2\n"+newOrigin+"\nimage-model\n\n")), cfg, loc)
+			},
+		},
+		{
+			name: "local image", secret: "old-local-secret",
+			run: func(cfg *config.Config) error {
+				return configureImageChoice(bufio.NewReader(strings.NewReader("3\n"+newOrigin+"\nimage-model\nbearer\n\n")), cfg, loc)
+			},
+		},
+		{
+			name: "imagegen bridge", secret: "old-bridge-secret",
+			run: func(cfg *config.Config) error {
+				return configureImageChoice(bufio.NewReader(strings.NewReader("4\n"+newOrigin+"\ngpt-image-2\n\n")), cfg, loc)
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var cfg config.Config
+			switch tc.name {
+			case "hosted image":
+				cfg = newHosted()
+			case "local image":
+				cfg = newLocal()
+			default:
+				cfg = newBridge()
+			}
+			err := tc.run(&cfg)
+			if err == nil || !strings.Contains(err.Error(), "credential again") || strings.Contains(err.Error(), tc.secret) {
+				t.Fatalf("endpoint change error = %v", err)
+			}
+		})
+	}
+
+	t.Run("same normalized hosted origin keeps credential", func(t *testing.T) {
+		cfg := newHosted()
+		input := "2\nHTTPS://OLD.EXAMPLE.TEST:443/other\nimage-model\n\n"
+		if err := configureImageChoice(bufio.NewReader(strings.NewReader(input)), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.AI.ImageGeneration.Providers[config.ImageProviderOpenAI].APIKey; got != "old-image-secret" {
+			t.Fatalf("same-origin credential = %q", got)
 		}
 	})
 }

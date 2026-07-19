@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -699,10 +700,12 @@ func configureImageChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.
 	fmt.Println(loc.T("cli.image_hosted"))
 	fmt.Println(loc.T("cli.image_local"))
 	fmt.Println(loc.T("cli.image_bridge"))
-	fmt.Print(loc.T("cli.selection", "1"))
+	fmt.Print(loc.T("cli.media_selection"))
 	choice, _ := reader.ReadString('\n')
 	switch strings.TrimSpace(choice) {
-	case "", "1", "text", "text-only":
+	case "":
+		return nil
+	case "1", "text", "text-only":
 		disableImageGeneration(image)
 		return nil
 	case "2", "hosted":
@@ -745,7 +748,8 @@ func imageProviderConfigKey(provider string) string {
 }
 
 func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
-	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), imageProviderBaseURL(*image, config.ImageProviderOpenAI), loc)
+	previousEndpoint := imageProviderBaseURL(*image, config.ImageProviderOpenAI)
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), previousEndpoint, loc)
 	if err != nil {
 		return err
 	}
@@ -753,11 +757,15 @@ func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationCon
 	if err != nil {
 		return err
 	}
-	key, err := promptSecret(reader, loc.T("cli.image_api_key"), imageProviderSecret(*image, config.ImageProviderOpenAI))
+	previousKey := imageProviderSecret(*image, config.ImageProviderOpenAI)
+	key, err := promptSecret(reader, loc.T("cli.image_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
 	if err != nil {
 		return err
 	}
 	if key == "" {
+		if requiresCredentialReentry(previousKey, previousEndpoint, endpoint) {
+			return errors.New(loc.T("cli.credential_reentry_required"))
+		}
 		return errors.New(loc.T("cli.secret_required"))
 	}
 	configureDirectImage(image, config.ImageProviderOpenAI, endpoint, model, key, "bearer", "")
@@ -765,7 +773,8 @@ func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationCon
 }
 
 func configureLocalImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
-	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), imageProviderBaseURL(*image, config.ImageProviderOpenAICompatible), loc)
+	previousEndpoint := imageProviderBaseURL(*image, config.ImageProviderOpenAICompatible)
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), previousEndpoint, loc)
 	if err != nil {
 		return err
 	}
@@ -784,11 +793,15 @@ func configureLocalImage(reader *bufio.Reader, image *config.ImageGenerationConf
 	}
 	key := ""
 	if authMode == "bearer" {
-		key, err = promptSecret(reader, loc.T("cli.image_api_key"), imageProviderSecret(*image, config.ImageProviderOpenAICompatible))
+		previousKey := imageProviderSecret(*image, config.ImageProviderOpenAICompatible)
+		key, err = promptSecret(reader, loc.T("cli.image_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
 		if err != nil {
 			return err
 		}
 		if key == "" {
+			if requiresCredentialReentry(previousKey, previousEndpoint, endpoint) {
+				return errors.New(loc.T("cli.credential_reentry_required"))
+			}
 			return errors.New(loc.T("cli.secret_required"))
 		}
 	}
@@ -815,13 +828,22 @@ func configureDirectImage(image *config.ImageGenerationConfig, provider, endpoin
 }
 
 func configureImagegenBridge(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
-	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_bridge_endpoint"), image.ImagegenBridgeURL, loc)
+	previousEndpoint := image.ImagegenBridgeURL
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_bridge_endpoint"), previousEndpoint, loc)
 	if err != nil {
 		return err
 	}
-	token, err := promptSecret(reader, loc.T("cli.image_bridge_token"), image.ImagegenBridgeToken)
+	model, err := promptRequiredValue(reader, loc.T("cli.image_model"), imageModel(*image, "gpt-image-2"), loc)
 	if err != nil {
 		return err
+	}
+	previousToken := image.ImagegenBridgeToken
+	token, err := promptSecret(reader, loc.T("cli.image_bridge_token"), credentialForOrigin(previousToken, previousEndpoint, endpoint))
+	if err != nil {
+		return err
+	}
+	if token == "" && requiresCredentialReentry(previousToken, previousEndpoint, endpoint) {
+		return errors.New(loc.T("cli.credential_reentry_required"))
 	}
 	image.Provider = config.ImageProviderCodexOAuth
 	image.MapIconProvider = config.ImageProviderCodexOAuth
@@ -829,6 +851,9 @@ func configureImagegenBridge(reader *bufio.Reader, image *config.ImageGeneration
 	if token != "" {
 		image.ImagegenBridgeToken = token
 	}
+	image.Model = model
+	image.MapIconModel = model
+	image.AutoGenerate = true
 	return nil
 }
 
@@ -862,6 +887,40 @@ func imageProviderSecret(image config.ImageGenerationConfig, provider string) st
 	return ""
 }
 
+func credentialForOrigin(credential, previousEndpoint, endpoint string) string {
+	if sameURLOrigin(previousEndpoint, endpoint) {
+		return credential
+	}
+	return ""
+}
+
+func requiresCredentialReentry(credential, previousEndpoint, endpoint string) bool {
+	return strings.TrimSpace(credential) != "" && !sameURLOrigin(previousEndpoint, endpoint)
+}
+
+func sameURLOrigin(left, right string) bool {
+	leftOrigin, ok := normalizedURLOrigin(left)
+	if !ok {
+		return false
+	}
+	rightOrigin, ok := normalizedURLOrigin(right)
+	return ok && leftOrigin == rightOrigin
+}
+
+func normalizedURLOrigin(raw string) (string, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || parsed.Scheme == "" || parsed.Hostname() == "" {
+		return "", false
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	host := strings.ToLower(parsed.Hostname())
+	port := parsed.Port()
+	if (scheme == "http" && port == "80") || (scheme == "https" && port == "443") {
+		port = ""
+	}
+	return scheme + "://" + host + ":" + port, true
+}
+
 func configureTTSChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Localizer) error {
 	tts := &cfg.AI.TTS
 	fmt.Println()
@@ -869,10 +928,12 @@ func configureTTSChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Lo
 	fmt.Println(loc.T("cli.tts_disabled"))
 	fmt.Println(loc.T("cli.tts_cloud"))
 	fmt.Println(loc.T("cli.tts_local"))
-	fmt.Print(loc.T("cli.selection", "1"))
+	fmt.Print(loc.T("cli.media_selection"))
 	choice, _ := reader.ReadString('\n')
 	switch strings.TrimSpace(choice) {
-	case "", "1", "disabled", "off":
+	case "":
+		return nil
+	case "1", "disabled", "off":
 		disableTTS(tts)
 		return nil
 	case "2", "cloud":
@@ -890,7 +951,8 @@ func disableTTS(tts *config.TTSConfig) {
 }
 
 func configureCloudTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.Localizer) error {
-	endpoint, err := promptRequiredValue(reader, loc.T("cli.tts_endpoint"), tts.Cloud.BaseURL, loc)
+	previousEndpoint := tts.Cloud.BaseURL
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.tts_endpoint"), previousEndpoint, loc)
 	if err != nil {
 		return err
 	}
@@ -902,11 +964,15 @@ func configureCloudTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.
 	if err != nil {
 		return err
 	}
-	key, err := promptSecret(reader, loc.T("cli.tts_api_key"), tts.Cloud.APIKey)
+	previousKey := tts.Cloud.APIKey
+	key, err := promptSecret(reader, loc.T("cli.tts_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
 	if err != nil {
 		return err
 	}
 	if key == "" {
+		if requiresCredentialReentry(previousKey, previousEndpoint, endpoint) {
+			return errors.New(loc.T("cli.credential_reentry_required"))
+		}
 		return errors.New(loc.T("cli.secret_required"))
 	}
 	tts.Cloud = config.TTSEndpoint{Enabled: true, BaseURL: endpoint, APIKey: key, Model: model, Voice: voice, Version: tts.Cloud.Version}
