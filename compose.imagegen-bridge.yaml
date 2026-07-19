@@ -1,0 +1,84 @@
+# Optional, local-only Codex OAuth image generation.
+#
+# Start with:
+#   cp compose.imagegen-bridge.env.example .env.imagegen-bridge
+#   $EDITOR .env.imagegen-bridge
+#   docker compose --env-file .env.imagegen-bridge \
+#     -f compose.yaml -f compose.imagegen-bridge.yaml \
+#     --profile imagegen-bridge up -d
+#
+# This file deliberately does not change the default `docker compose up` path.
+# The bridge has its own bearer token and persistent OAuth state; never place
+# either secret in this repository or expose the loopback port publicly.
+
+services:
+  oneday-gateway:
+    environment:
+      ONEDAY_IMAGEGEN_PROVIDER: codex-oauth
+      ONEDAY_IMAGEGEN_MAP_ICON_PROVIDER: codex-oauth
+      ONEDAY_IMAGEGEN_BRIDGE_URL: http://imagegen-bridge:8787
+      ONEDAY_IMAGEGEN_BRIDGE_TOKEN: ${IMAGEGEN_BRIDGE_BEARER_TOKEN:?set IMAGEGEN_BRIDGE_BEARER_TOKEN in the selected env file}
+      ONEDAY_IMAGEGEN_BRIDGE_PROVIDER: codex-responses
+      ONEDAY_IMAGEGEN_BRIDGE_MAP_ICON_PROVIDER: codex-responses
+      ONEDAY_IMAGEGEN_BRIDGE_FALLBACKS: ${ONEDAY_IMAGEGEN_BRIDGE_FALLBACKS:-}
+      ONEDAY_IMAGEGEN_BRIDGE_FALLBACK_POLICY: ${ONEDAY_IMAGEGEN_BRIDGE_FALLBACK_POLICY:-}
+      ONEDAY_IMAGEGEN_BRIDGE_COMPATIBILITY: ${ONEDAY_IMAGEGEN_BRIDGE_COMPATIBILITY:-normalize}
+
+  imagegen-bridge:
+    profiles: [imagegen-bridge]
+    image: ${IMAGEGEN_BRIDGE_IMAGE:-ghcr.io/crimsab/imagegen-bridge:0.1.4@sha256:98650a1acfe405c9fea4c0df3cb71d754bd251febd89309d0a4cb4a04e0aa0d9}
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+      IMAGEGEN_BRIDGE_BEARER_TOKEN: ${IMAGEGEN_BRIDGE_BEARER_TOKEN:?set IMAGEGEN_BRIDGE_BEARER_TOKEN in the selected env file}
+    command:
+      - imagegen-bridge
+      - --quiet
+      - --set
+      - 'inputs.local_roots=["/workspace"]'
+      - --set
+      - 'artifacts.root="/data/artifacts"'
+      - --set
+      - 'providers.codex_app_server.session_database="/data/state/sessions.sqlite3"'
+      - --set
+      - 'server.bind="0.0.0.0:8787"'
+      - --set
+      - 'server.bearer_token_env="IMAGEGEN_BRIDGE_BEARER_TOKEN"'
+      - --set
+      - 'server.metrics.enabled=true'
+      - --set
+      - 'server.jobs.database="/data/state/jobs.sqlite3"'
+      - serve
+    # The gateway uses the private Compose network. The host mapping is only
+    # for a local dashboard or diagnostics and cannot accept LAN connections.
+    ports:
+      - "127.0.0.1:${IMAGEGEN_BRIDGE_PORT:-8787}:8787"
+    expose:
+      - "8787"
+    volumes:
+      # Populate this dedicated volume with only a Codex auth.json using the
+      # documented helper. Do not mount a host home directory.
+      - imagegen_bridge_codex_oauth:/codex-home
+      - imagegen_bridge_state:/data/state
+      - imagegen_bridge_artifacts:/data/artifacts
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=1777
+      - /home/imagegen:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8787/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  imagegen_bridge_codex_oauth:
+  imagegen_bridge_state:
+  imagegen_bridge_artifacts:

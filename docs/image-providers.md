@@ -94,6 +94,30 @@ ai:
 Only `codex-responses` and `codex-app-server` routes are accepted in bridge
 configuration. A third-party provider route is a validation error.
 
+### Optional Docker profile
+
+The public OneDay Compose stack does not include a Codex login or start a bridge
+by default. The opt-in [`compose.imagegen-bridge.yaml`](../compose.imagegen-bridge.yaml)
+profile connects OneDay to a private Compose-network bridge and exposes the
+bridge dashboard only on host loopback. It pins the bridge release and stores
+Codex OAuth, bridge state, and artifacts separately. Follow the
+[Docker profile instructions](docker.md#optional-codex-oauth-imagegen-bridge-profile)
+to generate a distinct bearer and copy only `auth.json` into the dedicated
+OAuth volume.
+
+The bridge bearer is required even for loopback use and is separate from Codex
+OAuth. Never commit either value, mount an entire home directory, or publish an
+unauthenticated bridge. If the bridge is operated remotely, use a trusted
+private network or trusted TLS reverse proxy and give OneDay its private bridge
+URL and bearer through the normal environment/configuration fields.
+
+Codex OAuth is optional. The direct OpenAI, Gemini, fal.ai, Replicate,
+Stability, Azure OpenAI, and OpenAI-compatible adapters do not use the bridge.
+A local OpenAI-compatible endpoint (including a Z-Image-class deployment) must
+implement the image-generation contract and explicit capability probe; being
+compatible only with chat completions is insufficient. For text-only stories,
+leave image auto-generation disabled and configure no visual provider.
+
 ## Direct provider configuration
 
 Scene art and map icons may use different providers and models. Credentials are

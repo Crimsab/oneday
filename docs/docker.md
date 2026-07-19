@@ -43,6 +43,112 @@ ai:
 
 The Compose file supplies the Linux `host-gateway` mapping automatically.
 
+## Optional Codex OAuth imagegen-bridge profile
+
+The default Docker stack does **not** start imagegen-bridge, copy a Codex
+login, or enable automatic images. If you deliberately want Codex OAuth image
+generation inside the same private Compose network, enable the separately
+versioned profile. It uses the released
+[`ghcr.io/crimsab/imagegen-bridge:0.1.4`](https://github.com/Crimsab/imagegen-bridge/pkgs/container/imagegen-bridge)
+image pinned to its multi-architecture OCI index digest, and keeps the bridge's
+Codex OAuth state, session/job state, and generated artifacts in three separate
+named volumes.
+
+First create an untracked environment file with a distinct random bridge
+bearer. The bearer protects the bridge HTTP API; it is not a Codex OAuth token.
+
+```bash
+cp compose.imagegen-bridge.env.example .env.imagegen-bridge
+chmod 600 .env.imagegen-bridge
+# Set IMAGEGEN_BRIDGE_BEARER_TOKEN to the output of: openssl rand -hex 32
+$EDITOR .env.imagegen-bridge
+```
+
+Authenticate Codex on the host, then copy only its `auth.json` into the
+dedicated named volume. The helper does not print the credential and never
+mounts an entire home directory into a container. Set `CODEX_AUTH_FILE` when
+the source file is not under `${CODEX_HOME:-$HOME/.codex}`.
+
+```bash
+codex login
+./scripts/imagegen-bridge-copy-oauth.sh
+```
+
+Start the profile. Its bridge endpoint is available to OneDay at
+`http://imagegen-bridge:8787` only on the private Compose network. The optional
+host dashboard/API mapping is fixed to `127.0.0.1`, so it cannot accept LAN
+connections.
+
+```bash
+docker compose --env-file .env.imagegen-bridge \
+  -f compose.yaml -f compose.imagegen-bridge.yaml \
+  --profile imagegen-bridge up -d
+docker compose --env-file .env.imagegen-bridge \
+  -f compose.yaml -f compose.imagegen-bridge.yaml \
+  --profile imagegen-bridge ps
+curl --fail http://127.0.0.1:8787/health/live
+```
+
+OneDay receives the bearer only as `ONEDAY_IMAGEGEN_BRIDGE_TOKEN`; it does not
+receive the Codex OAuth file. The profile selects the `codex-responses` route
+and leaves automatic visual generation controlled by the existing OneDay
+configuration. OAuth use remains an explicit operator opt-in.
+
+Do not change the published port to `0.0.0.0` or expose it through an untrusted
+network. A remote bridge must stay on a trusted private network (or behind a
+trusted TLS reverse proxy) and must retain a unique high-entropy bearer. Do not
+send a bearer or OAuth state over public cleartext HTTP.
+
+### Profile lifecycle
+
+The profile's image tag is intentionally fixed rather than `latest`. Before
+upgrading, read the upstream release notes, back up the bridge state if needed,
+then update `IMAGEGEN_BRIDGE_IMAGE` in `.env.imagegen-bridge` to an explicitly
+chosen released tag and recreate only the bridge:
+
+```bash
+docker compose --env-file .env.imagegen-bridge \
+  -f compose.yaml -f compose.imagegen-bridge.yaml \
+  --profile imagegen-bridge pull imagegen-bridge
+docker compose --env-file .env.imagegen-bridge \
+  -f compose.yaml -f compose.imagegen-bridge.yaml \
+  --profile imagegen-bridge up -d imagegen-bridge
+```
+
+If you renew the host login with `codex login`, run
+`./scripts/imagegen-bridge-copy-oauth.sh` again before restarting the bridge.
+The dedicated OAuth volume is secret material and may rotate while the bridge
+runs; treat encrypted backups accordingly. `docker compose down` preserves all
+three bridge volumes. Adding `--volumes` permanently deletes the dedicated
+OAuth, bridge-state, and artifact volumes as well as OneDay data.
+
+Validate this optional deployment without starting it:
+
+```bash
+./scripts/check-imagegen-bridge-compose.sh
+```
+
+### Image alternatives
+
+Image generation is optional; story text remains fully usable when no image
+provider is configured. Choose one of these paths instead of the bundled
+profile when it better fits the deployment:
+
+- Use a hosted provider (OpenAI Platform, Gemini, fal.ai, Replicate, Stability,
+  or Azure OpenAI) through OneDay's direct provider configuration. Their API
+  keys do not pass through imagegen-bridge.
+- Point `imagegen_bridge_url` and `imagegen_bridge_token` at a separately
+  operated bridge on a trusted private network. Keep its bearer distinct from
+  Codex OAuth and use TLS when traffic leaves the local host.
+- Use a local OpenAI-compatible image endpoint, including a Z-Image-class
+  deployment, only when it implements the documented image-generation request
+  and response contract. Configure it as `openai-compatible` with an explicit
+  endpoint and capability probe; chat-completions compatibility alone is not
+  sufficient.
+- Use text-only mode: do not enable this profile, leave image auto-generation
+  disabled, and omit image provider credentials. Failed or absent media never
+  blocks canonical story text or state.
+
 ## Build from source
 
 The default Compose file consumes the published image. Contributors can build
