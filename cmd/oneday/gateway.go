@@ -45,6 +45,7 @@ type gatewayStoryCreateResponse = gatewayprotocol.StoryCreateResponse
 type gatewayStoryWizardResponse = gatewayprotocol.StoryWizardResponse
 type gatewayStoryEnhanceResponse = gatewayprotocol.StoryEnhanceResponse
 type gatewayModelSettingsResponse = gatewayprotocol.ModelSettingsResponse
+type gatewayModelDiscoveryResponse = gatewayprotocol.ModelDiscoveryResponse
 type gatewaySchemaPreflightResponse = gatewayprotocol.SchemaPreflightResponse
 
 type gatewayTranslateRequest struct {
@@ -78,6 +79,17 @@ const (
 	gatewayCodeNotFound       = "not_found"
 	gatewayCodeInternal       = "internal_error"
 )
+
+func runGatewayModelDiscovery(configPath string, out io.Writer) error {
+	// Discovery executes in the gateway subprocess before main's interactive
+	// setup path; load the optional local environment so configured references
+	// resolve without ever serializing their values back to Rust or React.
+	_ = config.LoadDotEnv(resolveDotEnvPath())
+	cfg, err := config.Load(configPath)
+	if err != nil { return writeGatewayModelDiscoveryError(out, err) }
+	discovery := config.DiscoverModels(context.Background(), cfg)
+	return json.NewEncoder(out).Encode(gatewayModelDiscoveryResponse{Discovery: &discovery})
+}
 
 type gatewayCauseError struct {
 	code string
@@ -1237,5 +1249,10 @@ func writeGatewayModelSettingsError(out io.Writer, err error) error {
 		message = "An internal gateway error occurred."
 	}
 	_ = json.NewEncoder(out).Encode(gatewayModelSettingsResponse{ResponseMeta: gatewayprotocol.Failure(code, message), Error: message, ErrorCode: code})
+	return err
+}
+
+func writeGatewayModelDiscoveryError(out io.Writer, err error) error {
+	_ = json.NewEncoder(out).Encode(gatewayModelDiscoveryResponse{ResponseMeta: gatewayprotocol.Failure(gatewayCodeInternal, "Model discovery is unavailable."), Error: "Model discovery is unavailable.", ErrorCode: gatewayCodeInternal})
 	return err
 }

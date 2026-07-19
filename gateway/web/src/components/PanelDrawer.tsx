@@ -19,6 +19,7 @@ import type {
   CommandDescriptor,
   MetaResult,
   ModelSettings,
+  ModelDiscovery,
   ModelSettingsUpdate,
   ModuleTab,
   OverlayKind,
@@ -70,6 +71,7 @@ import { DialogDrawerShell } from "./dialog/DialogDrawerShell";
 import { VisualAssetUpload } from "../features/visual-assets/upload/VisualAssetUpload";
 import { NewVisualAssetUpload } from "../features/visual-assets/upload/NewVisualAssetUpload";
 import { defaultMediaAssetFilters, filterMediaAssets, mediaActivity, type MediaStudioTab } from "../mediaStudioState";
+import { getModelDiscovery } from "../api";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -701,6 +703,9 @@ function VisualDirectionSettings({
             <label><span className="sr-only">{t("mediaStudio.search")}</span><input type="search" value={mediaFilters.query} onChange={(event) => setMediaFilters((current) => ({ ...current, query: event.target.value }))} placeholder={t("mediaStudio.search")} /></label>
             <select aria-label={t("mediaStudio.kind")} value={mediaFilters.kind} onChange={(event) => setMediaFilters((current) => ({ ...current, kind: event.target.value }))}><option value="all">{t("mediaStudio.allKinds")}</option>{[...new Set(assets.map((asset) => asset.kind))].map((kind) => <option key={kind} value={kind}>{t(`drawer:assetKind.${kind}`, { defaultValue: kind.replaceAll("_", " ") })}</option>)}</select>
             <select aria-label={t("mediaStudio.status")} value={mediaFilters.status} onChange={(event) => setMediaFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">{t("mediaStudio.allStatuses")}</option>{[...new Set(assets.map((asset) => asset.status))].map((status) => <option key={status} value={status}>{t(`drawer:assetStatus.${status}`, { defaultValue: status })}</option>)}</select>
+            <select aria-label={t("mediaStudio.location")} value={mediaFilters.location} onChange={(event) => setMediaFilters((current) => ({ ...current, location: event.target.value }))}><option value="all">{t("mediaStudio.allLocations")}</option>{[...new Set(assets.map((asset) => asset.canonical_location_id).filter(Boolean))].map((location) => <option key={location} value={location}>{location}</option>)}</select>
+            <select aria-label={t("mediaStudio.entity")} value={mediaFilters.entity} onChange={(event) => setMediaFilters((current) => ({ ...current, entity: event.target.value }))}><option value="all">{t("mediaStudio.allEntities")}</option>{[...new Set(assets.map((asset) => asset.canonical_entity_id).filter(Boolean))].map((entity) => <option key={entity} value={entity}>{entity}</option>)}</select>
+            <select aria-label={t("mediaStudio.turn")} value={mediaFilters.turn} onChange={(event) => setMediaFilters((current) => ({ ...current, turn: event.target.value }))}><option value="all">{t("mediaStudio.allTurns")}</option>{[...new Set(assets.map((asset) => asset.turn).filter((turn) => turn > 0))].sort((a, b) => b - a).map((turn) => <option key={turn} value={turn}>{turn}</option>)}</select>
             <select aria-label={t("mediaStudio.sort")} value={mediaFilters.sort} onChange={(event) => setMediaFilters((current) => ({ ...current, sort: event.target.value as typeof current.sort }))}><option value="recent">{t("mediaStudio.recent")}</option><option value="turn">{t("mediaStudio.turn")}</option><option value="name">{t("mediaStudio.name")}</option></select>
           </div>
           <div className="visual-asset-list media-asset-gallery">
@@ -1031,6 +1036,9 @@ function ModelRoutingSettings({
   const [dirtyProviderIds, setDirtyProviderIds] = useState<Set<string>>(new Set());
   const [bridgeToken, setBridgeToken] = useState("");
   const [clearBridgeToken, setClearBridgeToken] = useState(false);
+  const [discovery, setDiscovery] = useState<ModelDiscovery | null>(null);
+  const [discoveryBusy, setDiscoveryBusy] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState("");
   const resetProviderConfigs = (settings: ModelSettings | null) => {
     setProviderConfigs(Object.fromEntries((settings?.image_providers ?? []).map((provider) => [provider.id, { baseUrl: provider.base_url, apiVersion: provider.api_version ?? "", models: provider.models.join(", "), apiKey: "", clearApiKey: false }])));
     setDirtyProviderIds(new Set()); setBridgeToken(""); setClearBridgeToken(false);
@@ -1041,6 +1049,14 @@ function ModelRoutingSettings({
     resetProviderConfigs(modelSettings);
     setSaveError("");
   }, [modelSettings]);
+
+  const refreshDiscovery = async () => {
+    setDiscoveryBusy(true); setDiscoveryError("");
+    try { setDiscovery(await getModelDiscovery()); } catch (error) { setDiscoveryError(error instanceof Error ? error.message : String(error)); }
+    finally { setDiscoveryBusy(false); }
+  };
+
+  useEffect(() => { void refreshDiscovery(); }, []);
 
   const providerIds =
     modelSettings?.providers.map((provider) => provider.id) ?? [];
@@ -1246,7 +1262,7 @@ function ModelRoutingSettings({
           />
         </label>
         <h4 className="model-section-title">{t("modelSections.images")}</h4>
-        <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
+        <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} discoveredModels={Object.fromEntries((discovery?.sources ?? []).map((source) => [source.id, source.models]))} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
         <label>
           <span>{t("models.locationSize")}</span>
           <input
@@ -1377,6 +1393,11 @@ function ModelRoutingSettings({
           {t("models.embedding", { provider: draft.embeddingProvider, model: draft.embeddingModel || t("models.default") })}
         </span>
         <span>TTS: {modelSettings.tts_status}</span>
+      </div>
+      <div className="model-discovery" aria-live="polite">
+        <div><strong>{t("modelDiscovery.title")}</strong><span>{discovery?.sources.map((source) => `${source.id}: ${source.status}`).join(" · ") || t("modelDiscovery.unavailable")}</span></div>
+        <button type="button" onClick={() => void refreshDiscovery()} disabled={discoveryBusy}>{discoveryBusy ? t("modelDiscovery.refreshing") : t("modelDiscovery.refresh")}</button>
+        {discoveryError && <p className="model-error">{discoveryError}</p>}
       </div>
       {issues.length > 0 && (
         <div className="model-warning">

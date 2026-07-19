@@ -92,7 +92,7 @@ export function ProviderConfiguration({
               </select>
             </label>
             <details className="settings-span-full">
-              <summary>{t("imageSettings.advanced")}</summary>
+              <summary>{t("imageSettingsExtra.bridgeRouting")}</summary>
               <div className="settings-grid">
                 {draft.mapIconProvider === "codex-oauth" && (
                   <label>

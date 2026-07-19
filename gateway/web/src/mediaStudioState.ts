@@ -7,6 +7,9 @@ export interface MediaAssetFilters {
   query: string;
   kind: string;
   status: string;
+  location: string;
+  entity: string;
+  turn: string;
   canonical: "all" | "canonical" | "draft";
   sort: MediaAssetSort;
 }
@@ -15,6 +18,9 @@ export const defaultMediaAssetFilters: MediaAssetFilters = {
   query: "",
   kind: "all",
   status: "all",
+  location: "all",
+  entity: "all",
+  turn: "all",
   canonical: "all",
   sort: "recent",
 };
@@ -39,6 +45,9 @@ export function filterMediaAssets(
       return (!query || searchable.includes(query))
         && (filters.kind === "all" || asset.kind === filters.kind)
         && (filters.status === "all" || asset.status === filters.status)
+        && (filters.location === "all" || asset.canonical_location_id === filters.location)
+        && (filters.entity === "all" || asset.canonical_entity_id === filters.entity)
+        && (filters.turn === "all" || String(asset.turn) === filters.turn)
         && (filters.canonical === "all" || asset.canon_status === filters.canonical);
     })
     .sort((left, right) => compareMediaAssets(left, right, filters.sort));

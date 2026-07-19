@@ -61,6 +61,7 @@ type SchemaRoot struct {
 	StoryWizardResponse        StoryWizardResponse                `json:"story_wizard_response"`
 	StoryEnhanceResponse       StoryEnhanceResponse               `json:"story_enhance_response"`
 	ModelSettingsResponse      ModelSettingsResponse              `json:"model_settings_response"`
+	ModelDiscoveryResponse     ModelDiscoveryResponse             `json:"model_discovery_response"`
 	ModelSettingsUpdate        config.ModelRoutingUpdate          `json:"model_settings_update"`
 	SchemaPreflightResponse    SchemaPreflightResponse            `json:"schema_preflight_response"`
 	MiniGameRequest            MiniGameRequest                    `json:"minigame_request"`
@@ -185,6 +186,12 @@ type ModelSettingsResponse struct {
 	Settings  *config.ModelRoutingSettings `json:"settings,omitempty"`
 	Error     string                       `json:"error,omitempty"`
 	ErrorCode string                       `json:"error_code,omitempty"`
+}
+type ModelDiscoveryResponse struct {
+	ResponseMeta
+	Discovery *config.ModelDiscovery `json:"discovery,omitempty"`
+	Error     string                 `json:"error,omitempty"`
+	ErrorCode string                 `json:"error_code,omitempty"`
 }
 type SchemaPreflightResponse struct {
 	ResponseMeta

@@ -34,6 +34,7 @@ pub fn router(state: Arc<AppState>, auth_state: Arc<auth::AuthState>) -> Router 
             "/api/config/models",
             get(model_settings).put(update_model_settings),
         )
+        .route("/api/config/model-discovery", get(model_discovery))
         .route("/api/setup/readiness", get(setup_readiness))
         .route("/api/contracts/commands", get(command_descriptors))
         .route("/api/story-wizard", post(story_wizard))
@@ -235,6 +236,12 @@ async fn update_model_settings(
     let mut settings = engine::update_model_settings(state, payload).await?;
     auth::redact_model_settings(&mut settings);
     Ok(Json(settings))
+}
+
+async fn model_discovery(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<engine::ModelDiscovery>, ApiError> {
+    Ok(Json(engine::model_discovery(state).await?))
 }
 
 async fn setup_readiness(

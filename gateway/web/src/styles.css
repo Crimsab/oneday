@@ -3468,6 +3468,9 @@ input:disabled {
 .media-asset-gallery img, .media-asset-placeholder { width: 100%; aspect-ratio: 16 / 10; object-fit: cover; background: var(--panel); border: 1px solid var(--line); }
 .media-asset-placeholder { display: block; }
 .model-section-title { grid-column: 1 / -1; margin: 10px 0 0; color: var(--muted); font-size: .6875rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.model-discovery { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+.model-discovery > div { display: grid; gap: 3px; min-width: 0; }
+.model-discovery span { color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
 @media (max-width: 720px) { .media-studio-filters { grid-template-columns: 1fr 1fr; } .media-studio-filters label { grid-column: 1 / -1; } }
 
 .visual-job-row {

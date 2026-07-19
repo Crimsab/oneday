@@ -125,6 +125,13 @@ func main() {
 		}
 		return
 	}
+	if wantsGatewayModelDiscovery(os.Args[1:]) {
+		if err := runGatewayModelDiscovery(resolveConfigPath(), os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Gateway model discovery failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
 		fmt.Fprintln(os.Stderr, loc.T("cli.env_warn", err))
@@ -499,6 +506,8 @@ func wantsGatewayModelSettings(args []string) bool {
 func wantsGatewayModelSettingsUpdate(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-model-settings-update"
 }
+
+func wantsGatewayModelDiscovery(args []string) bool { return len(args) >= 1 && args[0] == "gateway-model-discovery" }
 
 func wantsGatewayTurn(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-turn"

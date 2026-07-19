@@ -9,6 +9,7 @@ interface Props {
   providerConfigs: Record<string, ProviderConfigDraft>;
   bridgeToken: string;
   clearBridgeToken: boolean;
+  discoveredModels?: Record<string, string[]>;
   onImageChange: (patch: Partial<ImageGenerationDraft>) => void;
   onProviderConfig: (id: string, patch: Partial<ProviderConfigDraft>) => void;
   onBridgeToken: (value: string) => void;
@@ -27,7 +28,7 @@ export function ImageGenerationSettings(props: Props) {
       Boolean(item) &&
       all.findIndex((other) => other?.id === item?.id) === index,
   );
-  const modelList = (item?: ImageProviderCatalogEntry) => item?.models ?? [];
+  const modelList = (item?: ImageProviderCatalogEntry) => [...new Set([...(item?.models ?? []), ...(props.discoveredModels?.[item?.id ?? ""] ?? [])])];
   return (
     <section
       className="image-provider-settings settings-span-full"
@@ -182,7 +183,7 @@ export function ImageGenerationSettings(props: Props) {
         ))}
       </div>
       <details className="image-provider-advanced">
-        <summary>{t("imageSettings.advanced")}</summary>
+        <summary>{t("imageSettingsExtra.outputControls")}</summary>
         <div className="settings-grid">
           <label>
             <span>{t("models.timeout")}</span>

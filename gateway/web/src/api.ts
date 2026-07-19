@@ -16,6 +16,7 @@ import type {
   MetaEnvelope,
   MetaResponse,
   ModelSettings,
+  ModelDiscovery,
   ModelSettingsUpdate,
   MiniGameInput,
   MiniGameKind,
@@ -460,6 +461,10 @@ export function getCommandDescriptors(locale = i18n.resolvedLanguage ?? "en"): P
 
 export function getModelSettings(): Promise<ModelSettings> {
   return request<ModelSettings>("/api/config/models");
+}
+
+export function getModelDiscovery(): Promise<ModelDiscovery> {
+  return request<ModelDiscovery>("/api/config/model-discovery");
 }
 
 export function updateModelSettings(payload: ModelSettingsUpdate): Promise<ModelSettings> {

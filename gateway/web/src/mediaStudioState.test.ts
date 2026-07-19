@@ -12,6 +12,11 @@ describe("media studio filters", () => {
   it("puts recoverable activity ahead of completed history", () => {
     expect(mediaActivity([job({ id: 3, status: "failed" }), job({ id: 2, status: "queued" }), job({ id: 1, status: "running" })]).map(({ id }) => id)).toEqual([1, 2, 3]);
   });
+
+  it("filters only canonical location, entity, and turn metadata supplied by the server", () => {
+    const assets = [asset({ id: "harbor", canonical_location_id: "loc-harbor", canonical_entity_id: "mara", turn: 4 }), asset({ id: "court", canonical_location_id: "loc-court", canonical_entity_id: "judge", turn: 5 })];
+    expect(filterMediaAssets(assets, { ...defaultMediaAssetFilters, location: "loc-harbor", entity: "mara", turn: "4" }).map(({ id }) => id)).toEqual(["harbor"]);
+  });
 });
 
 function asset(overrides: Partial<VisualAsset>): VisualAsset {

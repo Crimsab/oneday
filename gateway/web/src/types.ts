@@ -120,6 +120,17 @@ export interface ModelSettings {
   tts_status: string;
 }
 
+export interface ModelDiscoverySource {
+  id: string;
+  status: "ready" | "empty" | "unavailable" | string;
+  models: string[];
+  checked_at: string;
+}
+
+export interface ModelDiscovery {
+  sources: ModelDiscoverySource[];
+}
+
 export interface SetupReadinessProbe {
   name: string;
   code: string;

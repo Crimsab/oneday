@@ -278,6 +278,56 @@ pub async fn model_settings(
         .ok_or_else(|| anyhow!("gateway-model-settings returned no settings"))
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelDiscovery {
+    pub sources: Vec<ModelDiscoverySource>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ModelDiscoverySource {
+    pub id: String,
+    pub status: String,
+    pub models: Vec<String>,
+    pub checked_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelDiscoveryResponse {
+    discovery: Option<ModelDiscovery>,
+    error: Option<String>,
+    error_code: Option<String>,
+}
+
+pub async fn model_discovery(state: Arc<AppState>) -> anyhow::Result<ModelDiscovery> {
+    let output = run_gateway_command(
+        &state,
+        "gateway-model-discovery",
+        &[],
+        None,
+        Duration::from_secs(10),
+    )
+    .await?;
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let parsed =
+        serde_json::from_slice::<ModelDiscoveryResponse>(&output.stdout).with_context(|| {
+            format!(
+                "decoding gateway-model-discovery stdout; stderr={}",
+                compact_stderr(&stderr)
+            )
+        })?;
+    if !output.status.success() || parsed.discovery.is_none() {
+        return Err(bridge_error(
+            parsed
+                .error_code
+                .unwrap_or_else(|| "model_discovery_failed".to_string()),
+            parsed
+                .error
+                .unwrap_or_else(|| "Model discovery is unavailable.".to_string()),
+        ));
+    }
+    Ok(parsed.discovery.expect("checked above"))
+}
+
 pub async fn update_model_settings(
     state: Arc<AppState>,
     update: protocol::ModelRoutingUpdate,
@@ -1715,5 +1765,17 @@ printf '{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"%
             fs::set_permissions(&script, permissions).expect("chmod fake script");
         }
         script
+    }
+
+    #[tokio::test]
+    async fn model_discovery_reads_only_the_redacted_catalog_contract() {
+        let script = fake_oneday_input_script(&[
+            r#"{"discovery":{"sources":[{"id":"litellm","status":"ready","models":["story-model"],"checked_at":"2026-07-19T00:00:00Z"}]}}"#,
+        ]);
+        let discovery = model_discovery(test_state(script))
+            .await
+            .expect("discovery");
+        assert_eq!(discovery.sources[0].id, "litellm");
+        assert_eq!(discovery.sources[0].models, vec!["story-model"]);
     }
 }

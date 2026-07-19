@@ -12,6 +12,7 @@ import {
   getHistory,
   getMessageAudio,
   getMessageDiagnostics,
+  getModelDiscovery,
   getActiveMiniGame,
   getStories,
   getSetupReadiness,
@@ -47,6 +48,12 @@ describe("api request handling", () => {
 
     await expect(getSetupReadiness()).resolves.toMatchObject({ probes: [{ name: "narrative", required: true }] });
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/setup/readiness", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
+  it("reads server-side model discovery without sending endpoint details", async () => {
+    mockFetch(new Response(JSON.stringify({ sources: [{ id: "litellm", status: "ready", models: ["story-model"], checked_at: "2026-07-19T00:00:00Z" }] }), { status: 200 }));
+    await expect(getModelDiscovery()).resolves.toMatchObject({ sources: [{ id: "litellm", models: ["story-model"] }] });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/config/model-discovery", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("requests localized command presentation while preserving stable command tokens", async () => {
