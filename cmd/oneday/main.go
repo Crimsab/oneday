@@ -563,7 +563,7 @@ func wantsGatewayTimeline(args []string) bool {
 func runSetup(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
 	configPath := resolveConfigPath()
-	current, err := config.Load(configPath)
+	current, err := config.LoadForEdit(configPath)
 	if err != nil {
 		return err
 	}
@@ -628,6 +628,7 @@ func runSetup(args []string) error {
 	// Reconfiguration changes only the setup-owned provider choices; retaining
 	// the loaded config preserves storage, media, and other user settings.
 	cfg := current
+	pendingEnv := newPendingEnvUpdates()
 	cfg.Interface.Locale = string(loc.Locale())
 	cfg, err = setupConfigForChoice(cfg, choice, loc)
 	if err != nil {
@@ -641,9 +642,7 @@ func runSetup(args []string) error {
 		fmt.Println(loc.SetupPresentation("codex_login", "If Codex is not logged in yet, run: codex login"))
 		fmt.Println(loc.SetupPresentation("rag_disabled", "RAG: disabled, reason: no embedding-capable provider configured"))
 	case "2":
-		if err := ensureEnvFile(); err != nil {
-			return err
-		}
+		pendingEnv.Ensure("ONEDAY_LITELLM_API_KEY")
 		if err := configureLiteLLM(reader, &cfg); err != nil {
 			return err
 		}
@@ -651,9 +650,7 @@ func runSetup(args []string) error {
 			return err
 		}
 	case "3":
-		if err := ensureEnvFile(); err != nil {
-			return err
-		}
+		pendingEnv.Ensure("ONEDAY_OPENROUTER_API_KEY")
 		if err := configureOpenRouter(reader, &cfg); err != nil {
 			return err
 		}
@@ -668,10 +665,10 @@ func runSetup(args []string) error {
 			return err
 		}
 	}
-	if err := configureImageChoice(reader, &cfg, loc); err != nil {
+	if err := configureImageChoice(reader, &cfg, loc, pendingEnv); err != nil {
 		return err
 	}
-	if err := configureTTSChoice(reader, &cfg, loc); err != nil {
+	if err := configureTTSChoice(reader, &cfg, loc, pendingEnv); err != nil {
 		return err
 	}
 
@@ -685,6 +682,9 @@ func runSetup(args []string) error {
 	if err != nil {
 		return err
 	}
+	if err := writePendingEnv(resolveDotEnvPath(), pendingEnv); err != nil {
+		return err
+	}
 	if err := setup.WriteFileAtomic(configPath, data); err != nil {
 		return err
 	}
@@ -692,7 +692,8 @@ func runSetup(args []string) error {
 	return nil
 }
 
-func configureImageChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Localizer) error {
+func configureImageChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Localizer, pending ...*pendingEnvUpdates) error {
+	updates := firstPendingEnvUpdate(pending)
 	image := &cfg.AI.ImageGeneration
 	fmt.Println()
 	fmt.Println(loc.T("cli.image_choice"))
@@ -709,11 +710,11 @@ func configureImageChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.
 		disableImageGeneration(image)
 		return nil
 	case "2", "hosted":
-		return configureHostedImage(reader, image, loc)
+		return configureHostedImage(reader, image, loc, updates)
 	case "3", "local", "openai-compatible":
-		return configureLocalImage(reader, image, loc)
+		return configureLocalImage(reader, image, loc, updates)
 	case "4", "bridge", "imagegen-bridge":
-		return configureImagegenBridge(reader, image, loc)
+		return configureImagegenBridge(reader, image, loc, updates)
 	default:
 		return fmt.Errorf(loc.T("cli.media_selection_invalid"), strings.TrimSpace(choice))
 	}
@@ -747,7 +748,7 @@ func imageProviderConfigKey(provider string) string {
 	}
 }
 
-func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
+func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer, updates *pendingEnvUpdates) error {
 	previousEndpoint := imageProviderBaseURL(*image, config.ImageProviderOpenAI)
 	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), previousEndpoint, loc)
 	if err != nil {
@@ -758,7 +759,7 @@ func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationCon
 		return err
 	}
 	previousKey := imageProviderSecret(*image, config.ImageProviderOpenAI)
-	key, err := promptSecret(reader, loc.T("cli.image_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
+	key, entered, err := promptSecret(reader, loc.T("cli.image_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
 	if err != nil {
 		return err
 	}
@@ -768,11 +769,14 @@ func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationCon
 		}
 		return errors.New(loc.T("cli.secret_required"))
 	}
+	if key, err = envBackedSecret(updates, "ONEDAY_IMAGEGEN_OPENAI_API_KEY", key, entered); err != nil {
+		return err
+	}
 	configureDirectImage(image, config.ImageProviderOpenAI, endpoint, model, key, "bearer", "")
 	return nil
 }
 
-func configureLocalImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
+func configureLocalImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer, updates *pendingEnvUpdates) error {
 	previousEndpoint := imageProviderBaseURL(*image, config.ImageProviderOpenAICompatible)
 	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), previousEndpoint, loc)
 	if err != nil {
@@ -794,7 +798,8 @@ func configureLocalImage(reader *bufio.Reader, image *config.ImageGenerationConf
 	key := ""
 	if authMode == "bearer" {
 		previousKey := imageProviderSecret(*image, config.ImageProviderOpenAICompatible)
-		key, err = promptSecret(reader, loc.T("cli.image_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
+		var entered bool
+		key, entered, err = promptSecret(reader, loc.T("cli.image_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
 		if err != nil {
 			return err
 		}
@@ -803,6 +808,9 @@ func configureLocalImage(reader *bufio.Reader, image *config.ImageGenerationConf
 				return errors.New(loc.T("cli.credential_reentry_required"))
 			}
 			return errors.New(loc.T("cli.secret_required"))
+		}
+		if key, err = envBackedSecret(updates, "ONEDAY_IMAGEGEN_OPENAI_COMPATIBLE_API_KEY", key, entered); err != nil {
+			return err
 		}
 	}
 	probe, err := promptRequiredValue(reader, loc.T("cli.image_capability_probe"), "", loc)
@@ -827,7 +835,7 @@ func configureDirectImage(image *config.ImageGenerationConfig, provider, endpoin
 	image.AutoGenerate = true
 }
 
-func configureImagegenBridge(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
+func configureImagegenBridge(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer, updates *pendingEnvUpdates) error {
 	previousEndpoint := image.ImagegenBridgeURL
 	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_bridge_endpoint"), previousEndpoint, loc)
 	if err != nil {
@@ -838,12 +846,15 @@ func configureImagegenBridge(reader *bufio.Reader, image *config.ImageGeneration
 		return err
 	}
 	previousToken := image.ImagegenBridgeToken
-	token, err := promptSecret(reader, loc.T("cli.image_bridge_token"), credentialForOrigin(previousToken, previousEndpoint, endpoint))
+	token, entered, err := promptSecret(reader, loc.T("cli.image_bridge_token"), credentialForOrigin(previousToken, previousEndpoint, endpoint))
 	if err != nil {
 		return err
 	}
 	if token == "" && requiresCredentialReentry(previousToken, previousEndpoint, endpoint) {
 		return errors.New(loc.T("cli.credential_reentry_required"))
+	}
+	if token, err = envBackedSecret(updates, "ONEDAY_IMAGEGEN_BRIDGE_TOKEN", token, entered); err != nil {
+		return err
 	}
 	image.Provider = config.ImageProviderCodexOAuth
 	image.MapIconProvider = config.ImageProviderCodexOAuth
@@ -921,7 +932,8 @@ func normalizedURLOrigin(raw string) (string, bool) {
 	return scheme + "://" + host + ":" + port, true
 }
 
-func configureTTSChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Localizer) error {
+func configureTTSChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Localizer, pending ...*pendingEnvUpdates) error {
+	updates := firstPendingEnvUpdate(pending)
 	tts := &cfg.AI.TTS
 	fmt.Println()
 	fmt.Println(loc.T("cli.tts_choice"))
@@ -937,7 +949,7 @@ func configureTTSChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Lo
 		disableTTS(tts)
 		return nil
 	case "2", "cloud":
-		return configureCloudTTS(reader, tts, loc)
+		return configureCloudTTS(reader, tts, loc, updates)
 	case "3", "local":
 		return configureLocalTTS(reader, tts, loc)
 	default:
@@ -950,7 +962,7 @@ func disableTTS(tts *config.TTSConfig) {
 	tts.Local = config.TTSEndpoint{}
 }
 
-func configureCloudTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.Localizer) error {
+func configureCloudTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.Localizer, updates *pendingEnvUpdates) error {
 	previousEndpoint := tts.Cloud.BaseURL
 	endpoint, err := promptRequiredValue(reader, loc.T("cli.tts_endpoint"), previousEndpoint, loc)
 	if err != nil {
@@ -965,7 +977,7 @@ func configureCloudTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.
 		return err
 	}
 	previousKey := tts.Cloud.APIKey
-	key, err := promptSecret(reader, loc.T("cli.tts_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
+	key, entered, err := promptSecret(reader, loc.T("cli.tts_api_key"), credentialForOrigin(previousKey, previousEndpoint, endpoint))
 	if err != nil {
 		return err
 	}
@@ -974,6 +986,9 @@ func configureCloudTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.
 			return errors.New(loc.T("cli.credential_reentry_required"))
 		}
 		return errors.New(loc.T("cli.secret_required"))
+	}
+	if key, err = envBackedSecret(updates, "ONEDAY_TTS_API_KEY", key, entered); err != nil {
+		return err
 	}
 	tts.Cloud = config.TTSEndpoint{Enabled: true, BaseURL: endpoint, APIKey: key, Model: model, Voice: voice, Version: tts.Cloud.Version}
 	tts.Local.Enabled = false
@@ -1026,26 +1041,154 @@ func promptValue(reader *bufio.Reader, label, current string) (string, error) {
 	return value, nil
 }
 
-func promptSecret(reader *bufio.Reader, label, current string) (string, error) {
+func promptSecret(reader *bufio.Reader, label, current string) (string, bool, error) {
 	fmt.Printf("%s: ", label)
 	if term.IsTerminal(int(os.Stdin.Fd())) {
 		value, err := term.ReadPassword(int(os.Stdin.Fd()))
 		fmt.Println()
 		value = []byte(strings.TrimSpace(string(value)))
 		if len(value) == 0 {
-			return strings.TrimSpace(current), err
+			return strings.TrimSpace(current), false, err
 		}
-		return string(value), err
+		return string(value), true, err
 	}
 	value, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
+		return "", false, err
 	}
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return strings.TrimSpace(current), nil
+		return strings.TrimSpace(current), false, nil
 	}
-	return value, nil
+	return value, true, nil
+}
+
+// pendingEnvUpdates holds secret input until setup has completed every prompt
+// and validation check. Config receives references immediately, never raw
+// values, but the adjacent .env is not touched until the final write boundary.
+type pendingEnvUpdates struct {
+	secrets map[string]string
+	ensure  map[string]struct{}
+}
+
+func newPendingEnvUpdates() *pendingEnvUpdates {
+	return &pendingEnvUpdates{secrets: make(map[string]string), ensure: make(map[string]struct{})}
+}
+
+func firstPendingEnvUpdate(updates []*pendingEnvUpdates) *pendingEnvUpdates {
+	if len(updates) == 0 {
+		return nil
+	}
+	return updates[0]
+}
+
+func (updates *pendingEnvUpdates) Ensure(name string) {
+	if updates == nil || strings.TrimSpace(name) == "" {
+		return
+	}
+	updates.ensure[name] = struct{}{}
+}
+
+func (updates *pendingEnvUpdates) SetSecret(name, value string) error {
+	if updates == nil {
+		return nil
+	}
+	if strings.TrimSpace(name) == "" || strings.ContainsAny(value, "\r\n") {
+		return errors.New("credential cannot be written to .env")
+	}
+	updates.secrets[name] = value
+	return nil
+}
+
+func envBackedSecret(updates *pendingEnvUpdates, name, value string, entered bool) (string, error) {
+	if !entered || updates == nil {
+		return value, nil
+	}
+	if err := updates.SetSecret(name, value); err != nil {
+		return "", err
+	}
+	return "${" + name + "}", nil
+}
+
+func (updates *pendingEnvUpdates) Empty() bool {
+	return updates == nil || (len(updates.secrets) == 0 && len(updates.ensure) == 0)
+}
+
+func writePendingEnv(path string, updates *pendingEnvUpdates) error {
+	if updates.Empty() {
+		return nil
+	}
+	data, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("reading .env for setup: %w", err)
+	}
+	if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
+		return errors.New("writing .env for setup: path is a directory")
+	}
+	content := mergeDotEnvUpdates(data, updates)
+	if err := setup.WriteFileAtomic(path, content); err != nil {
+		return fmt.Errorf("writing .env for setup: %w", err)
+	}
+	return nil
+}
+
+func mergeDotEnvUpdates(data []byte, updates *pendingEnvUpdates) []byte {
+	if updates.Empty() {
+		return data
+	}
+	seen := make(map[string]bool)
+	lines := []string{}
+	if len(data) > 0 {
+		lines = strings.Split(string(data), "\n")
+	}
+	for index, line := range lines {
+		key, ok := dotEnvKey(line)
+		if !ok {
+			continue
+		}
+		if value, replace := updates.secrets[key]; replace {
+			lines[index] = key + "=" + value
+			seen[key] = true
+			continue
+		}
+		if _, ensure := updates.ensure[key]; ensure {
+			seen[key] = true
+		}
+	}
+	keys := make([]string, 0, len(updates.secrets)+len(updates.ensure))
+	for key := range updates.secrets {
+		if !seen[key] {
+			keys = append(keys, key)
+		}
+	}
+	for key := range updates.ensure {
+		if !seen[key] {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		value, isSecret := updates.secrets[key]
+		if !isSecret {
+			value = ""
+		}
+		lines = append(lines, key+"="+value)
+	}
+	content := strings.Join(lines, "\n")
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	return []byte(content)
+}
+
+func dotEnvKey(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		return "", false
+	}
+	key, _, ok := strings.Cut(trimmed, "=")
+	key = strings.TrimSpace(key)
+	return key, ok && key != ""
 }
 
 func runConfigLocale(args []string, out io.Writer) error {
@@ -1842,29 +1985,16 @@ func firstLine(value string) string {
 	return line
 }
 
+// ensureEnvFile is retained for callers that need only the public narrative
+// provider placeholders. Setup itself defers this write until its final
+// persistence boundary through pendingEnvUpdates.
 func ensureEnvFile() error {
-	envPath := resolveDotEnvPath()
-	if info, err := os.Stat(envPath); err == nil {
-		if info.IsDir() {
-			return errors.New("creating .env: path is a directory")
-		}
-		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("checking .env: %w", err)
-	}
-	var lines []string
+	updates := newPendingEnvUpdates()
 	if os.Getenv("ONEDAY_LITELLM_API_KEY") == "" {
-		lines = append(lines, "ONEDAY_LITELLM_API_KEY=")
+		updates.Ensure("ONEDAY_LITELLM_API_KEY")
 	}
 	if os.Getenv("ONEDAY_OPENROUTER_API_KEY") == "" {
-		lines = append(lines, "ONEDAY_OPENROUTER_API_KEY=")
+		updates.Ensure("ONEDAY_OPENROUTER_API_KEY")
 	}
-	if len(lines) == 0 {
-		return nil
-	}
-	content := strings.Join(lines, "\n") + "\n"
-	if err := setup.WriteFileAtomic(envPath, []byte(content)); err != nil {
-		return fmt.Errorf("creating .env: %w", err)
-	}
-	return nil
+	return writePendingEnv(resolveDotEnvPath(), updates)
 }

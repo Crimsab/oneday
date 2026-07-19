@@ -536,6 +536,159 @@ func TestMediaCredentialsRequireReentryAfterOriginChange(t *testing.T) {
 	})
 }
 
+func TestSetupWritesNewMediaSecretsOnlyToAdjacentDotEnv(t *testing.T) {
+	mediaCases := []struct {
+		name         string
+		imageInput   string
+		expectEnvKey string
+	}{
+		{name: "hosted image", imageInput: "2\nhttps://images.example.test/v1\nimage-model\n", expectEnvKey: "ONEDAY_IMAGEGEN_OPENAI_API_KEY"},
+		{name: "local bearer image", imageInput: "3\nhttps://images.example.test/v1\nimage-model\nbearer\n", expectEnvKey: "ONEDAY_IMAGEGEN_OPENAI_COMPATIBLE_API_KEY"},
+		{name: "imagegen bridge", imageInput: "4\nhttps://images.example.test\ngpt-image-2\n", expectEnvKey: "ONEDAY_IMAGEGEN_BRIDGE_TOKEN"},
+	}
+
+	for index, tc := range mediaCases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			configPath := filepath.Join(root, "config.yaml")
+			envPath := filepath.Join(root, ".env")
+			cfgData, err := config.Marshal(config.Default())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(configPath, cfgData, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			const preserved = "# keep this comment\nUNRELATED_KEY=kept\n"
+			if err := os.WriteFile(envPath, []byte(preserved), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("ONEDAY_CONFIG", configPath)
+			secret := strings.Repeat(string(rune('a'+index)), 32)
+			ttsInput := "\n"
+			expectedEnv := map[string]string{tc.expectEnvKey: secret}
+			if index == 0 {
+				ttsSecret := strings.Repeat("t", 32)
+				ttsInput = "2\nhttps://speech.example.test/v1\nspeech-model\nvoice\n" + ttsSecret + "\n"
+				expectedEnv["ONEDAY_TTS_API_KEY"] = ttsSecret
+			}
+			if tc.name == "local bearer image" {
+				tc.imageInput += secret + "\nhttps://images.example.test/health\n"
+			} else {
+				tc.imageInput += secret + "\n"
+			}
+			input := "\n1\ntest-model\n\n" + tc.imageInput + ttsInput + "0\n"
+			inputReader, inputWriter, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := inputWriter.WriteString(input); err != nil {
+				t.Fatal(err)
+			}
+			if err := inputWriter.Close(); err != nil {
+				t.Fatal(err)
+			}
+			oldStdin := os.Stdin
+			os.Stdin = inputReader
+			defer func() {
+				os.Stdin = oldStdin
+				_ = inputReader.Close()
+			}()
+
+			if err := runSetup([]string{"setup", "--reconfigure"}); err != nil {
+				t.Fatal(err)
+			}
+			yaml, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			env, err := os.ReadFile(envPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for key, value := range expectedEnv {
+				if bytes.Contains(yaml, []byte(value)) || !bytes.Contains(yaml, []byte("${"+key+"}")) {
+					t.Fatalf("config did not retain only the %s reference", key)
+				}
+				if !bytes.Contains(env, []byte(key+"="+value)) {
+					t.Fatalf("adjacent .env does not contain %s", key)
+				}
+			}
+			if !bytes.Contains(env, []byte(preserved)) {
+				t.Fatal("unrelated .env content was not preserved")
+			}
+			info, err := os.Stat(envPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != 0o600 {
+				t.Fatalf(".env mode = %o, want 600", info.Mode().Perm())
+			}
+			if _, err := os.Stat(envPath + ".bak"); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("setup must not create a .env backup: %v", err)
+			}
+		})
+	}
+}
+
+func TestSetupLateFailureDoesNotWritePendingMediaSecrets(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	configPath := filepath.Join(root, "config.yaml")
+	envPath := filepath.Join(root, ".env")
+	configData, err := config.Marshal(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, configData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	const originalEnv = "# untouched\nUNRELATED_KEY=kept\n"
+	if err := os.WriteFile(envPath, []byte(originalEnv), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "plugins", "story-packs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "plugins", "story-packs", "invalid.yaml"), []byte("id: invalid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEDAY_CONFIG", configPath)
+	secret := strings.Repeat("p", 32)
+	input := "\n1\ntest-model\n\n2\nhttps://images.example.test/v1\nimage-model\n" + secret + "\n\n1\n"
+	inputReader, inputWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := inputWriter.WriteString(input); err != nil {
+		t.Fatal(err)
+	}
+	if err := inputWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = inputReader
+	defer func() {
+		os.Stdin = oldStdin
+		_ = inputReader.Close()
+	}()
+
+	if err := runSetup([]string{"setup", "--reconfigure"}); err == nil {
+		t.Fatal("expected invalid story pack failure")
+	}
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotEnv, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotConfig, configData) || string(gotEnv) != originalEnv {
+		t.Fatal("late setup failure changed config or .env")
+	}
+}
+
 func TestSetupNoInputRequiresExistingNarrativeConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	data, err := config.Marshal(config.Default())
