@@ -2492,9 +2492,11 @@ dependencies = [
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
  "tauri-plugin-updater",
+ "tempfile",
  "tokio",
  "tokio-util",
  "url",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

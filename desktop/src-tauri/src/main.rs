@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod containment;
 mod lifecycle;
 mod portability;
 mod remote;
@@ -119,7 +120,7 @@ fn stop_local(state: &AppRuntime) -> Result<(), String> {
         .map_err(|_| "Desktop connection state is unavailable.".to_string())? = None;
     write_lifecycle(
         state,
-        match result {
+        match &result {
             Ok(()) => Lifecycle::Stopped,
             Err(error) => Lifecycle::Failed {
                 message: error.clone(),
@@ -146,34 +147,36 @@ async fn start_local(
     stop_local(state)?;
     write_lifecycle(state, Lifecycle::Starting)?;
     let mut latest_error = "The local OneDay gateway did not start.".to_string();
-    let process = 'launch: loop {
-        for attempt in 0..standalone::MAX_START_ATTEMPTS {
-            match standalone::start(app, profile_id) {
-                Ok(process) => {
-                    let endpoint = process.endpoint.clone();
-                    match tokio::time::timeout(
-                        Duration::from_secs(12),
-                        probe_server(&state.client, &endpoint),
-                    )
-                    .await
-                    .map_err(|_| {
-                        "The local OneDay gateway did not become ready in time.".to_string()
-                    })
-                    .and_then(|result| result)
-                    {
-                        Ok(()) => break 'launch process,
-                        Err(error) => {
-                            latest_error = error;
-                            let _ = standalone::stop(process);
-                        }
+    let mut ready_process = None;
+    for attempt in 0..standalone::MAX_START_ATTEMPTS {
+        match standalone::start(app, profile_id) {
+            Ok(process) => {
+                let endpoint = process.endpoint.clone();
+                match tokio::time::timeout(
+                    Duration::from_secs(12),
+                    probe_server(&state.client, &endpoint),
+                )
+                .await
+                .map_err(|_| "The local OneDay gateway did not become ready in time.".to_string())
+                .and_then(|result| result)
+                {
+                    Ok(()) => {
+                        ready_process = Some(process);
+                        break;
+                    }
+                    Err(error) => {
+                        latest_error = error;
+                        let _ = standalone::stop(process);
                     }
                 }
-                Err(error) => latest_error = error,
             }
-            if attempt + 1 < standalone::MAX_START_ATTEMPTS {
-                tokio::time::sleep(Duration::from_millis(150)).await;
-            }
+            Err(error) => latest_error = error,
         }
+        if attempt + 1 < standalone::MAX_START_ATTEMPTS {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+        }
+    }
+    let Some(process) = ready_process else {
         write_lifecycle(
             state,
             Lifecycle::Failed {

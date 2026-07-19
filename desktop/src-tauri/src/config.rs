@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use url::Url;
@@ -71,6 +72,46 @@ pub fn standalone_profile_dir(app: &AppHandle, profile_id: &str) -> Result<PathB
         })
 }
 
+pub fn create_initial_standalone_config(profile_dir: &Path) -> Result<PathBuf, String> {
+    fs::create_dir_all(profile_dir)
+        .map_err(|error| format!("Could not create the standalone profile directory: {error}"))?;
+    restrict_directory(profile_dir)?;
+    let config_path = profile_dir.join("config.yaml");
+    if config_path.exists() {
+        return Ok(config_path);
+    }
+    let data_dir = profile_dir.join("data");
+    let contents = initial_standalone_config(&data_dir)?;
+    let mut temporary = tempfile::NamedTempFile::new_in(profile_dir)
+        .map_err(|error| format!("Could not stage standalone configuration: {error}"))?;
+    restrict_file(temporary.path())?;
+    temporary
+        .write_all(contents.as_bytes())
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| format!("Could not write standalone configuration: {error}"))?;
+    match temporary.persist_noclobber(&config_path) {
+        Ok(_) => Ok(config_path),
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => Ok(config_path),
+        Err(error) => Err(format!(
+            "Could not save standalone configuration: {}",
+            error.error
+        )),
+    }
+}
+
+fn initial_standalone_config(data_dir: &Path) -> Result<String, String> {
+    let absolute = if data_dir.is_absolute() {
+        data_dir.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("Could not resolve the standalone data directory: {error}"))?
+            .join(data_dir)
+    };
+    let quoted = serde_json::to_string(&absolute.to_string_lossy())
+        .map_err(|error| format!("Could not serialize standalone configuration: {error}"))?;
+    Ok(format!("data_dir: {quoted}\n"))
+}
+
 pub fn load(app: &AppHandle) -> Result<Option<DesktopSettings>, String> {
     let path = settings_path(app)?;
     if !path.exists() {
@@ -132,8 +173,20 @@ fn restrict_file(path: &Path) -> Result<(), String> {
         .map_err(|error| format!("Could not secure desktop settings: {error}"))
 }
 
+#[cfg(unix)]
+fn restrict_directory(path: &Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+        .map_err(|error| format!("Could not secure desktop profile directory: {error}"))
+}
+
 #[cfg(not(unix))]
 fn restrict_file(_path: &Path) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn restrict_directory(_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
@@ -175,5 +228,53 @@ mod tests {
             profile_id: "../not-a-profile".into(),
         })
         .is_err());
+    }
+
+    #[test]
+    fn initial_standalone_config_keeps_existing_settings() {
+        let temporary = tempfile::tempdir().expect("profile root");
+        let config_path = temporary.path().join("config.yaml");
+        fs::write(
+            &config_path,
+            "data_dir: /already-configured\nprovider: local\n",
+        )
+        .expect("existing config");
+
+        let returned = create_initial_standalone_config(temporary.path()).expect("config path");
+
+        assert_eq!(returned, config_path);
+        assert_eq!(
+            fs::read_to_string(config_path).expect("preserved config"),
+            "data_dir: /already-configured\nprovider: local\n"
+        );
+    }
+
+    #[test]
+    fn initial_standalone_config_uses_an_absolute_data_dir() {
+        let temporary = tempfile::tempdir().expect("profile root");
+        let config_path = create_initial_standalone_config(temporary.path()).expect("config path");
+        let contents = fs::read_to_string(config_path).expect("config");
+        let expected = temporary.path().join("data").to_string_lossy().to_string();
+        assert_eq!(
+            contents,
+            format!("data_dir: {}\n", serde_json::to_string(&expected).unwrap())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn initial_standalone_config_is_private() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let temporary = tempfile::tempdir().expect("profile root");
+        let config_path = create_initial_standalone_config(temporary.path()).expect("config path");
+        assert_eq!(
+            fs::metadata(config_path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(temporary.path()).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
     }
 }

@@ -10,18 +10,6 @@ pub enum Lifecycle {
     Failed { message: String },
 }
 
-impl Lifecycle {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Stopped => "Stopped",
-            Self::Starting => "Starting",
-            Self::Ready { .. } => "Ready",
-            Self::Draining => "Draining",
-            Self::Failed { .. } => "Failed",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
