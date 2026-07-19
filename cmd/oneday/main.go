@@ -18,6 +18,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"golang.org/x/term"
 
 	"github.com/crimsab/oneday/internal/ai"
 	"github.com/crimsab/oneday/internal/ai/providers"
@@ -393,6 +394,15 @@ func wantsSetupForce(args []string) bool {
 	return false
 }
 
+func wantsNoInput(args []string) bool {
+	for _, arg := range args {
+		if arg == "--no-input" {
+			return true
+		}
+	}
+	return false
+}
+
 func wantsVersion(args []string) bool {
 	for _, arg := range args {
 		switch arg {
@@ -571,6 +581,16 @@ func runSetup(args []string) error {
 		fmt.Println(loc.SetupPresentation("config_reconfigure", "Run `oneday setup --reconfigure` or `oneday setup --force` to open the setup wizard again."))
 		return nil
 	}
+	if wantsNoInput(args) {
+		if err := current.Validate(); err != nil {
+			return fmt.Errorf("--no-input needs a complete existing configuration: %w; run `oneday setup --reconfigure` interactively", err)
+		}
+		if len(current.EnabledProviders()) == 0 {
+			return errors.New("--no-input needs an enabled narrative provider; run `oneday setup --reconfigure` interactively")
+		}
+		fmt.Println("Setup unchanged: existing configuration is complete.")
+		return nil
+	}
 
 	fmt.Println()
 	fmt.Println(loc.T("cli.choose_language"))
@@ -647,6 +667,12 @@ func runSetup(args []string) error {
 			return err
 		}
 	}
+	if err := configureImageChoice(reader, &cfg, loc); err != nil {
+		return err
+	}
+	if err := configureTTSChoice(reader, &cfg, loc); err != nil {
+		return err
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -663,6 +689,297 @@ func runSetup(args []string) error {
 	}
 	fmt.Println(loc.T("cli.wrote_config"))
 	return nil
+}
+
+func configureImageChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Localizer) error {
+	image := &cfg.AI.ImageGeneration
+	fmt.Println()
+	fmt.Println(loc.T("cli.image_choice"))
+	fmt.Println(loc.T("cli.image_text_only"))
+	fmt.Println(loc.T("cli.image_hosted"))
+	fmt.Println(loc.T("cli.image_local"))
+	fmt.Println(loc.T("cli.image_bridge"))
+	fmt.Print(loc.T("cli.selection", "1"))
+	choice, _ := reader.ReadString('\n')
+	switch strings.TrimSpace(choice) {
+	case "", "1", "text", "text-only":
+		disableImageGeneration(image)
+		return nil
+	case "2", "hosted":
+		return configureHostedImage(reader, image, loc)
+	case "3", "local", "openai-compatible":
+		return configureLocalImage(reader, image, loc)
+	case "4", "bridge", "imagegen-bridge":
+		return configureImagegenBridge(reader, image, loc)
+	default:
+		return fmt.Errorf(loc.T("cli.media_selection_invalid"), strings.TrimSpace(choice))
+	}
+}
+
+func disableImageGeneration(image *config.ImageGenerationConfig) {
+	previous := strings.ToLower(strings.TrimSpace(image.Provider))
+	image.AutoGenerate = false
+	image.Provider = "text-only"
+	image.MapIconProvider = "text-only"
+	image.Model = ""
+	image.MapIconModel = ""
+	image.BaseURL = ""
+	image.APIKey = ""
+	if image.Providers != nil {
+		delete(image.Providers, imageProviderConfigKey(previous))
+	}
+	if previous == "codex-oauth" || previous == "imagegen-bridge" || previous == "imagegen_bridge" || previous == "bridge-native" {
+		image.ImagegenBridgeToken = ""
+	}
+}
+
+func imageProviderConfigKey(provider string) string {
+	switch provider {
+	case "litellm":
+		return config.ImageProviderOpenAICompatible
+	case "imagegen-bridge", "imagegen_bridge", "bridge-native":
+		return config.ImageProviderCodexOAuth
+	default:
+		return provider
+	}
+}
+
+func configureHostedImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), imageProviderBaseURL(*image, config.ImageProviderOpenAI), loc)
+	if err != nil {
+		return err
+	}
+	model, err := promptRequiredValue(reader, loc.T("cli.image_model"), imageModel(*image, "gpt-image-2"), loc)
+	if err != nil {
+		return err
+	}
+	key, err := promptSecret(reader, loc.T("cli.image_api_key"), imageProviderSecret(*image, config.ImageProviderOpenAI))
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		return errors.New(loc.T("cli.secret_required"))
+	}
+	configureDirectImage(image, config.ImageProviderOpenAI, endpoint, model, key, "bearer", "")
+	return nil
+}
+
+func configureLocalImage(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_endpoint"), imageProviderBaseURL(*image, config.ImageProviderOpenAICompatible), loc)
+	if err != nil {
+		return err
+	}
+	model, err := promptRequiredValue(reader, loc.T("cli.image_model"), imageModel(*image, ""), loc)
+	if err != nil {
+		return err
+	}
+	fmt.Print(loc.T("cli.image_auth_mode"))
+	authMode, _ := reader.ReadString('\n')
+	authMode = strings.ToLower(strings.TrimSpace(authMode))
+	if authMode == "" {
+		authMode = "bearer"
+	}
+	if authMode != "bearer" && authMode != "none" {
+		return fmt.Errorf(loc.T("cli.auth_mode_invalid"), authMode)
+	}
+	key := ""
+	if authMode == "bearer" {
+		key, err = promptSecret(reader, loc.T("cli.image_api_key"), imageProviderSecret(*image, config.ImageProviderOpenAICompatible))
+		if err != nil {
+			return err
+		}
+		if key == "" {
+			return errors.New(loc.T("cli.secret_required"))
+		}
+	}
+	probe, err := promptRequiredValue(reader, loc.T("cli.image_capability_probe"), "", loc)
+	if err != nil {
+		return err
+	}
+	configureDirectImage(image, config.ImageProviderOpenAICompatible, endpoint, model, key, authMode, probe)
+	return nil
+}
+
+func configureDirectImage(image *config.ImageGenerationConfig, provider, endpoint, model, key, authMode, probe string) {
+	if image.Providers == nil {
+		image.Providers = make(map[string]config.ImageProviderConfig)
+	}
+	image.Providers[provider] = config.ImageProviderConfig{BaseURL: endpoint, APIKey: key, AuthMode: authMode, CapabilityProbeURL: probe, Models: []string{model}}
+	image.Provider = provider
+	image.MapIconProvider = provider
+	image.BaseURL = ""
+	image.APIKey = ""
+	image.Model = model
+	image.MapIconModel = model
+	image.AutoGenerate = true
+}
+
+func configureImagegenBridge(reader *bufio.Reader, image *config.ImageGenerationConfig, loc appi18n.Localizer) error {
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.image_bridge_endpoint"), image.ImagegenBridgeURL, loc)
+	if err != nil {
+		return err
+	}
+	token, err := promptSecret(reader, loc.T("cli.image_bridge_token"), image.ImagegenBridgeToken)
+	if err != nil {
+		return err
+	}
+	image.Provider = config.ImageProviderCodexOAuth
+	image.MapIconProvider = config.ImageProviderCodexOAuth
+	image.ImagegenBridgeURL = endpoint
+	if token != "" {
+		image.ImagegenBridgeToken = token
+	}
+	return nil
+}
+
+func imageProviderBaseURL(image config.ImageGenerationConfig, provider string) string {
+	if configured, ok := image.Providers[provider]; ok && strings.TrimSpace(configured.BaseURL) != "" {
+		return configured.BaseURL
+	}
+	if strings.TrimSpace(image.BaseURL) != "" {
+		return image.BaseURL
+	}
+	if provider == config.ImageProviderOpenAI {
+		return "https://api.openai.com/v1"
+	}
+	return ""
+}
+
+func imageModel(image config.ImageGenerationConfig, fallback string) string {
+	if strings.TrimSpace(image.Model) != "" {
+		return image.Model
+	}
+	return fallback
+}
+
+func imageProviderSecret(image config.ImageGenerationConfig, provider string) string {
+	if configured, ok := image.Providers[provider]; ok {
+		return configured.APIKey
+	}
+	if image.Provider == provider {
+		return image.APIKey
+	}
+	return ""
+}
+
+func configureTTSChoice(reader *bufio.Reader, cfg *config.Config, loc appi18n.Localizer) error {
+	tts := &cfg.AI.TTS
+	fmt.Println()
+	fmt.Println(loc.T("cli.tts_choice"))
+	fmt.Println(loc.T("cli.tts_disabled"))
+	fmt.Println(loc.T("cli.tts_cloud"))
+	fmt.Println(loc.T("cli.tts_local"))
+	fmt.Print(loc.T("cli.selection", "1"))
+	choice, _ := reader.ReadString('\n')
+	switch strings.TrimSpace(choice) {
+	case "", "1", "disabled", "off":
+		disableTTS(tts)
+		return nil
+	case "2", "cloud":
+		return configureCloudTTS(reader, tts, loc)
+	case "3", "local":
+		return configureLocalTTS(reader, tts, loc)
+	default:
+		return fmt.Errorf(loc.T("cli.media_selection_invalid"), strings.TrimSpace(choice))
+	}
+}
+
+func disableTTS(tts *config.TTSConfig) {
+	tts.Cloud = config.TTSEndpoint{}
+	tts.Local = config.TTSEndpoint{}
+}
+
+func configureCloudTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.Localizer) error {
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.tts_endpoint"), tts.Cloud.BaseURL, loc)
+	if err != nil {
+		return err
+	}
+	model, err := promptRequiredValue(reader, loc.T("cli.tts_model"), tts.Cloud.Model, loc)
+	if err != nil {
+		return err
+	}
+	voice, err := promptRequiredValue(reader, loc.T("cli.tts_voice"), tts.Cloud.Voice, loc)
+	if err != nil {
+		return err
+	}
+	key, err := promptSecret(reader, loc.T("cli.tts_api_key"), tts.Cloud.APIKey)
+	if err != nil {
+		return err
+	}
+	if key == "" {
+		return errors.New(loc.T("cli.secret_required"))
+	}
+	tts.Cloud = config.TTSEndpoint{Enabled: true, BaseURL: endpoint, APIKey: key, Model: model, Voice: voice, Version: tts.Cloud.Version}
+	tts.Local.Enabled = false
+	return nil
+}
+
+func configureLocalTTS(reader *bufio.Reader, tts *config.TTSConfig, loc appi18n.Localizer) error {
+	endpoint, err := promptRequiredValue(reader, loc.T("cli.tts_endpoint"), tts.Local.BaseURL, loc)
+	if err != nil {
+		return err
+	}
+	model, err := promptRequiredValue(reader, loc.T("cli.tts_model"), tts.Local.Model, loc)
+	if err != nil {
+		return err
+	}
+	voice, err := promptRequiredValue(reader, loc.T("cli.tts_voice"), tts.Local.Voice, loc)
+	if err != nil {
+		return err
+	}
+	tts.Local = config.TTSEndpoint{Enabled: true, BaseURL: endpoint, Model: model, Voice: voice, Version: tts.Local.Version}
+	tts.Cloud.Enabled = false
+	return nil
+}
+
+func promptRequiredValue(reader *bufio.Reader, label, current string, loc appi18n.Localizer) (string, error) {
+	value, err := promptValue(reader, label, current)
+	if err != nil {
+		return "", err
+	}
+	if value == "" {
+		return "", fmt.Errorf(loc.T("cli.value_required"), strings.ToLower(label))
+	}
+	return value, nil
+}
+
+func promptValue(reader *bufio.Reader, label, current string) (string, error) {
+	if strings.TrimSpace(current) == "" {
+		fmt.Printf("%s: ", label)
+	} else {
+		fmt.Printf("%s [%s]: ", label, current)
+	}
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = strings.TrimSpace(current)
+	}
+	return value, nil
+}
+
+func promptSecret(reader *bufio.Reader, label, current string) (string, error) {
+	fmt.Printf("%s: ", label)
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		value, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		value = []byte(strings.TrimSpace(string(value)))
+		if len(value) == 0 {
+			return strings.TrimSpace(current), err
+		}
+		return string(value), err
+	}
+	value, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return strings.TrimSpace(current), nil
+	}
+	return value, nil
 }
 
 func runConfigLocale(args []string, out io.Writer) error {
@@ -1009,7 +1326,10 @@ func runDoctorTo(args []string, out io.Writer, deps setup.Dependencies) error {
 		fmt.Fprintf(out, "OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 		fmt.Fprintln(out, loc.T("cli.config_ok", configDisplaySource()))
 		for _, probe := range report.Probes {
-			fmt.Fprintf(out, "%s: %s [%s] %s\n", probe.Name, probe.Status, probe.Code, probe.Summary)
+			fmt.Fprintf(out, "%s: %s [%s] %s\n", probe.Name, probe.Status, probe.Code, loc.DoctorProbeSummary(probe.Code, probe.Summary))
+			if action := loc.DoctorProbeAction(probe.Code); action != "" {
+				fmt.Fprintln(out, action)
+			}
 		}
 	}
 	if report.RequiredFailure() {

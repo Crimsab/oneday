@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -357,6 +358,104 @@ func TestSetupConfigForChoicePreservesExistingSettings(t *testing.T) {
 	}
 }
 
+func TestMediaSetupChoicesConfigureOnlyMedia(t *testing.T) {
+	loc := appi18n.New(appi18n.English)
+	base := config.Default()
+	base.DataDir = "./kept-data"
+	base.Game.RewardBudget = "generous"
+
+	t.Run("hosted image", func(t *testing.T) {
+		cfg := base
+		if err := configureImageChoice(bufio.NewReader(strings.NewReader("2\nhttps://images.example.test/v1\nimage-model\nimage-secret\n")), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		image := cfg.AI.ImageGeneration
+		if !image.AutoGenerate || image.Provider != config.ImageProviderOpenAI || image.Providers[config.ImageProviderOpenAI].APIKey != "image-secret" {
+			t.Fatalf("hosted image config = %#v", image)
+		}
+		if cfg.DataDir != base.DataDir || cfg.Game.RewardBudget != base.Game.RewardBudget {
+			t.Fatal("media setup changed unrelated config")
+		}
+	})
+
+	t.Run("local image without auth", func(t *testing.T) {
+		cfg := base
+		input := "3\nhttp://127.0.0.1:8080/v1\nlocal-image\nnone\nhttp://127.0.0.1:8080/health\n"
+		if err := configureImageChoice(bufio.NewReader(strings.NewReader(input)), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		direct := cfg.AI.ImageGeneration.Providers[config.ImageProviderOpenAICompatible]
+		if direct.AuthMode != "none" || direct.APIKey != "" || direct.CapabilityProbeURL == "" {
+			t.Fatalf("local image config = %#v", direct)
+		}
+	})
+
+	t.Run("bridge keeps an omitted token", func(t *testing.T) {
+		cfg := base
+		cfg.AI.ImageGeneration.ImagegenBridgeToken = "kept-token"
+		if err := configureImageChoice(bufio.NewReader(strings.NewReader("4\nhttp://127.0.0.1:8787\n\n")), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		if cfg.AI.ImageGeneration.AutoGenerate || cfg.AI.ImageGeneration.Provider != config.ImageProviderCodexOAuth || cfg.AI.ImageGeneration.ImagegenBridgeToken != "kept-token" {
+			t.Fatalf("bridge image config = %#v", cfg.AI.ImageGeneration)
+		}
+	})
+
+	t.Run("text only clears selected image state", func(t *testing.T) {
+		cfg := base
+		cfg.AI.ImageGeneration.Provider = config.ImageProviderOpenAI
+		cfg.AI.ImageGeneration.AutoGenerate = true
+		cfg.AI.ImageGeneration.Model = "old-image"
+		cfg.AI.ImageGeneration.Providers = map[string]config.ImageProviderConfig{config.ImageProviderOpenAI: {APIKey: "old-secret"}}
+		if err := configureImageChoice(bufio.NewReader(strings.NewReader("1\n")), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		if cfg.AI.ImageGeneration.AutoGenerate || cfg.AI.ImageGeneration.Provider != "text-only" || cfg.AI.ImageGeneration.APIKey != "" || cfg.AI.ImageGeneration.Model != "" || len(cfg.AI.ImageGeneration.Providers) != 0 {
+			t.Fatalf("text-only config = %#v", cfg.AI.ImageGeneration)
+		}
+	})
+
+	t.Run("local tts", func(t *testing.T) {
+		cfg := base
+		if err := configureTTSChoice(bufio.NewReader(strings.NewReader("3\nhttp://127.0.0.1:5000\npiper\nvoice\n")), &cfg, loc); err != nil {
+			t.Fatal(err)
+		}
+		if !cfg.AI.TTS.Local.Enabled || cfg.AI.TTS.Cloud.Enabled || cfg.AI.TTS.Local.Model != "piper" {
+			t.Fatalf("local tts config = %#v", cfg.AI.TTS)
+		}
+	})
+}
+
+func TestSetupNoInputRequiresExistingNarrativeConfiguration(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	data, err := config.Marshal(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEDAY_CONFIG", path)
+	if err := runSetup([]string{"setup", "--reconfigure", "--no-input"}); err == nil || !strings.Contains(err.Error(), "enabled narrative provider") {
+		t.Fatalf("no-input error = %v", err)
+	}
+
+	cfg := config.Default()
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = "test-model"
+	cfg.AI.Generation.UtilityModel = "test-model"
+	data, err = config.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := runSetup([]string{"setup", "--reconfigure", "--no-input"}); err != nil {
+		t.Fatalf("complete text-only/TTS-disabled config should support --no-input: %v", err)
+	}
+}
+
 func TestSetupReconfigureUsesExplicitConfigPathAndPreservesSettings(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "custom.yaml")
 	cfg := config.Default()
@@ -375,7 +474,7 @@ func TestSetupReconfigureUsesExplicitConfigPathAndPreservesSettings(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := output.WriteString("\n1\ntest-codex-model\n\n0\n"); err != nil {
+	if _, err := output.WriteString("\n1\ntest-codex-model\n\n\n\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := output.Close(); err != nil {
@@ -465,6 +564,38 @@ func TestDoctorJSONAndTextShareReadinessProbesAndRequiredExit(t *testing.T) {
 	}
 	if !strings.Contains(jsonOut.String(), `"config_source": "ONEDAY_CONFIG"`) || !strings.Contains(textOut.String(), "NARRATIVE_UNAVAILABLE") || !strings.Contains(textOut.String(), "ONEDAY_CONFIG") {
 		t.Fatalf("unexpected text: %s", textOut.String())
+	}
+}
+
+func TestDoctorHumanSummaryLocalizesByStableProbeCode(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg := config.Default()
+	cfg.Interface.Locale = "it"
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = "test"
+	cfg.AI.Generation.UtilityModel = "test"
+	cfg.DataDir = t.TempDir()
+	data, err := config.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEDAY_CONFIG", path)
+	deps := setup.Dependencies{Narrative: func(context.Context, config.Config) error { return errors.New("unavailable") }}
+	var textOut, jsonOut bytes.Buffer
+	if err := runDoctorTo([]string{"doctor"}, &textOut, deps); !errors.Is(err, errDoctorRequiredFailure) {
+		t.Fatalf("text doctor error = %v", err)
+	}
+	if !strings.Contains(textOut.String(), "il provider narrativo attivo") || !strings.Contains(textOut.String(), "Passo successivo") {
+		t.Fatalf("Italian doctor output = %s", textOut.String())
+	}
+	if err := runDoctorTo([]string{"doctor", "--json"}, &jsonOut, deps); !errors.Is(err, errDoctorRequiredFailure) {
+		t.Fatalf("json doctor error = %v", err)
+	}
+	if !strings.Contains(jsonOut.String(), "enabled narrative provider did not pass") || strings.Contains(jsonOut.String(), "Passo successivo") {
+		t.Fatalf("JSON contract changed: %s", jsonOut.String())
 	}
 }
 
@@ -569,7 +700,7 @@ func TestSetupWithExplicitConfigWritesAdjacentDotEnvFromDifferentWorkingDirector
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := output.WriteString("\n2\ntest-litellm-model\n4\n0\n"); err != nil {
+	if _, err := output.WriteString("\n2\ntest-litellm-model\n4\n\n\n0\n"); err != nil {
 		t.Fatal(err)
 	}
 	if err := output.Close(); err != nil {
