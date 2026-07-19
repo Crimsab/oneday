@@ -1235,8 +1235,8 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
   await openRail(page);
   await page.getByRole("button", { name: "Options" }).click();
 
-  for (const group of ["Personalization", "Experience", "System"]) {
-    const heading = page.getByText(group, { exact: true });
+  for (const group of ["Player preferences", "Operator configuration"]) {
+    const heading = page.getByRole("heading", { name: group, exact: true, includeHidden: true });
     await expect(heading).toBeAttached();
     if (isMobile) await expect(heading).toBeHidden();
     else await expect(heading).toBeVisible();
@@ -1302,10 +1302,11 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
     return [preferences.interfaceFontSource, preferences.readingFontSource];
   })).toEqual(["bundled", "bundled"]);
 
-  await page.getByRole("button", { name: /Advanced/ }).click();
+  await page.getByRole("button", { name: /Operator configuration/ }).click();
   await expect(page.getByText("Support bundle", { exact: true })).toBeVisible();
   await page.getByText("Recent technical log", { exact: true }).click();
   await expect(page.locator(".support-log-list")).toBeVisible();
+  await page.getByRole("button", { name: /Preferences and portability/ }).click();
   await expect(page.locator(".generation-diagnostics, .generation-diagnostics-inline")).toHaveCount(0);
   await page.getByText("Show diagnostics in messages", { exact: true }).click();
   await expect(page.locator(".generation-diagnostics, .generation-diagnostics-inline")).not.toHaveCount(0);
