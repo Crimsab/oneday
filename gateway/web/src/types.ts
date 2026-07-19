@@ -119,6 +119,18 @@ export interface ModelSettings {
   tts_status: string;
 }
 
+export interface SetupReadinessProbe {
+  name: string;
+  code: string;
+  status: "ready" | "warning" | "failed" | "skipped" | string;
+  required: boolean;
+  summary: string;
+}
+
+export interface SetupReadinessReport {
+  probes: SetupReadinessProbe[];
+}
+
 export interface ImageGenerationSetting {
   provider: string;
   map_icon_provider: string;

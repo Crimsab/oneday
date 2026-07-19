@@ -14,6 +14,7 @@ import {
   getMessageDiagnostics,
   getActiveMiniGame,
   getStories,
+  getSetupReadiness,
   getStoryExport,
 	getStoryEpub,
   getTelemetryExport,
@@ -39,6 +40,13 @@ describe("api request handling", () => {
   it("returns JSON payloads from the gateway", async () => {
     mockFetch(new Response(JSON.stringify([{ id: "story", name: "Story" }]), { status: 200 }));
     await expect(getStories()).resolves.toMatchObject([{ id: "story", name: "Story" }]);
+  });
+
+  it("reads the protected installation readiness report", async () => {
+    mockFetch(new Response(JSON.stringify({ probes: [{ name: "narrative", status: "ready", required: true }] }), { status: 200 }));
+
+    await expect(getSetupReadiness()).resolves.toMatchObject({ probes: [{ name: "narrative", required: true }] });
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/setup/readiness", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it("requests localized command presentation while preserving stable command tokens", async () => {

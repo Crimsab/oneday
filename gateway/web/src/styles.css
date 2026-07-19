@@ -2031,6 +2031,54 @@ input:disabled {
   padding: 18px;
 }
 
+.installation-onboarding {
+  width: min(760px, 100%);
+  display: grid;
+  gap: 18px;
+  margin: auto;
+  padding: clamp(24px, 5vw, 54px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 52%),
+    #0a1115;
+}
+
+.installation-onboarding-intro { display: grid; gap: 8px; }
+.installation-onboarding-label { margin: 0; color: var(--accent); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.installation-onboarding h2, .installation-onboarding h3 { margin: 0; color: var(--text); }
+.installation-onboarding h2 { font-size: clamp(1.5rem, 4vw, 2.4rem); line-height: 1.08; }
+.installation-onboarding h3 { font-size: 0.875rem; }
+.installation-onboarding p { max-width: 66ch; margin: 0; color: var(--muted); line-height: 1.55; }
+.installation-onboarding-preserve { color: var(--faint) !important; font-size: 0.8125rem; }
+
+.installation-readiness { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); background: rgba(5, 12, 15, 0.5); }
+.installation-readiness > div { display: grid; gap: 4px; }
+.installation-readiness > div p { font-size: 0.75rem; }
+.installation-readiness ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); }
+.installation-readiness-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 12px; background: #0c1417; }
+.installation-readiness-item > div { display: grid; gap: 2px; min-width: 0; }
+.installation-readiness-item strong { font-size: 0.8125rem; }
+.installation-readiness-item div span { overflow: hidden; color: var(--muted); font-size: 0.6875rem; text-overflow: ellipsis; white-space: nowrap; }
+.installation-readiness-item > span { flex: 0 0 auto; color: var(--muted); font-size: 0.6875rem; }
+.installation-readiness-item.ready > span { color: #8fd6a3; }
+.installation-readiness-item.warning > span { color: #f0c578; }
+.installation-readiness-item.failed > span { color: #ed9b9b; }
+
+.installation-onboarding-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.installation-onboarding-choices article { display: grid; align-content: start; gap: 8px; padding: 14px; border: 1px solid var(--line); background: rgba(12, 20, 23, 0.72); }
+.installation-onboarding-choices p { font-size: 0.75rem; }
+.installation-onboarding-choices button { justify-self: start; margin-top: 3px; }
+.installation-onboarding-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.installation-onboarding-blocked { color: #f0c578 !important; font-size: 0.8125rem; }
+
+@media (max-width: 620px) {
+  .installation-onboarding { border-inline: 0; border-radius: 0; padding: 22px 18px; }
+  .installation-onboarding-choices { grid-template-columns: 1fr; }
+  .installation-onboarding-actions { justify-content: stretch; }
+  .installation-onboarding-actions button { flex: 1 1 100%; }
+}
+
 .overlay-backdrop {
   position: fixed;
   inset: 0;

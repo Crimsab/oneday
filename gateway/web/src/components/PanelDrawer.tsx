@@ -54,6 +54,7 @@ import {
 } from "../visualStylePresets";
 import { VoiceAssignmentEditor } from "./VoiceAssignmentEditor";
 import { SettingsWorkspace, type SettingsSection } from "./settings/SettingsWorkspace";
+import type { SettingsSectionId } from "./settings/settingsRegistry";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { GameplaySettings } from "./settings/GameplaySettings";
 import { TypographySettings } from "./settings/TypographySettings";
@@ -77,6 +78,7 @@ interface PanelDrawerProps {
   modelSettings: ModelSettings | null;
   modelError: string;
   modelBusy: boolean;
+  initialSettingsSection?: SettingsSectionId;
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
   visualJobs: VisualGenerationJobView[];
@@ -142,6 +144,7 @@ export function PanelDrawer({
   modelSettings,
   modelError,
   modelBusy,
+  initialSettingsSection,
   visualProfile,
   visualAssets,
   visualJobs,
@@ -199,6 +202,7 @@ export function PanelDrawer({
             modelSettings={modelSettings}
             modelError={modelError}
             modelBusy={modelBusy}
+            initialSettingsSection={initialSettingsSection}
             visualProfile={visualProfile}
             visualAssets={visualAssets}
             visualJobs={visualJobs}
@@ -291,6 +295,7 @@ function OptionsContent({
   modelSettings,
   modelError,
   modelBusy,
+  initialSettingsSection,
   visualProfile,
   visualAssets,
   visualJobs,
@@ -318,6 +323,7 @@ function OptionsContent({
   modelSettings: ModelSettings | null;
   modelError: string;
   modelBusy: boolean;
+  initialSettingsSection?: SettingsSectionId;
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
   visualJobs: VisualGenerationJobView[];
@@ -396,7 +402,7 @@ function OptionsContent({
     },
   ];
 
-  return <div className="overlay-content options-content"><SettingsWorkspace sections={sections} initialSection={visualAssetFocusId ? "visuals" : "appearance"} /></div>;
+  return <div className="overlay-content options-content"><SettingsWorkspace sections={sections} initialSection={visualAssetFocusId ? "visuals" : initialSettingsSection ?? "appearance"} /></div>;
 }
 
 function VisualDirectionSettings({

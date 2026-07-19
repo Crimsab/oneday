@@ -15,6 +15,7 @@ mod gateway_protocol {
     include!(concat!(env!("OUT_DIR"), "/gateway_protocol.rs"));
 }
 mod routes;
+mod setup;
 mod telemetry;
 mod translation;
 

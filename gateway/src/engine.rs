@@ -1007,13 +1007,13 @@ const MAX_GATEWAY_STDOUT_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_GATEWAY_STDERR_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug)]
-struct GatewayProcessOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
+pub(crate) struct GatewayProcessOutput {
+    pub(crate) status: ExitStatus,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
 }
 
-async fn run_gateway_command(
+pub(crate) async fn run_gateway_command(
     state: &AppState,
     command: &str,
     args: &[&str],

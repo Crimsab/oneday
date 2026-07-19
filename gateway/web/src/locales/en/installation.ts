@@ -1,0 +1,15 @@
+export const installation = {
+  label: "Installation setup",
+  title: "Set up this OneDay installation",
+  description: "This configures the shared services used by the browser and terminal. Story setup begins only after this installation is ready.",
+  preserve: "Existing shared configuration is preserved until you choose to save a change.",
+  summaryUnavailable: "No readiness result returned",
+  summary: { title: "Installation readiness", description: "These are the canonical readiness checks from this OneDay installation. Required failures block story setup; optional services can be configured later." },
+  items: { narrative: { title: "Story narrator" }, images: { title: "Images" }, voice: { title: "Spoken audio" } },
+  states: { required: { ready: "Required · ready", warning: "Required · warning", failed: "Required · blocked", skipped: "Required · skipped", unknown: "Required · unknown" }, optional: { ready: "Optional · ready", warning: "Optional · attention", failed: "Optional · unavailable", skipped: "Optional · off", unknown: "Optional · unknown" } },
+  images: { title: "Images are optional", description: "Keep a text-first installation, or configure scene art and map images now.", action: "Review image setup" },
+  voice: { title: "Spoken audio is optional", description: "You can play without voices, or configure text-to-speech for future stories.", action: "Review voice setup" },
+  configure: "Reconfigure shared setup",
+  startStory: "Start story setup",
+  narrativeRequired: "Configure a narrative provider before creating a story.",
+} as const;

@@ -1,0 +1,15 @@
+export const installation = {
+  label: "Configurazione dell’installazione",
+  title: "Configura questa installazione di OneDay",
+  description: "Qui configuri i servizi condivisi dal browser e dal terminale. La creazione della storia inizia solo dopo che l’installazione è pronta.",
+  preserve: "La configurazione condivisa esistente viene mantenuta finché non scegli di salvare una modifica.",
+  summaryUnavailable: "Nessun risultato di verifica disponibile",
+  summary: { title: "Stato dell’installazione", description: "Queste sono le verifiche canoniche di questa installazione di OneDay. Un errore obbligatorio blocca la creazione della storia; i servizi facoltativi possono essere configurati più avanti." },
+  items: { narrative: { title: "Narratore della storia" }, images: { title: "Immagini" }, voice: { title: "Audio parlato" } },
+  states: { required: { ready: "Obbligatorio · pronto", warning: "Obbligatorio · attenzione", failed: "Obbligatorio · bloccato", skipped: "Obbligatorio · ignorato", unknown: "Obbligatorio · sconosciuto" }, optional: { ready: "Facoltativo · pronto", warning: "Facoltativo · attenzione", failed: "Facoltativo · non disponibile", skipped: "Facoltativo · disattivato", unknown: "Facoltativo · sconosciuto" } },
+  images: { title: "Le immagini sono facoltative", description: "Puoi mantenere un’installazione solo testuale o configurare ora immagini di scena e mappe.", action: "Rivedi la configurazione immagini" },
+  voice: { title: "L’audio parlato è facoltativo", description: "Puoi giocare senza voci o configurare il text-to-speech per le storie future.", action: "Rivedi la configurazione audio" },
+  configure: "Riconfigura i servizi condivisi",
+  startStory: "Avvia la creazione della storia",
+  narrativeRequired: "Configura un provider narrativo prima di creare una storia.",
+} as const;

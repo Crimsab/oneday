@@ -14,6 +14,7 @@ import {
   getCommandDescriptors,
   getHealth,
   getModelSettings,
+  getSetupReadiness,
   getActiveMiniGame,
   getSnapshot,
 	getTimeline,
@@ -43,6 +44,7 @@ import { StoryPath } from "./components/StoryPath";
 import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
+import { InstallationOnboarding } from "./features/installation-onboarding/InstallationOnboarding";
 import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { restoreFailedDraft } from "./draftLifecycle";
@@ -79,6 +81,7 @@ import type {
   StoryEnhanceResponse,
   StorySnapshot,
   StorySummary,
+  SetupReadinessReport,
   StoryUpdatePayload,
   StoryWizardEnvelope,
   StoryWizardResponse,
@@ -108,6 +111,7 @@ import {
   writeAppRoute,
   type AppRoute,
 } from "./appRoute";
+import type { SettingsSectionId } from "./components/settings/settingsRegistry";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
 let didBootstrap = false;
@@ -153,6 +157,8 @@ function App() {
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsError, setModelSettingsError] = useState("");
   const [modelSaving, setModelSaving] = useState(false);
+  const [optionsInitialSection, setOptionsInitialSection] = useState<SettingsSectionId>("appearance");
+  const [setupReadiness, setSetupReadiness] = useState<SetupReadinessReport | null>(null);
   const [visualAssets, setVisualAssets] = useState<VisualAssetsResponse | null>(null);
   const [visualAssetsError, setVisualAssetsError] = useState("");
   const [visualProfileSaving, setVisualProfileSaving] = useState(false);
@@ -276,6 +282,15 @@ function App() {
     }
   }, []);
 
+  const refreshSetupReadiness = useCallback(async () => {
+    try {
+      setSetupReadiness(await getSetupReadiness());
+    } catch (error) {
+      setSetupReadiness(null);
+      setNotice(errorMessage(error));
+    }
+  }, []);
+
   const refreshVisualAssets = useCallback(async (nextStoryId = storyIdRef.current) => {
     const requestVersion = ++visualAssetsRequestVersion.current;
     if (!nextStoryId) {
@@ -348,8 +363,9 @@ function App() {
     void refreshHealth();
     void refreshCommandDescriptors();
     void refreshModelSettings();
+    void refreshSetupReadiness();
     void refreshStories();
-  }, [refreshCommandDescriptors, refreshHealth, refreshModelSettings, refreshStories]);
+  }, [refreshCommandDescriptors, refreshHealth, refreshModelSettings, refreshSetupReadiness, refreshStories]);
 
   useEffect(() => {
     const onPopState = () => {
@@ -1108,6 +1124,7 @@ function App() {
     }
     if (nextOverlay === "options") {
       setVisualAssetFocusId(null);
+      setOptionsInitialSection("appearance");
       void refreshModelSettings();
     }
     setOverlay(nextOverlay);
@@ -1129,6 +1146,15 @@ function App() {
     setOverlay(null);
     setModuleFocusId(null);
     setModuleOverlayTab(null);
+    setOptionsInitialSection("appearance");
+  };
+
+  const openInstallationConfiguration = () => {
+    setStoryLibraryOpen(false);
+    setVisualAssetFocusId(null);
+    setOptionsInitialSection("models");
+    void refreshModelSettings();
+    setOverlay("options");
   };
 
   const handleMapTravel = (locationName: string, route: SpatialEdge | null) => {
@@ -1151,6 +1177,7 @@ function App() {
       const nextSettings = await updateModelSettings(payload);
       setModelSettings(nextSettings);
       setModelSettingsError("");
+      void refreshSetupReadiness();
       setNotice(t("notifications:model.saved", { provider: nextSettings.active.provider || t("notifications:model.none") }));
     } catch (error) {
       setNotice(errorMessage(error));
@@ -1438,6 +1465,7 @@ function App() {
   const leftRailVisible = isMobileLayout ? mobileRailOpen : desktopRailPresentation !== "hidden";
   const railMode = isMobileLayout ? "expanded" : preferences.desktopRailMode;
   const activeStories = activeStoryCount(stories);
+  const showInstallationOnboarding = sync === "Idle" && stories.length === 0 && setupReadiness !== null;
 
   return (
     <div
@@ -1478,6 +1506,11 @@ function App() {
 			onCheckoutBranch={checkoutBranch}
         />
         <main className="center-stage">
+          {showInstallationOnboarding ? <InstallationOnboarding
+            readiness={setupReadiness}
+            onConfigure={openInstallationConfiguration}
+            onStartStory={() => openOverlay("new-story")}
+          /> : <>
           <section className="transcript-panel" aria-labelledby="story-surface-title">
             <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || t("notifications:surface.yourStory")}</h1>
             <StoryPath
@@ -1524,6 +1557,7 @@ function App() {
             onSubmit={executeDraft}
             onHistoryStep={stepCommandHistory}
           />
+          </>}
         </main>
         {preferences.showInspector && (
           <Inspector
@@ -1559,6 +1593,7 @@ function App() {
         modelSettings={modelSettings}
         modelError={modelSettingsError}
         modelBusy={modelSaving}
+        initialSettingsSection={optionsInitialSection}
         visualProfile={visualAssets?.profile ?? null}
         visualAssets={visuals.assets}
         visualJobs={visualAssets?.jobs ?? []}

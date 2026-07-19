@@ -1,6 +1,6 @@
 use crate::{
     assets, auth, db, engine, error::PublicError, events::TurnStreamEvent,
-    gateway_protocol as protocol, portability, telemetry, translation, AppState,
+    gateway_protocol as protocol, portability, setup, telemetry, translation, AppState,
 };
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Extension, Multipart, Path, Query, State};
@@ -34,6 +34,7 @@ pub fn router(state: Arc<AppState>, auth_state: Arc<auth::AuthState>) -> Router 
             "/api/config/models",
             get(model_settings).put(update_model_settings),
         )
+        .route("/api/setup/readiness", get(setup_readiness))
         .route("/api/contracts/commands", get(command_descriptors))
         .route("/api/story-wizard", post(story_wizard))
         .route("/api/story-enhance", post(story_enhance))
@@ -234,6 +235,12 @@ async fn update_model_settings(
     let mut settings = engine::update_model_settings(state, payload).await?;
     auth::redact_model_settings(&mut settings);
     Ok(Json(settings))
+}
+
+async fn setup_readiness(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<setup::ReadinessReport>, ApiError> {
+    Ok(Json(setup::readiness(state).await?))
 }
 
 async fn command_descriptors(

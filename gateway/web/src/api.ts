@@ -39,6 +39,7 @@ import type {
   StorySummary,
   StoryOverview,
   SaveView,
+  SetupReadinessReport,
   StoryUpdatePayload,
   VisualAssetsResponse,
   VisualAssetCleanupRequest,
@@ -144,6 +145,10 @@ function localizedError(payload: ErrorPayload, status: number): string {
 
 export function getHealth(): Promise<Health> {
   return request<Health>("/api/health");
+}
+
+export function getSetupReadiness(): Promise<SetupReadinessReport> {
+  return request<SetupReadinessReport>("/api/setup/readiness");
 }
 
 export function getAgencyEvents(storyId: string, limit = 20): Promise<AgencyEventView[]> {
