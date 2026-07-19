@@ -17,6 +17,51 @@ Options workspace.
 
 Never commit `config.yaml`, `.env`, database files, or the `oneday_data/` directory.
 
+## Profiles and local files
+
+The terminal and a standalone desktop profile are separate installations. The
+terminal resolves `config.yaml` from the current directory and then beside the
+executable; its `data_dir` is controlled by that configuration. The default
+relative `./oneday_data` therefore belongs to the directory from which that
+configuration is resolved. Copy or back up the full configured data directory,
+not just `oneday.db`, because it also contains generated assets and related
+story files.
+
+Desktop remote mode stores only the selected server setting locally. It does not
+create a local `data_dir`. Desktop standalone mode creates an opaque, isolated
+profile with its own absolute `data_dir`; it does not read or merge the terminal
+configuration. The usual desktop locations are documented in [Desktop](desktop.md).
+Changing between remote and standalone is not synchronization.
+
+## Gateway authentication and reverse proxies
+
+The gateway listens on `127.0.0.1:8788` by default. For an interactive local
+start it may print a one-shot bootstrap URL; treat that URL as a credential and
+do not paste it into tickets, screenshots, shell history, or bookmarks. A
+non-interactive process or a gateway bound beyond loopback must be supplied a
+bootstrap token (`ONEDAY_GATEWAY_BOOTSTRAP_TOKEN`) unless it is intentionally
+configured for direct bearer access only.
+
+`ONEDAY_GATEWAY_AUTH_TOKEN` is the direct bearer credential. It is distinct
+from the bootstrap token and is not a browser-login substitute. Both values
+must be at least 32 bytes and must remain in a secret store or process
+environment, never in `config.yaml` or a URL. Browser bootstrap sessions are
+short-lived and one-shot.
+
+When serving a public origin through a reverse proxy:
+
+- terminate TLS at the public origin and preserve the browser's `Host` value;
+- add that host (including its port when non-default) to
+  `ONEDAY_GATEWAY_ALLOWED_HOSTS` so gateway Host validation can accept it;
+- avoid rewriting the application under a path prefix—the desktop client and
+  gateway expect an origin, not an additional path;
+- keep the gateway on a private/loopback network where practical, and have the
+  proxy provide any required remote authentication and rate limiting.
+
+Do not expose a bare HTTP listener or rely on a reverse proxy to repair an
+incorrect Host/Origin configuration. See the [security threat model](security-threat-model.md)
+for the boundary and residual risks.
+
 ## Narrative providers
 
 Provider order is controlled by `ai.provider_priority`. Disabled providers are
@@ -146,3 +191,11 @@ the data privacy boundary.
 
 SQLite is canonical for both clients. Back up the entire data directory while
 OneDay is stopped, or use a SQLite-safe backup procedure.
+
+For a standalone desktop profile, stop its local gateway from the Desktop
+settings window (or quit the desktop application) before copying its profile's
+`data/` directory. For a live terminal/server database, use a SQLite online
+backup procedure instead of copying a changing database and WAL files. Restore
+into an empty or stopped target data directory, preserve the directory as a
+unit, then run `oneday doctor` before serving it. A backup restores its own
+profile only; it does not sync or merge with another profile or remote server.

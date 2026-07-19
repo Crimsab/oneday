@@ -1,7 +1,9 @@
 # Getting started
 
-OneDay can run as a native terminal application or as a browser application. Both
-surfaces use the same Go story engine and SQLite data.
+OneDay can run as a native terminal application, a browser application, or a
+desktop application. Terminal and browser clients can use the same configured
+engine/database. Desktop makes you choose between a remote server and a new,
+isolated standalone local profile—there is no automatic sync between them.
 
 ## Choose a runtime
 
@@ -9,6 +11,8 @@ surfaces use the same Go story engine and SQLite data.
 | --- | --- | --- |
 | Terminal client | Local play, Codex OAuth, Claude Code, development | Go 1.25.12+ or a release binary |
 | Browser with Docker | Self-hosting and the complete React interface | Docker Engine with Compose v2 |
+| Desktop, remote profile | A native window for an existing server | Reachable HTTPS gateway (HTTP loopback only for development) |
+| Desktop, standalone profile | A local packaged experience | A desktop build that includes version-matched engine/gateway/web sidecars |
 
 At least one narrative provider must be configured. OneDay supports Codex CLI,
 Claude Code, LiteLLM-compatible endpoints, and OpenRouter. RAG embeddings are
@@ -16,6 +20,15 @@ optional and can be remote or local through Ollama/custom HTTP.
 
 For the shortest walkthrough, including creation of the first world, see
 [Your first story](first-story.md).
+
+### Decide where a story lives first
+
+Pick one canonical store before creating a story. A terminal configuration or
+Docker volume owns its own SQLite data. Desktop **remote** mode opens that
+server and stores no local story database. Desktop **standalone** mode creates
+a different local profile and data directory. Neither profile copies, merges,
+or synchronizes stories with the other. Use a supported export/import transfer
+and a backup when you mean to move data.
 
 ## Terminal client
 
@@ -92,6 +105,28 @@ override that mounts the relevant CLI binary and its authentication files.
 If a provider or image bridge runs on the Docker host, use
 `host.docker.internal` rather than `127.0.0.1` from `config.yaml`; the supplied
 Compose file maps that hostname on Linux as well as Docker Desktop.
+
+### Browser access and first login
+
+The gateway is loopback-first. An interactive local gateway can emit a one-shot
+bootstrap URL that establishes a browser session; it is secret material, not a
+shareable URL. When the gateway runs non-interactively or beyond loopback,
+configure the bootstrap credential and a trusted reverse-proxy origin before
+opening it remotely. A direct bearer token is a separate API/desktop-launch
+credential, not a value to put in a browser URL. See [Configuration](configuration.md#gateway-authentication-and-reverse-proxies).
+
+## Desktop profiles
+
+On first launch, choose **Connect to a server** for remote mode or **Run on this
+device** for standalone mode. Remote mode requires a root server origin such as
+`https://oneday.example.com`; it rejects embedded credentials, query strings,
+path prefixes, and ordinary HTTP. Standalone mode runs a fresh loopback gateway
+for that desktop profile and opens its bundled web UI.
+
+Before relying on standalone mode, confirm the desktop package actually
+contains its matching gateway, engine, and web UI. Optional narrative/media
+providers are not bundled merely because the sidecars are present. For profile
+locations, backups, and shutdown details, read [Desktop](desktop.md).
 
 To build the current checkout instead of pulling a release image, use:
 

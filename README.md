@@ -74,6 +74,14 @@ free-action composer, command palette, history and branches, canonical state
 inspectors, maps, challenges, model settings, audio, and a full-resolution
 visual editor with brush/eraser masks, zoom, pan, and local stroke history.
 
+### Desktop
+
+The Windows/Linux desktop client can either connect to one HTTPS OneDay server
+or run a bundled local gateway and engine in an isolated standalone profile.
+Remote mode creates no local story database; standalone mode is local-only.
+They do not synchronize, merge, or share stories automatically. See [Desktop
+client](docs/desktop.md) before choosing a profile.
+
 ### Terminal
 
 The Bubble Tea client provides the complete narrative loop, guided story
@@ -119,9 +127,9 @@ go run ./cmd/oneday doctor
 go run ./cmd/oneday
 ```
 
-Release archives with Linux and Windows binaries are available on the
-[Releases page](https://github.com/Crimsab/oneday/releases). The complete browser
-stack is also published as `ghcr.io/crimsab/oneday:latest`.
+For builds and release availability, consult the [Releases
+page](https://github.com/Crimsab/oneday/releases). Do not assume a package exists
+for every operating system or that a package includes every optional provider.
 
 Read [Your first story](docs/first-story.md) for the shortest provider-to-story
 walkthrough, or the full [getting-started guide](docs/getting-started.md) for
@@ -159,6 +167,7 @@ Terminal client ─┐
                  ├─ Go story engine + provider router ─ SQLite
 React browser ─ Rust gateway ─ typed JSON bridge ┘
                  └─ SSE events + generated media
+Desktop ─ remote server or isolated loopback gateway ┘
 ```
 
 The Go engine owns narrative prompts, mechanics, persistence, migrations, and
@@ -183,8 +192,10 @@ component boundaries.
 | [Observability](docs/observability.md) | Optional OpenTelemetry, Langfuse, local diagnostics, privacy, and verification |
 | [Configuration](docs/configuration.md) | Providers, RAG, visuals, game settings, and secrets |
 | [Docker](docs/docker.md) | Networking, persistence, updates, backups, and operations |
+| [Desktop](docs/desktop.md) | Remote and standalone profiles, data isolation, and sidecar limits |
 | [Extensions](docs/extensions.md) | Story packs, challenge pools, and minigame definitions |
 | [Architecture](docs/architecture.md) | Components, contracts, turn flow, and canonical state |
+| [Security threat model](docs/security-threat-model.md) | Trust boundaries, mitigations, and deployment responsibilities |
 | [Troubleshooting](docs/troubleshooting.md) | Provider, RAG, media, browser, and CI failures |
 | [Development](docs/development.md) | Toolchains, layout, tests, and generated contracts |
 | [Testing](docs/testing.md) | Automated gates, browser coverage, and manual release checks |
@@ -216,11 +227,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 OneDay is under active development. Back up persistent story data before an
 upgrade and review the [changelog](CHANGELOG.md) for migration-sensitive changes.
 
-Release Please turns Conventional Commits into a release PR, updates the
-changelog, creates the semantic version tag, and publishes Linux/Windows
-archives plus the versioned GHCR image. The release PR is merged automatically
-only when its base is the exact `main` commit that passed full CI and its diff is
-limited to generated release metadata.
+Release automation manages release metadata and publication when a release is
+made. Verify the publisher, version, signature information where supplied, and
+the contents of a specific artifact before trusting it; this README does not
+guarantee that a particular package or updater feed is available.
 
 ## Community and security
 

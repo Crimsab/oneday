@@ -12,6 +12,13 @@ It verifies tracked and newly added Markdown files, local link targets, heading
 anchors, and the required public guide indexes. CI runs the same script without
 making external network requests.
 
+For public-doc changes that describe a trust boundary, also check the wording
+against [Architecture](architecture.md), [Configuration](configuration.md), and
+the [security threat model](security-threat-model.md). Documentation must not
+turn a development-only loopback bootstrap flow into public deployment advice,
+claim a package exists without verification, or publish private environment
+details.
+
 OneDay spans a Go engine and terminal client, a Rust gateway, a React frontend,
 SQLite migrations, generated contracts, and a Docker image. A passing unit test
 in one layer is not sufficient release evidence.
@@ -85,7 +92,14 @@ Before a user-facing release, also verify manually:
 - browser and terminal visibility of the same canonical turn;
 - provider failure and recovery without partial state commits;
 - backup and restore of the SQLite data directory;
-- upgrade from the previous supported release.
+- upgrade from the previous supported release;
+- desktop remote mode creates no local story database;
+- standalone desktop data remains isolated after profile switches and the local
+  gateway/engine process tree stops on quit;
+- a standalone build fails clearly if its version-matched sidecars or bundled
+  web UI are absent;
+- a reverse-proxy deployment accepts only the configured public Host and
+  same-origin authenticated mutation requests.
 
 Live provider smoke tests are intentionally separate because they require
 credentials, can cost money, and may fail for reasons outside the repository.
