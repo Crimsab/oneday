@@ -31,6 +31,16 @@ runner exits. Required toolchains and already-cached
 dependencies must be installed before running it; the matrix does not download
 them as a side effect.
 
+## Evidence boundary
+
+The gateway/web slice contains the mocked browser flow from an empty
+installation through onboarding to a submitted action. The CLI slice currently
+executes setup/doctor and the fake-provider turn service as separate focused
+tests; it is not yet a single CLI-process proof from setup to first playable
+story. Likewise, the desktop slice is a Tauri/UI contract suite and is not a
+first-playable packaged-desktop proof. These two criteria must remain pending
+until their end-to-end fixtures exist and pass.
+
 Run one proof slice with `./scripts/first-run-matrix.sh <slice>` or run the
 complete matrix with `make first-run-matrix`.
 
