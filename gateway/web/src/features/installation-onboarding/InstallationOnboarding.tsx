@@ -5,31 +5,16 @@ import type { SetupReadinessProbe, SetupReadinessReport } from "../../types";
 type SetupState = "ready" | "warning" | "failed" | "skipped" | "unknown";
 type SetupProbeName = "narrative" | "embeddings" | "image" | "tts" | "gateway" | "storage" | "backup";
 
-interface SetupItem {
-  name: SetupProbeName;
-  state: SetupState;
-  required: boolean;
-  code: string;
-  summary: string;
-  action: string;
-}
+interface SetupItem { name: SetupProbeName; state: SetupState; required: boolean; code: string; summary: string; action: string; }
 
 const canonicalProbeOrder: SetupProbeName[] = ["narrative", "embeddings", "image", "tts", "gateway", "storage", "backup"];
+const essentialProbeNames = new Set<SetupProbeName>(["narrative", "storage", "gateway"]);
 
 export function installationSetupItems(readiness: SetupReadinessReport): SetupItem[] {
-  const probeFor = (name: SetupProbeName): SetupReadinessProbe | undefined =>
-    readiness.probes.find((probe) => probe.name === name);
-
+  const probeFor = (name: SetupProbeName): SetupReadinessProbe | undefined => readiness.probes.find((probe) => probe.name === name);
   return canonicalProbeOrder.map((name) => {
     const probe = probeFor(name);
-    return {
-      name,
-      state: isSetupState(probe?.status) ? probe.status : "unknown",
-      required: probe?.required ?? (name === "narrative" || name === "storage"),
-      code: probe?.code ?? "",
-      summary: probe?.summary ?? "",
-      action: probe?.action ?? "",
-    };
+    return { name, state: isSetupState(probe?.status) ? probe.status : "unknown", required: probe?.required ?? (name === "narrative" || name === "storage"), code: probe?.code ?? "", summary: probe?.summary ?? "", action: probe?.action ?? "" };
   });
 }
 
@@ -38,106 +23,74 @@ function isSetupState(value: string | undefined): value is SetupState {
 }
 
 export function InstallationOnboarding({
-  readiness,
-  onConfigure,
-  onStartStory,
-  onRetry,
+  readiness, onConfigure, onStartStory, onRetry, reopened = false,
 }: {
   readiness: SetupReadinessReport;
   onConfigure: () => void;
   onStartStory: () => void;
   onRetry: () => void;
+  reopened?: boolean;
 }) {
   const { t } = useTranslation("installation");
   const items = useMemo(() => installationSetupItems(readiness), [readiness]);
-  const hasRequiredFailure = items.some((item) => item.required && item.state === "failed");
-  const requiredItems = items.filter((item) => item.required);
-  const readyRequiredItems = requiredItems.filter((item) => item.state === "ready").length;
+  const essentials = items.filter((item) => essentialProbeNames.has(item.name));
+  const optional = items.filter((item) => !essentialProbeNames.has(item.name));
+  const readyEssentials = essentials.filter((item) => item.state === "ready").length;
+  const hasEssentialFailure = essentials.some((item) => item.state === "failed");
 
   return (
-    <section className="installation-onboarding" aria-labelledby="installation-onboarding-title">
-      <div className="installation-onboarding-intro">
-        <p className="installation-onboarding-label">{t("label")}</p>
-        <h1 id="installation-onboarding-title">{t("title")}</h1>
-        <p>{t("description")}</p>
-        <p className="installation-onboarding-preserve">{t("preserve")}</p>
-      </div>
-
-      <section className="installation-readiness" aria-labelledby="installation-readiness-title">
+    <section className="installation-onboarding setup-console" aria-labelledby="installation-onboarding-title">
+      <header className="setup-console-header">
         <div>
-          <div className="installation-readiness-heading"><h2 id="installation-readiness-title">{t("summary.title")}</h2><span role="progressbar" aria-label={t("progress.label")} aria-valuemin={0} aria-valuemax={requiredItems.length} aria-valuenow={readyRequiredItems}>{t("progress.value", { ready: readyRequiredItems, total: requiredItems.length })}</span></div>
-          <p id="installation-readiness-description">{t("summary.description")}</p>
+          <p className="installation-onboarding-label">{t(reopened ? "reopened.label" : "label")}</p>
+          <h1 id="installation-onboarding-title">{t(reopened ? "reopened.title" : "title")}</h1>
+          <p>{t(reopened ? "reopened.description" : "description")}</p>
         </div>
-        <ul aria-describedby="installation-readiness-description">
-          {items.map((item) => (
-            <li key={item.name} className={`installation-readiness-item ${item.state}`}>
-              <div>
-                <strong>{t(`items.${item.name}.title`)}</strong>
-                <span>{t(`codes.${item.code}`, { defaultValue: item.summary || t("summaryUnavailable") })}</span>
-                {item.code && <code>{item.code}</code>}
-                {item.action && <details>
-                  <summary>{t("recovery.details")}</summary>
-                  <p>{t(`recovery.actions.${item.action}`, { defaultValue: t("recovery.unknown") })}</p>
-                </details>}
-              </div>
-              <span aria-label={`${t(`items.${item.name}.title`)}: ${item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}`}>
-                {item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <span className={`setup-console-status ${hasEssentialFailure ? "blocked" : readyEssentials === essentials.length ? "ready" : "attention"}`} role="status">
+          {t("progress.value", { ready: readyEssentials, total: essentials.length })}
+        </span>
+      </header>
+
+      <SetupGroup title={t("groups.essential.title")} description={t("groups.essential.description")} items={essentials} essential t={t} />
+      <SetupGroup title={t("groups.optional.title")} description={t("groups.optional.description")} items={optional} t={t} />
+
+      <section className="setup-console-guidance" aria-labelledby="setup-console-guidance-title">
+        <h2 id="setup-console-guidance-title">{t("guidance.title")}</h2>
+        <p>{t("guidance.web")}</p>
+        <p>{t("guidance.cliBefore")} <code>oneday setup --reconfigure</code> {t("guidance.cliBetween")} <code>oneday doctor</code>{t("guidance.cliAfter")}</p>
       </section>
 
-      <div className="installation-onboarding-choices">
-        <article>
-          <h2>{t("images.title")}</h2>
-          <p>{t("images.description")}</p>
-          <button type="button" onClick={onConfigure}>{t("images.action")}</button>
-        </article>
-        <article>
-          <h2>{t("voice.title")}</h2>
-          <p>{t("voice.description")}</p>
-          <button type="button" onClick={onConfigure}>{t("voice.action")}</button>
-        </article>
-      </div>
-
-      <div className="installation-onboarding-actions">
-        <button type="button" onClick={onConfigure}>{t("configure")}</button>
+      {hasEssentialFailure && <p className="installation-onboarding-blocked" role="status" aria-live="polite">{t("requiredBlocked")}</p>}
+      <footer className="installation-onboarding-actions">
         <button type="button" onClick={onRetry}>{t("recovery.retry")}</button>
-        <button type="button" className="primary-action" onClick={onStartStory} disabled={hasRequiredFailure}>
-          {t("startStory")}
+        <button type="button" onClick={onConfigure}>{t("configure")}</button>
+        <button type="button" className="primary-action" onClick={onStartStory} disabled={!reopened && hasEssentialFailure}>
+          {t(reopened ? "reopened.complete" : "startStory")}
         </button>
-      </div>
-      {hasRequiredFailure && (
-        <p className="installation-onboarding-blocked" role="status" aria-live="polite">
-          {t("requiredBlocked")}
-        </p>
-      )}
-      <p className="installation-onboarding-preserve">{t("recovery.ownership")}</p>
+      </footer>
+      <p className="installation-onboarding-preserve">{t(reopened ? "reopened.preserve" : "preserve")}</p>
     </section>
   );
+}
+
+function SetupGroup({ title, description, items, essential = false, t }: { title: string; description: string; items: SetupItem[]; essential?: boolean; t: (key: string, options?: Record<string, unknown>) => string }) {
+  return <section className="setup-console-group" aria-label={title}>
+    <header><h2>{title}</h2><p>{description}</p></header>
+    <ul>
+      {items.map((item) => <li key={item.name} className={`setup-console-row ${item.state}`}>
+        <div className="setup-console-row-copy"><strong>{t(`items.${item.name}.title`)}</strong><span>{item.code ? t(`codes.${item.code}`, { defaultValue: item.summary || t("summaryUnavailable") }) : item.summary || t("summaryUnavailable")}</span>{item.action && <details><summary>{t("recovery.details")}</summary><p>{t(`recovery.actions.${item.action}`, { defaultValue: t("recovery.unknown") })}</p></details>}</div>
+        <span className="setup-console-row-state" aria-label={`${t(`items.${item.name}.title`)}: ${t(`states.${essential ? "essential" : "optional"}.${item.state}`)}`}>{t(`states.${essential ? "essential" : "optional"}.${item.state}`)}</span>
+      </li>)}
+    </ul>
+  </section>;
 }
 
 export function InstallationReadinessPending() {
   const { t } = useTranslation("installation");
-  return (
-    <section className="installation-onboarding installation-readiness-pending" aria-labelledby="installation-readiness-loading-title" aria-busy="true">
-      <p className="installation-onboarding-label">{t("label")}</p>
-      <h1 id="installation-readiness-loading-title">{t("loading.title")}</h1>
-      <p role="status" aria-live="polite">{t("loading.description")}</p>
-      <div className="installation-readiness-skeleton" aria-hidden="true"><span /><span /><span /></div>
-    </section>
-  );
+  return <section className="installation-onboarding installation-readiness-pending" aria-labelledby="installation-readiness-loading-title" aria-busy="true"><p className="installation-onboarding-label">{t("label")}</p><h1 id="installation-readiness-loading-title">{t("loading.title")}</h1><p role="status" aria-live="polite">{t("loading.description")}</p><div className="installation-readiness-skeleton" aria-hidden="true"><span /><span /><span /></div></section>;
 }
 
 export function InstallationReadinessError({ onRetry }: { onRetry: () => void }) {
   const { t } = useTranslation("installation");
-  return (
-    <section className="installation-onboarding installation-readiness-error" aria-labelledby="installation-readiness-error-title">
-      <p className="installation-onboarding-label">{t("label")}</p>
-      <h1 id="installation-readiness-error-title">{t("loading.errorTitle")}</h1>
-      <p role="alert">{t("loading.errorDescription")}</p>
-      <div className="installation-onboarding-actions"><button type="button" className="primary-action" onClick={onRetry}>{t("loading.retry")}</button></div>
-    </section>
-  );
+  return <section className="installation-onboarding installation-readiness-error" aria-labelledby="installation-readiness-error-title"><p className="installation-onboarding-label">{t("label")}</p><h1 id="installation-readiness-error-title">{t("loading.errorTitle")}</h1><p role="alert">{t("loading.errorDescription")}</p><div className="installation-onboarding-actions"><button type="button" className="primary-action" onClick={onRetry}>{t("loading.retry")}</button></div></section>;
 }

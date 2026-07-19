@@ -1528,8 +1528,9 @@ function App() {
         <main className="center-stage">
           {showInstallationOnboarding ? <InstallationOnboarding
             readiness={setupReadiness}
+            reopened={setupRouteOpen && !isFreshInstallation}
             onConfigure={openInstallationConfiguration}
-            onStartStory={() => openOverlay("new-story")}
+            onStartStory={() => setupRouteOpen && !isFreshInstallation ? navigateAppRoute(resolveAppRoute(null, storiesRef.current), "replace") : openOverlay("new-story")}
             onRetry={() => void refreshSetupReadiness()}
           /> : (isFreshInstallation || setupRouteOpen) && setupReadinessState === "loading" ? <InstallationReadinessPending />
             : (isFreshInstallation || setupRouteOpen) && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
