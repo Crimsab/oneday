@@ -142,6 +142,8 @@ async fn native_edit_keeps_manual_compatibility_when_a_legacy_bridge_has_no_prob
         idempotency_key: "legacy-edit".into(),
         mask: None,
     };
-    let generated = edit(&Client::new(), &config, &request).await.unwrap();
+    let generated = crate::imagegen::codex_bridge::edit(&Client::new(), &config, &request)
+        .await
+        .unwrap();
     assert_eq!(generated.revised_prompt, "legacy");
 }

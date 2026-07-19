@@ -112,14 +112,24 @@ func parseDiscoveredModels(body []byte, bridge bool) []string {
 	}
 	models := append(modelIDs(payload["data"]), modelIDs(payload["models"])...)
 	if bridge {
-		var providers []map[string]json.RawMessage
-		if json.Unmarshal(payload["providers"], &providers) == nil {
-			for _, provider := range providers {
-				models = append(models, modelIDs(provider["models"])...)
-			}
-		}
+		models = append(models, providerModels(payload["items"])...)
+		// Early 0.3 development builds used "providers"; retaining it is
+		// harmless and keeps discovery additive across those payloads.
+		models = append(models, providerModels(payload["providers"])...)
 	}
 	return uniqueSortedModels(models)
+}
+
+func providerModels(raw json.RawMessage) []string {
+	var providers []map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &providers) != nil {
+		return nil
+	}
+	models := []string{}
+	for _, provider := range providers {
+		models = append(models, modelIDs(provider["models"])...)
+	}
+	return models
 }
 
 // modelIDs accepts OpenAI /models entries as well as bridge 0.3 provider

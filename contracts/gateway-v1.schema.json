@@ -1893,6 +1893,72 @@
         "turn"
       ]
     },
+    "ModelDiscovery": {
+      "properties": {
+        "sources": {
+          "items": {
+            "$ref": "#/$defs/ModelDiscoverySource"
+          },
+          "type": "array"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "sources"
+      ]
+    },
+    "ModelDiscoveryResponse": {
+      "properties": {
+        "protocol_version": {
+          "type": "integer"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "error_detail": {
+          "$ref": "#/$defs/Error"
+        },
+        "discovery": {
+          "$ref": "#/$defs/ModelDiscovery"
+        },
+        "error": {
+          "type": "string"
+        },
+        "error_code": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "ModelDiscoverySource": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "models": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "checked_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "type": "object",
+      "required": [
+        "id",
+        "status",
+        "models",
+        "checked_at"
+      ]
+    },
     "ModelProviderSetting": {
       "properties": {
         "id": {
@@ -2518,6 +2584,9 @@
         "model_settings_response": {
           "$ref": "#/$defs/ModelSettingsResponse"
         },
+        "model_discovery_response": {
+          "$ref": "#/$defs/ModelDiscoveryResponse"
+        },
         "model_settings_update": {
           "$ref": "#/$defs/ModelRoutingUpdate"
         },
@@ -2566,6 +2635,7 @@
         "story_wizard_response",
         "story_enhance_response",
         "model_settings_response",
+        "model_discovery_response",
         "model_settings_update",
         "schema_preflight_response",
         "minigame_request",

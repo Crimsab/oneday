@@ -86,7 +86,9 @@ func runGatewayModelDiscovery(configPath string, out io.Writer) error {
 	// resolve without ever serializing their values back to Rust or React.
 	_ = config.LoadDotEnv(resolveDotEnvPath())
 	cfg, err := config.Load(configPath)
-	if err != nil { return writeGatewayModelDiscoveryError(out, err) }
+	if err != nil {
+		return writeGatewayModelDiscoveryError(out, err)
+	}
 	discovery := config.DiscoverModels(context.Background(), cfg)
 	return json.NewEncoder(out).Encode(gatewayModelDiscoveryResponse{Discovery: &discovery})
 }

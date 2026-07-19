@@ -11,12 +11,17 @@ import (
 
 func TestDiscoverModelsUsesConfiguredServerSideSources(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/models" { t.Fatalf("path = %s", r.URL.Path) }
-		if got := r.Header.Get("Authorization"); got != "Bearer test-token" { t.Fatalf("authorization = %q", got) }
+		if r.URL.Path != "/v1/models" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-token" {
+			t.Fatalf("authorization = %q", got)
+		}
 		_, _ = w.Write([]byte(`{"data":[{"id":"story-model"},{"id":"image-model"}]}`))
 	}))
 	defer server.Close()
 	cfg := Default()
+	cfg.AI.ImageGeneration.ImagegenBridgeURL = ""
 	cfg.AI.LiteLLM.Enabled, cfg.AI.LiteLLM.BaseURL, cfg.AI.LiteLLM.APIKey = true, server.URL+"/v1", "test-token"
 	discovery := DiscoverModels(context.Background(), cfg)
 	if len(discovery.Sources) != 1 {
@@ -50,7 +55,7 @@ func TestDiscoverModelsReadsBridgeProviderMetadata(t *testing.T) {
 		if r.URL.Path != "/v1/providers" {
 			t.Fatalf("path = %s", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"providers":[{"id":"codex-responses","models":[{"id":"gpt-image-2"},"gpt-image-1"]}]}`))
+		_, _ = w.Write([]byte(`{"items":[{"name":"codex-responses","display_name":"Codex OAuth Responses","version":"0.3.0","experimental":false,"models":[{"id":"gpt-image-2"},"gpt-image-1"]}]}`))
 	}))
 	defer server.Close()
 	cfg := Default()

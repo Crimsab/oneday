@@ -507,7 +507,9 @@ func wantsGatewayModelSettingsUpdate(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-model-settings-update"
 }
 
-func wantsGatewayModelDiscovery(args []string) bool { return len(args) >= 1 && args[0] == "gateway-model-discovery" }
+func wantsGatewayModelDiscovery(args []string) bool {
+	return len(args) >= 1 && args[0] == "gateway-model-discovery"
+}
 
 func wantsGatewayTurn(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-turn"

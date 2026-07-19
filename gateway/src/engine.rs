@@ -1801,7 +1801,7 @@ printf '{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"%
         let script = fake_oneday_input_script(&[
             r#"{"discovery":{"sources":[{"id":"litellm","status":"ready","models":["story-model"],"checked_at":"2026-07-19T00:00:00Z"}]}}"#,
         ]);
-        let discovery = model_discovery(test_state(script), true)
+        let discovery = model_discovery(test_state(script).await, true)
             .await
             .expect("discovery");
         assert_eq!(discovery.sources[0].id, "litellm");
