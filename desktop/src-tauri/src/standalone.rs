@@ -81,6 +81,7 @@ impl LaunchPlan {
             // The launch token is intentionally an environment value, never a
             // command-line argument or persisted setting.
             .env("ONEDAY_GATEWAY_AUTH_TOKEN", secret.environment_value())
+            .env("ONEDAY_GATEWAY_URL", self.endpoint.as_str())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -432,6 +433,13 @@ mod tests {
         assert!(!arguments
             .iter()
             .any(|argument| argument == &secret.environment_value()));
+        let command = plan.command(&secret).expect("standalone command");
+        let gateway_url = command
+            .get_envs()
+            .find(|(name, _)| *name == "ONEDAY_GATEWAY_URL")
+            .and_then(|(_, value)| value)
+            .expect("gateway readiness URL");
+        assert_eq!(gateway_url, plan.endpoint.as_str());
     }
 
     #[test]
