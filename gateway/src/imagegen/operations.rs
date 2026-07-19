@@ -189,12 +189,11 @@ pub(crate) fn validate_native_request(
     })?;
     let direct = super::provider_config(config, &request.provider);
     let missing = match kind {
-        AdapterKind::CodexOAuth if config.bridge_url.trim().is_empty() => {
-            Some("imagegen-bridge URL")
+        AdapterKind::CodexOAuth => {
+            super::validate_bridge_endpoint(&config.bridge_url, &config.bridge_token).err()
         }
-        AdapterKind::CodexOAuth => None,
-        _ if direct.base_url.trim().is_empty() => Some("base URL"),
-        _ if direct.api_key.trim().is_empty() => Some("server-side API key"),
+        _ if direct.base_url.trim().is_empty() => Some("base URL".to_string()),
+        _ if direct.api_key.trim().is_empty() => Some("server-side API key".to_string()),
         _ => None,
     };
     if let Some(missing) = missing {
@@ -226,7 +225,9 @@ pub(crate) fn validate_native_request(
             request,
             "Codex OAuth providers do not advertise raster masks",
         )),
-        (AdapterKind::Gemini, ImageOperation::Edit) if request.model.contains("image") => Ok(()),
+        // The configured provider and its explicit edit endpoint establish this
+        // capability. Do not guess it from a model name.
+        (AdapterKind::Gemini, ImageOperation::Edit) => Ok(()),
         (AdapterKind::Gemini, ImageOperation::Inpaint) => Err(capability_unsupported(
             request,
             "Gemini semantic editing does not accept a raster mask",
@@ -353,6 +354,8 @@ mod tests {
             super::super::ProviderConfig {
                 base_url: "https://example.test".to_string(),
                 api_key: "configured".to_string(),
+                auth_mode: "bearer".to_string(),
+                capability_probe_url: String::new(),
                 api_version: String::new(),
             },
         );

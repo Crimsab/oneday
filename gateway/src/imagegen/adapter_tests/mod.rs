@@ -15,6 +15,11 @@ use tokio::sync::oneshot;
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\nfixture";
 
 fn direct_config(provider: &str, base_url: String) -> AdapterConfig {
+    let capability_probe_url = if provider == "openai-compatible" {
+        format!("{}/images/capabilities", base_url.trim_end_matches('/'))
+    } else {
+        String::new()
+    };
     AdapterConfig {
         provider: provider.into(),
         map_icon_provider: provider.into(),
@@ -23,6 +28,8 @@ fn direct_config(provider: &str, base_url: String) -> AdapterConfig {
             ProviderConfig {
                 base_url,
                 api_key: "test-key".into(),
+                auth_mode: "bearer".into(),
+                capability_probe_url,
                 api_version: String::new(),
             },
         )]),

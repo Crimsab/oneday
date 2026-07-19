@@ -18,6 +18,23 @@ fn bridge_model_drops_only_openai_namespace() {
 }
 
 #[test]
+fn validates_bridge_local_and_remote_transport_rules() {
+    assert!(validate_bridge_endpoint("http://127.0.0.1:8787", "").is_ok());
+    assert!(validate_bridge_endpoint("https://bridge.example.test", "token").is_ok());
+    assert!(validate_bridge_endpoint("http://bridge.example.test", "token").is_err());
+    assert!(validate_bridge_endpoint("https://bridge.example.test", "").is_err());
+}
+
+#[test]
+fn text_only_mode_is_intentionally_unavailable_to_image_jobs() {
+    let config = direct_config("text-only", String::new());
+    assert_eq!(
+        validation_error(&config, "", false).as_deref(),
+        Some("text-only mode disables image generation")
+    );
+}
+
+#[test]
 fn fallback_route_supports_provider_and_optional_model() {
     assert_eq!(
         parse_fallback_route("codex-responses:gpt-image-2").unwrap(),

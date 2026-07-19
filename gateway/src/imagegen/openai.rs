@@ -1,6 +1,7 @@
 use super::common::*;
 use super::{
-    http_error, provider_config, transport_error, AdapterConfig, GenerateRequest, GeneratedImage,
+    compatible_auth_mode, http_error, probe_transport_error, provider_config, provider_error,
+    transport_error, AdapterConfig, AdapterKind, GenerateRequest, GeneratedImage,
     NativeImageRequest, MAX_RESPONSE_BYTES,
 };
 use anyhow::{anyhow, Context};
@@ -98,6 +99,12 @@ pub(super) async fn generate(
     provider: &str,
 ) -> anyhow::Result<GeneratedImage> {
     let direct = provider_config(config, provider);
+    if matches!(
+        super::adapter_kind(provider),
+        Some(AdapterKind::OpenAiCompatible)
+    ) {
+        probe_compatible_images(client, &direct, provider).await?;
+    }
     let mut payload = json!({
         "model": request.model,
         "prompt": legacy_prompt(request),
@@ -111,11 +118,20 @@ pub(super) async fn generate(
         "{}/images/generations",
         direct.base_url.trim_end_matches('/')
     );
-    let response = client
+    let mut builder = client
         .post(endpoint)
-        .bearer_auth(direct.api_key.trim())
         .header("Idempotency-Key", &request.idempotency_key)
-        .json(&payload)
+        .json(&payload);
+    if !matches!(
+        super::adapter_kind(provider),
+        Some(AdapterKind::OpenAiCompatible)
+    ) || compatible_auth_mode(&direct)
+        .map_err(|error| provider_error(provider, "configuration", error, false))?
+        == "bearer"
+    {
+        builder = builder.bearer_auth(direct.api_key.trim());
+    }
+    let response = builder
         .send()
         .await
         .map_err(|error| transport_error(provider, "requesting image", error))?;
@@ -150,6 +166,48 @@ pub(super) async fn generate(
         revised_prompt: first.revised_prompt.clone().unwrap_or_default(),
         provider_label: format!("{}:{}", provider, request.model.trim()),
     })
+}
+
+async fn probe_compatible_images(
+    client: &Client,
+    direct: &super::ProviderConfig,
+    provider: &str,
+) -> anyhow::Result<()> {
+    let mut builder = client.get(direct.capability_probe_url.trim());
+    if compatible_auth_mode(direct)
+        .map_err(|error| provider_error(provider, "configuration", error, false))?
+        == "bearer"
+    {
+        builder = builder.bearer_auth(direct.api_key.trim());
+    }
+    let response = builder.send().await.map_err(|error| {
+        probe_transport_error(
+            provider,
+            "probing OpenAI-compatible image capability",
+            error,
+        )
+    })?;
+    let status = response.status();
+    let raw = read_limited(response, MAX_RESPONSE_BYTES).await?;
+    if !status.is_success() {
+        return Err(http_error(provider, status, &raw));
+    }
+    let value: serde_json::Value =
+        serde_json::from_slice(&raw).context("decoding OpenAI-compatible capability probe")?;
+    let images = value.get("images").and_then(serde_json::Value::as_bool) == Some(true)
+        || value
+            .pointer("/capabilities/images")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true);
+    if !images {
+        return Err(provider_error(
+            provider,
+            "capability_unavailable",
+            "capability probe did not explicitly advertise images",
+            false,
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]

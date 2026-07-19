@@ -170,12 +170,14 @@ type ImageGenerationUpdate struct {
 // ImageProviderConfigUpdate is write-only configuration input. APIKey is
 // accepted on PUT but never appears in ModelRoutingSettings responses.
 type ImageProviderConfigUpdate struct {
-	ID          string    `json:"id"`
-	BaseURL     *string   `json:"base_url,omitempty"`
-	APIKey      *string   `json:"api_key,omitempty"`
-	ClearAPIKey bool      `json:"clear_api_key,omitempty"`
-	APIVersion  *string   `json:"api_version,omitempty"`
-	Models      *[]string `json:"models,omitempty"`
+	ID                 string    `json:"id"`
+	BaseURL            *string   `json:"base_url,omitempty"`
+	APIKey             *string   `json:"api_key,omitempty"`
+	ClearAPIKey        bool      `json:"clear_api_key,omitempty"`
+	AuthMode           *string   `json:"auth_mode,omitempty"`
+	CapabilityProbeURL *string   `json:"capability_probe_url,omitempty"`
+	APIVersion         *string   `json:"api_version,omitempty"`
+	Models             *[]string `json:"models,omitempty"`
 }
 
 func ReadModelRoutingSettings(path string) (ModelRoutingSettings, error) {
@@ -369,6 +371,9 @@ func imageGenerationAvailability(cfg ImageGenerationConfig) (bool, string) {
 	provider := canonicalImageProviderID(cfg.Provider)
 	if provider == "" {
 		return false, "missing provider"
+	}
+	if provider == "none" || provider == "text-only" {
+		return false, "text-only mode disables image generation"
 	}
 	if strings.TrimSpace(cfg.Model) == "" {
 		return false, "missing model"
@@ -595,6 +600,24 @@ func applyImageGenerationUpdate(cfg *ImageGenerationConfig, update ImageGenerati
 		if providerUpdate.ClearAPIKey {
 			direct.APIKey = ""
 		}
+		if providerUpdate.AuthMode != nil {
+			direct.AuthMode = cleanString(*providerUpdate.AuthMode)
+		}
+		if providerUpdate.CapabilityProbeURL != nil {
+			direct.CapabilityProbeURL = cleanString(*providerUpdate.CapabilityProbeURL)
+			if direct.CapabilityProbeURL != "" {
+				parsed, err := url.ParseRequestURI(direct.CapabilityProbeURL)
+				if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+					return fmt.Errorf("provider_configs[%s].capability_probe_url must be an HTTP or HTTPS URL", id)
+				}
+			}
+		}
+		if id == ImageProviderOpenAICompatible && direct.AuthMode != "" && direct.AuthMode != "bearer" && direct.AuthMode != "none" {
+			return fmt.Errorf("provider_configs[%s].auth_mode must be bearer or none", id)
+		}
+		if id != ImageProviderOpenAICompatible && direct.AuthMode != "" && direct.AuthMode != "bearer" {
+			return fmt.Errorf("provider_configs[%s].auth_mode is supported only for openai-compatible", id)
+		}
 		if providerUpdate.APIVersion != nil {
 			direct.APIVersion = cleanString(*providerUpdate.APIVersion)
 		}
@@ -779,6 +802,12 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 			},
 			func() error {
 				return setString(root, provider.APIKey, "ai", "image_generation", "providers", id, "api_key")
+			},
+			func() error {
+				return setString(root, provider.AuthMode, "ai", "image_generation", "providers", id, "auth_mode")
+			},
+			func() error {
+				return setString(root, provider.CapabilityProbeURL, "ai", "image_generation", "providers", id, "capability_probe_url")
 			},
 			func() error {
 				return setString(root, provider.APIVersion, "ai", "image_generation", "providers", id, "api_version")

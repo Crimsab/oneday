@@ -1534,6 +1534,12 @@
         "clear_api_key": {
           "type": "boolean"
         },
+        "auth_mode": {
+          "type": "string"
+        },
+        "capability_probe_url": {
+          "type": "string"
+        },
         "api_version": {
           "type": "string"
         },

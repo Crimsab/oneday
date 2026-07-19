@@ -125,6 +125,10 @@ ai:
       openai-compatible:
         base_url: ""
         api_key: "${ONEDAY_IMAGEGEN_OPENAI_COMPATIBLE_API_KEY}"
+        # Local endpoints may set auth_mode: none. They must expose an explicit
+        # same-origin capability probe returning {"images": true}.
+        auth_mode: "bearer"
+        capability_probe_url: ""
         models: []
       gemini:
         base_url: "https://generativelanguage.googleapis.com/v1beta"

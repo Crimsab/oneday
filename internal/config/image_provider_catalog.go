@@ -251,6 +251,18 @@ func imageProviderConfigured(cfg ImageGenerationConfig, provider string) (bool, 
 	if strings.TrimSpace(direct.BaseURL) == "" {
 		return false, "missing base URL"
 	}
+	if provider == ImageProviderOpenAICompatible {
+		if strings.TrimSpace(direct.CapabilityProbeURL) == "" {
+			return false, "missing explicit image capability probe URL"
+		}
+		if direct.AuthMode != "" && direct.AuthMode != "bearer" && direct.AuthMode != "none" {
+			return false, "auth mode must be bearer or none"
+		}
+		if direct.AuthMode != "none" && strings.TrimSpace(direct.APIKey) == "" {
+			return false, "missing API key for bearer authentication"
+		}
+		return true, "configured; image capability is probed before dispatch"
+	}
 	if strings.TrimSpace(direct.APIKey) == "" {
 		return false, "missing API key"
 	}

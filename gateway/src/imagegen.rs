@@ -45,6 +45,8 @@ pub(crate) struct AdapterConfig {
 pub(crate) struct ProviderConfig {
     pub base_url: String,
     pub api_key: String,
+    pub auth_mode: String,
+    pub capability_probe_url: String,
     pub api_version: String,
 }
 
@@ -75,6 +77,7 @@ pub(crate) struct GeneratedImage {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AdapterKind {
+    TextOnly,
     CodexOAuth,
     OpenClaw,
     OpenAi,
@@ -88,6 +91,7 @@ pub(crate) enum AdapterKind {
 
 pub(crate) fn adapter_kind(provider: &str) -> Option<AdapterKind> {
     match provider.trim().to_ascii_lowercase().as_str() {
+        "none" | "text-only" => Some(AdapterKind::TextOnly),
         "codex-oauth" | "imagegen-bridge" | "imagegen_bridge" | "bridge-native" => {
             Some(AdapterKind::CodexOAuth)
         }
@@ -118,6 +122,12 @@ pub(crate) async fn generate(
     }
     let kind = adapter_kind(provider).expect("validated image provider");
     let result = match kind {
+        AdapterKind::TextOnly => Err(provider_error(
+            provider,
+            "text_only",
+            "text-only mode disables image generation",
+            false,
+        )),
         AdapterKind::CodexOAuth => codex_bridge::generate(client, config, request).await,
         AdapterKind::OpenClaw => openclaw::generate(client, config, request).await,
         AdapterKind::OpenAi | AdapterKind::OpenAiCompatible => {
@@ -190,23 +200,25 @@ pub(crate) fn validation_error(
     let Some(kind) = adapter_kind(provider) else {
         return Some(format!("image provider {provider:?} is not supported"));
     };
+    if kind == AdapterKind::TextOnly {
+        return Some("text-only mode disables image generation".to_string());
+    }
     if model.trim().is_empty() {
         return Some(format!("image model is required for provider {provider}"));
     }
     let direct = provider_config(config, provider);
     let missing = match kind {
-        AdapterKind::CodexOAuth => config
-            .bridge_url
-            .trim()
-            .is_empty()
-            .then_some("imagegen-bridge URL"),
+        AdapterKind::CodexOAuth => {
+            validate_bridge_endpoint(&config.bridge_url, &config.bridge_token).err()
+        }
         AdapterKind::OpenClaw => config
             .openclaw_url
             .trim()
             .is_empty()
-            .then_some("OpenClaw bridge URL"),
-        _ if direct.base_url.trim().is_empty() => Some("base URL"),
-        _ if direct.api_key.trim().is_empty() => Some("server-side API key"),
+            .then(|| "OpenClaw bridge URL".to_string()),
+        _ if direct.base_url.trim().is_empty() => Some("base URL".to_string()),
+        AdapterKind::OpenAiCompatible => validate_compatible_config(&direct).err(),
+        _ if direct.api_key.trim().is_empty() => Some("server-side API key".to_string()),
         _ => None,
     };
     if let Some(missing) = missing {
@@ -239,9 +251,6 @@ fn validate_model(kind: AdapterKind, model: &str) -> Result<(), String> {
                 ))
             }
         }
-        AdapterKind::Gemini if !model.contains("image") => Err(format!(
-            "Gemini model {model:?} is not identified as image-capable"
-        )),
         AdapterKind::Fal if !model.contains('/') => {
             Err("fal.ai model must use a vendor/model slug".to_string())
         }
@@ -253,6 +262,53 @@ fn validate_model(kind: AdapterKind, model: &str) -> Result<(), String> {
         }
         _ => Ok(()),
     }
+}
+
+fn validate_compatible_config(config: &ProviderConfig) -> Result<(), String> {
+    let auth_mode = compatible_auth_mode(config)?;
+    if auth_mode == "bearer" && config.api_key.trim().is_empty() {
+        return Err("server-side API key".to_string());
+    }
+    let probe = config.capability_probe_url.trim();
+    if probe.is_empty() {
+        return Err("explicit image capability probe URL".to_string());
+    }
+    if !common::same_origin(&config.base_url, probe).map_err(|error| error.to_string())? {
+        return Err("capability probe URL must be same-origin with base URL".to_string());
+    }
+    Ok(())
+}
+
+pub(super) fn compatible_auth_mode(config: &ProviderConfig) -> Result<&str, String> {
+    match config.auth_mode.trim() {
+        "" | "bearer" => Ok("bearer"),
+        "none" => Ok("none"),
+        value => Err(format!(
+            "unsupported OpenAI-compatible auth_mode {value:?}; use bearer or none"
+        )),
+    }
+}
+
+pub(super) fn validate_bridge_endpoint(url: &str, token: &str) -> Result<(), String> {
+    let parsed = reqwest::Url::parse(url.trim())
+        .map_err(|_| "imagegen-bridge URL must be an HTTP or HTTPS URL".to_string())?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| "imagegen-bridge URL must include a host".to_string())?;
+    match parsed.scheme() {
+        "http" if is_loopback_host(host) => Ok(()),
+        "https" if !token.trim().is_empty() => Ok(()),
+        "https" => Err("remote imagegen-bridge requires a bearer token".to_string()),
+        "http" => Err("remote imagegen-bridge requires HTTPS and a bearer token".to_string()),
+        _ => Err("imagegen-bridge URL must be an HTTP or HTTPS URL".to_string()),
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
 }
 
 pub(super) fn provider_config(config: &AdapterConfig, provider: &str) -> ProviderConfig {
@@ -275,6 +331,8 @@ pub(super) fn provider_config(config: &AdapterConfig, provider: &str) -> Provide
             config.base_url.clone()
         },
         api_key: config.api_key.clone(),
+        auth_mode: "bearer".to_string(),
+        capability_probe_url: String::new(),
         api_version: String::new(),
     }
 }
@@ -360,15 +418,30 @@ pub(super) fn transport_error(
     operation: &str,
     error: reqwest::Error,
 ) -> anyhow::Error {
-    let retryable = error.is_connect();
+    // Once a request body has been handed to the HTTP client, a connection
+    // failure or timeout cannot prove that an upstream did not accept a paid
+    // generation. Keep the job terminal rather than dispatching it again.
+    provider_error(
+        provider,
+        "unknown_outcome",
+        format!("{operation}: {error}; provider outcome is unknown and will not be retried"),
+        false,
+    )
+}
+
+pub(super) fn probe_transport_error(
+    provider: &str,
+    operation: &str,
+    error: reqwest::Error,
+) -> anyhow::Error {
     provider_error(
         provider,
         if error.is_timeout() {
-            "timeout"
+            "probe_timeout"
         } else {
-            "transport"
+            "probe_transport"
         },
         format!("{operation}: {error}"),
-        retryable,
+        error.is_connect() || error.is_timeout(),
     )
 }

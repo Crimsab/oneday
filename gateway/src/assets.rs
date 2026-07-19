@@ -360,6 +360,8 @@ struct GatewayImageGenerationConfig {
 struct GatewayImageProviderConfig {
     base_url: Option<String>,
     api_key: Option<String>,
+    auth_mode: Option<String>,
+    capability_probe_url: Option<String>,
     api_version: Option<String>,
 }
 
@@ -3805,6 +3807,12 @@ fn image_provider_configs(
             crate::imagegen::ProviderConfig {
                 base_url,
                 api_key,
+                auth_mode: configured
+                    .and_then(|config| config.auth_mode.clone())
+                    .unwrap_or_else(|| "bearer".to_string()),
+                capability_probe_url: configured
+                    .and_then(|config| config.capability_probe_url.clone())
+                    .unwrap_or_default(),
                 api_version,
             },
         );

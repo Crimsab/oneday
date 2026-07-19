@@ -149,10 +149,12 @@ type ImageGenerationConfig struct {
 // ImageProviderConfig holds server-side credentials and endpoint overrides for
 // one direct image adapter. Secrets are never copied into gateway responses.
 type ImageProviderConfig struct {
-	BaseURL    string   `yaml:"base_url"`
-	APIKey     string   `yaml:"api_key"`
-	APIVersion string   `yaml:"api_version,omitempty"`
-	Models     []string `yaml:"models,omitempty"`
+	BaseURL            string   `yaml:"base_url"`
+	APIKey             string   `yaml:"api_key"`
+	AuthMode           string   `yaml:"auth_mode,omitempty"`
+	CapabilityProbeURL string   `yaml:"capability_probe_url,omitempty"`
+	APIVersion         string   `yaml:"api_version,omitempty"`
+	Models             []string `yaml:"models,omitempty"`
 }
 
 // GenerationConfig for AI text generation.
@@ -496,7 +498,7 @@ func isSupportedImageProvider(provider string) bool {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "codex-oauth", "imagegen-bridge", "imagegen_bridge", "bridge-native",
 		"openai", "openai-compatible", "litellm", "gemini", "fal", "replicate",
-		"stability", "azure-openai", "openclaw", "openclaw-bridge":
+		"stability", "azure-openai", "openclaw", "openclaw-bridge", "none", "text-only":
 		return true
 	default:
 		return false
