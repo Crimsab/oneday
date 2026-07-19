@@ -27,6 +27,7 @@ import (
 	"github.com/crimsab/oneday/internal/engine"
 	appi18n "github.com/crimsab/oneday/internal/i18n"
 	"github.com/crimsab/oneday/internal/rag"
+	"github.com/crimsab/oneday/internal/setup"
 	"github.com/crimsab/oneday/internal/storage"
 	"github.com/crimsab/oneday/internal/tui"
 )
@@ -51,6 +52,9 @@ func main() {
 	}
 	if wantsDoctor(os.Args[1:]) {
 		if err := runDoctor(os.Args[1:]); err != nil {
+			if errors.Is(err, errDoctorRequiredFailure) {
+				os.Exit(1)
+			}
 			fmt.Fprintln(os.Stderr, loc.T("cli.doctor_failed", err))
 			os.Exit(1)
 		}
@@ -530,7 +534,11 @@ func wantsGatewayTimeline(args []string) bool {
 
 func runSetup(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
-	current, _ := config.Load(resolveConfigPath())
+	configPath := resolveConfigPath()
+	current, err := config.Load(configPath)
+	if err != nil {
+		return err
+	}
 	loc := appi18n.New(appi18n.Resolve(current.Interface.Locale, nil))
 
 	fmt.Println(loc.T("cli.setup_title"))
@@ -541,7 +549,7 @@ func runSetup(args []string) error {
 	reportCommand("claude", "--version")
 
 	force := wantsSetupForce(args)
-	if _, err := os.Stat("config.yaml"); err == nil && !force {
+	if _, err := os.Stat(configPath); err == nil && !force {
 		fmt.Println(loc.SetupPresentation("config_exists", "config.yaml already exists; leaving it in place."))
 		fmt.Println(loc.SetupPresentation("config_reconfigure", "Run `oneday setup --reconfigure` or `oneday setup --force` to open the setup wizard again."))
 		return nil
@@ -579,9 +587,11 @@ func runSetup(args []string) error {
 		choice = "1"
 	}
 
-	cfg := config.Default()
+	// Reconfiguration changes only the setup-owned provider choices; retaining
+	// the loaded config preserves storage, media, and other user settings.
+	cfg := current
 	cfg.Interface.Locale = string(loc.Locale())
-	cfg, err := setupConfigForChoice(cfg, choice, loc)
+	cfg, err = setupConfigForChoice(cfg, choice, loc)
 	if err != nil {
 		return err
 	}
@@ -631,7 +641,7 @@ func runSetup(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile("config.yaml", data, 0600); err != nil {
+	if err := setup.WriteFileAtomic(configPath, data); err != nil {
 		return err
 	}
 	fmt.Println(loc.T("cli.wrote_config"))
@@ -953,130 +963,42 @@ func setupConfigForChoice(cfg config.Config, choice string, localizers ...appi18
 	return cfg, nil
 }
 
-type doctorReport struct {
-	OS              string   `json:"os"`
-	Arch            string   `json:"arch"`
-	ConfigPath      string   `json:"config_path"`
-	EnabledProvider []string `json:"enabled_providers"`
-	CodexLogin      string   `json:"codex_login"`
-	RAGEnabled      bool     `json:"rag_enabled"`
-	EmbeddingKind   string   `json:"embedding_kind"`
-	EmbeddingModel  string   `json:"embedding_model"`
-	EmbeddingDims   int      `json:"embedding_dimensions"`
-	Warnings        []string `json:"warnings"`
-}
+var errDoctorRequiredFailure = errors.New("one or more required readiness probes failed")
 
 func runDoctor(args []string) error {
-	if wantsJSON(args) {
-		return runDoctorJSON()
-	}
-	loc := cliLocalizer()
-	fmt.Println(loc.T("cli.doctor_title"))
-	fmt.Printf("OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	reportCommand("go", "version")
-	reportCommand("codex", "--version")
-	reportCommand("codex", "login", "status")
-	reportCommand("claude", "--version")
-
-	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
-		fmt.Println(loc.T("cli.env_warn", err))
-	} else {
-		fmt.Println(loc.T("cli.env_ok"))
-	}
-
-	cfg, err := config.Load(resolveConfigPath())
-	if err != nil {
-		return err
-	}
-	fmt.Println(loc.T("cli.config_ok", resolveConfigPath()))
-	fmt.Println(loc.T("cli.models", cfg.AI.Codex.Model, cfg.AI.Generation.UtilityModel, cfg.AI.Embedding.Model))
-	reportConfigConsistency(cfg)
-
-	codexStatus := commandStatus("codex", "login", "status")
-	if codexStatus == "" {
-		fmt.Println(loc.T("cli.codex_skip"))
-	} else if strings.Contains(strings.ToLower(codexStatus), "not") && strings.Contains(strings.ToLower(codexStatus), "login") {
-		fmt.Println(loc.T("cli.codex_fail", codexStatus))
-	} else {
-		fmt.Println(loc.T("cli.codex_ok", codexStatus))
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
-	defer cancel()
-
-	router, err := aifactory.NewRouterFromConfig(cfg)
-	if err != nil {
-		fmt.Println(loc.T("cli.provider_fail", err))
-	} else {
-		resp, err := router.Complete(ctx, ai.Request{
-			Messages:  []ai.Message{{Role: ai.RoleUser, Content: "reply with OK"}},
-			MaxTokens: 8,
-		})
-		if err != nil {
-			fmt.Println(loc.T("cli.provider_fail", err))
-		} else {
-			fmt.Println(loc.T("cli.provider_ok", firstLine(resp.Content), resp.Provider))
-		}
-	}
-
-	if !cfg.RAG.Enabled {
-		fmt.Println(loc.T("cli.rag_disabled_config"))
-		fmt.Println(loc.T("cli.embedding_skip_rag"))
-		return nil
-	}
-
-	spec, reason := aifactory.SelectEmbeddingProvider(cfg)
-	if reason != "" {
-		fmt.Println(loc.T("cli.rag_unavailable", reason))
-		fmt.Println(loc.T("cli.embedding_skip_provider"))
-		return nil
-	}
-	fmt.Println(loc.T("cli.rag_enabled", spec.Name, cfg.AI.Embedding.Model))
-	if spec.Kind == "ollama" || spec.Kind == "custom" {
-		fmt.Println(loc.T("cli.rag_local", spec.Kind, spec.BaseURL, spec.Model, spec.Dimensions))
-	}
-	emb := embeddingProviderForSpec(spec, 20*time.Second)
-	embResp, err := emb.Embed(ctx, ai.EmbeddingRequest{
-		Input: "oneday doctor embedding smoke",
-		Model: spec.Model,
-	})
-	if err != nil {
-		fmt.Println(loc.T("cli.embedding_failed", err))
-		return nil
-	}
-	fmt.Println(loc.T("cli.embedding_dimensions_ok", len(embResp.Embedding), embResp.Model))
-	return nil
+	return runDoctorTo(args, os.Stdout, setup.DefaultDependencies())
 }
 
-func runDoctorJSON() error {
-	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
-		// JSON mode reports config/env issues through warnings where possible.
+func runDoctorTo(args []string, out io.Writer, deps setup.Dependencies) error {
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil && !wantsJSON(args) {
+		fmt.Fprintln(out, cliLocalizer().T("cli.env_warn", err))
 	}
 	cfg, err := config.Load(resolveConfigPath())
 	if err != nil {
 		return err
 	}
-	report := doctorReport{
-		OS:              runtime.GOOS,
-		Arch:            runtime.GOARCH,
-		ConfigPath:      resolveConfigPath(),
-		EnabledProvider: cfg.EnabledProviders(),
-		CodexLogin:      commandStatus("codex", "login", "status"),
-		RAGEnabled:      cfg.RAG.Enabled,
-		EmbeddingModel:  cfg.AI.Embedding.Model,
-		EmbeddingDims:   cfg.RAG.Dimensions,
-		Warnings:        providerConsistencyWarnings(cfg),
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	report := setup.Run(ctx, cfg, resolveConfigPath(), deps)
+	if wantsJSON(args) {
+		encoder := json.NewEncoder(out)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(report); err != nil {
+			return err
+		}
+	} else {
+		loc := configLocalizer(cfg)
+		fmt.Fprintln(out, loc.T("cli.doctor_title"))
+		fmt.Fprintf(out, "OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintln(out, loc.T("cli.config_ok", resolveConfigPath()))
+		for _, probe := range report.Probes {
+			fmt.Fprintf(out, "%s: %s [%s] %s\n", probe.Name, probe.Status, probe.Code, probe.Summary)
+		}
 	}
-	if spec, reason := aifactory.SelectEmbeddingProvider(cfg); reason == "" {
-		report.EmbeddingKind = spec.Kind
-		report.EmbeddingModel = spec.Model
-		report.EmbeddingDims = spec.Dimensions
-	} else if cfg.RAG.Enabled {
-		report.Warnings = append(report.Warnings, "rag unavailable: "+reason)
+	if report.RequiredFailure() {
+		return errDoctorRequiredFailure
 	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	return enc.Encode(report)
+	return nil
 }
 
 func runConfigShowSafe() error {
@@ -1537,7 +1459,7 @@ func ensureEnvFile() error {
 		return nil
 	}
 	content := strings.Join(lines, "\n") + "\n"
-	if err := os.WriteFile(".env", []byte(content), 0o600); err != nil {
+	if err := setup.WriteFileAtomic(".env", []byte(content)); err != nil {
 		return fmt.Errorf("creating .env: %w", err)
 	}
 	return nil

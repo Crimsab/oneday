@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/game/contracts"
 	appi18n "github.com/crimsab/oneday/internal/i18n"
+	"github.com/crimsab/oneday/internal/setup"
 	"github.com/crimsab/oneday/internal/storage"
 )
 
@@ -334,6 +337,78 @@ func TestSetupConfigForChoice(t *testing.T) {
 	}
 }
 
+func TestSetupConfigForChoicePreservesExistingSettings(t *testing.T) {
+	cfg := config.Default()
+	cfg.DataDir = "./kept-data"
+	cfg.AI.ImageGeneration.AutoGenerate = true
+	cfg.AI.ImageGeneration.Model = "kept-image-model"
+	cfg.AI.ImageGeneration.MapIconModel = "kept-map-model"
+	cfg.AI.TTS.Local.Enabled = true
+	cfg.AI.TTS.Local.BaseURL = "http://tts.example.test"
+	cfg.Game.RewardBudget = "generous"
+
+	next, err := setupConfigForChoice(cfg, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.DataDir != cfg.DataDir || next.AI.ImageGeneration.Model != cfg.AI.ImageGeneration.Model || next.AI.TTS.Local.BaseURL != cfg.AI.TTS.Local.BaseURL || next.Game.RewardBudget != cfg.Game.RewardBudget {
+		t.Fatalf("setup choice clobbered existing settings: %#v", next)
+	}
+}
+
+func TestSetupReconfigureUsesExplicitConfigPathAndPreservesSettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom.yaml")
+	cfg := config.Default()
+	cfg.DataDir = "./kept-data"
+	cfg.Game.RewardBudget = "generous"
+	data, err := config.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEDAY_CONFIG", path)
+
+	input, output, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := output.WriteString("\n1\ntest-codex-model\n\n0\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := output.Close(); err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = input
+	defer func() {
+		os.Stdin = oldStdin
+		_ = input.Close()
+	}()
+
+	if err := runSetup([]string{"setup", "--reconfigure"}); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.DataDir != cfg.DataDir || saved.Game.RewardBudget != cfg.Game.RewardBudget || saved.AI.Codex.Model != "test-codex-model" {
+		t.Fatalf("unexpected setup result: %#v", saved)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("config mode = %o, want 600", info.Mode().Perm())
+	}
+	if _, err := os.Stat(path + ".bak"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("setup must not create a config backup: %v", err)
+	}
+}
+
 func TestWantsSetupForce(t *testing.T) {
 	if !wantsSetupForce([]string{"setup", "--reconfigure"}) {
 		t.Fatal("expected --reconfigure to force setup")
@@ -352,6 +427,40 @@ func TestWantsJSON(t *testing.T) {
 	}
 	if wantsJSON([]string{"doctor"}) {
 		t.Fatal("plain doctor should not request json")
+	}
+}
+
+func TestDoctorJSONAndTextShareReadinessProbesAndRequiredExit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "custom.yaml")
+	cfg := config.Default()
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = "test"
+	cfg.AI.Generation.UtilityModel = "test"
+	cfg.DataDir = t.TempDir()
+	data, err := config.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEDAY_CONFIG", path)
+	deps := setup.Dependencies{Narrative: func(context.Context, config.Config) error { return errors.New("secret narrative failure") }}
+	var jsonOut bytes.Buffer
+	err = runDoctorTo([]string{"doctor", "--json"}, &jsonOut, deps)
+	if !errors.Is(err, errDoctorRequiredFailure) {
+		t.Fatalf("doctor error = %v", err)
+	}
+	if strings.Contains(jsonOut.String(), "secret") || !strings.Contains(jsonOut.String(), "NARRATIVE_UNAVAILABLE") {
+		t.Fatalf("unexpected JSON: %s", jsonOut.String())
+	}
+	var textOut bytes.Buffer
+	err = runDoctorTo([]string{"doctor"}, &textOut, deps)
+	if !errors.Is(err, errDoctorRequiredFailure) {
+		t.Fatalf("doctor text error = %v", err)
+	}
+	if !strings.Contains(textOut.String(), "NARRATIVE_UNAVAILABLE") || !strings.Contains(textOut.String(), path) {
+		t.Fatalf("unexpected text: %s", textOut.String())
 	}
 }
 
