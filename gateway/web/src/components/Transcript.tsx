@@ -114,7 +114,7 @@ const TranscriptMessage = memo(function TranscriptMessage({ storyId, storyLangua
         {ttsSettings && ttsSettings.mode !== "off" && message.role === "assistant" && Boolean(message.source_commit_id) && (
           autoplay || audioOpen
             ? <AudioControls storyId={storyId} messageId={message.id} settings={ttsSettings} autoplay={autoplay} />
-            : <section className="message-audio" aria-label={t("transcript.spokenAudio")}><div className="message-audio-head"><button type="button" onClick={() => setAudioOpen(true)}>{t("transcript.loadAudio")}</button></div></section>
+            : <div className="message-audio"><div className="message-audio-head"><button type="button" onClick={() => setAudioOpen(true)}>{t("transcript.loadAudio")}</button></div></div>
         )}
         {timelineControls && (
           <MessageBranchControls message={message} timeline={timeline} showRestore={timelineControls.restore} showSwitcher={timelineControls.switcher} busy={timelineBusy} onCheckout={onCheckoutBranch} onRestoreDecision={onRestoreDecision} />

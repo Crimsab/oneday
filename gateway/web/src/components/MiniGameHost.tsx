@@ -18,6 +18,7 @@ export function MiniGameHost({
   const [value, setValue] = useState("");
   const [support, setSupport] = useState("");
   const phase = instance.runtime.phase;
+  const errorId = "minigame-error";
 
   useEffect(() => {
     setValue(instance.definition.options?.[0] ?? "");
@@ -49,7 +50,7 @@ export function MiniGameHost({
             {instance.definition.options?.length ? (
               <CustomSelect value={value} disabled={busy || phase === "paused"} ariaLabel={fieldLabel(instance.definition.kind)} onChange={setValue} options={instance.definition.options.map((option) => ({ value: option, label: option }))} />
             ) : (
-              <input type={instance.definition.kind === "bidding" ? "number" : "text"} value={value} disabled={busy || phase === "paused"} onChange={(event) => setValue(event.target.value)} />
+              <input type={instance.definition.kind === "bidding" ? "number" : "text"} value={value} disabled={busy || phase === "paused"} aria-invalid={Boolean(error)} aria-describedby={error ? errorId : undefined} onChange={(event) => setValue(event.target.value)} />
             )}
           </label>
           {(["deduction", "negotiation", "courtroom", "comedy"] as MiniGameKind[]).includes(instance.definition.kind) && (
@@ -78,7 +79,7 @@ export function MiniGameHost({
       {instance.definition.rules?.selection_reason && (
         <small className="minigame-selection-reason">{t("selectedBecause", { reason: instance.definition.rules.selection_reason })}</small>
       )}
-      {error && <p className="model-error">{error}</p>}
+      {error && <p id={errorId} className="model-error" role="alert">{error}</p>}
     </section>
   );
 }

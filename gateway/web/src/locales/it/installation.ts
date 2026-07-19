@@ -21,4 +21,11 @@ export const installation = {
   configure: "Riconfigura i servizi condivisi",
   startStory: "Avvia la creazione della storia",
   requiredBlocked: "Risolvi le verifiche obbligatorie prima di creare una storia.",
+  loading: {
+    title: "Verifica della disponibilità dell’installazione",
+    description: "OneDay sta verificando i servizi condivisi necessari per avviare una storia.",
+    errorTitle: "Non è stato possibile verificare la disponibilità dell’installazione",
+    errorDescription: "Riprova la verifica di disponibilità prima di avviare la creazione della storia.",
+    retry: "Riprova la verifica",
+  },
 } as const;

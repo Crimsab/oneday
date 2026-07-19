@@ -179,7 +179,7 @@ describe("model routing helpers", () => {
       modelRoutingIssues(providerSettings, draft, {
         providerConfigs: {
           "openai-compatible": {
-            baseUrl: "http://lite.homelab.local/v1",
+            baseUrl: "https://compatible.example.test/v1",
             apiKey: "pending-compatible-secret",
             clearApiKey: false,
           },

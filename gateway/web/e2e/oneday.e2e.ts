@@ -1,8 +1,16 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { readFile } from "node:fs/promises";
 
 const now = "2026-07-11T12:00:00Z";
 const story = { id: "story-1", name: "The Glass Archive", description: "A branching test story", genre: "mystery", tone: "focused", language: "en", is_archived: false, updated_at: now };
+const installationReadiness = {
+  probes: [
+    { name: "narrative", code: "NARRATIVE_READY", status: "ready", required: true, summary: "narrative provider is ready" },
+    { name: "image", code: "IMAGE_UNAVAILABLE", status: "warning", required: false, summary: "image bridge is unavailable" },
+    { name: "storage", code: "STORAGE_READY", status: "ready", required: true, summary: "data directory is available" },
+  ],
+};
 
 async function openRail(page: Page) {
   if (!(await page.locator("#story-navigation").isVisible())) {
@@ -386,6 +394,28 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
   };
 }
 
+async function mockEmptyInstallation(page: Page, options: { readinessFailure?: boolean; delayReadiness?: boolean; holdReadiness?: boolean } = {}) {
+  let readinessRequests = 0;
+  let releaseReadiness = () => {};
+  const readinessGate = options.holdReadiness
+    ? new Promise<void>((resolve) => { releaseReadiness = resolve; })
+    : null;
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/stories") return json(route, []);
+    if (path === "/api/health") return json(route, { status: "ok", stories: 0 });
+    if (path === "/api/setup/readiness") {
+      readinessRequests += 1;
+      if (options.delayReadiness && readinessRequests === 1) await new Promise((resolve) => setTimeout(resolve, 250));
+      if (options.holdReadiness && readinessRequests === 1) await readinessGate;
+      if (options.readinessFailure && readinessRequests === 1) return json(route, { error: "readiness unavailable" }, 503);
+      return json(route, installationReadiness);
+    }
+    return json(route, {});
+  });
+  return { releaseReadiness };
+}
+
 test("submits once, clears optimistically, and renders stream/challenge lifecycle", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ showGenerationDiagnostics: true })));
   const errors: string[] = [];
@@ -415,6 +445,69 @@ test("submits once, clears optimistically, and renders stream/challenge lifecycl
   requests.releaseAction();
   await expect(page.locator(".pending-narrator")).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test("runs axe against rendered onboarding and gameplay surfaces", async ({ page }, testInfo) => {
+  await mockEmptyInstallation(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Set up this OneDay installation" })).toBeVisible();
+  const onboardingResults = await new AxeBuilder({ page }).analyze();
+  expect(onboardingResults.violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("onboarding-a11y.png"), fullPage: true });
+
+  await page.unroute("**/api/**");
+  await mockGateway(page);
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "The Glass Archive" })).toBeVisible();
+  const gameplayResults = await new AxeBuilder({ page }).analyze();
+  expect(gameplayResults.violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("gameplay-a11y.png"), fullPage: true });
+});
+
+test("keeps installation readiness loading and recovery states operable", async ({ page }, testInfo) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const readiness = await mockEmptyInstallation(page, { readinessFailure: true, holdReadiness: true });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Checking installation readiness" })).toBeVisible();
+  const loadingSkeleton = page.locator(".installation-readiness-skeleton span").first();
+  await expect(loadingSkeleton).toBeVisible();
+  expect(await loadingSkeleton.evaluate((element) => Number.parseFloat(getComputedStyle(element).animationDuration))).toBeLessThanOrEqual(0.00001);
+  expect(await loadingSkeleton.evaluate((element) => getComputedStyle(element).animationIterationCount)).toBe("1");
+  readiness.releaseReadiness();
+  await expect(page.getByRole("heading", { name: "Installation readiness could not be checked" })).toBeVisible();
+  await page.getByRole("button", { name: "Retry readiness check" }).click();
+  await expect(page.getByRole("heading", { name: "Set up this OneDay installation" })).toBeVisible();
+  await expect(page.getByText("Optional · attention")).toBeVisible();
+  const imageSetup = page.getByRole("button", { name: "Review image setup" });
+  const voiceSetup = page.getByRole("button", { name: "Review voice setup" });
+  const configure = page.getByRole("button", { name: "Reconfigure shared setup" });
+  await imageSetup.focus();
+  await page.keyboard.press("Tab");
+  await expect(voiceSetup).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(configure).toBeFocused();
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 640, height: 900 });
+  const zoomReflow = await page.evaluate(() => ({
+    width: document.documentElement.scrollWidth,
+    viewport: innerWidth,
+    controlsFit: Array.from(document.querySelectorAll<HTMLElement>(".installation-onboarding-actions button")).every((button) => {
+      const bounds = button.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= innerWidth;
+    }),
+  }));
+  expect(zoomReflow.width).toBeLessThanOrEqual(zoomReflow.viewport + 1);
+  expect(zoomReflow.controlsFit).toBe(true);
+
+  await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
+  await expect(configure).toBeFocused();
+  expect(await configure.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid");
+  expect(await page.locator(".installation-readiness-skeleton span").count()).toBe(0);
+  await page.setViewportSize({ width: 360, height: 800 });
+  const overflow = await page.evaluate(() => ({ width: document.documentElement.scrollWidth, viewport: innerWidth }));
+  expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
+  await page.screenshot({ path: testInfo.outputPath("onboarding-forced-colors-mobile.png"), fullPage: true });
 });
 
 test("creates a persistent AI translation job from the translation center", async ({ page }) => {
@@ -761,7 +854,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await dialog.getByLabel("Map icon provider").selectOption("openai-compatible");
   await dialog.getByLabel("Map icon model").fill("custom-map-model");
   const compatibleConfig = dialog.getByRole("group", { name: "Image provider: OpenAI-compatible / LiteLLM" });
-  await compatibleConfig.getByLabel("Provider URL").fill("http://lite.homelab.local/v1");
+  await compatibleConfig.getByLabel("Provider URL").fill("https://compatible.example.test/v1");
   await compatibleConfig.getByLabel("Model").fill("custom-map-model");
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
     await compatibleConfig.scrollIntoViewIfNeeded();
@@ -779,7 +872,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await dialog.getByRole("button", { name: "Save model routing" }).click();
   const payload = await (await saveRequest).postDataJSON();
   expect(payload.image_generation.provider_configs).toEqual([
-    expect.objectContaining({ id: "openai-compatible", base_url: "http://lite.homelab.local/v1", api_key: "test-compatible-secret", models: ["custom-map-model"] }),
+    expect.objectContaining({ id: "openai-compatible", base_url: "https://compatible.example.test/v1", api_key: "test-compatible-secret", models: ["custom-map-model"] }),
     expect.objectContaining({ id: "gemini", api_key: "test-gemini-secret" }),
   ]);
   expect(payload.image_generation.provider_configs).not.toEqual(

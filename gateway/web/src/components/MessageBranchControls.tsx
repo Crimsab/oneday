@@ -42,7 +42,7 @@ export function MessageBranchControls({
   if (!(showRestore && restoreFrom) && !showBranchSwitcher) return null;
 
   return (
-    <nav className="message-branch-controls" aria-label={t("branches:forTurn", { turn: message.turn })}>
+    <div className="message-branch-controls" role="group" aria-label={t("branches:forTurn", { turn: message.turn })}>
       {showRestore && restoreFrom && (
         <button
           type="button"
@@ -80,6 +80,6 @@ export function MessageBranchControls({
           </button>
         </div>
       )}
-    </nav>
+    </div>
   );
 }

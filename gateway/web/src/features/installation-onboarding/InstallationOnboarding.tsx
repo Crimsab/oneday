@@ -52,17 +52,17 @@ export function InstallationOnboarding({
     <section className="installation-onboarding" aria-labelledby="installation-onboarding-title">
       <div className="installation-onboarding-intro">
         <p className="installation-onboarding-label">{t("label")}</p>
-        <h2 id="installation-onboarding-title">{t("title")}</h2>
+        <h1 id="installation-onboarding-title">{t("title")}</h1>
         <p>{t("description")}</p>
         <p className="installation-onboarding-preserve">{t("preserve")}</p>
       </div>
 
       <section className="installation-readiness" aria-labelledby="installation-readiness-title">
         <div>
-          <h3 id="installation-readiness-title">{t("summary.title")}</h3>
-          <p>{t("summary.description")}</p>
+          <h2 id="installation-readiness-title">{t("summary.title")}</h2>
+          <p id="installation-readiness-description">{t("summary.description")}</p>
         </div>
-        <ul>
+        <ul aria-describedby="installation-readiness-description">
           {items.map((item) => (
             <li key={item.name} className={`installation-readiness-item ${item.state}`}>
               <div>
@@ -70,7 +70,9 @@ export function InstallationOnboarding({
                 <span>{t(`codes.${item.code}`, { defaultValue: item.summary || t("summaryUnavailable") })}</span>
                 {item.code && <code>{item.code}</code>}
               </div>
-              <span>{item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}</span>
+              <span aria-label={`${t(`items.${item.name}.title`)}: ${item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}`}>
+                {item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}
+              </span>
             </li>
           ))}
         </ul>
@@ -78,12 +80,12 @@ export function InstallationOnboarding({
 
       <div className="installation-onboarding-choices">
         <article>
-          <h3>{t("images.title")}</h3>
+          <h2>{t("images.title")}</h2>
           <p>{t("images.description")}</p>
           <button type="button" onClick={onConfigure}>{t("images.action")}</button>
         </article>
         <article>
-          <h3>{t("voice.title")}</h3>
+          <h2>{t("voice.title")}</h2>
           <p>{t("voice.description")}</p>
           <button type="button" onClick={onConfigure}>{t("voice.action")}</button>
         </article>
@@ -95,7 +97,35 @@ export function InstallationOnboarding({
           {t("startStory")}
         </button>
       </div>
-      {hasRequiredFailure && <p className="installation-onboarding-blocked" role="status">{t("requiredBlocked")}</p>}
+      {hasRequiredFailure && (
+        <p className="installation-onboarding-blocked" role="status" aria-live="polite">
+          {t("requiredBlocked")}
+        </p>
+      )}
+    </section>
+  );
+}
+
+export function InstallationReadinessPending() {
+  const { t } = useTranslation("installation");
+  return (
+    <section className="installation-onboarding installation-readiness-pending" aria-labelledby="installation-readiness-loading-title" aria-busy="true">
+      <p className="installation-onboarding-label">{t("label")}</p>
+      <h1 id="installation-readiness-loading-title">{t("loading.title")}</h1>
+      <p role="status" aria-live="polite">{t("loading.description")}</p>
+      <div className="installation-readiness-skeleton" aria-hidden="true"><span /><span /><span /></div>
+    </section>
+  );
+}
+
+export function InstallationReadinessError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation("installation");
+  return (
+    <section className="installation-onboarding installation-readiness-error" aria-labelledby="installation-readiness-error-title">
+      <p className="installation-onboarding-label">{t("label")}</p>
+      <h1 id="installation-readiness-error-title">{t("loading.errorTitle")}</h1>
+      <p role="alert">{t("loading.errorDescription")}</p>
+      <div className="installation-onboarding-actions"><button type="button" className="primary-action" onClick={onRetry}>{t("loading.retry")}</button></div>
     </section>
   );
 }

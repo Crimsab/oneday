@@ -21,4 +21,11 @@ export const installation = {
   configure: "Reconfigure shared setup",
   startStory: "Start story setup",
   requiredBlocked: "Resolve the required readiness checks before creating a story.",
+  loading: {
+    title: "Checking installation readiness",
+    description: "OneDay is checking the shared services required to start a story.",
+    errorTitle: "Installation readiness could not be checked",
+    errorDescription: "Retry the readiness check before starting story setup.",
+    retry: "Retry readiness check",
+  },
 } as const;

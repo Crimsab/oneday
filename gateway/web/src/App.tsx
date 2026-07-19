@@ -44,7 +44,7 @@ import { StoryPath } from "./components/StoryPath";
 import { SuggestedActions } from "./components/SuggestedActions";
 import { TopBar } from "./components/TopBar";
 import { Transcript } from "./components/Transcript";
-import { InstallationOnboarding } from "./features/installation-onboarding/InstallationOnboarding";
+import { InstallationOnboarding, InstallationReadinessError, InstallationReadinessPending } from "./features/installation-onboarding/InstallationOnboarding";
 import { recentFromMessages } from "./format";
 import { stepHistoryIndex } from "./history";
 import { restoreFailedDraft } from "./draftLifecycle";
@@ -159,6 +159,7 @@ function App() {
   const [modelSaving, setModelSaving] = useState(false);
   const [optionsInitialSection, setOptionsInitialSection] = useState<SettingsSectionId>("appearance");
   const [setupReadiness, setSetupReadiness] = useState<SetupReadinessReport | null>(null);
+  const [setupReadinessState, setSetupReadinessState] = useState<"loading" | "ready" | "error">("loading");
   const [visualAssets, setVisualAssets] = useState<VisualAssetsResponse | null>(null);
   const [visualAssetsError, setVisualAssetsError] = useState("");
   const [visualProfileSaving, setVisualProfileSaving] = useState(false);
@@ -283,10 +284,13 @@ function App() {
   }, []);
 
   const refreshSetupReadiness = useCallback(async () => {
+    setSetupReadinessState("loading");
     try {
       setSetupReadiness(await getSetupReadiness());
+      setSetupReadinessState("ready");
     } catch (error) {
       setSetupReadiness(null);
+      setSetupReadinessState("error");
       setNotice(errorMessage(error));
     }
   }, []);
@@ -1465,7 +1469,12 @@ function App() {
   const leftRailVisible = isMobileLayout ? mobileRailOpen : desktopRailPresentation !== "hidden";
   const railMode = isMobileLayout ? "expanded" : preferences.desktopRailMode;
   const activeStories = activeStoryCount(stories);
-  const showInstallationOnboarding = sync === "Idle" && stories.length === 0 && setupReadiness !== null;
+  const isFreshInstallation = sync === "Idle" && stories.length === 0;
+  const showInstallationOnboarding = isFreshInstallation && setupReadinessState === "ready" && setupReadiness !== null;
+
+  useEffect(() => {
+    if (isFreshInstallation) setStoryLibraryOpen(false);
+  }, [isFreshInstallation]);
 
   return (
     <div
@@ -1510,7 +1519,9 @@ function App() {
             readiness={setupReadiness}
             onConfigure={openInstallationConfiguration}
             onStartStory={() => openOverlay("new-story")}
-          /> : <>
+          /> : isFreshInstallation && setupReadinessState === "loading" ? <InstallationReadinessPending />
+            : isFreshInstallation && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
+              : <>
           <section className="transcript-panel" aria-labelledby="story-surface-title">
             <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || t("notifications:surface.yourStory")}</h1>
             <StoryPath
