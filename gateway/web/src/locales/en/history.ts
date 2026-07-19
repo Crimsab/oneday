@@ -1,0 +1,17 @@
+export const history = {
+  search: "Search branch history",
+  reset: "Reset filters",
+  filters: "History filters",
+  type: "Event type",
+  allTypes: "All types",
+  scope: "Scope",
+  currentBranch: "Current branch",
+  allBranches: "All branches",
+  chapter: "Chapter / turn",
+  allTurns: "All turns",
+  results: "{{count}} events shown",
+  emptyResults: "No events match these filters.",
+  currentEvent: "Current",
+  eventActions: "Actions for turn {{turn}}",
+  actions: { jump: "Jump", fork: "Fork", map: "Map", codex: "Codex", asset: "Asset" },
+} as const;

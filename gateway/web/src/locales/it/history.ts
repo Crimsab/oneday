@@ -1,0 +1,17 @@
+export const history = {
+  search: "Cerca nella cronologia del ramo",
+  reset: "Reimposta filtri",
+  filters: "Filtri della cronologia",
+  type: "Tipo di evento",
+  allTypes: "Tutti i tipi",
+  scope: "Ambito",
+  currentBranch: "Ramo corrente",
+  allBranches: "Tutti i rami",
+  chapter: "Capitolo / turno",
+  allTurns: "Tutti i turni",
+  results: "{{count}} eventi mostrati",
+  emptyResults: "Nessun evento corrisponde a questi filtri.",
+  currentEvent: "Corrente",
+  eventActions: "Azioni per il turno {{turn}}",
+  actions: { jump: "Vai", fork: "Crea ramo", map: "Mappa", codex: "Codice", asset: "Asset" },
+} as const;

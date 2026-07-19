@@ -1,0 +1,33 @@
+.history-reader { gap: 10px; }
+.history-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.history-search { min-height: 34px; }
+.history-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.history-filter-grid label { display: grid; gap: 3px; color: var(--faint); font-size: .625rem; letter-spacing: .06em; text-transform: uppercase; }
+.history-filter-grid select,.history-reset,.history-action { min-height: 30px; border: 1px solid var(--line-soft); border-radius: 4px; background: var(--panel-2); color: var(--text); }
+.history-filter-grid select { min-width: 0; padding-inline: 7px; text-transform: none; }
+.history-reset { padding-inline: 9px; color: var(--muted); }
+.history-reset:disabled { opacity: .55; }
+.history-reader section { gap: 6px; }
+.history-entries,.history-chapters { gap: 0; border-block: 1px solid var(--line-soft); }
+.history-entries article,.history-chapters article { padding: 8px 0; border: 0; border-radius: 0; border-block-end: 1px solid var(--line-soft); background: transparent; }
+.history-entries article:last-child,.history-chapters article:last-child { border-block-end: 0; }
+.history-message { position: relative; padding-inline-start: 13px !important; }
+.history-message::before { content: ""; position: absolute; inset: 0 auto 0 0; inline-size: 3px; background: var(--line); }
+.history-message.is-current::before { background: var(--accent); }
+.history-message-header { margin-block-end: 4px !important; }
+.history-message-meta { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.history-event-type { color: var(--faint); }
+.history-current { color: var(--accent); font-size: .625rem; letter-spacing: .06em; }
+.history-branch { overflow: hidden; max-inline-size: 11ch; color: var(--faint); font-size: .625rem; text-overflow: ellipsis; white-space: nowrap; }
+.history-message-body { color: var(--muted); font-family: var(--sans); font-size: .875rem; line-height: 1.45; }
+.history-message-body .markdown-body > :first-child { margin-block-start: 0; }
+.history-message-toggle { display: inline-flex; align-items: center; gap: 4px; margin-block-start: 3px; border: 0; background: transparent; color: var(--accent); padding: 2px 0; }
+.history-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-block-start: 6px; }
+.history-action { min-height: 26px; padding: 2px 7px; color: var(--muted); font-size: .6875rem; }
+.history-action:hover { border-color: var(--accent); color: var(--text); }
+.history-chapters article { padding-inline-start: 13px; }
+.history-empty { display: grid; gap: 7px; padding: 11px 0; }
+.history-empty .empty-copy,.history-result-count { margin: 0; }
+.history-result-count { color: var(--faint); font-size: .6875rem; }
+@media (max-width: 520px) { .history-toolbar { grid-template-columns: minmax(0, 1fr); } .history-toolbar > .history-reset { justify-self: start; } .history-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .history-filter-grid label:last-child { grid-column: 1 / -1; } .history-branch { display: none; } }
+@media (prefers-reduced-motion: reduce) { .history-reader * { scroll-behavior: auto; transition-duration: .01ms !important; } }
