@@ -70,6 +70,12 @@ pub struct ProcessContainment {
     job: windows_sys::Win32::Foundation::HANDLE,
 }
 
+// A Windows job handle may be transferred between threads. It is owned by this
+// value, only accessed through the LocalProcess mutex, and closed exactly once
+// in Drop.
+#[cfg(windows)]
+unsafe impl Send for ProcessContainment {}
+
 #[cfg(windows)]
 pub fn configure(_command: &mut Command) {}
 
@@ -89,7 +95,7 @@ impl ProcessContainment {
         };
 
         let job = unsafe { CreateJobObjectW(null(), null()) };
-        if job == 0 {
+        if job.is_null() {
             return Err(format!(
                 "Could not create local process job: {}",
                 std::io::Error::last_os_error()
@@ -119,7 +125,7 @@ impl ProcessContainment {
                 child.id(),
             )
         };
-        if process == 0 {
+        if process.is_null() {
             unsafe { CloseHandle(job) };
             return Err(format!(
                 "Could not open local gateway process: {}",
