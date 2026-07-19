@@ -10,9 +10,8 @@ config.*.yaml
 *.p12
 *.pfx
 
-# Local planning and deployment overrides
+# Local planning
 /.planning/
-/compose.homelab.yaml
 
 # Binary
 /oneday
