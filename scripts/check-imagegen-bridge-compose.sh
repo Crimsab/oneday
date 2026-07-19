@@ -15,7 +15,7 @@ for required_file in "$compose_base" "$compose_bridge" "$env_example"; do
 done
 
 if ! rg --quiet '^    profiles: \[imagegen-bridge\]$' "$compose_bridge" \
-  || ! rg --quiet 'ghcr\.io/crimsab/imagegen-bridge:0\.1\.4@sha256:98650a1acfe405c9fea4c0df3cb71d754bd251febd89309d0a4cb4a04e0aa0d9' "$compose_bridge" \
+  || ! rg --quiet 'ghcr\.io/crimsab/imagegen-bridge:0\.3\.0@sha256:8ca87e645c03415bd2dd6c0bdcf2f43db361198e676179fe0e92c8de9ee7b267' "$compose_bridge" \
   || ! rg --quiet '127\.0\.0\.1:\$\{IMAGEGEN_BRIDGE_PORT:-8787\}:8787' "$compose_bridge" \
   || ! rg --quiet 'imagegen_bridge_codex_oauth:/codex-home' "$compose_bridge"; then
   printf 'The imagegen-bridge profile must remain opt-in, release-pinned, loopback-bound, and OAuth-isolated.\n' >&2
@@ -34,7 +34,7 @@ fi
 
 cd "$root_dir"
 IMAGEGEN_BRIDGE_BEARER_TOKEN=compose-validation-only \
-IMAGEGEN_BRIDGE_IMAGE=ghcr.io/crimsab/imagegen-bridge:0.1.4@sha256:98650a1acfe405c9fea4c0df3cb71d754bd251febd89309d0a4cb4a04e0aa0d9 \
+IMAGEGEN_BRIDGE_IMAGE=ghcr.io/crimsab/imagegen-bridge:0.3.0@sha256:8ca87e645c03415bd2dd6c0bdcf2f43db361198e676179fe0e92c8de9ee7b267 \
 docker compose \
   -f compose.yaml -f compose.imagegen-bridge.yaml \
   --profile imagegen-bridge config --quiet

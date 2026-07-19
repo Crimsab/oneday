@@ -26,7 +26,7 @@ services:
 
   imagegen-bridge:
     profiles: [imagegen-bridge]
-    image: ${IMAGEGEN_BRIDGE_IMAGE:-ghcr.io/crimsab/imagegen-bridge:0.1.4@sha256:98650a1acfe405c9fea4c0df3cb71d754bd251febd89309d0a4cb4a04e0aa0d9}
+    image: ${IMAGEGEN_BRIDGE_IMAGE:-ghcr.io/crimsab/imagegen-bridge:0.3.0@sha256:8ca87e645c03415bd2dd6c0bdcf2f43db361198e676179fe0e92c8de9ee7b267}
     restart: unless-stopped
     environment:
       TZ: ${TZ:-UTC}

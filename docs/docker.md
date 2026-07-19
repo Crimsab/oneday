@@ -49,7 +49,7 @@ The default Docker stack does **not** start imagegen-bridge, copy a Codex
 login, or enable automatic images. If you deliberately want Codex OAuth image
 generation inside the same private Compose network, enable the separately
 versioned profile. It uses the released
-[`ghcr.io/crimsab/imagegen-bridge:0.1.4`](https://github.com/Crimsab/imagegen-bridge/pkgs/container/imagegen-bridge)
+[`ghcr.io/crimsab/imagegen-bridge:0.3.0`](https://github.com/Crimsab/imagegen-bridge/pkgs/container/imagegen-bridge)
 image pinned to its multi-architecture OCI index digest, and keeps the bridge's
 Codex OAuth state, session/job state, and generated artifacts in three separate
 named volumes.
