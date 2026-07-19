@@ -15,12 +15,15 @@ describe("HistoryReader", () => {
   });
 
   it("renders only parent-backed actions and marks the canonical current event", () => {
-    const message = { id: 3, content: "The bell rings.", turn: 5, role: "assistant", message_type: "narrative", branch_id: "main" } as MessageView;
-    const html = renderToStaticMarkup(<HistoryEvent message={message} currentTurn={5} actions={{ onJump: () => undefined, onOpenCodex: () => undefined }} />);
+    const message = { id: 3, content: "The bell rings.", turn: 5, role: "assistant", message_type: "narrative", branch_id: "main", source_commit_id: "commit-3" } as MessageView;
+    const html = renderToStaticMarkup(<HistoryEvent message={message} currentTurn={5} actions={{ onFork: () => undefined, onOpenCodex: () => undefined }} />);
     expect(html).toContain("is-current");
-    expect(html).toContain("Jump");
+    expect(html).toContain("Fork");
     expect(html).toContain("Codex");
     expect(html).not.toContain(">Map<");
-    expect(html).not.toContain(">Asset<");
+    expect(html).not.toContain(">Jump<");
+
+    const withoutCommit = renderToStaticMarkup(<HistoryEvent message={{ ...message, source_commit_id: "" }} currentTurn={5} actions={{ onFork: () => undefined }} />);
+    expect(withoutCommit).not.toContain(">Fork<");
   });
 });

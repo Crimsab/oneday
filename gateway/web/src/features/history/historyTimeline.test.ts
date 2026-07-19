@@ -14,7 +14,7 @@ describe("history timeline filters", () => {
   });
 
   it("only exposes actions backed by parent callbacks", () => {
-    expect(availableHistoryActions({ jump: () => undefined, codex: () => undefined })).toEqual(["jump", "codex"]);
-    expect(availableHistoryActions({})).toEqual([]);
+    expect(availableHistoryActions({ fork: () => undefined, codex: () => undefined }, { source_commit_id: "commit-1" })).toEqual(["fork", "codex"]);
+    expect(availableHistoryActions({ fork: () => undefined }, { source_commit_id: "" })).toEqual([]);
   });
 });

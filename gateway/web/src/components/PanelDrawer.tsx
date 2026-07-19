@@ -27,6 +27,7 @@ import type {
   StoryEnhanceEnvelope,
   StoryEnhanceResponse,
   StorySnapshot,
+  TimelineResponse,
   StoryWizardEnvelope,
   StoryWizardAction,
   StoryWizardResponse,
@@ -126,6 +127,9 @@ interface PanelDrawerProps {
   ) => Promise<VisualAssetsResponse | void>;
   onOpenVisualAsset: (assetId: string) => void;
   onMapTravel: (locationName: string, route: SpatialEdge | null) => void;
+  timeline?: TimelineResponse | null;
+  onHistoryFork?: (sourceCommitId: string, turn: number) => void;
+  onOpenHistoryModule?: (tab: "map" | "codex") => void;
   onRunStoryWizard: (
     payload: StoryWizardEnvelope,
   ) => Promise<StoryWizardResponse>;
@@ -178,6 +182,9 @@ export function PanelDrawer({
   onVisualAssetOperation,
   onOpenVisualAsset,
   onMapTravel,
+  timeline,
+  onHistoryFork,
+  onOpenHistoryModule,
   onRunStoryWizard,
   onEnhanceStoryText,
   onCreateSave,
@@ -256,6 +263,9 @@ export function PanelDrawer({
             focusCardId={moduleFocusId}
             onOpenVisualAsset={onOpenVisualAsset}
             onMapTravel={onMapTravel}
+            timeline={timeline}
+            onHistoryFork={onHistoryFork}
+            onOpenHistoryModule={onOpenHistoryModule}
           />
         )}
     </DialogDrawerShell>
@@ -1617,6 +1627,9 @@ function ModuleOverlayContent({
   focusCardId,
   onOpenVisualAsset,
   onMapTravel,
+  timeline,
+  onHistoryFork,
+  onOpenHistoryModule,
 }: {
   snapshot: StorySnapshot | null;
   selectedTab: ModuleTab;
@@ -1624,6 +1637,9 @@ function ModuleOverlayContent({
   focusCardId?: string | null;
   onOpenVisualAsset?: (assetId: string) => void;
   onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
+  timeline?: TimelineResponse | null;
+  onHistoryFork?: (sourceCommitId: string, turn: number) => void;
+  onOpenHistoryModule?: (tab: "map" | "codex") => void;
 }) {
   const { t } = useTranslation("drawer");
   if (!snapshot) {
@@ -1645,6 +1661,9 @@ function ModuleOverlayContent({
         focusCardId={focusCardId}
         onOpenVisualAsset={onOpenVisualAsset}
         onMapTravel={onMapTravel}
+        timeline={timeline}
+        onHistoryFork={onHistoryFork}
+        onOpenHistoryModule={onOpenHistoryModule}
       />
     </div>
   );

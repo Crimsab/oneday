@@ -19,11 +19,11 @@ import {
   titleCase,
   valueToText,
 } from "../format";
-import type { AgencyEventView, CraftConversationMessage, CraftingResponseView, JsonObject, JsonValue, ModuleTab, RecordView, StorySnapshot, VisualAsset } from "../types";
+import type { AgencyEventView, CraftConversationMessage, CraftingResponseView, JsonObject, JsonValue, MessageView, ModuleTab, RecordView, StorySnapshot, TimelineResponse, VisualAsset } from "../types";
 import type { VisualCatalog } from "../visualAssets";
 import type { SpatialEdge } from "../spatialMap";
 import { characterAsset, normalizeKey, readyAssetUrl } from "../visualAssets";
-import { HistoryReader } from "./HistoryReader";
+import { HistoryReader, type HistoryReaderActions } from "./HistoryReader";
 import { CanonicalMap } from "./CanonicalMap";
 
 interface InspectorProps {
@@ -35,6 +35,9 @@ interface InspectorProps {
   onOpenNpcCodex: (npcId: string) => void;
   onOpenVisualAsset?: (assetId: string) => void;
   onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
+  timeline?: TimelineResponse | null;
+  onHistoryFork?: (sourceCommitId: string, turn: number) => void;
+  onOpenHistoryModule?: (tab: "map" | "codex") => void;
 }
 
 interface CardView {
@@ -61,7 +64,7 @@ function tr(key: string, values?: Record<string, string | number>): string {
   return i18n.t(key, { ns: "inspector_extra", ...values });
 }
 
-export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule, onOpenNpcCodex, onOpenVisualAsset, onMapTravel }: InspectorProps) {
+export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenModule, onOpenNpcCodex, onOpenVisualAsset, onMapTravel, timeline, onHistoryFork, onOpenHistoryModule }: InspectorProps) {
   useTranslation("inspector_extra");
   const title = moduleTitle(selectedTab);
 
@@ -82,7 +85,7 @@ export function Inspector({ snapshot, selectedTab, visuals, onRefresh, onOpenMod
         <div className="empty-copy inspector-empty">{tr("selectStory")}</div>
       ) : (
         <div className="inspector-body">
-          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} onExpandMap={onOpenModule} onMapTravel={onMapTravel} />
+          <ModuleContent tab={selectedTab} snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} onExpandMap={onOpenModule} onMapTravel={onMapTravel} timeline={timeline} onHistoryFork={onHistoryFork} onOpenHistoryModule={onOpenHistoryModule} />
         </div>
       )}
     </aside>
@@ -99,6 +102,9 @@ export function ModuleContent({
   onOpenVisualAsset,
   onExpandMap,
   onMapTravel,
+  timeline,
+  onHistoryFork,
+  onOpenHistoryModule,
 }: {
   tab: ModuleTab;
   snapshot: StorySnapshot;
@@ -109,11 +115,14 @@ export function ModuleContent({
   onOpenVisualAsset?: (assetId: string) => void;
   onExpandMap?: () => void;
   onMapTravel?: (locationName: string, route: SpatialEdge | null) => void;
+  timeline?: TimelineResponse | null;
+  onHistoryFork?: (sourceCommitId: string, turn: number) => void;
+  onOpenHistoryModule?: (tab: "map" | "codex") => void;
 }) {
   useTranslation("inspector_extra");
   return (
     <>
-      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex, onOpenVisualAsset, expanded, onExpandMap, onMapTravel)}
+      {renderModule(tab, snapshot, visuals, focusCardId, onOpenNpcCodex, onOpenVisualAsset, expanded, onExpandMap, onMapTravel, timeline, onHistoryFork, onOpenHistoryModule)}
       {expanded && <RawStateSection tab={tab} snapshot={snapshot} />}
     </>
   );
@@ -129,6 +138,9 @@ function renderModule(
   expanded = false,
   onExpandMap?: () => void,
   onMapTravel?: (locationName: string, route: SpatialEdge | null) => void,
+  timeline?: TimelineResponse | null,
+  onHistoryFork?: (sourceCommitId: string, turn: number) => void,
+  onOpenHistoryModule?: (tab: "map" | "codex") => void,
 ) {
   if (tab === "inventory") return <InventoryModule snapshot={snapshot} />;
   if (tab === "craft") return <CraftModule snapshot={snapshot} />;
@@ -139,9 +151,20 @@ function renderModule(
   if (tab === "projects") return <ProjectsModule snapshot={snapshot} />;
   if (tab === "achievements") return <AchievementsModule snapshot={snapshot} />;
   if (tab === "saves") return <SavesModule snapshot={snapshot} />;
-	if (tab === "history") return <HistoryReader snapshot={snapshot} />;
+	if (tab === "history") return <HistoryReader snapshot={snapshot} activeBranchId={timeline?.active_branch_id} actions={historyReaderActions(onHistoryFork, onOpenHistoryModule)} />;
   if (tab === "map") return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} expanded={expanded} onExpandMap={onExpandMap} onMapTravel={onMapTravel} />;
   return <WorldStateModule snapshot={snapshot} visuals={visuals} onOpenNpcCodex={onOpenNpcCodex} onOpenVisualAsset={onOpenVisualAsset} />;
+}
+
+export function historyReaderActions(
+  onHistoryFork?: (sourceCommitId: string, turn: number) => void,
+  onOpenHistoryModule?: (tab: "map" | "codex") => void,
+): HistoryReaderActions | undefined {
+  const actions: HistoryReaderActions = {
+    ...(onHistoryFork ? { onFork: (message: MessageView) => { if (message.source_commit_id) onHistoryFork(message.source_commit_id, message.turn); } } : {}),
+    ...(onOpenHistoryModule ? { onOpenMap: () => onOpenHistoryModule("map"), onOpenCodex: () => onOpenHistoryModule("codex") } : {}),
+  };
+  return Object.keys(actions).length ? actions : undefined;
 }
 
 function RawStateSection({ tab, snapshot }: { tab: ModuleTab; snapshot: StorySnapshot }) {

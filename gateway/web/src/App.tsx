@@ -1154,6 +1154,13 @@ function App() {
     setOverlay("module");
   };
 
+  const openHistoryModule = (tab: "map" | "codex") => {
+    setSelectedTab(tab);
+    setModuleFocusId(null);
+    setModuleOverlayTab(tab);
+    setOverlay("module");
+  };
+
   const closeOverlay = () => {
     setOverlay(null);
     setModuleFocusId(null);
@@ -1593,6 +1600,9 @@ function App() {
             onOpenNpcCodex={openNpcCodex}
             onOpenVisualAsset={openVisualAssetEditor}
             onMapTravel={handleMapTravel}
+            timeline={timeline}
+            onHistoryFork={restoreDecision}
+            onOpenHistoryModule={openHistoryModule}
           />
         )}
       </div>
@@ -1659,6 +1669,9 @@ function App() {
         onVisualAssetOperation={runImageOperation}
         onOpenVisualAsset={openVisualAssetEditor}
         onMapTravel={handleMapTravel}
+        timeline={timeline}
+        onHistoryFork={restoreDecision}
+        onOpenHistoryModule={openHistoryModule}
         onRunStoryWizard={(payload) => runBrowserStoryWizard(payload)}
         onEnhanceStoryText={(payload) => runBrowserStoryEnhance(payload)}
         onCreateSave={(name) => void createManualSave(name, `/save ${name}`)}

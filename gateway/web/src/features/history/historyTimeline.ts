@@ -4,7 +4,7 @@ export type HistoryScope = "all" | "current" | string;
 
 export interface HistoryFilters { query: string; type: string; scope: HistoryScope; group: string; }
 export interface HistoryGroup { id: string; label: string; }
-export type HistoryAction = "jump" | "fork" | "map" | "codex" | "asset";
+export type HistoryAction = "fork" | "map" | "codex";
 
 export function eventType(message: MessageView): string { return message.message_type || message.role || "unknown"; }
 
@@ -21,6 +21,6 @@ export function messageMatchesFilters(message: MessageView, filters: HistoryFilt
   return matchesQuery && matchesType && matchesScope && (!filters.group || chapter?.id === Number(filters.group));
 }
 
-export function availableHistoryActions(actions: Partial<Record<HistoryAction, unknown>>): HistoryAction[] {
-  return (["jump", "fork", "map", "codex", "asset"] as HistoryAction[]).filter((action) => Boolean(actions[action]));
+export function availableHistoryActions(actions: Partial<Record<HistoryAction, unknown>>, message: Pick<MessageView, "source_commit_id">): HistoryAction[] {
+  return (["fork", "map", "codex"] as HistoryAction[]).filter((action) => Boolean(actions[action]) && (action !== "fork" || Boolean(message.source_commit_id)));
 }

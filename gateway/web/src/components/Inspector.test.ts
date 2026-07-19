@@ -1,12 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { cardsFromValue, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, npcDiscoverySummary, npcRelationSummary, sanitizePlayerVisibleValue } from "./Inspector";
-import type { JsonValue, RecordView, StorySnapshot } from "../types";
+import { cardsFromValue, historyReaderActions, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, npcDiscoverySummary, npcRelationSummary, sanitizePlayerVisibleValue } from "./Inspector";
+import type { JsonValue, MessageView, RecordView, StorySnapshot } from "../types";
 
 describe("moduleTitle", () => {
   it("returns the visible label for module tabs", () => {
     expect(moduleTitle("inventory")).toBe("Inventory");
     expect(moduleTitle("craft")).toBe("Craft");
     expect(moduleTitle("fronts")).toBe("Fronts");
+  });
+});
+
+describe("historyReaderActions", () => {
+  it("wires only canonical actions and requires a source commit to fork", () => {
+    const forks: Array<[string, number]> = [];
+    const modules: string[] = [];
+    const actions = historyReaderActions((commit, turn) => forks.push([commit, turn]), (tab) => modules.push(tab));
+    const message = { source_commit_id: "commit-4", turn: 4 } as MessageView;
+    actions?.onFork?.(message);
+    actions?.onOpenMap?.(message);
+    actions?.onOpenCodex?.(message);
+    actions?.onFork?.({ ...message, source_commit_id: "" });
+    expect(forks).toEqual([["commit-4", 4]]);
+    expect(modules).toEqual(["map", "codex"]);
+    expect(actions).not.toHaveProperty("onJump");
+    expect(actions).not.toHaveProperty("onOpenAsset");
   });
 });
 

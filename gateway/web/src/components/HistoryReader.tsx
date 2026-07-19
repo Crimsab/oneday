@@ -10,11 +10,9 @@ import "./HistoryReader.css";
 import { MarkdownText } from "./MarkdownText";
 
 export interface HistoryReaderActions {
-  onJump?: (message: MessageView) => void;
   onFork?: (message: MessageView) => void;
   onOpenMap?: (message: MessageView) => void;
   onOpenCodex?: (message: MessageView) => void;
-  onOpenAsset?: (message: MessageView) => void;
 }
 
 export interface HistoryReaderProps {
@@ -114,8 +112,8 @@ export function HistoryEvent({ message, currentTurn, actions }: { message: Messa
 function HistoryActions({ message, actions }: { message: MessageView; actions?: HistoryReaderActions }) {
   const { t } = useTranslation(["surfaces", "history"]);
   if (!actions) return null;
-  const callbacks = { jump: actions.onJump, fork: actions.onFork, map: actions.onOpenMap, codex: actions.onOpenCodex, asset: actions.onOpenAsset };
-  const available = availableHistoryActions(callbacks);
+  const callbacks = { fork: actions.onFork, map: actions.onOpenMap, codex: actions.onOpenCodex };
+  const available = availableHistoryActions(callbacks, message);
   if (!available.length) return null;
   return <div className="history-actions" role="group" aria-label={t("history:eventActions", { turn: message.turn })}>{available.map((action) => <button key={action} type="button" className="history-action" onClick={() => callbacks[action]?.(message)}>{t(`history:actions.${action}`)}</button>)}</div>;
 }
