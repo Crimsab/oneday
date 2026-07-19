@@ -17,15 +17,9 @@ on:
 
 permissions:
   actions: write
-  attestations: write
   contents: write
-  id-token: write
   issues: write
-  packages: write
   pull-requests: write
-
-env:
-  REGISTRY: ghcr.io
 
 concurrency:
   group: release-please-${{ github.event_name == 'workflow_run' && 'prepare' || github.run_id }}
@@ -33,49 +27,47 @@ concurrency:
 
 jobs:
   release:
-    name: Release Please
+    name: Prepare release
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
-    timeout-minutes: 60
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
 
     steps:
-      - name: Run release-please
+      - name: Run Release Please
         id: release
         if: inputs.release_tag == ''
         uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve release target
-        id: release_target
+      - name: Resolve publication target
+        id: target
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_CREATED: ${{ steps.release.outputs.release_created }}
           CREATED_TAG: ${{ steps.release.outputs.tag_name }}
           REQUESTED_TAG: ${{ inputs.release_tag }}
         run: |
-          should_release="${RELEASE_CREATED:-false}"
+          should_publish="${RELEASE_CREATED:-false}"
           tag="${CREATED_TAG:-}"
 
           if [[ -n "$REQUESTED_TAG" ]]; then
-            if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            if [[ ! "$REQUESTED_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
               echo "Invalid release tag: $REQUESTED_TAG" >&2
               exit 1
             fi
-
             gh release view "$REQUESTED_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
-            should_release=true
+            should_publish=true
             tag="$REQUESTED_TAG"
           fi
 
-          if [[ "$should_release" == "true" && -z "$tag" ]]; then
+          if [[ "$should_publish" == "true" && -z "$tag" ]]; then
             echo "Release target is missing its tag" >&2
             exit 1
           fi
-
           {
-            echo "release_created=$should_release"
-            echo "tag_name=$tag"
+            echo "should_publish=$should_publish"
+            echo "tag=$tag"
           } >> "$GITHUB_OUTPUT"
 
       - name: Dispatch lightweight release validation
@@ -89,171 +81,12 @@ jobs:
             --state open \
             --json headRefName \
             --jq '[.[] | select(.headRefName | startswith("release-please--branches--main"))][0].headRefName // empty')"
-
-          if [[ -z "$branch" ]]; then
-            echo "Release Please reported a pull request but no release branch was found" >&2
-            exit 1
-          fi
-
+          [[ -n "$branch" ]] || { echo "Release Please PR branch was not found" >&2; exit 1; }
           gh workflow run release-pr.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
 
-      - name: Check out release tag
-        if: steps.release_target.outputs.release_created == 'true'
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          ref: ${{ steps.release_target.outputs.tag_name }}
-
-      - name: Set up Go
-        if: steps.release_target.outputs.release_created == 'true'
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
-        with:
-          go-version-file: go.mod
-          cache: false
-
-      - name: Compute build metadata
-        id: build_metadata
-        if: steps.release_target.outputs.release_created == 'true'
-        run: |
-          tag="${{ steps.release_target.outputs.tag_name }}"
-          image_version="${tag#v}"
-          commit="$(git rev-parse HEAD)"
-          build_date="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-
-          export VERSION="$tag"
-          export COMMIT="$commit"
-          export BUILD_DATE="$build_date"
-          export DIRTY=false
-
-          {
-            echo "VERSION=$tag"
-            echo "COMMIT=$commit"
-            echo "BUILD_DATE=$build_date"
-            echo "DIRTY=false"
-            echo "LDFLAGS=$(bash ./scripts/build-ldflags.sh)"
-            echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}"
-            echo "IMAGE_VERSION=$image_version"
-            echo "IMAGE_MINOR=${image_version%.*}"
-            echo "IMAGE_MAJOR=${image_version%%.*}"
-          } >> "$GITHUB_ENV"
-
-      - name: Build release artifacts
-        if: steps.release_target.outputs.release_created == 'true'
-        run: |
-          mkdir -p dist package release
-
-          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-linux-amd64 ./cmd/oneday
-          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-benchmark-linux-amd64 ./cmd/oneday-benchmark
-          GOOS=linux GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-ascii-benchmark-linux-amd64 ./cmd/oneday-ascii-benchmark
-
-          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-windows-amd64.exe ./cmd/oneday
-          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-benchmark-windows-amd64.exe ./cmd/oneday-benchmark
-          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/oneday-ascii-benchmark-windows-amd64.exe ./cmd/oneday-ascii-benchmark
-
-          version_output="$(dist/oneday-linux-amd64 --version)"
-          printf '%s\n' "$version_output"
-          grep -Fqx "oneday $VERSION" <<<"$version_output"
-          grep -Fqx "commit: ${COMMIT:0:12}" <<<"$version_output"
-          grep -Fqx 'dirty: false' <<<"$version_output"
-
-          linux_dir="package/oneday-linux-amd64"
-          mkdir -p "$linux_dir"
-          cp dist/oneday-linux-amd64 "$linux_dir/oneday"
-          cp dist/oneday-benchmark-linux-amd64 "$linux_dir/oneday-benchmark"
-          cp dist/oneday-ascii-benchmark-linux-amd64 "$linux_dir/oneday-ascii-benchmark"
-          cp config.example.yaml "$linux_dir/config.example.yaml"
-          tar -C package -czf release/oneday-linux-amd64.tar.gz oneday-linux-amd64
-
-          windows_dir="package/oneday-windows-amd64"
-          mkdir -p "$windows_dir"
-          cp dist/oneday-windows-amd64.exe "$windows_dir/oneday.exe"
-          cp dist/oneday-benchmark-windows-amd64.exe "$windows_dir/oneday-benchmark.exe"
-          cp dist/oneday-ascii-benchmark-windows-amd64.exe "$windows_dir/oneday-ascii-benchmark.exe"
-          cp config.example.yaml "$windows_dir/config.example.yaml"
-          cd package
-          zip -r ../release/oneday-windows-amd64.zip oneday-windows-amd64
-
-      - name: Upload artifacts to GitHub Release
-        if: steps.release_target.outputs.release_created == 'true'
+      - name: Dispatch public release publisher
+        if: steps.target.outputs.should_publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ steps.release_target.outputs.tag_name }}" release/* --clobber
-
-      - name: Set up Docker Buildx
-        if: steps.release_target.outputs.release_created == 'true'
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-
-      - name: Log in to GitHub Container Registry
-        if: steps.release_target.outputs.release_created == 'true'
-        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Generate container metadata
-        id: docker_metadata
-        if: steps.release_target.outputs.release_created == 'true'
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        env:
-          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ env.IMAGE_VERSION }}
-            type=raw,value=${{ env.IMAGE_MINOR }}
-            type=raw,value=${{ env.IMAGE_MAJOR }}
-            type=raw,value=latest
-          labels: |
-            org.opencontainers.image.title=OneDay
-            org.opencontainers.image.description=Persistent AI storytelling engine with browser and terminal clients.
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.url=https://github.com/${{ github.repository }}
-            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
-            org.opencontainers.image.licenses=MIT
-            org.opencontainers.image.revision=${{ env.COMMIT }}
-            org.opencontainers.image.created=${{ env.BUILD_DATE }}
-          annotations: |
-            org.opencontainers.image.title=OneDay
-            org.opencontainers.image.description=Persistent AI storytelling engine with browser and terminal clients.
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.url=https://github.com/${{ github.repository }}
-            org.opencontainers.image.documentation=https://github.com/${{ github.repository }}#readme
-            org.opencontainers.image.licenses=MIT
-            org.opencontainers.image.revision=${{ env.COMMIT }}
-            org.opencontainers.image.created=${{ env.BUILD_DATE }}
-
-      - name: Build and publish container image
-        id: docker_publish
-        if: steps.release_target.outputs.release_created == 'true'
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        env:
-          DOCKER_BUILD_RECORD_UPLOAD: "false"
-        with:
-          context: .
-          file: gateway/Dockerfile
-          platforms: linux/amd64
-          push: true
-          build-args: |
-            VERSION=${{ env.VERSION }}
-            COMMIT=${{ env.COMMIT }}
-            BUILD_DATE=${{ env.BUILD_DATE }}
-            DIRTY=${{ env.DIRTY }}
-          tags: ${{ steps.docker_metadata.outputs.tags }}
-          labels: ${{ steps.docker_metadata.outputs.labels }}
-          annotations: ${{ steps.docker_metadata.outputs.annotations }}
-          provenance: mode=max
-          sbom: true
-
-      - name: Attest the public container image
-        if: steps.release_target.outputs.release_created == 'true' && github.event.repository.private == false
-        uses: actions/attest@a1948c3f048ba23858d222213b7c278aabede763 # v4.1.1
-        with:
-          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          subject-digest: ${{ steps.docker_publish.outputs.digest }}
-          push-to-registry: true
-
-      - name: Refresh public documentation
-        if: steps.release_target.outputs.release_created == 'true' && github.event.repository.private == false
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref main
+          RELEASE_TAG: ${{ steps.target.outputs.tag }}
+        run: gh workflow run publish-release.yml --repo "$GITHUB_REPOSITORY" --ref main -f release_tag="$RELEASE_TAG"

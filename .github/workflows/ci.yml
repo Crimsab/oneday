@@ -22,7 +22,7 @@ concurrency:
 jobs:
   verify:
     name: Full verification
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     steps:
@@ -34,6 +34,16 @@ jobs:
 
       - name: Scan tracked content
         run: docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:v8.30.1 dir --no-banner --redact /repo
+
+      - name: Scan locked dependencies for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -87,7 +97,6 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "$ldflags" -o dist/oneday-ascii-benchmark-windows-amd64.exe ./cmd/oneday-ascii-benchmark
 
       - name: Check gateway formatting
-        continue-on-error: true
         run: cargo fmt --manifest-path gateway/Cargo.toml -- --check
 
       - name: Test gateway

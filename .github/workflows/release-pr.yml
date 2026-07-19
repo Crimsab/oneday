@@ -17,7 +17,7 @@ jobs:
   validate-and-merge:
     name: Validate and merge release metadata
     if: ${{ startsWith(github.ref_name, 'release-please--branches--main') }}
-    runs-on: ${{ fromJSON(github.event.repository.private && '["self-hosted","Linux","X64","homelab-main","oneday"]' || '["ubuntu-latest"]') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:

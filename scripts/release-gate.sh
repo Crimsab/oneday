@@ -24,6 +24,24 @@ step "Verification"
 run make universal-release-check
 run make friend-safe-check
 
+step "Release Supply Chain"
+run bash -n \
+  scripts/release-metadata.sh \
+  scripts/release-package.sh \
+  scripts/release-prepare-desktop.sh \
+  scripts/release-desktop-artifacts.sh \
+  scripts/release-updater-manifest.sh \
+  scripts/release-sbom-verify.sh
+release_metadata="$(mktemp)"
+trap 'rm -f "${release_metadata}"' EXIT
+run ./scripts/release-metadata.sh v0.0.0-release-check "${release_metadata}"
+run jq -e '
+  .applicationVersion == .desktopVersion and
+  (.gatewayProtocolVersion | type == "number") and
+  (.databaseSchemaVersion | type == "number") and
+  (.sourceCommit | length == 40)
+' "${release_metadata}"
+
 step "Release Artifact Builds"
 run make build
 run make build-bench

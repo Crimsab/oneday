@@ -6,13 +6,15 @@ on:
     branches: [main]
     paths:
       - "desktop/**"
-      - "docs/desktop.md"
+      - "scripts/release-prepare-desktop.sh"
+      - "scripts/release-desktop-artifacts.sh"
       - ".github/workflows/desktop.yml"
   push:
     branches: [main]
     paths:
       - "desktop/**"
-      - "docs/desktop.md"
+      - "scripts/release-prepare-desktop.sh"
+      - "scripts/release-desktop-artifacts.sh"
       - ".github/workflows/desktop.yml"
 
 permissions:
@@ -26,24 +28,25 @@ jobs:
   package:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
         include:
           - name: Linux AppImage and deb
             runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
             bundles: appimage,deb
-            artifact: oneday-linux
+            artifact: oneday-desktop-linux-ci
             paths: |
               desktop/src-tauri/target/release/bundle/appimage/*.AppImage
               desktop/src-tauri/target/release/bundle/deb/*.deb
           - name: Windows NSIS
             runner: windows-2025
+            target: x86_64-pc-windows-msvc
             bundles: nsis
-            artifact: oneday-windows
-            paths: |
-              desktop/src-tauri/target/release/bundle/nsis/*.exe
+            artifact: oneday-desktop-windows-ci
+            paths: desktop/src-tauri/target/release/bundle/nsis/*.exe
 
     steps:
       - name: Check out repository
@@ -55,6 +58,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
 
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97.0
         with:
@@ -65,24 +74,44 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Install desktop dependencies
-        working-directory: desktop
-        run: bun install --frozen-lockfile
+      - name: Install locked JavaScript dependencies
+        shell: bash
+        run: |
+          (cd gateway/web && bun install --frozen-lockfile)
+          (cd desktop && bun install --frozen-lockfile)
 
-      - name: Test local desktop UI
-        working-directory: desktop
-        run: bun run test
+      - name: Test desktop code
+        shell: bash
+        run: |
+          (cd desktop && bun run test)
+          cargo fmt --manifest-path desktop/src-tauri/Cargo.toml -- --check
+          cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 
-      - name: Build local desktop UI
-        working-directory: desktop
-        run: bun run build
-
-      - name: Check Rust desktop code
-        working-directory: desktop
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build standalone package inputs
+        shell: bash
+        env:
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: |
+          version="$(jq -r .version desktop/package.json)"
+          commit="$(git rev-parse HEAD)"
+          build_date="$(git show -s --format=%cI HEAD)"
+          export VERSION="v$version" COMMIT="$commit" BUILD_DATE="$build_date" DIRTY=false
+          ldflags="$(bash scripts/build-ldflags.sh)"
+          extension=""
+          [[ "$RUNNER_OS" == "Windows" ]] && extension=".exe"
+          mkdir -p desktop-inputs
+          go build -trimpath -buildvcs=false -ldflags "$ldflags" -o "desktop-inputs/oneday$extension" ./cmd/oneday
+          cargo build --locked --release --manifest-path gateway/Cargo.toml
+          (cd gateway/web && bun run build)
+          ./scripts/release-prepare-desktop.sh \
+            "v$version" "$TARGET_TRIPLE" \
+            "desktop-inputs/oneday$extension" \
+            "gateway/target/release/oneday-gateway$extension" \
+            gateway/web/dist
 
       - name: Build unsigned desktop package
         working-directory: desktop
+        shell: bash
         run: bun run tauri build --bundles ${{ matrix.bundles }}
 
       - name: Upload short-lived installers
@@ -91,4 +120,4 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.paths }}
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 2

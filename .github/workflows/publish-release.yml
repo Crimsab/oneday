@@ -1,0 +1,440 @@
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing vX.Y.Z GitHub release tag
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release lineage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      commit: ${{ steps.release.outputs.commit }}
+      source_date: ${{ steps.release.outputs.source_date }}
+    permissions:
+      contents: read
+    steps:
+      - name: Validate tag syntax
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]] || exit 1
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+
+      - name: Check out exact release tag
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ inputs.release_tag }}
+          fetch-depth: 0
+
+      - name: Resolve coordinated versions
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          ./scripts/release-metadata.sh "$RELEASE_TAG" release-metadata.json
+          [[ "$(jq -r .releaseTag release-metadata.json)" == "$RELEASE_TAG" ]]
+          [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" == "$(git rev-parse HEAD)" ]]
+          {
+            echo "tag=$RELEASE_TAG"
+            echo "version=${RELEASE_TAG#v}"
+            echo "commit=$(jq -r .sourceCommit release-metadata.json)"
+            echo "source_date=$(jq -r .sourceDate release-metadata.json)"
+          } >> "$GITHUB_OUTPUT"
+
+  cli:
+    name: Reproducible CLI packages
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Scan release source dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Build twice and compare release inputs
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          ./scripts/release-package.sh "$RELEASE_TAG" first
+          ./scripts/release-package.sh "$RELEASE_TAG" second
+          (cd first && sha256sum ./* | LC_ALL=C sort) > first.sha256
+          (cd second && sha256sum ./* | LC_ALL=C sort) > second.sha256
+          diff -u first.sha256 second.sha256
+          mv first release
+
+      - name: Generate source SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: spdx-json
+          output-file: release/oneday-${{ needs.validate.outputs.version }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate SBOM
+        run: ./scripts/release-sbom-verify.sh "release/oneday-${{ needs.validate.outputs.version }}.spdx.json"
+
+      - name: Attest package provenance
+        if: github.event.repository.private == false
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: |
+            release/*.tar.gz
+            release/*.zip
+
+      - name: Attest package SBOM
+        if: github.event.repository.private == false
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: |
+            release/*.tar.gz
+            release/*.zip
+          sbom-path: release/oneday-${{ needs.validate.outputs.version }}.spdx.json
+
+      - name: Upload release inputs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-cli
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
+
+  desktop:
+    name: Signed desktop (${{ matrix.platform }})
+    if: vars.ONEDAY_DESKTOP_RELEASES_ENABLED == 'true'
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: appimage,deb
+          - platform: windows
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Validate preconfigured updater signing
+        shell: bash
+        env:
+          ONEDAY_UPDATER_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          ONEDAY_UPDATER_PUBKEY: ${{ vars.ONEDAY_UPDATER_PUBKEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          [[ "$ONEDAY_UPDATER_ENDPOINT" == https://* ]]
+          [[ -n "$ONEDAY_UPDATER_PUBKEY" ]]
+          [[ -n "$TAURI_SIGNING_PRIVATE_KEY" ]]
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@1a3a6d54512beeaffd394f8d516ca16f2c506a20 # 1.97.0
+        with:
+          components: rustfmt, clippy
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install locked JavaScript dependencies
+        shell: bash
+        run: |
+          (cd gateway/web && bun install --frozen-lockfile)
+          (cd desktop && bun install --frozen-lockfile)
+
+      - name: Build version-matched standalone inputs
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          SOURCE_COMMIT: ${{ needs.validate.outputs.commit }}
+          SOURCE_DATE: ${{ needs.validate.outputs.source_date }}
+          TARGET_TRIPLE: ${{ matrix.target }}
+        run: |
+          export VERSION="$RELEASE_TAG" COMMIT="$SOURCE_COMMIT" BUILD_DATE="$SOURCE_DATE" DIRTY=false
+          ldflags="$(bash scripts/build-ldflags.sh)"
+          extension=""
+          [[ "$RUNNER_OS" == "Windows" ]] && extension=".exe"
+          mkdir -p desktop-inputs
+          go build -trimpath -buildvcs=false -ldflags "$ldflags" -o "desktop-inputs/oneday$extension" ./cmd/oneday
+          cargo build --locked --release --manifest-path gateway/Cargo.toml
+          (cd gateway/web && bun run build)
+          ./scripts/release-prepare-desktop.sh \
+            "$RELEASE_TAG" "$TARGET_TRIPLE" \
+            "desktop-inputs/oneday$extension" \
+            "gateway/target/release/oneday-gateway$extension" \
+            gateway/web/dist
+
+      - name: Build updater-signed desktop bundles
+        working-directory: desktop
+        shell: bash
+        env:
+          ONEDAY_UPDATER_ENDPOINT: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
+          ONEDAY_UPDATER_PUBKEY: ${{ vars.ONEDAY_UPDATER_PUBKEY }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: bun run tauri build --config src-tauri/tauri.release.conf.json --bundles ${{ matrix.bundles }}
+
+      - name: Normalize desktop assets
+        shell: bash
+        run: |
+          ./scripts/release-desktop-artifacts.sh \
+            "${{ matrix.platform }}" \
+            "${{ needs.validate.outputs.version }}" \
+            desktop/src-tauri/target/release/bundle \
+            release
+
+      - name: Attest desktop provenance
+        if: github.event.repository.private == false
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: release/*
+
+      - name: Upload signed desktop assets
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-desktop-${{ matrix.platform }}
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
+
+  container:
+    name: Publish container
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+    env:
+      REGISTRY: ghcr.io
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate container metadata
+        id: metadata
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
+          tags: |
+            type=raw,value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=OneDay
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.revision=${{ needs.validate.outputs.commit }}
+            org.opencontainers.image.created=${{ needs.validate.outputs.source_date }}
+
+      - name: Build and publish container image
+        id: publish
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: "false"
+        with:
+          context: .
+          file: gateway/Dockerfile
+          platforms: linux/amd64
+          push: true
+          build-args: |
+            VERSION=${{ needs.validate.outputs.tag }}
+            COMMIT=${{ needs.validate.outputs.commit }}
+            BUILD_DATE=${{ needs.validate.outputs.source_date }}
+            DIRTY=false
+          tags: ${{ steps.metadata.outputs.tags }}
+          labels: ${{ steps.metadata.outputs.labels }}
+          annotations: ${{ steps.metadata.outputs.annotations }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Scan published container
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository }}@${{ steps.publish.outputs.digest }}
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+
+      - name: Attest public container
+        if: github.event.repository.private == false
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository }}
+          subject-digest: ${{ steps.publish.outputs.digest }}
+          push-to-registry: true
+
+  publish:
+    name: Publish checksummed release assets
+    if: >-
+      always() &&
+      needs.validate.result == 'success' &&
+      needs.cli.result == 'success' &&
+      needs.container.result == 'success' &&
+      (needs.desktop.result == 'success' || needs.desktop.result == 'skipped')
+    needs: [validate, cli, desktop, container]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Check out release scripts
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ needs.validate.outputs.tag }}
+
+      - name: Download CLI release inputs
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-cli
+          path: release
+
+      - name: Download Linux desktop inputs
+        if: needs.desktop.result == 'success'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-desktop-linux
+          path: release
+
+      - name: Download Windows desktop inputs
+        if: needs.desktop.result == 'success'
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: release-desktop-windows
+          path: release
+
+      - name: Generate and verify HTTPS updater feed
+        if: needs.desktop.result == 'success'
+        env:
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.validate.outputs.version }}
+          UPDATER_PUBKEY: ${{ vars.ONEDAY_UPDATER_PUBKEY }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y minisign
+          ./scripts/release-updater-manifest.sh generate \
+            "$RELEASE_TAG" "$GITHUB_REPOSITORY" release release/latest.json \
+            "OneDay $RELEASE_VERSION"
+          ./scripts/release-updater-manifest.sh verify \
+            "$RELEASE_TAG" "$GITHUB_REPOSITORY" release release/latest.json \
+            "$UPDATER_PUBKEY"
+
+      - name: Write checksums
+        run: |
+          (
+            cd release
+            mapfile -d '' assets < <(find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | LC_ALL=C sort -z)
+            sha256sum "${assets[@]}"
+          ) > SHA256SUMS.tmp
+          mv SHA256SUMS.tmp release/SHA256SUMS
+          (cd release && sha256sum --check SHA256SUMS --ignore-missing)
+
+      - name: Attest release checksums
+        if: github.event.repository.private == false
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: release/SHA256SUMS
+
+      - name: Attest updater index
+        if: github.event.repository.private == false && needs.desktop.result == 'success'
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: release/latest.json
+
+      - name: Upload immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+        run: gh release upload "$RELEASE_TAG" release/* --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Refresh public documentation
+        if: github.event.repository.private == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run docs.yml --repo "$GITHUB_REPOSITORY" --ref main
