@@ -823,7 +823,17 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await page.goto("/");
   await page.getByRole("button", { name: "Options" }).click();
   const dialog = page.getByRole("dialog", { name: "Options" });
-  await dialog.getByRole("button", { name: /AI and models/ }).click();
+  await expect(dialog.locator(".settings-scope-label")).toHaveText("Player preferences");
+  await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
+  const search = dialog.getByPlaceholder("Search settings");
+  await search.fill("message diagnostics");
+  const diagnosticsResult = dialog.getByRole("button", { name: /Message diagnostics/ });
+  await diagnosticsResult.focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog.getByRole("checkbox", { name: "Show diagnostics in messages" })).toBeFocused();
+  await dialog.getByRole("button", { name: "Operator configuration" }).click();
+  await expect(dialog.getByText("Operator configuration", { exact: true }).first()).toBeVisible();
+  await expect(dialog.getByText("Saved credentials are never returned to the browser; enter a replacement only when changing one.")).toBeVisible();
 
   const providerChoices = dialog.getByRole("radiogroup", { name: "Image provider" });
   await expect(providerChoices.getByRole("radio").first()).toContainText("Codex OAuth");
@@ -883,7 +893,9 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await page.reload();
   await page.getByRole("button", { name: "Opzioni" }).click();
   const italianDialog = page.getByRole("dialog", { name: "Opzioni" });
-  await italianDialog.getByRole("button", { name: /IA e modelli/ }).click();
+  await expect(italianDialog.locator(".settings-scope-label")).toHaveText("Preferenze giocatore");
+  await expect(italianDialog.locator('input[type="password"]')).toHaveCount(0);
+  await italianDialog.getByRole("button", { name: "Configurazione operatore" }).click();
   await expect(italianDialog.getByText("Usa l’abbonamento Codex tramite imagegen-bridge. Non richiede OPENAI_API_KEY.")).toBeVisible();
   await expect(italianDialog.getByLabel("Token del bridge (facoltativo)")).toHaveAttribute("type", "password");
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
@@ -915,7 +927,7 @@ test("shows canonical visual lineage and branch-local selection controls", async
   await page.getByRole("button", { name: "Options" }).click();
 
   const dialog = page.getByRole("dialog");
-  const search = dialog.getByPlaceholder("Search options");
+  const search = dialog.getByPlaceholder("Search settings");
   await expect(search).toBeVisible();
   await search.fill("known location icons");
   await expect(dialog.getByRole("button", { name: /Map art/ })).toBeVisible();
@@ -939,7 +951,7 @@ test("keeps asset prompt edits stable and reveals completed image versions", asy
   await page.goto("/");
   await page.getByRole("button", { name: "Options" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByPlaceholder("Search options").fill("known location icons");
+  await dialog.getByPlaceholder("Search settings").fill("known location icons");
   await dialog.getByRole("button", { name: /Map art/ }).click();
 
   const prompt = dialog.getByLabel("Asset prompt");
@@ -983,7 +995,7 @@ test("paints a full-resolution mask and submits inpainting without fallback", as
   await page.goto("/");
   await page.getByRole("button", { name: "Options" }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByPlaceholder("Search options").fill("known location icons");
+  await dialog.getByPlaceholder("Search settings").fill("known location icons");
   await dialog.getByRole("button", { name: /Map art/ }).click();
 
   await expect(dialog.getByRole("radio", { name: /Directed edit/ })).toBeVisible();

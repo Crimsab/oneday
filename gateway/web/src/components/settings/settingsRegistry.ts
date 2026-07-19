@@ -1,8 +1,10 @@
-export type SettingsSectionId = "appearance" | "typography" | "gameplay" | "audio" | "visuals" | "models" | "advanced";
-export type SettingsNavigationGroupId = "personalization" | "experience" | "system";
+export type SettingsSectionId = "appearance" | "typography" | "gameplay" | "audio" | "visuals" | "preferences" | "operator";
+export type SettingsScope = "player" | "operator";
+export type SettingsNavigationGroupId = "player" | "operator";
 
 export interface SettingsCategory {
   id: SettingsSectionId;
+  scope: SettingsScope;
   title: string;
   description: string;
 }
@@ -21,19 +23,18 @@ export interface SettingsNavigationGroup {
 }
 
 export const settingsCategories: SettingsCategory[] = [
-  { id: "appearance", title: "Appearance", description: "Interface color, density, language, and workspace layout." },
-  { id: "typography", title: "Typography", description: "Fonts, reading scale, style, color, and local library." },
-  { id: "gameplay", title: "Gameplay", description: "Challenge behavior and accessibility policy." },
-  { id: "audio", title: "Spoken audio", description: "Speech, voices, language, and pronunciation." },
-  { id: "visuals", title: "Visuals and map", description: "Image direction, generated assets, and map art." },
-  { id: "models", title: "AI and models", description: "Provider routing and model configuration." },
-  { id: "advanced", title: "Advanced", description: "Runtime transport, capabilities, and diagnostics." },
+  { id: "appearance", scope: "player", title: "Appearance", description: "Interface color, density, language, and workspace layout." },
+  { id: "typography", scope: "player", title: "Typography", description: "Fonts, reading scale, style, color, and local library." },
+  { id: "gameplay", scope: "player", title: "Gameplay", description: "Challenge behavior and accessibility policy." },
+  { id: "audio", scope: "player", title: "Spoken audio", description: "Speech, voices, language, and pronunciation." },
+  { id: "visuals", scope: "player", title: "Visuals and map", description: "Story art direction, generated assets, and map art." },
+  { id: "preferences", scope: "player", title: "Preferences and portability", description: "Message details, local preferences, themes, and reset." },
+  { id: "operator", scope: "operator", title: "Operator configuration", description: "Protected provider, endpoint, readiness, and support configuration." },
 ];
 
 export const settingsNavigationGroups: SettingsNavigationGroup[] = [
-  { id: "personalization", sections: ["appearance", "typography"] },
-  { id: "experience", sections: ["gameplay", "audio", "visuals"] },
-  { id: "system", sections: ["models", "advanced"] },
+  { id: "player", sections: ["appearance", "typography", "gameplay", "audio", "visuals", "preferences"] },
+  { id: "operator", sections: ["operator"] },
 ];
 
 export const settingsSearchEntries: SettingsSearchEntry[] = [
@@ -60,16 +61,18 @@ export const settingsSearchEntries: SettingsSearchEntry[] = [
   entry("asset-generation", "visuals", "Asset generation", "Generate eligible character and location imagery.", "image jobs portraits locations"),
   entry("asset-versions", "visuals", "Asset versions", "Inspect, select, regenerate, undo, and redo visual versions.", "history prompt canonical"),
   entry("visual-cleanup", "visuals", "Visual cleanup", "Preview and remove unreferenced generated files.", "image maintenance files"),
-  entry("provider-order", "models", "Provider order", "Set AI provider priority and enablement.", "routing fallback codex"),
-  entry("narrative-model", "models", "Narrative model", "Choose the primary story model.", "ai narrator"),
-  entry("utility-model", "models", "Utility model", "Choose the model for supporting tasks.", "ai helper"),
-  entry("repair-model", "models", "Repair model", "Configure structured-output repair and fallbacks.", "retry json"),
-  entry("image-model", "models", "Image generation model", "Configure provider, model, sizes, and output format.", "imagegen codex responses openai litellm external openclaw"),
-  entry("embedding-model", "models", "Embedding model", "Configure RAG embedding provider and model.", "vector memory rag"),
-  entry("runtime-status", "advanced", "Runtime status", "Inspect transport, capabilities, and active theme.", "sse gateway turn diagnostics"),
-  entry("configuration-revision", "advanced", "Configuration revision", "Inspect and reload the active model configuration.", "config version refresh"),
-  entry("generation-diagnostics", "advanced", "Generation diagnostics", "Show or hide provider timing and attempt details below story messages.", "trace telemetry provider debugging"),
-  entry("preferences-portability", "advanced", "Preference portability", "Export, import, or reset browser preferences.", "json backup restore defaults"),
+  entry("generation-diagnostics", "preferences", "Message diagnostics", "Choose whether to show redacted generation details below messages.", "trace telemetry provider debugging"),
+  entry("preferences-portability", "preferences", "Preference portability", "Export, import, or reset browser preferences.", "json backup restore defaults"),
+  entry("theme-portability", "preferences", "Theme portability", "Export or import a personal theme and optional locally stored fonts.", "theme zip font browser local"),
+  entry("provider-order", "operator", "Provider routing", "Set AI provider priority and enablement.", "routing fallback codex"),
+  entry("narrative-model", "operator", "Narrative model", "Choose the primary story model.", "ai narrator"),
+  entry("utility-model", "operator", "Utility model", "Choose the model for supporting tasks.", "ai helper"),
+  entry("repair-model", "operator", "Repair model", "Configure structured-output repair and fallbacks.", "retry json"),
+  entry("image-model", "operator", "Image generation model", "Configure provider, model, sizes, endpoint, and write-only credentials.", "imagegen endpoint api key credential secret codex responses openai litellm"),
+  entry("embedding-model", "operator", "Embedding model", "Configure RAG embedding provider and model.", "vector memory rag"),
+  entry("runtime-status", "operator", "Runtime readiness", "Inspect transport, capabilities, and active configuration.", "sse gateway turn diagnostics readiness"),
+  entry("configuration-revision", "operator", "Configuration revision", "Inspect and reload the active model configuration.", "config version refresh"),
+  entry("support-bundle", "operator", "Support bundle", "Create a redacted technical report for support.", "diagnostics logs telemetry redacted issue"),
 ];
 
 export function searchSettings(query: string): SettingsSearchEntry[] {

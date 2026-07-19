@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Bot, Gamepad2, Image, Palette, Search, SlidersHorizontal, Type, Volume2, type LucideIcon } from "lucide-react";
+import { Bot, Gamepad2, Image, Palette, Search, Settings2, Type, Volume2, type LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { searchSettings, settingsCategories, settingsNavigationGroups, settingsSearchEntries, type SettingsSearchEntry, type SettingsSectionId } from "./settingsRegistry";
 
@@ -50,10 +50,10 @@ export function SettingsWorkspace({ sections, initialSection = "appearance" }: {
   };
 
   return (
-    <div className="settings-workspace">
+    <div className="settings-workspace" data-settings-scope={category.scope}>
       <aside className="settings-sidebar" aria-label={t("options:categories")}>
         <nav>
-          {settingsNavigationGroups.map((group) => <div className="settings-nav-group" key={group.id}>
+          {settingsNavigationGroups.map((group) => <div className="settings-nav-group" key={group.id} data-settings-scope={group.id}>
             <h3>{t(`settings_ui:sidebar.groups.${group.id}`)}</h3>
             <div>
               {group.sections.map((sectionId) => {
@@ -84,6 +84,7 @@ export function SettingsWorkspace({ sections, initialSection = "appearance" }: {
           ) : (
             <section className="settings-section" aria-labelledby={`settings-${active}-title`}>
               <header>
+                <p className="settings-scope-label">{t(`settings_ui:sidebar.groups.${category.scope}`)}</p>
                 <h3 id={`settings-${active}-title`} tabIndex={-1}>{t(`options:${category.id}`)}</h3>
                 <p>{t(`options:${category.id}Desc`)}</p>
               </header>
@@ -102,8 +103,8 @@ const categoryIcons: Record<SettingsSectionId, LucideIcon> = {
   gameplay: Gamepad2,
   audio: Volume2,
   visuals: Image,
-  models: Bot,
-  advanced: SlidersHorizontal,
+  preferences: Settings2,
+  operator: Bot,
 };
 
 function SettingsSearchResults({ query, results, onOpen }: { query: string; results: SettingsSearchEntry[]; onOpen: (result: SettingsSearchEntry) => void }) {
@@ -113,7 +114,7 @@ function SettingsSearchResults({ query, results, onOpen }: { query: string; resu
       <header><h3>{t("options:results")}</h3><p>{results.length ? t("common:match", { count: results.length, query }) : t("options:noMatch", { query })}</p></header>
       {results.length > 0 && <div className="settings-result-list">{results.map((result) => {
         const category = settingsCategories.find((item) => item.id === result.section);
-        return <button type="button" key={result.id} onClick={() => onOpen(result)}><span>{category ? t(`options:${category.id}`) : ""}</span><strong>{t(`settings_search:${result.id}.0`)}</strong><small>{t(`settings_search:${result.id}.1`)}</small></button>;
+        return <button type="button" key={result.id} onClick={() => onOpen(result)}><span>{category ? t(`settings_ui:sidebar.groups.${category.scope}`) : ""}</span><strong>{t(`settings_search:${result.id}.0`)}</strong><small>{t(`settings_search:${result.id}.1`)}</small></button>;
       })}</div>}
     </section>
   );

@@ -15,6 +15,16 @@ describe("settings registry", () => {
     expect(searchSettings("   ")).toEqual([]);
   });
 
+  it("keeps player preferences and protected operator configuration in distinct sections", () => {
+    const playerSections = new Set(settingsCategories.filter((item) => item.scope === "player").map((item) => item.id));
+    const operatorSections = new Set(settingsCategories.filter((item) => item.scope === "operator").map((item) => item.id));
+    expect(playerSections).toContain("preferences");
+    expect(playerSections).not.toContain("operator");
+    expect(operatorSections).toEqual(new Set(["operator"]));
+    expect(searchSettings("api key").every((item) => item.section === "operator")).toBe(true);
+    expect(searchSettings("reset browser preferences").every((item) => item.section === "preferences")).toBe(true);
+  });
+
   it("groups each settings category exactly once", () => {
     const grouped = settingsNavigationGroups.flatMap((group) => group.sections);
     expect(grouped).toHaveLength(settingsCategories.length);

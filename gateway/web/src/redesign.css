@@ -951,6 +951,7 @@ summary:focus-visible {
 
 .settings-sidebar nav { display: grid; gap: 17px; }
 .settings-nav-group { display: grid; gap: 5px; }
+.settings-nav-group[data-settings-scope="operator"] { border-top: 1px solid var(--line-soft); padding-top: 14px; }
 .settings-nav-group > h3 { margin: 0; padding: 0 9px 3px; color: var(--faint); font-size: 0.625rem; font-weight: 630; line-height: 1.3; }
 .settings-nav-group > div { display: grid; gap: 2px; }
 
@@ -1036,11 +1037,13 @@ summary:focus-visible {
 .settings-toolbar input::-webkit-search-cancel-button { display: none; }
 .settings-content { background: #0d1114; padding: clamp(20px, 3vw, 34px); }
 .settings-section, .settings-search-results { width: min(100%, 1040px); gap: 24px; }
+.settings-scope-label { margin: 0 0 5px; color: var(--faint); font-size: 0.6875rem; font-weight: 650; letter-spacing: 0.08em; line-height: 1.2; text-transform: uppercase; }
 .settings-section > header h3, .settings-search-results > header h3 { font-size: clamp(1.5rem, 2.6vw, 2rem); }
 .settings-section > header p, .settings-search-results > header p { font-size: 0.8125rem; }
 
 .general-settings-stack,
-.gameplay-settings-stack { display: grid; gap: 14px; }
+.gameplay-settings-stack,
+.operator-settings-stack { display: grid; gap: 14px; }
 
 .settings-group {
   min-width: 0;
@@ -1348,6 +1351,7 @@ summary:focus-visible {
   .settings-sidebar-title { display: none; }
   .settings-sidebar nav { display: flex; overflow-x: auto; gap: 5px; padding-bottom: 2px; }
   .settings-nav-group, .settings-nav-group > div { display: contents; }
+  .settings-nav-group[data-settings-scope="operator"] { border-top: 0; padding-top: 0; }
   .settings-nav-group > h3 { display: none; }
   .settings-sidebar nav button { width: auto; min-width: max-content; min-height: 40px; grid-template-columns: 26px auto; padding: 5px 9px; }
   .settings-sidebar nav button .settings-nav-icon { width: 26px; height: 26px; }

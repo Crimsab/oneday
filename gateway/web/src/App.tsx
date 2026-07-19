@@ -1156,7 +1156,7 @@ function App() {
   const openInstallationConfiguration = () => {
     setStoryLibraryOpen(false);
     setVisualAssetFocusId(null);
-    setOptionsInitialSection("models");
+    setOptionsInitialSection("operator");
     void refreshModelSettings();
     setOverlay("options");
   };

@@ -360,7 +360,7 @@ function OptionsContent({
     payload: VisualAssetOperationRequest,
   ) => Promise<VisualAssetsResponse | void>;
 }) {
-  const { t } = useTranslation(["options", "common", "drawer"]);
+  const { t } = useTranslation(["options", "common", "drawer", "settings_ui"]);
   const mapBackground = visualAssets.find((asset) => asset.kind === "map_background");
   const mapIcons = visualAssets.filter((asset) => asset.kind === "map_icon");
   const readyMapIcons = mapIcons.filter((asset) => asset.status === "ready").length;
@@ -393,12 +393,19 @@ function OptionsContent({
       </div>,
     },
     {
-      id: "models",
-      content: <div data-setting-id="provider-order"><ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} /></div>,
+      id: "preferences",
+      content: <AdvancedSettings scope="player" preferences={preferences} snapshot={snapshot} modelSettings={modelSettings} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />,
     },
     {
-      id: "advanced",
-      content: <AdvancedSettings preferences={preferences} snapshot={snapshot} modelSettings={modelSettings} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />,
+      id: "operator",
+      content: <div className="operator-settings-stack">
+        <section className="settings-group operator-boundary" data-setting-id="operator-configuration" aria-labelledby="operator-configuration-title">
+          <header><div><h4 id="operator-configuration-title">{t("settings_ui:operator.title")}</h4><p>{t("settings_ui:operator.description")}</p></div></header>
+          <p className="model-note">{t("settings_ui:operator.security")}</p>
+        </section>
+        <div data-setting-id="provider-order"><ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} /></div>
+        <AdvancedSettings scope="operator" preferences={preferences} snapshot={snapshot} modelSettings={modelSettings} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />
+      </div>,
     },
   ];
 

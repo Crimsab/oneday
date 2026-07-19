@@ -63,6 +63,26 @@ Do not expose a bare HTTP listener or rely on a reverse proxy to repair an
 incorrect Host/Origin configuration. See the [security threat model](security-threat-model.md)
 for the boundary and residual risks.
 
+## Player preferences and operator configuration
+
+The browser keeps player preferences separate from installation configuration.
+**Player preferences** contain only local presentation and play choices:
+appearance, typography, accessibility behavior, spoken-audio preferences,
+story visual direction, message detail visibility, and preference/theme
+import-export. They are stored in the browser and can be reset or moved without
+changing the server.
+
+**Operator configuration** is the authenticated gateway area for provider and
+model routing, endpoints, write-only credentials, runtime readiness, reload,
+and redacted support diagnostics. It uses the existing `/api/config/models` and
+`/api/setup/readiness` contract in both standalone and remote modes; it does
+not create a second configuration store or backend. Saved credentials are never
+returned to the browser—only their configured status is exposed.
+
+Story onboarding creates a story. It may link an operator to the protected
+configuration area when the installation is not ready, but it does not turn
+provider setup into a player preference.
+
 ## Narrative providers
 
 Provider order is controlled by `ai.provider_priority`. Disabled providers are

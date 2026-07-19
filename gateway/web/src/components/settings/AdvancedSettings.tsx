@@ -12,6 +12,7 @@ import { SettingsToggle } from "./GeneralSettings";
 const MAX_PREFERENCES_BYTES = 1024 * 1024;
 
 export function AdvancedSettings({
+  scope,
   preferences,
   snapshot,
   modelSettings,
@@ -19,6 +20,7 @@ export function AdvancedSettings({
   onChange,
   onReloadConfiguration,
 }: {
+  scope: "player" | "operator";
   preferences: AppPreferences;
   snapshot: StorySnapshot | null;
   modelSettings: ModelSettings | null;
@@ -160,7 +162,7 @@ export function AdvancedSettings({
 
   return (
     <div className="advanced-settings-stack">
-      <section className="settings-group" aria-labelledby="advanced-runtime-title" data-setting-id="runtime-status">
+      {scope === "operator" && <section className="settings-group" aria-labelledby="advanced-runtime-title" data-setting-id="runtime-status">
         <header><div><h4 id="advanced-runtime-title">{t("advanced.runtimeTitle")}</h4><p>{t("advanced.runtimeDesc")}</p></div><button type="button" data-setting-id="configuration-revision" disabled={busy} onClick={() => void reloadConfiguration()}><RefreshCw size={14} aria-hidden="true" /> {t("advanced.reload")}</button></header>
         <dl className="runtime-status-grid">
           <div><dt>{t("advanced.connection")}</dt><dd>{navigator.onLine ? t("advanced.online") : t("advanced.offline")}</dd></div>
@@ -170,16 +172,16 @@ export function AdvancedSettings({
           <div><dt>{t("advanced.activeFont")}</dt><dd>{preferences.interfaceFontFamily} / {preferences.readingFontFamily}</dd></div>
           <div><dt>{t("advanced.activeAccent")}</dt><dd><span className="runtime-color-swatch" style={{ backgroundColor: preferences.accent }} aria-hidden="true" />{preferences.accent}</dd></div>
         </dl>
-      </section>
+      </section>}
 
-      <section className="settings-group" aria-labelledby="advanced-diagnostics-title" data-setting-id="generation-diagnostics">
+      {scope === "player" && <section className="settings-group" aria-labelledby="advanced-diagnostics-title" data-setting-id="generation-diagnostics">
         <header><div><h4 id="advanced-diagnostics-title">{t("advanced.diagnosticsTitle")}</h4><p>{t("advanced.diagnosticsDesc")}</p></div></header>
         <div className="settings-toggle-list">
           <SettingsToggle id="generation-diagnostics-toggle" label={t("advanced.showDiagnostics")} description={t("advanced.showDiagnosticsDesc")} checked={preferences.showGenerationDiagnostics} onChange={(checked) => onChange({ ...preferences, showGenerationDiagnostics: checked })} />
         </div>
-      </section>
+      </section>}
 
-      <section className="settings-group" aria-labelledby="advanced-support-title" data-setting-id="support-bundle">
+      {scope === "operator" && <section className="settings-group" aria-labelledby="advanced-support-title" data-setting-id="support-bundle">
         <header><div><h4 id="advanced-support-title">{t("advanced.supportTitle")}</h4><p>{t("advanced.supportDesc")}</p></div></header>
         <div className="support-bundle-body">
           <div className="support-bundle-copy"><FileJson size={20} aria-hidden="true" /><span><strong>{t("advanced.supportBundleTitle")}</strong><small>{t("advanced.supportBundleDesc")}</small></span></div>
@@ -193,9 +195,9 @@ export function AdvancedSettings({
             {logs.length ? logs.map((event, index) => <div className={`support-log-entry ${event.level}`} key={`${event.timestamp}-${index}`}><time>{new Date(event.timestamp).toLocaleTimeString()}</time><strong>{event.source}</strong><code>{event.message}{event.detail ? `; ${event.detail}` : ""}</code></div>) : <p>{t("advanced.logsEmpty")}</p>}
           </div>
         </details>
-      </section>
+      </section>}
 
-      <section className="settings-group" aria-labelledby="advanced-portability-title" data-setting-id="preferences-portability">
+      {scope === "player" && <section className="settings-group" aria-labelledby="advanced-portability-title" data-setting-id="preferences-portability">
         <header><div><h4 id="advanced-portability-title">{t("advanced.portabilityTitle")}</h4><p>{t("advanced.portabilityDesc")}</p></div></header>
         <div className="advanced-action-list">
           <div><span><strong>{t("advanced.exportTitle")}</strong><small>{t("advanced.exportDesc")}</small></span><div className="advanced-action-buttons"><button type="button" onClick={() => void copyPreferences()}><Copy size={14} aria-hidden="true" /> {t("advanced.copySettings")}</button><button type="button" onClick={exportPreferences}><Download size={14} aria-hidden="true" /> {t("advanced.export")}</button></div></div>
@@ -203,9 +205,9 @@ export function AdvancedSettings({
           <div className="advanced-reset-row"><span><strong>{t("advanced.resetTitle")}</strong><small>{t("advanced.resetDesc")}</small></span>{confirmReset ? <div className="advanced-reset-confirm"><button type="button" onClick={() => setConfirmReset(false)}>{t("common.cancel")}</button><button type="button" className="danger-action" onClick={resetPreferences}>{t("advanced.confirmReset")}</button></div> : <button type="button" onClick={() => setConfirmReset(true)}><RotateCcw size={14} aria-hidden="true" /> {t("advanced.reset")}</button>}</div>
         </div>
         <p className="advanced-status" role="status" aria-live="polite">{status}</p>
-      </section>
+      </section>}
 
-      <section className="settings-group" aria-labelledby="advanced-theme-title" data-setting-id="theme-portability">
+      {scope === "player" && <section className="settings-group" aria-labelledby="advanced-theme-title" data-setting-id="theme-portability">
         <header><div><h4 id="advanced-theme-title">{t("options:theme")}</h4><p>{t("advanced.portabilityDesc")}</p></div></header>
         <div className="advanced-action-list">
           <div><span><strong>{t("advanced.exportTitle")}</strong><small>{t("advanced.exportDesc")}</small></span><div className="advanced-action-buttons"><button type="button" onClick={exportPortableTheme}><FileJson size={14} aria-hidden="true" /> JSON</button><button type="button" onClick={() => void exportPortableThemeBundle()}><Download size={14} aria-hidden="true" /> ZIP</button></div></div>
@@ -214,7 +216,7 @@ export function AdvancedSettings({
           {themeUndo && <div><span><strong>{t("advanced.resetTitle")}</strong><small>{t("advanced.resetDesc")}</small></span><button type="button" onClick={() => void undoPortableTheme()}><RotateCcw size={14} aria-hidden="true" /> {t("advanced.reset")}</button></div>}
         </div>
         {themePreview && <div className="theme-import-preview" role="region" aria-label={themePreview.theme.meta.name}><strong>{themePreview.theme.meta.name}</strong>{themePreview.changes.length ? <dl>{themePreview.changes.map((change) => <div key={change.key}><dt>{change.key}</dt><dd><span>{change.before}</span><span>{change.after}</span></dd></div>)}</dl> : <p>{t("advanced.imported")}</p>}{themePreview.missingFontIds.length > 0 && <p className="settings-inline-warning">{themePreview.missingFontIds.join(", ")}</p>}<div className="advanced-reset-confirm"><button type="button" onClick={() => setThemePreview(null)}>{t("common:cancel")}</button><button type="button" className="primary-action" onClick={() => void applyPortableTheme()}>{t("advanced.import")}</button></div></div>}
-      </section>
+      </section>}
     </div>
   );
 }
