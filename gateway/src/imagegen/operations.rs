@@ -192,6 +192,7 @@ pub(crate) fn validate_native_request(
         AdapterKind::CodexOAuth => {
             super::validate_bridge_endpoint(&config.bridge_url, &config.bridge_token).err()
         }
+        AdapterKind::OpenAiCompatible => super::validate_compatible_config(&direct).err(),
         _ if direct.base_url.trim().is_empty() => Some("base URL".to_string()),
         _ if direct.api_key.trim().is_empty() => Some("server-side API key".to_string()),
         _ => None,
@@ -395,5 +396,70 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("does not accept a raster mask"));
+    }
+
+    #[test]
+    fn compatible_native_requests_share_no_auth_and_probe_validation() {
+        let source = CanonicalImage {
+            png: png_luma(&[0], 1, 1),
+            width: 1,
+            height: 1,
+        };
+        let provider = super::super::ProviderConfig {
+            base_url: "http://127.0.0.1:8080/v1".to_string(),
+            api_key: String::new(),
+            auth_mode: "none".to_string(),
+            capability_probe_url: "http://127.0.0.1:8080/v1/images/capabilities".to_string(),
+            api_version: String::new(),
+        };
+        let config = super::super::AdapterConfig {
+            provider: "openai-compatible".to_string(),
+            map_icon_provider: String::new(),
+            base_url: String::new(),
+            api_key: String::new(),
+            providers: std::collections::HashMap::from([(
+                "openai-compatible".to_string(),
+                provider.clone(),
+            )]),
+            openclaw_url: String::new(),
+            bridge_url: String::new(),
+            bridge_token: String::new(),
+            bridge_provider: String::new(),
+            bridge_map_icon_provider: String::new(),
+            bridge_fallbacks: Vec::new(),
+            bridge_fallback_policy: String::new(),
+            bridge_compatibility: String::new(),
+        };
+        let request = NativeImageRequest {
+            operation: ImageOperation::Edit,
+            provider: "openai-compatible".to_string(),
+            model: "local-image".to_string(),
+            endpoint_id: "/images/edits".to_string(),
+            prompt: "replace the sky".to_string(),
+            negative_prompt: String::new(),
+            source: Some(source),
+            mask: None,
+            size: String::new(),
+            quality: String::new(),
+            output_format: "png".to_string(),
+            idempotency_key: "test".to_string(),
+        };
+        let error = validate_native_request(&config, &request).unwrap_err();
+        assert!(error.to_string().contains("endpoint is not allowlisted"));
+
+        let missing_probe = super::super::AdapterConfig {
+            providers: std::collections::HashMap::from([(
+                "openai-compatible".to_string(),
+                super::super::ProviderConfig {
+                    capability_probe_url: String::new(),
+                    ..provider
+                },
+            )]),
+            ..config
+        };
+        let error = validate_native_request(&missing_probe, &request).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("explicit image capability probe URL"));
     }
 }

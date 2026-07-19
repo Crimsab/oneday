@@ -264,10 +264,19 @@ fn validate_model(kind: AdapterKind, model: &str) -> Result<(), String> {
     }
 }
 
-fn validate_compatible_config(config: &ProviderConfig) -> Result<(), String> {
+pub(super) fn validate_compatible_config(config: &ProviderConfig) -> Result<(), String> {
+    if config.base_url.trim().is_empty() {
+        return Err("base URL".to_string());
+    }
     let auth_mode = compatible_auth_mode(config)?;
     if auth_mode == "bearer" && config.api_key.trim().is_empty() {
         return Err("server-side API key".to_string());
+    }
+    if auth_mode == "none" && !is_explicit_local_endpoint(&config.base_url) {
+        return Err(
+            "auth_mode none is allowed only for loopback or private IP-literal endpoints"
+                .to_string(),
+        );
     }
     let probe = config.capability_probe_url.trim();
     if probe.is_empty() {
@@ -277,6 +286,29 @@ fn validate_compatible_config(config: &ProviderConfig) -> Result<(), String> {
         return Err("capability probe URL must be same-origin with base URL".to_string());
     }
     Ok(())
+}
+
+fn is_explicit_local_endpoint(base_url: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(base_url.trim()) else {
+        return false;
+    };
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+    let Some(host) = url.host_str() else {
+        return false;
+    };
+    let host = host
+        .strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host);
+    let Ok(ip) = host.parse::<std::net::IpAddr>() else {
+        return false;
+    };
+    match ip {
+        std::net::IpAddr::V4(ip) => ip.is_loopback() || ip.is_private(),
+        std::net::IpAddr::V6(ip) => ip.is_loopback() || (ip.segments()[0] & 0xfe00) == 0xfc00,
+    }
 }
 
 pub(super) fn compatible_auth_mode(config: &ProviderConfig) -> Result<&str, String> {
