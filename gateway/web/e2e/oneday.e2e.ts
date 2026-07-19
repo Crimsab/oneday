@@ -832,7 +832,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("checkbox", { name: "Show diagnostics in messages" })).toBeFocused();
   await dialog.getByRole("button", { name: "Operator configuration" }).click();
-  await expect(dialog.getByText("Operator configuration", { exact: true }).first()).toBeVisible();
+  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
   await expect(dialog.getByText("Saved credentials are never returned to the browser; enter a replacement only when changing one.")).toBeVisible();
 
   const providerChoices = dialog.getByRole("radiogroup", { name: "Image provider" });

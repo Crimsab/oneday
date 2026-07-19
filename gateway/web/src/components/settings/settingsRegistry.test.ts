@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { settings_search as englishSearch } from "../../locales/en/settings_search";
+import { settings_search as italianSearch } from "../../locales/it/settings_search";
 import { searchSettings, settingsCategories, settingsNavigationGroups, settingsSearchEntries } from "./settingsRegistry";
 
 describe("settings registry", () => {
@@ -23,6 +25,15 @@ describe("settings registry", () => {
     expect(operatorSections).toEqual(new Set(["operator"]));
     expect(searchSettings("api key").every((item) => item.section === "operator")).toBe(true);
     expect(searchSettings("reset browser preferences").every((item) => item.section === "preferences")).toBe(true);
+  });
+
+  it("keeps renamed player and operator search results localized in English and Italian", () => {
+    expect(englishSearch["generation-diagnostics"][0]).toBe("Message diagnostics");
+    expect(italianSearch["generation-diagnostics"][0]).toBe("Diagnostica messaggi");
+    for (const catalog of [englishSearch, italianSearch]) {
+      expect(catalog["theme-portability"]).toHaveLength(2);
+      expect(catalog["support-bundle"]).toHaveLength(2);
+    }
   });
 
   it("groups each settings category exactly once", () => {
