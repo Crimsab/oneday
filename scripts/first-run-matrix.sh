@@ -194,6 +194,7 @@ run_cli() {
   require_commands go timeout
   printf '== CLI: empty configuration, setup/doctor redaction, first canonical turn ==\n'
   run_go_tests ./cmd/oneday \
+    TestFirstRunMatrixCLISetupDoctorFixtureStoryAndAction \
     TestSetupConfigForChoice \
     TestSetupNoInputRequiresExistingNarrativeConfiguration \
     TestDoctorJSONAndTextShareReadinessProbesAndRequiredExit \

@@ -34,19 +34,19 @@ them as a side effect.
 ## Evidence boundary
 
 The gateway/web slice contains the mocked browser flow from an empty
-installation through onboarding to a submitted action. The CLI slice currently
-executes setup/doctor and the fake-provider turn service as separate focused
-tests; it is not yet a single CLI-process proof from setup to first playable
-story. Likewise, the desktop slice is a Tauri/UI contract suite and is not a
-first-playable packaged-desktop proof. These two criteria must remain pending
-until their end-to-end fixtures exist and pass.
+installation through onboarding to a submitted action. The CLI slice joins
+empty-profile setup, redacted doctor readiness, a deterministic fixture story,
+and a fake-provider first action in one test before reopening the database to
+verify persistence. The desktop slice remains a Tauri/UI contract suite and
+is not a first-playable packaged-desktop proof; that criterion remains pending
+until its end-to-end fixture exists and passes.
 
 Run one proof slice with `./scripts/first-run-matrix.sh <slice>` or run the
 complete matrix with `make first-run-matrix`.
 
 | Contract | Repeatable proof |
 | --- | --- |
-| Empty CLI first run | Setup and doctor handlers use temporary configuration/data paths; readiness reports redact private paths and fake-provider failures. The in-process turn service uses its existing fake narrator to commit a first action, then creates and restores a save. |
+| Empty CLI first run | One test joins empty-profile setup, doctor redaction/readiness, a deterministic fixture story, a fake-provider first action through the gateway handler, and database reopen/persistence. |
 | Empty gateway/web installation | Rust authentication tests prove protected data, one-shot bootstrap, and direct bearer separation. Vitest and Playwright use empty-install and gateway route mocks to exercise installation readiness, distinct story onboarding, and one submitted playable action. |
 | Desktop standalone | Existing Tauri config/standalone/lifecycle tests prove a fresh standalone profile has private, isolated config/data paths, version-matched sidecar planning, loopback readiness inputs, bounded diagnostics, and launch-secret redaction. |
 | Desktop remote and transfer | Tauri tests prove remote profiles have no data path, validate the isolated server origin, reject path/type/oversize imports before dispatch, sanitize export names, and retain the configured origin. Gateway archive and world-template tests exercise the real archive/template contracts. |
