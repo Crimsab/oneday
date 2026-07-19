@@ -116,9 +116,10 @@ verify_database() {
 
 write_checksum() {
   local path="$1"
+  local published_name="$2"
   local sum
   sum="$(checksum "$path")"
-  printf '%s  %s\n' "$sum" "$(basename "$path")"
+  printf '%s  %s\n' "$sum" "$published_name"
 }
 
 verify_checksum() {
@@ -188,7 +189,7 @@ if [[ -n "$db_path" ]]; then
   staged_checksum="$backup_stage_dir/backup.sqlite.sha256"
   sqlite_backup "$db_path" "$staged_backup"
   verify_database "$staged_backup"
-  write_checksum "$staged_backup" >"$staged_checksum"
+  write_checksum "$staged_backup" "$(basename "$backup_path")" >"$staged_checksum"
   chmod 600 "$staged_backup" "$staged_checksum"
   publish_no_clobber "$staged_backup" "$backup_path" "backup"
   if ! publish_no_clobber "$staged_checksum" "${backup_path}.sha256" "backup checksum"; then

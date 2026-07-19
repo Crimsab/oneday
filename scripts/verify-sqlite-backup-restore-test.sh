@@ -37,6 +37,12 @@ source_checksum="$(checksum "$source_db")"
 bash "$verify_script" --db "$source_db" --backup "$backup_db" --restore-dir "$restore_dir" >/dev/null
 test "$(sqlite3 "$restore_dir/oneday.db" 'SELECT value FROM checks;')" = "canonical"
 test "$(checksum "$source_db")" = "$source_checksum"
+test "$(awk 'NF { print $2; exit }' "${backup_db}.sha256")" = "$(basename "$backup_db")"
+if command -v sha256sum >/dev/null 2>&1; then
+  (cd "$(dirname "$backup_db")" && sha256sum -c "$(basename "${backup_db}.sha256")") >/dev/null
+else
+  (cd "$(dirname "$backup_db")" && shasum -a 256 -c "$(basename "${backup_db}.sha256")") >/dev/null
+fi
 
 assert_concurrent_destination_wins() {
   local destination="$1"
