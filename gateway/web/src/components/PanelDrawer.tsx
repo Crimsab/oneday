@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import {
   commandDescriptorsToSlashCommands,
@@ -412,10 +412,7 @@ function OptionsContent({
     {
       id: "operator",
       content: <div className="operator-settings-stack">
-        <section className="settings-group operator-boundary" data-setting-id="operator-configuration" aria-labelledby="operator-configuration-title">
-          <header><div><h4 id="operator-configuration-title">{t("settings_ui:operator.title")}</h4><p>{t("settings_ui:operator.description")}</p></div></header>
-          <p className="model-note">{t("settings_ui:operator.security")}</p>
-        </section>
+        <p className="operator-security-note" data-setting-id="operator-configuration">{t("settings_ui:operator.security")}</p>
         <div data-setting-id="provider-order"><ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} /></div>
         <AdvancedSettings scope="operator" preferences={preferences} snapshot={snapshot} modelSettings={modelSettings} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />
       </div>,
@@ -705,18 +702,18 @@ function VisualDirectionSettings({
         </p>
       ) : (
         <>
-          <div className="media-studio-tabs" role="tablist" aria-label={t("mediaStudio.label")}>
-            {(["library", "create", "activity"] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={mediaTab === tab} className={mediaTab === tab ? "active" : ""} onClick={() => setMediaTab(tab)}>{t(`mediaStudio.tabs.${tab}`)}</button>)}
+          <div className="media-studio-tabs" role="tablist" aria-label={t("drawer:mediaStudio.label")}>
+            {(["library", "create", "activity"] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={mediaTab === tab} className={mediaTab === tab ? "active" : ""} onClick={() => setMediaTab(tab)}>{t(`drawer:mediaStudio.tabs.${tab}`)}</button>)}
           </div>
           {mediaTab === "library" && <>
           <div className="media-studio-filters">
-            <label><span className="sr-only">{t("mediaStudio.search")}</span><input type="search" value={mediaFilters.query} onChange={(event) => setMediaFilters((current) => ({ ...current, query: event.target.value }))} placeholder={t("mediaStudio.search")} /></label>
-            <select aria-label={t("mediaStudio.kind")} value={mediaFilters.kind} onChange={(event) => setMediaFilters((current) => ({ ...current, kind: event.target.value }))}><option value="all">{t("mediaStudio.allKinds")}</option>{[...new Set(assets.map((asset) => asset.kind))].map((kind) => <option key={kind} value={kind}>{t(`drawer:assetKind.${kind}`, { defaultValue: kind.replaceAll("_", " ") })}</option>)}</select>
-            <select aria-label={t("mediaStudio.status")} value={mediaFilters.status} onChange={(event) => setMediaFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">{t("mediaStudio.allStatuses")}</option>{[...new Set(assets.map((asset) => asset.status))].map((status) => <option key={status} value={status}>{t(`drawer:assetStatus.${status}`, { defaultValue: status })}</option>)}</select>
-            <select aria-label={t("mediaStudio.location")} value={mediaFilters.location} onChange={(event) => setMediaFilters((current) => ({ ...current, location: event.target.value }))}><option value="all">{t("mediaStudio.allLocations")}</option>{[...new Set(assets.map((asset) => asset.canonical_location_id).filter(Boolean))].map((location) => <option key={location} value={location}>{location}</option>)}</select>
-            <select aria-label={t("mediaStudio.entity")} value={mediaFilters.entity} onChange={(event) => setMediaFilters((current) => ({ ...current, entity: event.target.value }))}><option value="all">{t("mediaStudio.allEntities")}</option>{[...new Set(assets.map((asset) => asset.canonical_entity_id).filter(Boolean))].map((entity) => <option key={entity} value={entity}>{entity}</option>)}</select>
-            <select aria-label={t("mediaStudio.turn")} value={mediaFilters.turn} onChange={(event) => setMediaFilters((current) => ({ ...current, turn: event.target.value }))}><option value="all">{t("mediaStudio.allTurns")}</option>{[...new Set(assets.map((asset) => asset.turn).filter((turn) => turn > 0))].sort((a, b) => b - a).map((turn) => <option key={turn} value={turn}>{turn}</option>)}</select>
-            <select aria-label={t("mediaStudio.sort")} value={mediaFilters.sort} onChange={(event) => setMediaFilters((current) => ({ ...current, sort: event.target.value as typeof current.sort }))}><option value="recent">{t("mediaStudio.recent")}</option><option value="turn">{t("mediaStudio.turn")}</option><option value="name">{t("mediaStudio.name")}</option></select>
+            <label><span className="sr-only">{t("drawer:mediaStudio.search")}</span><input type="search" value={mediaFilters.query} onChange={(event) => setMediaFilters((current) => ({ ...current, query: event.target.value }))} placeholder={t("drawer:mediaStudio.search")} /></label>
+            <select aria-label={t("drawer:mediaStudio.kind")} value={mediaFilters.kind} onChange={(event) => setMediaFilters((current) => ({ ...current, kind: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allKinds")}</option>{[...new Set(assets.map((asset) => asset.kind))].map((kind) => <option key={kind} value={kind}>{t(`drawer:assetKind.${kind}`, { defaultValue: kind.replaceAll("_", " ") })}</option>)}</select>
+            <select aria-label={t("drawer:mediaStudio.status")} value={mediaFilters.status} onChange={(event) => setMediaFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allStatuses")}</option>{[...new Set(assets.map((asset) => asset.status))].map((status) => <option key={status} value={status}>{t(`drawer:assetStatus.${status}`, { defaultValue: status })}</option>)}</select>
+            <select aria-label={t("drawer:mediaStudio.location")} value={mediaFilters.location} onChange={(event) => setMediaFilters((current) => ({ ...current, location: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allLocations")}</option>{[...new Set(assets.map((asset) => asset.canonical_location_id).filter(Boolean))].map((location) => <option key={location} value={location}>{location}</option>)}</select>
+            <select aria-label={t("drawer:mediaStudio.entity")} value={mediaFilters.entity} onChange={(event) => setMediaFilters((current) => ({ ...current, entity: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allEntities")}</option>{[...new Set(assets.map((asset) => asset.canonical_entity_id).filter(Boolean))].map((entity) => <option key={entity} value={entity}>{entity}</option>)}</select>
+            <select aria-label={t("drawer:mediaStudio.turn")} value={mediaFilters.turn} onChange={(event) => setMediaFilters((current) => ({ ...current, turn: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allTurns")}</option>{[...new Set(assets.map((asset) => asset.turn).filter((turn) => turn > 0))].sort((a, b) => b - a).map((turn) => <option key={turn} value={turn}>{turn}</option>)}</select>
+            <select aria-label={t("drawer:mediaStudio.sort")} value={mediaFilters.sort} onChange={(event) => setMediaFilters((current) => ({ ...current, sort: event.target.value as typeof current.sort }))}><option value="recent">{t("drawer:mediaStudio.recent")}</option><option value="turn">{t("drawer:mediaStudio.turn")}</option><option value="name">{t("drawer:mediaStudio.name")}</option></select>
           </div>
           <div className="visual-asset-list media-asset-gallery">
             {filteredAssets.map((asset) => (
@@ -726,7 +723,7 @@ function VisualDirectionSettings({
               </button>
             ))}
           </div>
-          {filteredAssets.length === 0 && <p className="empty-copy">{t("mediaStudio.empty")}</p>}
+          {filteredAssets.length === 0 && <p className="empty-copy">{t("drawer:mediaStudio.empty")}</p>}
           </>}
           {mediaTab === "create" && <>
           <div className="settings-grid visual-settings">
@@ -1023,6 +1020,9 @@ function assetLabel(assets: VisualAsset[], assetId: string): string {
   return `${asset.kind}: ${asset.subject}`;
 }
 
+const aiSections = ["connections", "models", "routing", "images", "diagnostics"] as const;
+type AiSection = (typeof aiSections)[number];
+
 function ModelRoutingSettings({
   modelSettings,
   modelError,
@@ -1049,7 +1049,8 @@ function ModelRoutingSettings({
   const [discovery, setDiscovery] = useState<ModelDiscovery | null>(null);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState("");
-  const [activeAiSection, setActiveAiSection] = useState<"connections" | "models" | "routing" | "images" | "diagnostics">("connections");
+  const [activeAiSection, setActiveAiSection] = useState<AiSection>("connections");
+  const [aiNavHorizontal, setAiNavHorizontal] = useState(false);
   const resetProviderConfigs = (settings: ModelSettings | null) => {
     setProviderConfigs(Object.fromEntries((settings?.image_providers ?? []).map((provider) => [provider.id, { baseUrl: provider.base_url, apiVersion: provider.api_version ?? "", models: provider.models.join(", "), apiKey: "", clearApiKey: false }])));
     setDirtyProviderIds(new Set()); setBridgeToken(""); setClearBridgeToken(false);
@@ -1068,6 +1069,27 @@ function ModelRoutingSettings({
   };
 
   useEffect(() => { void refreshDiscovery(); }, []);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1120px)");
+    const updateOrientation = () => setAiNavHorizontal(media.matches);
+    updateOrientation();
+    media.addEventListener("change", updateOrientation);
+    return () => media.removeEventListener("change", updateOrientation);
+  }, []);
+
+  const moveAiTab = (event: KeyboardEvent<HTMLButtonElement>, current: AiSection) => {
+    const previousKey = aiNavHorizontal ? "ArrowLeft" : "ArrowUp";
+    const nextKey = aiNavHorizontal ? "ArrowRight" : "ArrowDown";
+    if (![previousKey, nextKey, "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = aiSections.indexOf(current);
+    const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? aiSections.length - 1 : event.key === previousKey ? (currentIndex - 1 + aiSections.length) % aiSections.length : (currentIndex + 1) % aiSections.length;
+    const nextSection = aiSections[nextIndex];
+    const tabList = event.currentTarget.parentElement;
+    setActiveAiSection(nextSection);
+    window.requestAnimationFrame(() => tabList?.querySelector<HTMLButtonElement>(`[data-ai-section="${nextSection}"]`)?.focus());
+  };
 
   const providerIds =
     modelSettings?.providers.map((provider) => provider.id) ?? [];
@@ -1221,11 +1243,16 @@ function ModelRoutingSettings({
       <p className="model-note">
         {t("models.note")}
       </p>
-      <div className="model-section-nav" role="tablist" aria-label={t("models.title")}>
-        {(["connections", "models", "routing", "images", "diagnostics"] as const).map((section) => <button key={section} type="button" role="tab" aria-selected={activeAiSection === section} aria-controls={`model-section-${section}`} className={activeAiSection === section ? "active" : ""} onClick={() => setActiveAiSection(section)}>{t(`modelSections.${section}`)}</button>)}
-      </div>
-      {activeAiSection === "routing" && <div className="settings-grid" id="model-section-routing" role="tabpanel">
-        <h4 className="model-section-title">{t("modelSections.routing")}</h4>
+      <div className="operator-console-body">
+        <div className="model-section-nav" role="tablist" aria-label={t("models.title")} aria-orientation={aiNavHorizontal ? "horizontal" : "vertical"}>
+          {aiSections.map((section) => <button id={`model-tab-${section}`} data-ai-section={section} key={section} type="button" role="tab" aria-selected={activeAiSection === section} aria-controls={`model-section-${section}`} tabIndex={activeAiSection === section ? 0 : -1} className={activeAiSection === section ? "active" : ""} onClick={() => setActiveAiSection(section)} onKeyDown={(event) => moveAiTab(event, section)}><span>{t(`modelSections.${section}`)}</span><small>{t(`modelSectionDescriptions.${section}`)}</small></button>)}
+        </div>
+        <div className="operator-console-panel">
+          <header className="operator-panel-heading">
+            <h4>{t(`modelSections.${activeAiSection}`)}</h4>
+            <p>{t(`modelSectionDescriptions.${activeAiSection}`)}</p>
+          </header>
+      {activeAiSection === "routing" && <div className="settings-grid" id="model-section-routing" role="tabpanel" aria-labelledby="model-tab-routing">
         <label>
           <span>{t("models.priority")}</span>
           <CustomSelect
@@ -1252,8 +1279,7 @@ function ModelRoutingSettings({
           />
         </label>
       </div>}
-      {activeAiSection === "models" && <div className="settings-grid" id="model-section-models" role="tabpanel">
-        <h4 className="model-section-title">{t("modelSections.models")}</h4>
+      {activeAiSection === "models" && <div className="settings-grid" id="model-section-models" role="tabpanel" aria-labelledby="model-tab-models">
         <label>
           <span>{t("models.utility")}</span>
           <ModelInput
@@ -1288,8 +1314,7 @@ function ModelRoutingSettings({
           />
         </label>
       </div>}
-      {activeAiSection === "images" && <div className="settings-grid" id="model-section-images" role="tabpanel">
-        <h4 className="model-section-title">{t("modelSections.images")}</h4>
+      {activeAiSection === "images" && <div className="settings-grid" id="model-section-images" role="tabpanel" aria-labelledby="model-tab-images">
         <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} discoveredModels={discoveredModels} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
         <label>
           <span>{t("models.locationSize")}</span>
@@ -1353,8 +1378,7 @@ function ModelRoutingSettings({
         </label>
       </div>
       }
-      {activeAiSection === "connections" && <section id="model-section-connections" role="tabpanel">
-      <h4 className="model-section-title">{t("modelSections.connections")}</h4>
+      {activeAiSection === "connections" && <section id="model-section-connections" role="tabpanel" aria-labelledby="model-tab-connections">
       <div className="provider-editor-grid">
         {modelSettings.providers.map((provider) => {
           const providerDraft = draft.providers[provider.id];
@@ -1415,7 +1439,7 @@ function ModelRoutingSettings({
         })}
       </div>
       </section>}
-      {activeAiSection === "diagnostics" && <section id="model-section-diagnostics" role="tabpanel">
+      {activeAiSection === "diagnostics" && <section id="model-section-diagnostics" role="tabpanel" aria-labelledby="model-tab-diagnostics">
       <div className="model-facts">
         <span>{t("models.providerChain", { chain: draft.providerPriority.join(" → ") })}</span>
         <span>
@@ -1427,11 +1451,13 @@ function ModelRoutingSettings({
         <span>TTS: {modelSettings.tts_status}</span>
       </div>
       <div className="model-discovery" aria-live="polite">
-        <div><strong>{t("modelDiscovery.title")}</strong><span>{discovery?.sources.map((source) => `${source.id}: ${source.status} · ${displayTimestamp(source.checked_at)}`).join(" · ") || t("modelDiscovery.unavailable")}</span></div>
+        <div><strong>{t("modelDiscovery.title")}</strong><span>{(discovery?.sources ?? []).map((source) => `${source.id}: ${source.status} · ${displayTimestamp(source.checked_at)}`).join(" · ") || t("modelDiscovery.unavailable")}</span></div>
         <button type="button" onClick={() => void refreshDiscovery(true)} disabled={discoveryBusy}>{discoveryBusy ? t("modelDiscovery.refreshing") : t("modelDiscovery.refresh")}</button>
         {discoveryError && <p className="model-error">{discoveryError}</p>}
       </div>
       </section>}
+        </div>
+      </div>
       {issues.length > 0 && (
         <div className="model-warning">
           {issues.map((issue) => (

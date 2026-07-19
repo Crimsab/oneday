@@ -489,14 +489,14 @@ test("keeps installation readiness loading and recovery states operable", async 
   await page.getByRole("button", { name: "Retry readiness check" }).click();
   await expect(page.getByRole("heading", { name: "Set up this OneDay installation" })).toBeVisible();
   await expect(page.getByText("Optional · attention")).toBeVisible();
-  const imageSetup = page.getByRole("button", { name: "Review image setup" });
-  const voiceSetup = page.getByRole("button", { name: "Review voice setup" });
+  const retry = page.getByRole("button", { name: "Retry readiness checks" });
   const configure = page.getByRole("button", { name: "Reconfigure shared setup" });
-  await imageSetup.focus();
-  await page.keyboard.press("Tab");
-  await expect(voiceSetup).toBeFocused();
+  const start = page.getByRole("button", { name: "Start story setup" });
+  await retry.focus();
   await page.keyboard.press("Tab");
   await expect(configure).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(start).toBeFocused();
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.setViewportSize({ width: 640, height: 900 });
@@ -511,6 +511,7 @@ test("keeps installation readiness loading and recovery states operable", async 
   expect(zoomReflow.width).toBeLessThanOrEqual(zoomReflow.viewport + 1);
   expect(zoomReflow.controlsFit).toBe(true);
 
+  await configure.focus();
   await page.emulateMedia({ forcedColors: "active", reducedMotion: "reduce" });
   await expect(configure).toBeFocused();
   expect(await configure.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("solid");
@@ -532,10 +533,10 @@ test("creates a persistent AI translation job from the translation center", asyn
   await expect(dialog.getByRole("combobox", { name: "Target language" }).locator("img")).toBeVisible();
   await expect(dialog.getByRole("combobox", { name: "Target language" })).not.toContainText(/^EN\b/);
   await dialog.getByRole("combobox", { name: "Engine" }).click();
-  await page.getByRole("option", { name: "AI" }).click();
+  await page.locator(".custom-select-menu").getByRole("option", { name: "AI", exact: true }).click();
   await expect(dialog.getByRole("combobox", { name: "Provider" })).toContainText("Codex");
   await dialog.getByRole("combobox", { name: "Style" }).click();
-  await page.getByRole("option", { name: "Literary" }).click();
+  await page.locator(".custom-select-menu").getByRole("option", { name: "Literary", exact: true }).click();
   await expect(dialog.getByRole("combobox", { name: "Style" })).toContainText("Literary");
   await expect(dialog.getByText(/4 items, 220 characters/)).toBeVisible();
   await dialog.getByRole("button", { name: "Start translation" }).click();
@@ -713,8 +714,9 @@ test("restores a failed draft, checks out a branch, and exposes searchable histo
   await composer.fill("/history");
   await page.getByRole("button", { name: "Send action" }).click();
   const history = page.viewportSize()!.width <= 1240 ? page.getByRole("dialog") : page.locator(".right-inspector");
-  await expect(history.getByPlaceholder("Search this branch")).toBeVisible();
-  await history.getByPlaceholder("Search this branch").fill("seal");
+  await expect(history.getByPlaceholder("Search branch history")).toBeVisible();
+  await history.getByLabel("Scope").selectOption("all");
+  await history.getByPlaceholder("Search branch history").fill("seal");
   await expect(history.getByRole("heading", { name: "Transcript", exact: true })).toBeVisible();
   await expect(history.getByText("Arrival at the archive.")).toBeVisible();
   const messageCard = history.locator(".history-message").first();
@@ -846,6 +848,35 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
   await expect(dialog.getByText("Saved credentials are never returned to the browser; enter a replacement only when changing one.")).toBeVisible();
 
+  const operatorTabs = dialog.getByRole("tablist", { name: "Model routing" });
+  const initialViewport = page.viewportSize()!;
+  await expect(operatorTabs).toHaveAttribute("aria-orientation", initialViewport.width <= 1120 ? "horizontal" : "vertical");
+  if (initialViewport.width > 1120) {
+    await page.setViewportSize({ width: 1000, height: initialViewport.height });
+    await expect(operatorTabs).toHaveAttribute("aria-orientation", "horizontal");
+    const routingOverflow = await dialog.locator(".model-routing").evaluate((element) => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }));
+    expect(routingOverflow.scrollWidth).toBeLessThanOrEqual(routingOverflow.clientWidth + 1);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect.poll(() => dialog.getByRole("button", { name: "Operator configuration" }).evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= window.innerWidth;
+    })).toBe(true);
+    await page.setViewportSize(initialViewport);
+    await expect(operatorTabs).toHaveAttribute("aria-orientation", "vertical");
+  } else {
+    await expect.poll(() => dialog.getByRole("button", { name: "Operator configuration" }).evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.left >= 0 && bounds.right <= window.innerWidth;
+    })).toBe(true);
+  }
+
+  const imagesTab = dialog.getByRole("tab", { name: "Images" });
+  await imagesTab.click();
+  await imagesTab.focus();
+  await page.keyboard.press(initialViewport.width <= 1120 ? "ArrowRight" : "ArrowDown");
+  await expect(dialog.getByRole("tab", { name: "Diagnostics" })).toBeFocused();
+  await page.keyboard.press(initialViewport.width <= 1120 ? "ArrowLeft" : "ArrowUp");
+  await expect(imagesTab).toBeFocused();
   const providerChoices = dialog.getByRole("radiogroup", { name: "Image provider" });
   await expect(providerChoices.getByRole("radio").first()).toContainText("Codex OAuth");
   await expect(providerChoices.getByRole("radio").first()).toHaveAttribute("aria-checked", "true");
@@ -907,6 +938,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await expect(italianDialog.locator(".settings-scope-label")).toHaveText("Preferenze giocatore");
   await expect(italianDialog.locator('input[type="password"]')).toHaveCount(0);
   await italianDialog.getByRole("button", { name: "Configurazione operatore" }).click();
+  await italianDialog.getByRole("tab", { name: "Immagini" }).click();
   await expect(italianDialog.getByText("Usa l’abbonamento Codex tramite imagegen-bridge. Non richiede OPENAI_API_KEY.")).toBeVisible();
   await expect(italianDialog.getByLabel("Token del bridge (facoltativo)")).toHaveAttribute("type", "password");
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
@@ -944,6 +976,11 @@ test("shows canonical visual lineage and branch-local selection controls", async
   await expect(dialog.getByRole("button", { name: /Map art/ })).toBeVisible();
   await dialog.getByRole("button", { name: /Map art/ }).click();
   await expect(dialog.getByRole("heading", { name: "Visuals and map" })).toBeVisible();
+  const mediaStudio = dialog.getByRole("tablist", { name: "Media Studio" });
+  await expect(mediaStudio.getByRole("tab", { name: "Library" })).toBeVisible();
+  await expect(mediaStudio.getByRole("tab", { name: "Create" })).toBeVisible();
+  await expect(mediaStudio.getByRole("tab", { name: "Activity" })).toBeVisible();
+  await expect(dialog.getByPlaceholder("Search assets")).toBeVisible();
   expect(errors).toEqual([]);
   await expect(dialog.getByText("New canonical form")).toBeVisible();
   await expect(dialog.getByText("Mira's restored form has not been rendered on this branch.")).toBeVisible();

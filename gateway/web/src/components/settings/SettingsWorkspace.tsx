@@ -13,6 +13,7 @@ export function SettingsWorkspace({ sections, initialSection = "appearance" }: {
   const [active, setActive] = useState<SettingsSectionId>(initialSection);
   const [query, setQuery] = useState("");
   const [pendingFocus, setPendingFocus] = useState<SettingsSearchEntry | null>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const results = useMemo(() => {
     if (!query.trim()) return [];
@@ -33,6 +34,26 @@ export function SettingsWorkspace({ sections, initialSection = "appearance" }: {
   }, [initialSection]);
 
   useEffect(() => {
+    if (query) return;
+    const sidebar = sidebarRef.current;
+    if (!sidebar) return;
+    let frame = 0;
+    const revealActiveSection = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        sidebar.querySelector<HTMLElement>('button[aria-current="page"]')?.scrollIntoView({ block: "nearest", inline: "center" });
+      });
+    };
+    revealActiveSection();
+    const observer = new ResizeObserver(revealActiveSection);
+    observer.observe(sidebar);
+    return () => {
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, [active, query]);
+
+  useEffect(() => {
     if (!pendingFocus || query) return;
     const target = contentRef.current?.querySelector<HTMLElement>(`[data-setting-id="${pendingFocus.id}"]`);
     const focusTarget = target?.matches("input,select,button,textarea") ? target : target?.querySelector<HTMLElement>("input,select,button,textarea");
@@ -51,7 +72,7 @@ export function SettingsWorkspace({ sections, initialSection = "appearance" }: {
 
   return (
     <div className="settings-workspace" data-settings-scope={category.scope}>
-      <aside className="settings-sidebar" aria-label={t("options:categories")}>
+      <aside className="settings-sidebar" aria-label={t("options:categories")} ref={sidebarRef}>
         <nav>
           {settingsNavigationGroups.map((group) => <div className="settings-nav-group" key={group.id} data-settings-scope={group.id}>
             <h3>{t(`settings_ui:sidebar.groups.${group.id}`)}</h3>

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, CircleHelp, Clock3, Hash, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Settings } from "lucide-react";
+import { BookOpen, CircleHelp, Clock3, Hash, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Wrench } from "lucide-react";
 import { displayClock } from "../format";
 import type { OverlayKind, StorySnapshot, SyncState } from "../types";
 import type { ModelSettings } from "../types";
@@ -62,12 +62,12 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, 
           {showInspector ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
           <span>{t("details")}</span>
         </button>
-        <button className="chrome-button" type="button" onClick={() => onOpen("options")}>
-          <Settings size={15} />
+        <button className="chrome-button" type="button" onClick={() => onOpen("options")} aria-label={t("options")} title={t("options")}>
+          <SlidersHorizontal size={15} />
           {t("options")}
         </button>
-        <button className="chrome-button" type="button" onClick={onOpenSetup}>
-          <Settings size={15} />
+        <button className="chrome-button" type="button" onClick={onOpenSetup} aria-label={t("setup")} title={t("setup")}>
+          <Wrench size={15} />
           {t("setup")}
         </button>
         <button

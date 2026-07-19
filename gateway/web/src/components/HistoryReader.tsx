@@ -91,8 +91,8 @@ export function HistoryReader({ snapshot, activeBranchId, actions }: HistoryRead
   </div>;
 }
 
-const COLLAPSE_AFTER_WORDS = 90;
-const PREVIEW_WORDS = 56;
+const COLLAPSE_AFTER_WORDS = 48;
+const PREVIEW_WORDS = 32;
 
 export function HistoryEvent({ message, currentTurn, actions }: { message: MessageView; currentTurn: number; actions?: HistoryReaderActions }) {
   const { t } = useTranslation(["surfaces", "history"]);
