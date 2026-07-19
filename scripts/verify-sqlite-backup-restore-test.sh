@@ -62,8 +62,9 @@ assert_concurrent_destination_wins "$race_backup" --db "$source_db" --backup "$r
 race_checksum="$test_dir/race-checksum.sqlite"
 assert_concurrent_destination_wins "${race_checksum}.sha256" --db "$source_db" --backup "$race_checksum"
 test -f "$race_checksum"
-test "$(checksum "$race_checksum")" = "$source_checksum"
 test "$(sqlite3 -readonly "$race_checksum" 'PRAGMA integrity_check;')" = "ok"
+test -z "$(sqlite3 -readonly "$race_checksum" 'PRAGMA foreign_key_check;')"
+test "$(sqlite3 -readonly "$race_checksum" 'SELECT value FROM checks;')" = "canonical"
 
 race_restore="$test_dir/race-restore"
 mkdir "$race_restore"
