@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 usage:
-  release-updater-manifest.sh generate <tag> <owner/repo> <asset-dir> <output.json> [notes]
+  release-updater-manifest.sh generate <tag> <owner/repo> <asset-dir> <output.json> [notes] [pub-date]
   release-updater-manifest.sh verify <tag> <owner/repo> <asset-dir> <latest.json> [public-key]
 EOF
   exit 2
@@ -39,7 +39,7 @@ case "${mode}" in
     notes="${6:-OneDay ${version}}"
     linux_signature="$(<"${asset_dir}/${linux_asset}.sig")"
     windows_signature="$(<"${asset_dir}/${windows_asset}.sig")"
-    pub_date="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    pub_date="${7:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}"
     jq -n \
       --arg version "${version}" \
       --arg notes "${notes}" \

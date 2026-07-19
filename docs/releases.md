@@ -84,6 +84,16 @@ SBOM. For public repositories, GitHub's Sigstore-backed attestations bind build
 provenance to CLI archives, desktop artifacts, the checksum index, updater feed,
 and container digest.
 
+Release asset names are additive-only. Before uploading, the publisher downloads
+every existing same-name asset and compares its bytes. Identical assets are
+skipped, any mismatch fails the job before new files are uploaded, and only
+missing names are sent to GitHub without replacement semantics. If a job stops
+after a partial upload, retry the publish job while its one-day workflow inputs
+remain available; the preflight safely skips the identical subset. A rebuilt
+workflow may continue only when its bytes match. A mismatch requires
+investigation and a new release tag, never deletion or silent replacement of the
+published binary.
+
 ## Signed desktop updater
 
 Normal and pull-request builds keep `createUpdaterArtifacts` disabled. Release
@@ -112,8 +122,10 @@ and backed up the key outside the repository. Losing the private key prevents
 updates to existing installations; replacing the public key requires a planned
 transition release signed by the old trust root.
 
-`latest.json` contains only SemVer, release notes, HTTPS URLs, and the literal
-Tauri signatures for `linux-x86_64` and `windows-x86_64`. Publication verifies:
+`latest.json` contains only SemVer, release notes, the tagged commit date, HTTPS
+URLs, and the literal Tauri signatures for `linux-x86_64` and
+`windows-x86_64`. Using the commit date keeps an identical partial-run retry from
+changing the feed bytes. Publication verifies:
 
 - both platform entries and assets exist;
 - every URL is the exact HTTPS URL for the tagged GitHub Release;

@@ -31,6 +31,7 @@ run bash -n \
   scripts/release-prepare-desktop.sh \
   scripts/release-desktop-artifacts.sh \
   scripts/release-updater-manifest.sh \
+  scripts/release-upload-assets.sh \
   scripts/release-sbom-verify.sh
 release_metadata="$(mktemp)"
 trap 'rm -f "${release_metadata}"' EXIT
