@@ -42,6 +42,9 @@ run jq -e '
   (.databaseSchemaVersion | type == "number") and
   (.sourceCommit | length == 40)
 ' "${release_metadata}"
+run jq -e '
+  .bundle.resources["../gateway/web/dist/"] == "gateway/web/dist/"
+' desktop/src-tauri/tauri.conf.json
 
 step "Release Artifact Builds"
 run make build

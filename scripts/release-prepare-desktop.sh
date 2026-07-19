@@ -82,10 +82,10 @@ fi
 jq --arg version "${version}" --arg target "${target}" --arg extension "${sidecar_extension}" '
   .bundle.externalBin = [
   ] |
-  .bundle.resources += [
-    "binaries/oneday-v\($version)-\($target)\($extension)",
-    "binaries/oneday-gateway-v\($version)-\($target)\($extension)"
-  ]
+  .bundle.resources = ((.bundle.resources // {}) + {
+    ("binaries/oneday-v\($version)-\($target)\($extension)"): "binaries/oneday-v\($version)-\($target)\($extension)",
+    ("binaries/oneday-gateway-v\($version)-\($target)\($extension)"): "binaries/oneday-gateway-v\($version)-\($target)\($extension)"
+  })
 ' "${repo_root}/desktop/src-tauri/tauri.conf.json" > "${config_tmp}"
 mv "${config_tmp}" "${repo_root}/desktop/src-tauri/tauri.conf.json"
 

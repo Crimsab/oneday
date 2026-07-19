@@ -50,6 +50,8 @@ gateway/web/dist/
 gateway/web/coverage/
 gateway/web/test-results/
 gateway/web/playwright-report/
+/desktop/gateway/
+/desktop/src-tauri/binaries/
 
 # Documentation site
 /.mkdocs-site-src/

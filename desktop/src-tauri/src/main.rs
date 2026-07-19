@@ -15,7 +15,7 @@ use reqwest::redirect::Policy;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
@@ -103,6 +103,25 @@ async fn probe_server(client: &reqwest::Client, server: &Url) -> Result<(), Stri
     Ok(())
 }
 
+async fn wait_for_server(
+    client: &reqwest::Client,
+    server: &Url,
+    max_wait: Duration,
+) -> Result<(), String> {
+    const RETRY_INTERVAL: Duration = Duration::from_millis(75);
+    let started = Instant::now();
+    loop {
+        match probe_server(client, server).await {
+            Ok(()) => return Ok(()),
+            Err(error) if started.elapsed() >= max_wait => return Err(error),
+            Err(_) => {
+                let remaining = max_wait.saturating_sub(started.elapsed());
+                tokio::time::sleep(RETRY_INTERVAL.min(remaining)).await;
+            }
+        }
+    }
+}
+
 fn stop_local(state: &AppRuntime) -> Result<(), String> {
     let process = state
         .local
@@ -152,14 +171,7 @@ async fn start_local(
         match standalone::start(app, profile_id) {
             Ok(process) => {
                 let endpoint = process.endpoint.clone();
-                match tokio::time::timeout(
-                    Duration::from_secs(12),
-                    probe_server(&state.client, &endpoint),
-                )
-                .await
-                .map_err(|_| "The local OneDay gateway did not become ready in time.".to_string())
-                .and_then(|result| result)
-                {
+                match wait_for_server(&state.client, &endpoint, Duration::from_secs(12)).await {
                     Ok(()) => {
                         ready_process = Some(process);
                         break;
@@ -476,4 +488,43 @@ fn main() {
             }
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    #[test]
+    fn standalone_readiness_retries_until_a_delayed_gateway_is_listening() {
+        tauri::async_runtime::block_on(async {
+            let reservation = TcpListener::bind("127.0.0.1:0").expect("reserve port");
+            let address = reservation.local_addr().expect("reserved address");
+            drop(reservation);
+            let server = Url::parse(&format!("http://{address}/")).expect("server URL");
+            let responder = thread::spawn(move || {
+                thread::sleep(Duration::from_millis(175));
+                let listener = TcpListener::bind(address).expect("delayed listener");
+                let (mut stream, _) = listener.accept().expect("health request");
+                let mut request = [0_u8; 1024];
+                let _ = stream.read(&mut request).expect("read health request");
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\nConnection: close\r\n\r\n{\"status\":\"ok\"}",
+                    )
+                    .expect("write health response");
+            });
+            let client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(1))
+                .build()
+                .expect("client");
+
+            wait_for_server(&client, &server, Duration::from_secs(2))
+                .await
+                .expect("delayed gateway becomes ready");
+            responder.join().expect("responder");
+        });
+    }
 }

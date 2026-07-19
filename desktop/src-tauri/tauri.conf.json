@@ -31,13 +31,13 @@
     "active": true,
     "targets": "all",
     "category": "Entertainment",
-    "shortDescription": "A secure remote client for OneDay stories",
-    "longDescription": "Connect to a OneDay server from a native Windows or Linux window while the server remains the only canonical story database.",
+    "shortDescription": "Play OneDay stories locally or connect to a server",
+    "longDescription": "Run an isolated standalone OneDay profile with bundled sidecars, or connect securely to an existing OneDay server from Windows or Linux.",
     "copyright": "Copyright OneDay contributors",
     "createUpdaterArtifacts": false,
-    "resources": [
-      "../gateway/web/dist"
-    ],
+    "resources": {
+      "../gateway/web/dist/": "gateway/web/dist/"
+    },
     "externalBin": [
       "binaries/oneday-v0.1.0",
       "binaries/oneday-gateway-v0.1.0"
