@@ -1039,6 +1039,7 @@ function ModelRoutingSettings({
   const [discovery, setDiscovery] = useState<ModelDiscovery | null>(null);
   const [discoveryBusy, setDiscoveryBusy] = useState(false);
   const [discoveryError, setDiscoveryError] = useState("");
+  const [activeAiSection, setActiveAiSection] = useState<"connections" | "models" | "routing" | "images" | "diagnostics">("connections");
   const resetProviderConfigs = (settings: ModelSettings | null) => {
     setProviderConfigs(Object.fromEntries((settings?.image_providers ?? []).map((provider) => [provider.id, { baseUrl: provider.base_url, apiVersion: provider.api_version ?? "", models: provider.models.join(", "), apiKey: "", clearApiKey: false }])));
     setDirtyProviderIds(new Set()); setBridgeToken(""); setClearBridgeToken(false);
@@ -1050,9 +1051,9 @@ function ModelRoutingSettings({
     setSaveError("");
   }, [modelSettings]);
 
-  const refreshDiscovery = async () => {
+  const refreshDiscovery = async (refresh = false) => {
     setDiscoveryBusy(true); setDiscoveryError("");
-    try { setDiscovery(await getModelDiscovery()); } catch (error) { setDiscoveryError(error instanceof Error ? error.message : String(error)); }
+    try { setDiscovery(await getModelDiscovery(refresh)); } catch (error) { setDiscoveryError(error instanceof Error ? error.message : String(error)); }
     finally { setDiscoveryBusy(false); }
   };
 
@@ -1148,6 +1149,16 @@ function ModelRoutingSettings({
   const revision = modelSettings.config_revision
     ? modelSettings.config_revision.slice(0, 12)
     : t("models.unknown");
+  const discoveredModels = Object.fromEntries(
+    (discovery?.sources ?? []).flatMap((source) =>
+      source.id === "imagegen-bridge"
+        ? [[source.id, source.models], ["codex-oauth", source.models]]
+        : [[source.id, source.models]],
+    ),
+  );
+  const allDiscoveredModels = Object.values(discoveredModels).flat();
+  const providerModels = (providerId: string, models: string[]) =>
+    [...new Set([...models, ...(discoveredModels[providerId] ?? [])])];
 
   return (
     <div className="model-routing">
@@ -1200,7 +1211,10 @@ function ModelRoutingSettings({
       <p className="model-note">
         {t("models.note")}
       </p>
-      <div className="settings-grid">
+      <div className="model-section-nav" role="tablist" aria-label={t("models.title")}>
+        {(["connections", "models", "routing", "images", "diagnostics"] as const).map((section) => <button key={section} type="button" role="tab" aria-selected={activeAiSection === section} aria-controls={`model-section-${section}`} className={activeAiSection === section ? "active" : ""} onClick={() => setActiveAiSection(section)}>{t(`modelSections.${section}`)}</button>)}
+      </div>
+      {activeAiSection === "routing" && <div className="settings-grid" id="model-section-routing" role="tabpanel">
         <h4 className="model-section-title">{t("modelSections.routing")}</h4>
         <label>
           <span>{t("models.priority")}</span>
@@ -1227,12 +1241,14 @@ function ModelRoutingSettings({
             options={modelSettings.providers.map((provider) => ({ value: provider.id, label: provider.label }))}
           />
         </label>
+      </div>}
+      {activeAiSection === "models" && <div className="settings-grid" id="model-section-models" role="tabpanel">
         <h4 className="model-section-title">{t("modelSections.models")}</h4>
         <label>
           <span>{t("models.utility")}</span>
           <ModelInput
             value={draft.utilityModel}
-            options={modelSettings.utility_models}
+            options={providerModels(activeProvider, modelSettings.utility_models)}
             onChange={(value) =>
               updateDraft((draft) => ({ ...draft, utilityModel: value }))
             }
@@ -1242,7 +1258,7 @@ function ModelRoutingSettings({
           <span>{t("models.repair")}</span>
           <ModelInput
             value={draft.repairModel}
-            options={modelSettings.repair_models}
+            options={providerModels(activeProvider, modelSettings.repair_models)}
             onChange={(value) =>
               updateDraft((draft) => ({ ...draft, repairModel: value }))
             }
@@ -1261,8 +1277,10 @@ function ModelRoutingSettings({
             placeholder={t("models.fallbackPlaceholder")}
           />
         </label>
+      </div>}
+      {activeAiSection === "images" && <div className="settings-grid" id="model-section-images" role="tabpanel">
         <h4 className="model-section-title">{t("modelSections.images")}</h4>
-        <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} discoveredModels={Object.fromEntries((discovery?.sources ?? []).map((source) => [source.id, source.models]))} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
+        <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} discoveredModels={discoveredModels} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
         <label>
           <span>{t("models.locationSize")}</span>
           <input
@@ -1291,7 +1309,7 @@ function ModelRoutingSettings({
           <span>{t("models.ascii")}</span>
           <ModelInput
             value={draft.asciiModel}
-            options={modelSettings.ascii_models}
+            options={[...new Set([...modelSettings.ascii_models, ...allDiscoveredModels])]}
             onChange={(value) =>
               updateDraft((draft) => ({ ...draft, asciiModel: value }))
             }
@@ -1324,6 +1342,8 @@ function ModelRoutingSettings({
           />
         </label>
       </div>
+      }
+      {activeAiSection === "connections" && <section id="model-section-connections" role="tabpanel">
       <h4 className="model-section-title">{t("modelSections.connections")}</h4>
       <div className="provider-editor-grid">
         {modelSettings.providers.map((provider) => {
@@ -1350,7 +1370,7 @@ function ModelRoutingSettings({
                   <span>{t("models.model")}</span>
                   <ModelInput
                     value={providerDraft?.model ?? ""}
-                    options={modelSettings.narrative_models}
+                    options={providerModels(provider.id, modelSettings.narrative_models)}
                     onChange={(value) =>
                       updateProvider(provider.id, { model: value })
                     }
@@ -1384,6 +1404,8 @@ function ModelRoutingSettings({
           );
         })}
       </div>
+      </section>}
+      {activeAiSection === "diagnostics" && <section id="model-section-diagnostics" role="tabpanel">
       <div className="model-facts">
         <span>{t("models.providerChain", { chain: draft.providerPriority.join(" → ") })}</span>
         <span>
@@ -1395,10 +1417,11 @@ function ModelRoutingSettings({
         <span>TTS: {modelSettings.tts_status}</span>
       </div>
       <div className="model-discovery" aria-live="polite">
-        <div><strong>{t("modelDiscovery.title")}</strong><span>{discovery?.sources.map((source) => `${source.id}: ${source.status}`).join(" · ") || t("modelDiscovery.unavailable")}</span></div>
-        <button type="button" onClick={() => void refreshDiscovery()} disabled={discoveryBusy}>{discoveryBusy ? t("modelDiscovery.refreshing") : t("modelDiscovery.refresh")}</button>
+        <div><strong>{t("modelDiscovery.title")}</strong><span>{discovery?.sources.map((source) => `${source.id}: ${source.status} · ${displayTimestamp(source.checked_at)}`).join(" · ") || t("modelDiscovery.unavailable")}</span></div>
+        <button type="button" onClick={() => void refreshDiscovery(true)} disabled={discoveryBusy}>{discoveryBusy ? t("modelDiscovery.refreshing") : t("modelDiscovery.refresh")}</button>
         {discoveryError && <p className="model-error">{discoveryError}</p>}
       </div>
+      </section>}
       {issues.length > 0 && (
         <div className="model-warning">
           {issues.map((issue) => (

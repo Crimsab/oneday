@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::process::{ExitStatus, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
@@ -278,12 +278,12 @@ pub async fn model_settings(
         .ok_or_else(|| anyhow!("gateway-model-settings returned no settings"))
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ModelDiscovery {
     pub sources: Vec<ModelDiscoverySource>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct ModelDiscoverySource {
     pub id: String,
     pub status: String,
@@ -298,7 +298,31 @@ struct ModelDiscoveryResponse {
     error_code: Option<String>,
 }
 
-pub async fn model_discovery(state: Arc<AppState>) -> anyhow::Result<ModelDiscovery> {
+struct CachedModelDiscovery {
+    expires_at: std::time::Instant,
+    value: ModelDiscovery,
+}
+
+static MODEL_DISCOVERY_CACHE: OnceLock<Mutex<Option<CachedModelDiscovery>>> = OnceLock::new();
+
+pub fn clear_model_discovery_cache() {
+    if let Some(cache) = MODEL_DISCOVERY_CACHE.get() {
+        *cache.lock().expect("model discovery cache lock") = None;
+    }
+}
+
+pub async fn model_discovery(
+    state: Arc<AppState>,
+    refresh: bool,
+) -> anyhow::Result<ModelDiscovery> {
+    let cache = MODEL_DISCOVERY_CACHE.get_or_init(|| Mutex::new(None));
+    if !refresh {
+        if let Some(cached) = cache.lock().expect("model discovery cache lock").as_ref() {
+            if cached.expires_at > std::time::Instant::now() {
+                return Ok(cached.value.clone());
+            }
+        }
+    }
     let output = run_gateway_command(
         &state,
         "gateway-model-discovery",
@@ -325,7 +349,12 @@ pub async fn model_discovery(state: Arc<AppState>) -> anyhow::Result<ModelDiscov
                 .unwrap_or_else(|| "Model discovery is unavailable.".to_string()),
         ));
     }
-    Ok(parsed.discovery.expect("checked above"))
+    let discovery = parsed.discovery.expect("checked above");
+    *cache.lock().expect("model discovery cache lock") = Some(CachedModelDiscovery {
+        expires_at: std::time::Instant::now() + Duration::from_secs(60),
+        value: discovery.clone(),
+    });
+    Ok(discovery)
 }
 
 pub async fn update_model_settings(
@@ -1772,7 +1801,7 @@ printf '{"commands":[{"id":"save","canonical":"/save","aliases":["s"],"title":"%
         let script = fake_oneday_input_script(&[
             r#"{"discovery":{"sources":[{"id":"litellm","status":"ready","models":["story-model"],"checked_at":"2026-07-19T00:00:00Z"}]}}"#,
         ]);
-        let discovery = model_discovery(test_state(script))
+        let discovery = model_discovery(test_state(script), true)
             .await
             .expect("discovery");
         assert_eq!(discovery.sources[0].id, "litellm");

@@ -234,14 +234,23 @@ async fn update_model_settings(
     let current = engine::model_settings(state.clone()).await?;
     auth::validate_model_settings_update(&current, &mut payload).map_err(anyhow::Error::new)?;
     let mut settings = engine::update_model_settings(state, payload).await?;
+    engine::clear_model_discovery_cache();
     auth::redact_model_settings(&mut settings);
     Ok(Json(settings))
 }
 
+#[derive(Deserialize)]
+struct ModelDiscoveryQuery {
+    refresh: Option<bool>,
+}
+
 async fn model_discovery(
     State(state): State<Arc<AppState>>,
+    Query(query): Query<ModelDiscoveryQuery>,
 ) -> Result<Json<engine::ModelDiscovery>, ApiError> {
-    Ok(Json(engine::model_discovery(state).await?))
+    Ok(Json(
+        engine::model_discovery(state, query.refresh.unwrap_or(false)).await?,
+    ))
 }
 
 async fn setup_readiness(

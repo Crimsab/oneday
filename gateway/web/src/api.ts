@@ -463,8 +463,8 @@ export function getModelSettings(): Promise<ModelSettings> {
   return request<ModelSettings>("/api/config/models");
 }
 
-export function getModelDiscovery(): Promise<ModelDiscovery> {
-  return request<ModelDiscovery>("/api/config/model-discovery");
+export function getModelDiscovery(refresh = false): Promise<ModelDiscovery> {
+  return request<ModelDiscovery>(`/api/config/model-discovery${refresh ? "?refresh=true" : ""}`);
 }
 
 export function updateModelSettings(payload: ModelSettingsUpdate): Promise<ModelSettings> {

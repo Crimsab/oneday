@@ -56,6 +56,12 @@ describe("api request handling", () => {
     expect(globalThis.fetch).toHaveBeenCalledWith("/api/config/model-discovery", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
+  it("requests a fresh server-side discovery only when explicitly refreshed", async () => {
+    mockFetch(new Response(JSON.stringify({ sources: [] }), { status: 200 }));
+    await getModelDiscovery(true);
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/config/model-discovery?refresh=true", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+  });
+
   it("requests localized command presentation while preserving stable command tokens", async () => {
     globalThis.fetch = vi.fn((input: RequestInfo | URL) => {
       const locale = new URL(String(input), "http://oneday.test").searchParams.get("locale");

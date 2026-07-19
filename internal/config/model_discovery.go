@@ -48,42 +48,122 @@ func DiscoverModels(ctx context.Context, cfg Config) ModelDiscovery {
 	return result
 }
 
-type modelDiscoveryCandidate struct { id, baseURL, token, path string; bridge bool }
+type modelDiscoveryCandidate struct {
+	id      string
+	baseURL string
+	token   string
+	path    string
+	bridge  bool
+}
 
 func discoverModelSource(ctx context.Context, client *http.Client, source modelDiscoveryCandidate) ModelDiscoverySource {
-	result := ModelDiscoverySource{ID: source.id, Status: "unavailable", Models: []string{}, CheckedAt: time.Now().UTC().Format(time.RFC3339)}
+	result := ModelDiscoverySource{
+		ID:        source.id,
+		Status:    "unavailable",
+		Models:    []string{},
+		CheckedAt: time.Now().UTC().Format(time.RFC3339),
+	}
 	endpoint, err := joinDiscoveryEndpoint(source.baseURL, source.path)
-	if err != nil { return result }
+	if err != nil {
+		return result
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil { return result }
-	if strings.TrimSpace(source.token) != "" { req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(source.token)) }
+	if err != nil {
+		return result
+	}
+	if token := strings.TrimSpace(source.token); token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := client.Do(req)
-	if err != nil { return result }
+	if err != nil {
+		return result
+	}
 	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 { return result }
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return result
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, modelDiscoveryResponseLimit+1))
-	if err != nil || len(body) > modelDiscoveryResponseLimit { return result }
+	if err != nil || len(body) > modelDiscoveryResponseLimit {
+		return result
+	}
 	models := parseDiscoveredModels(body, source.bridge)
-	if len(models) == 0 { result.Status = "empty"; return result }
+	if len(models) == 0 {
+		result.Status = "empty"
+		return result
+	}
 	result.Status, result.Models = "ready", models
 	return result
 }
 
 func joinDiscoveryEndpoint(base, path string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(base)); if err != nil || u.Scheme == "" || u.Host == "" { return "", err }
+	u, err := url.Parse(strings.TrimSpace(base))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", err
+	}
 	u.Path = strings.TrimRight(u.Path, "/") + path
 	u.RawQuery = ""
 	return u.String(), nil
 }
 
 func parseDiscoveredModels(body []byte, bridge bool) []string {
-	var payload struct { Data []struct { ID string `json:"id"` } `json:"data"`; Models []string `json:"models"`; Providers []struct { Models []string `json:"models"` } `json:"providers"` }
-	if json.Unmarshal(body, &payload) != nil { return []string{} }
-	models := append([]string{}, payload.Models...)
-	for _, item := range payload.Data { models = append(models, item.ID) }
-	if bridge { for _, provider := range payload.Providers { models = append(models, provider.Models...) } }
-	seen := map[string]struct{}{}; clean := make([]string, 0, len(models))
-	for _, model := range models { model = strings.TrimSpace(model); if model != "" { if _, ok := seen[model]; !ok { seen[model] = struct{}{}; clean = append(clean, model) } } }
+	var payload map[string]json.RawMessage
+	if json.Unmarshal(body, &payload) != nil {
+		return []string{}
+	}
+	models := append(modelIDs(payload["data"]), modelIDs(payload["models"])...)
+	if bridge {
+		var providers []map[string]json.RawMessage
+		if json.Unmarshal(payload["providers"], &providers) == nil {
+			for _, provider := range providers {
+				models = append(models, modelIDs(provider["models"])...)
+			}
+		}
+	}
+	return uniqueSortedModels(models)
+}
+
+// modelIDs accepts OpenAI /models entries as well as bridge 0.3 provider
+// metadata, whose model list may contain either strings or {id: ...} objects.
+func modelIDs(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var items []json.RawMessage
+	if json.Unmarshal(raw, &items) != nil {
+		return nil
+	}
+	models := make([]string, 0, len(items))
+	for _, item := range items {
+		var name string
+		if json.Unmarshal(item, &name) == nil {
+			models = append(models, name)
+			continue
+		}
+		var entry struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+			Name  string `json:"name"`
+		}
+		if json.Unmarshal(item, &entry) == nil {
+			models = append(models, entry.ID, entry.Model, entry.Name)
+		}
+	}
+	return models
+}
+
+func uniqueSortedModels(models []string) []string {
+	seen := map[string]struct{}{}
+	clean := make([]string, 0, len(models))
+	for _, model := range models {
+		model = strings.TrimSpace(model)
+		if model == "" {
+			continue
+		}
+		if _, ok := seen[model]; !ok {
+			seen[model] = struct{}{}
+			clean = append(clean, model)
+		}
+	}
 	sort.Strings(clean)
 	return clean
 }

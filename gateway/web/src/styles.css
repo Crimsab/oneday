@@ -3471,6 +3471,9 @@ input:disabled {
 .model-discovery { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; border-top: 1px solid var(--line); padding-top: 12px; }
 .model-discovery > div { display: grid; gap: 3px; min-width: 0; }
 .model-discovery span { color: var(--muted); font-size: .75rem; overflow-wrap: anywhere; }
+.model-section-nav { display: flex; gap: 2px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+.model-section-nav button { min-height: 38px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--muted); white-space: nowrap; }
+.model-section-nav button.active { border-bottom-color: var(--accent); color: var(--text); }
 @media (max-width: 720px) { .media-studio-filters { grid-template-columns: 1fr 1fr; } .media-studio-filters label { grid-column: 1 / -1; } }
 
 .visual-job-row {
