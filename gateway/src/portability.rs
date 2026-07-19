@@ -1007,11 +1007,91 @@ fn safe_filename(value: &str) -> String {
 mod tests {
     use super::*;
     use sqlx::sqlite::SqlitePoolOptions;
+    use std::{fs, sync::Arc};
+    use tokio::sync::{broadcast, Semaphore};
+
+    async fn archive_test_pool() -> SqlitePool {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("memory sqlite");
+        sqlx::query(
+            "CREATE TABLE stories(id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL,genre TEXT NOT NULL,tone TEXT NOT NULL,language TEXT NOT NULL,is_archived INTEGER NOT NULL,updated_at TEXT NOT NULL)",
+        )
+        .execute(&pool)
+        .await
+        .expect("stories schema");
+        pool
+    }
+
+    fn archive_test_state(pool: SqlitePool, root: PathBuf) -> Arc<AppState> {
+        let visual_asset_dir = root.join("visual-assets");
+        fs::create_dir_all(&visual_asset_dir).expect("visual asset directory");
+        let (turn_events, _) = broadcast::channel(4);
+        Arc::new(AppState {
+            pool,
+            paths: crate::config::ResolvedPaths {
+                oneday_root: root.clone(),
+                config_path: root.join("config.yaml"),
+                db_path: root.join("oneday.db"),
+                oneday_bin: root.join("oneday"),
+                static_dir: root,
+                visual_asset_dir,
+            },
+            turn_events,
+            visual_workers: Arc::new(Semaphore::new(1)),
+            observability: crate::observability::Status {
+                otlp_traces: "disabled",
+            },
+        })
+    }
     #[test]
     fn archive_paths_reject_traversal() {
         assert!(validate_archive_path("assets/a.png").is_ok());
         assert!(validate_archive_path("../a.png").is_err());
         assert!(validate_archive_path("assets\\a.png").is_err());
+    }
+
+    #[tokio::test]
+    async fn story_archive_round_trip_uses_isolated_source_and_target_databases() {
+        let source_root =
+            std::env::temp_dir().join(format!("oneday-archive-source-{}", Uuid::new_v4()));
+        let target_root =
+            std::env::temp_dir().join(format!("oneday-archive-target-{}", Uuid::new_v4()));
+        let source_pool = archive_test_pool().await;
+        sqlx::query("INSERT INTO stories(id,name,description,genre,tone,language,is_archived,updated_at) VALUES('source','Archive story','A portable source','fantasy','calm','en',0,'2026-01-01T00:00:00Z')")
+            .execute(&source_pool)
+            .await
+            .expect("source story");
+
+        let source = archive_test_state(source_pool.clone(), source_root.clone());
+        let (_, archive) = export_story_archive(source, "source", ArchiveOptions::default())
+            .await
+            .expect("export archive");
+        let target_pool = archive_test_pool().await;
+        let target = archive_test_state(target_pool.clone(), target_root.clone());
+        let imported = import_story_archive(target, archive)
+            .await
+            .expect("import archive");
+
+        let source_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM stories WHERE id='source'")
+                .fetch_one(&source_pool)
+                .await
+                .expect("source remains readable");
+        assert_eq!(source_count, 1);
+        assert_ne!(imported.story_id, "source");
+        assert_eq!(imported.story_name, "Archive story");
+        let imported_name: String = sqlx::query_scalar("SELECT name FROM stories WHERE id=?")
+            .bind(&imported.story_id)
+            .fetch_one(&target_pool)
+            .await
+            .expect("target story");
+        assert_eq!(imported_name, "Archive story");
+
+        let _ = fs::remove_dir_all(source_root);
+        let _ = fs::remove_dir_all(target_root);
     }
     #[test]
     fn filenames_are_sanitized() {

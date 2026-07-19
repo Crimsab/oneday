@@ -51,17 +51,17 @@ It rebuilds the CLI and exercises save/resume, rewind provenance, canonical
 codex visibility, investigations, projects, social-duel aftermath, and TUI
 handoffs.
 
-The credential-free first-run matrix starts with the CLI slice:
+Run the credential-free first-run and portability matrix with:
 
 ```bash
 make first-run-matrix
 ```
 
 It creates a new temporary configuration/database location, clears inherited
-OneDay settings, and runs the setup/doctor plus fake-narrator persistence
-contracts with Go dependency resolution disabled from the network. See
-[First-run and portability matrix](first-run-matrix.md) for its scope and
-boundaries.
+OneDay settings, and uses only fake providers, fixtures, and mocked browser
+routes with Go/Cargo dependency resolution disabled from the network. See
+[First-run and portability matrix](first-run-matrix.md) for its exact slices,
+scope, and desktop-package boundary.
 
 ## Browser checks
 

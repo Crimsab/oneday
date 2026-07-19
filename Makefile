@@ -43,7 +43,7 @@ qa-matrix-auto:
 	./scripts/qa-matrix.sh --automated-only
 
 first-run-matrix:
-	./scripts/first-run-matrix.sh cli
+	./scripts/first-run-matrix.sh
 
 release-check:
 	./scripts/release-gate.sh

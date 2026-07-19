@@ -34,6 +34,12 @@ pub struct TransferResult {
     path: Option<String>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum ImportKind {
+    Archive,
+    Template,
+}
+
 fn configured_server(state: &State<'_, AppRuntime>) -> Result<Url, String> {
     state
         .server_url
@@ -68,6 +74,25 @@ fn selected_path(value: Option<FilePath>) -> Result<Option<PathBuf>, String> {
         None => Ok(None),
         Some(FilePath::Path(path)) => Ok(Some(path)),
         Some(FilePath::Url(_)) => Err("Choose a local file.".into()),
+    }
+}
+
+fn validate_import_file(path: &Path, metadata: &std::fs::Metadata) -> Result<ImportKind, String> {
+    if !metadata.is_file() {
+        return Err("Choose a regular OneDay ZIP or world template file.".into());
+    }
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "zip" if metadata.len() <= MAX_ARCHIVE_BYTES => Ok(ImportKind::Archive),
+        "zip" => Err("The archive is larger than the 512 MiB import limit.".into()),
+        "json" if metadata.len() <= MAX_TEMPLATE_BYTES => Ok(ImportKind::Template),
+        "json" => Err("The world template is larger than the 4 MiB import limit.".into()),
+        _ => Err("Choose a .zip OneDay archive or .json world template.".into()),
     }
 }
 
@@ -113,23 +138,13 @@ pub async fn choose_and_import_story(
             path: None,
         });
     };
-    let extension = path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
     let metadata = tokio::fs::metadata(&path)
         .await
         .map_err(|error| format!("Could not inspect the selected file: {error}"))?;
-    if !metadata.is_file() {
-        return Err("Choose a regular OneDay ZIP or world template file.".into());
-    }
+    let import_kind = validate_import_file(&path, &metadata)?;
     let server = configured_server(&state)?;
-    let response = match extension.as_str() {
-        "zip" => {
-            if metadata.len() > MAX_ARCHIVE_BYTES {
-                return Err("The archive is larger than the 512 MiB import limit.".into());
-            }
+    let response = match import_kind {
+        ImportKind::Archive => {
             let file = File::open(&path)
                 .await
                 .map_err(|error| format!("Could not open the selected archive: {error}"))?;
@@ -158,10 +173,7 @@ pub async fn choose_and_import_story(
             )
             .await?
         }
-        "json" => {
-            if metadata.len() > MAX_TEMPLATE_BYTES {
-                return Err("The world template is larger than the 4 MiB import limit.".into());
-            }
+        ImportKind::Template => {
             let body = tokio::fs::read(&path)
                 .await
                 .map_err(|error| format!("Could not read the selected template: {error}"))?;
@@ -181,7 +193,6 @@ pub async fn choose_and_import_story(
             )
             .await?
         }
-        _ => return Err("Choose a .zip OneDay archive or .json world template.".into()),
     };
     let result: ImportResult = response
         .json()
@@ -342,5 +353,51 @@ mod tests {
         assert!(safe_story_id("../secret").is_err());
         assert!(safe_story_id("story/child").is_err());
         assert_eq!(safe_story_id("story-id").unwrap(), "story-id");
+    }
+
+    #[test]
+    fn import_validation_rejects_invalid_type_and_oversize_files_before_dispatch() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("story.zip");
+        std::fs::File::create(&archive).unwrap();
+        assert_eq!(
+            validate_import_file(&archive, &std::fs::metadata(&archive).unwrap()).unwrap(),
+            ImportKind::Archive
+        );
+
+        let template = root.path().join("world.json");
+        std::fs::File::create(&template).unwrap();
+        assert_eq!(
+            validate_import_file(&template, &std::fs::metadata(&template).unwrap()).unwrap(),
+            ImportKind::Template
+        );
+
+        let unknown = root.path().join("story.txt");
+        std::fs::File::create(&unknown).unwrap();
+        assert!(validate_import_file(&unknown, &std::fs::metadata(&unknown).unwrap()).is_err());
+
+        let oversized_archive = root.path().join("oversized.zip");
+        std::fs::File::create(&oversized_archive)
+            .unwrap()
+            .set_len(MAX_ARCHIVE_BYTES + 1)
+            .unwrap();
+        assert!(validate_import_file(
+            &oversized_archive,
+            &std::fs::metadata(&oversized_archive).unwrap()
+        )
+        .unwrap_err()
+        .contains("512 MiB"));
+
+        let oversized_template = root.path().join("oversized.json");
+        std::fs::File::create(&oversized_template)
+            .unwrap()
+            .set_len(MAX_TEMPLATE_BYTES + 1)
+            .unwrap();
+        assert!(validate_import_file(
+            &oversized_template,
+            &std::fs::metadata(&oversized_template).unwrap()
+        )
+        .unwrap_err()
+        .contains("4 MiB"));
     }
 }
