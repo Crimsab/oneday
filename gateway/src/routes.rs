@@ -1,14 +1,14 @@
 use crate::{
-    assets, db, engine, error::PublicError, events::TurnStreamEvent, gateway_protocol as protocol,
-    portability, telemetry, translation, AppState,
+    assets, auth, db, engine, error::PublicError, events::TurnStreamEvent,
+    gateway_protocol as protocol, portability, telemetry, translation, AppState,
 };
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Extension, Multipart, Path, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
-use axum::{Json, Router};
+use axum::{middleware, Json, Router};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::json;
 use std::convert::Infallible;
@@ -19,13 +19,17 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio_util::io::ReaderStream;
 use tower_http::services::{ServeDir, ServeFile};
 
-pub fn router(state: Arc<AppState>) -> Router {
+pub fn router(state: Arc<AppState>, auth_state: Arc<auth::AuthState>) -> Router {
     let static_dir = state.paths.static_dir.clone();
     let visual_asset_dir = state.paths.visual_asset_dir.clone();
     let spa = ServeDir::new(&static_dir).fallback(ServeFile::new(static_dir.join("index.html")));
 
     Router::new()
         .route("/api/health", get(health))
+        .route(
+            "/api/auth/bootstrap",
+            get(auth::bootstrap_get).post(auth::bootstrap_post),
+        )
         .route(
             "/api/config/models",
             get(model_settings).put(update_model_settings),
@@ -209,19 +213,27 @@ pub fn router(state: Arc<AppState>) -> Router {
         .nest_service("/generated/assets", ServeDir::new(visual_asset_dir))
         .fallback_service(spa)
         .with_state(state)
+        .layer(Extension(auth_state.clone()))
+        .layer(middleware::from_fn_with_state(auth_state, auth::enforce))
 }
 
 async fn model_settings(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<protocol::ModelRoutingSettings>, ApiError> {
-    Ok(Json(engine::model_settings(state).await?))
+    let mut settings = engine::model_settings(state).await?;
+    auth::redact_model_settings(&mut settings);
+    Ok(Json(settings))
 }
 
 async fn update_model_settings(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<protocol::ModelRoutingUpdate>,
+    Json(mut payload): Json<protocol::ModelRoutingUpdate>,
 ) -> Result<Json<protocol::ModelRoutingSettings>, ApiError> {
-    Ok(Json(engine::update_model_settings(state, payload).await?))
+    let current = engine::model_settings(state.clone()).await?;
+    auth::validate_model_settings_update(&current, &mut payload).map_err(anyhow::Error::new)?;
+    let mut settings = engine::update_model_settings(state, payload).await?;
+    auth::redact_model_settings(&mut settings);
+    Ok(Json(settings))
 }
 
 async fn command_descriptors(
@@ -253,7 +265,14 @@ fn normalize_interface_locale(locale: Option<&str>) -> &'static str {
     }
 }
 
-async fn health(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::Value>, ApiError> {
+async fn health(
+    State(state): State<Arc<AppState>>,
+    Extension(auth_state): Extension<Arc<auth::AuthState>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if !auth_state.is_authenticated(&headers) {
+        return Ok(Json(json!({ "status": "ok" })));
+    }
     let story_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM stories")
         .fetch_one(&state.pool)
         .await?;

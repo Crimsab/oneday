@@ -6,8 +6,11 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Parser)]
 #[command(name = "oneday-gateway")]
 pub struct Args {
-    #[arg(long, env = "ONEDAY_GATEWAY_ADDR", default_value = "0.0.0.0:8788")]
+    #[arg(long, env = "ONEDAY_GATEWAY_ADDR", default_value = "127.0.0.1:8788")]
     pub addr: String,
+
+    #[arg(long, env = "ONEDAY_GATEWAY_ALLOWED_HOSTS", value_delimiter = ',')]
+    pub allowed_hosts: Vec<String>,
 
     #[arg(long, env = "ONEDAY_ROOT", default_value = ".")]
     pub oneday_root: PathBuf,
@@ -144,6 +147,7 @@ mod tests {
 
         let paths = resolve_paths(&Args {
             addr: "127.0.0.1:0".to_string(),
+            allowed_hosts: Vec::new(),
             oneday_root: root.clone(),
             config_path: None,
             db_path: None,
@@ -155,5 +159,13 @@ mod tests {
         assert_eq!(paths.db_path, root.join("fresh-data/oneday.db"));
         assert!(!paths.db_path.exists());
         std::fs::remove_dir_all(root).expect("clean test directory");
+    }
+
+    #[test]
+    fn default_listener_is_loopback_only() {
+        let args = Args::try_parse_from(["oneday-gateway"]).expect("parse default arguments");
+
+        assert_eq!(args.addr, "127.0.0.1:8788");
+        assert!(args.allowed_hosts.is_empty());
     }
 }

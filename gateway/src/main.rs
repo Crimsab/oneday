@@ -1,5 +1,6 @@
 mod asset_upload;
 mod assets;
+mod auth;
 mod challenge;
 mod config;
 mod db;
@@ -91,6 +92,8 @@ async fn main() -> anyhow::Result<()> {
     let args = config::Args::parse_args();
     let paths = config::resolve_paths(&args).context("resolving OneDay gateway paths")?;
     let addr: SocketAddr = args.addr.parse().context("parsing --addr")?;
+    let auth = auth::AuthState::initialize(addr, &args.allowed_hosts)
+        .context("initializing gateway authentication")?;
     if let Some(parent) = paths.db_path.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("creating data directory {}", parent.display()))?;
@@ -141,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
     translation::spawn_worker(state.clone());
     let request_id_header = HeaderName::from_static("x-request-id");
     let trace_request_id_header = request_id_header.clone();
-    let app: Router = routes::router(state)
+    let app: Router = routes::router(state, auth.state.clone())
         .layer(CompressionLayer::new())
         .layer(middleware::from_fn(static_cache_headers))
         .layer(
@@ -156,7 +159,7 @@ async fn main() -> anyhow::Result<()> {
                         "http_request",
                         request_id,
                         method = %request.method(),
-                        uri = %request.uri(),
+                        uri = %auth::redacted_request_target(request.uri()),
                     )
                 })
                 .on_response(
@@ -173,6 +176,16 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("binding {addr}"))?;
 
     tracing::info!("OneDay gateway listening on http://{addr}");
+    if auth.generated_token {
+        tracing::warn!(
+            "Open this one-shot gateway bootstrap URL once: {}",
+            auth::bootstrap_url(addr, &auth.bootstrap_token)
+        );
+    } else {
+        tracing::info!(
+            "Gateway bootstrap token loaded from ONEDAY_GATEWAY_BOOTSTRAP_TOKEN; its value is not logged"
+        );
+    }
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
