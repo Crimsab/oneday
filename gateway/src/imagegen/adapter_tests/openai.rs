@@ -1,4 +1,92 @@
 use super::*;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
+
+#[tokio::test]
+async fn explicit_provider_failure_before_image_bytes_is_retryable_but_dispatched_once() {
+    let dispatches = Arc::new(AtomicUsize::new(0));
+    let observed = dispatches.clone();
+    let app = Router::new().route(
+        "/v1/images/generations",
+        post(move || {
+            let observed = observed.clone();
+            async move {
+                observed.fetch_add(1, Ordering::SeqCst);
+                axum::http::StatusCode::BAD_GATEWAY
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let error = generate(
+        &Client::new(),
+        &direct_config("openai", format!("http://{address}/v1")),
+        &direct_request("gpt-image-1"),
+    )
+    .await
+    .unwrap_err();
+
+    assert_eq!(dispatches.load(Ordering::SeqCst), 1);
+    assert_eq!(error_code(&error), "upstream_unavailable");
+    assert!(is_retryable(&error));
+}
+
+#[tokio::test]
+async fn malformed_provider_responses_never_yield_generated_bytes() {
+    for body in [r#"{"data":["#, r#"{"data":[{"b64_json":"not-base64"}]}"#] {
+        let app = Router::new().route(
+            "/v1/images/generations",
+            post(move || {
+                let body = body.to_string();
+                async move { ([(header::CONTENT_TYPE, "application/json")], body) }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+        let error = generate(
+            &Client::new(),
+            &direct_config("openai", format!("http://{address}/v1")),
+            &direct_request("gpt-image-1"),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(error_code(&error), "invalid_response");
+        assert!(!is_retryable(&error));
+    }
+}
+
+#[tokio::test]
+async fn midstream_provider_disconnect_is_a_terminal_invalid_response() {
+    let app = Router::new().route(
+        "/v1/images/generations",
+        post(|| async {
+            let body = axum::body::Body::from_stream(async_stream::stream! {
+                yield Ok::<_, std::io::Error>(axum::body::Bytes::from_static(b"{\"data\":["));
+                yield Err(std::io::Error::other("fixture response truncated midstream"));
+            });
+            ([(header::CONTENT_TYPE, "application/json")], body)
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let error = generate(
+        &Client::new(),
+        &direct_config("openai", format!("http://{address}/v1")),
+        &direct_request("gpt-image-1"),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(error_code(&error), "invalid_response");
+    assert!(!is_retryable(&error));
+}
 
 #[tokio::test]
 async fn openai_and_compatible_adapters_use_images_contract() {

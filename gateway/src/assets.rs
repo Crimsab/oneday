@@ -713,7 +713,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
     .execute(pool)
     .await?;
     normalize_location_asset_lineages(pool).await?;
-    recover_stale_visual_jobs(pool).await?;
+    recover_unknown_visual_generation_outcomes(pool).await?;
     Ok(())
 }
 
@@ -972,21 +972,23 @@ where
     Ok((row_string(&row, "branch_id"), row_string(&row, "commit_id")))
 }
 
-async fn recover_stale_visual_jobs(pool: &SqlitePool) -> anyhow::Result<u64> {
+async fn recover_unknown_visual_generation_outcomes(pool: &SqlitePool) -> anyhow::Result<u64> {
     let now = chrono::Utc::now().to_rfc3339();
     let result = sqlx::query(
         r#"UPDATE visual_generation_jobs
-           SET status = 'queued',
+           SET status = 'failed',
                locked_until = '',
-               error = CASE WHEN error = '' THEN 'Recovered after gateway restart or stale lock.' ELSE error END,
+               error = 'PROVIDER_UNKNOWN_OUTCOME: the gateway stopped while the provider outcome was unknown; the job was not retried.',
+               finished_at = ?,
                updated_at = ?
            WHERE status = 'running' AND locked_until != '' AND locked_until <= ?"#,
     )
     .bind(&now)
     .bind(&now)
+    .bind(&now)
     .execute(pool)
     .await
-    .context("recovering stale visual generation jobs")?;
+    .context("recording unknown visual generation outcomes")?;
     Ok(result.rows_affected())
 }
 
@@ -2375,10 +2377,12 @@ pub fn spawn_visual_generation_maintenance(state: Arc<AppState>) {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
         loop {
             interval.tick().await;
-            match recover_stale_visual_jobs(&state.pool).await {
+            match recover_unknown_visual_generation_outcomes(&state.pool).await {
                 Ok(count) if count > 0 => {
-                    tracing::info!(count, "recovered stale visual generation jobs");
-                    spawn_visual_generation_worker(state.clone());
+                    tracing::warn!(
+                        count,
+                        "recorded visual generation jobs with unknown provider outcomes"
+                    );
                 }
                 Ok(_) => {}
                 Err(err) => {
@@ -2400,14 +2404,14 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
         .build()
         .context("building image generation HTTP client")?;
 
-    recover_stale_visual_jobs(&state.pool).await?;
+    recover_unknown_visual_generation_outcomes(&state.pool).await?;
     loop {
         let Some(job) = claim_visual_generation_job(&state.pool, &config).await? else {
             let Some(delay) = next_visual_generation_wakeup(&state.pool).await? else {
                 break;
             };
             tokio::time::sleep(delay).await;
-            recover_stale_visual_jobs(&state.pool).await?;
+            recover_unknown_visual_generation_outcomes(&state.pool).await?;
             continue;
         };
         if let Err(err) = mark_asset_running(&state.pool, &job, &config).await {
@@ -2773,10 +2777,6 @@ async fn claim_visual_generation_job(
                WHERE ((
                     j.status = 'queued'
                     AND (j.locked_until = '' OR j.locked_until <= ?)
-               ) OR (
-                    j.status = 'running'
-                    AND j.locked_until != ''
-                    AND j.locked_until <= ?
                ))
                AND j.branch_id=s.active_branch_id
                AND j.source_commit_id IN (
@@ -2791,7 +2791,6 @@ async fn claim_visual_generation_job(
            RETURNING id,asset_id,story_id,attempts,max_attempts,branch_id,source_commit_id"#,
     )
     .bind(&lock_until)
-    .bind(&now)
     .bind(&now)
     .bind(&now)
     .bind(&now)
@@ -5463,6 +5462,37 @@ mod tests {
         }
     }
 
+    async fn gateway_owned_media_state_counts(pool: &SqlitePool) -> (i64, i64, i64, i64, i64) {
+        let messages =
+            sqlx::query_scalar("SELECT COUNT(*) FROM chat_messages WHERE story_id='story'")
+                .fetch_one(pool)
+                .await
+                .unwrap();
+        let canon_events = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM canonical_world_events WHERE story_id='story'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let saves = sqlx::query_scalar("SELECT COUNT(*) FROM saves WHERE story_id='story'")
+            .fetch_one(pool)
+            .await
+            .unwrap();
+        let versions = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_asset_versions WHERE asset_id='asset-location'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        let selections = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_asset_selection_states WHERE asset_id='asset-location'",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        (messages, canon_events, saves, versions, selections)
+    }
+
     #[test]
     fn image_generation_concurrency_defaults_and_stays_bounded() {
         assert_eq!(parse_visual_generation_concurrency(None), 2);
@@ -6760,6 +6790,7 @@ mod tests {
     async fn generated_asset_completion_rolls_back_every_database_transition() {
         let pool = visual_job_pool().await;
         let config = test_config();
+        let before = gateway_owned_media_state_counts(&pool).await;
         let asset = load_asset(&pool, "story", "asset-location")
             .await
             .unwrap()
@@ -6787,9 +6818,12 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
+        let generated_file =
+            std::env::temp_dir().join(format!("oneday-generated-{}.png", Uuid::new_v4()));
+        std::fs::write(&generated_file, b"generated bytes").unwrap();
         let generated = GeneratedAsset {
             url: "/generated.png".into(),
-            file_path: "/tmp/generated.png".into(),
+            file_path: generated_file.to_string_lossy().to_string(),
             revised_prompt: "revised".into(),
             provider_label: "imagegen-bridge:gpt-image-2".into(),
         };
@@ -6797,6 +6831,7 @@ mod tests {
         assert!(complete_generated_asset(&pool, &job, &generated, &config)
             .await
             .is_err());
+        discard_generated_asset(&generated).await;
         let versions: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM visual_asset_versions WHERE asset_id='asset-location'",
         )
@@ -6828,6 +6863,81 @@ mod tests {
         assert_eq!(selections, 0);
         assert_eq!(job_status, "running");
         assert_eq!(asset_status, "running");
+        assert_eq!(gateway_owned_media_state_counts(&pool).await, before);
+        assert!(!generated_file.exists());
+    }
+
+    #[tokio::test]
+    async fn image_operation_finalization_failure_rolls_back_generated_bytes_and_selection() {
+        let pool = visual_job_pool().await;
+        let before = gateway_owned_media_state_counts(&pool).await;
+        let asset = load_asset(&pool, "story", "asset-location")
+            .await
+            .unwrap()
+            .unwrap();
+        sqlx::query(
+            r#"INSERT INTO image_operations
+               (id,story_id,asset_id,operation,status,provider,model,branch_id,source_commit_id,
+                prompt,requested_parameters_json,idempotency_key)
+               VALUES ('op-finalize','story','asset-location','edit','running','openai','gpt-image-1',
+                       'branch-main','commit-main','repair it','{}','op-finalize-key')"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            r#"CREATE TRIGGER reject_image_operation_success
+               BEFORE UPDATE ON image_operations
+               WHEN NEW.status='succeeded'
+               BEGIN SELECT RAISE(ABORT, 'operation finalization failure'); END"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let generated_file =
+            std::env::temp_dir().join(format!("oneday-operation-{}.png", Uuid::new_v4()));
+        std::fs::write(&generated_file, b"generated bytes").unwrap();
+        let record = ImageOperationRecord {
+            id: "op-finalize".into(),
+            story_id: "story".into(),
+            asset_id: asset.id.clone(),
+            operation: crate::imagegen::ImageOperation::Edit,
+            provider: "openai".into(),
+            model: "gpt-image-1".into(),
+            endpoint_id: String::new(),
+            source_version_id: 0,
+            mask_id: String::new(),
+            branch_id: "branch-main".into(),
+            source_commit_id: "commit-main".into(),
+            prompt: "repair it".into(),
+            negative_prompt: String::new(),
+            output: ImageOperationOutput::default(),
+            idempotency_key: "op-finalize-key".into(),
+            source_file_path: String::new(),
+            mask_file_path: String::new(),
+        };
+        let generated = GeneratedAsset {
+            url: "/generated-operation.png".into(),
+            file_path: generated_file.to_string_lossy().to_string(),
+            revised_prompt: String::new(),
+            provider_label: "openai:gpt-image-1".into(),
+        };
+
+        assert!(
+            complete_image_operation(&pool, &record, &asset, &generated, &json!({}))
+                .await
+                .is_err()
+        );
+        discard_generated_asset(&generated).await;
+
+        let status: String =
+            sqlx::query_scalar("SELECT status FROM image_operations WHERE id='op-finalize'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(status, "running");
+        assert_eq!(gateway_owned_media_state_counts(&pool).await, before);
+        assert!(!generated_file.exists());
     }
 
     #[tokio::test]
@@ -7060,15 +7170,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claim_visual_generation_job_recovers_stale_running_jobs() {
+    async fn restart_records_stale_visual_jobs_as_unknown_outcomes_without_redispatch() {
         let pool = visual_job_pool().await;
         let config = test_config();
+        let before = gateway_owned_media_state_counts(&pool).await;
         let stale = (chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339();
-        sqlx::query(
+        let job_id: i64 = sqlx::query_scalar(
             r#"INSERT INTO visual_generation_jobs (
                 asset_id,story_id,status,attempts,max_attempts,locked_until,provider,
                 branch_id,source_commit_id,appearance_fingerprint
-            ) VALUES (?,?,'running',1,3,?,?, 'branch-main','commit-main','base')"#,
+            ) VALUES (?,?,'running',1,3,?,?, 'branch-main','commit-main','base') RETURNING id"#,
         )
         .bind("asset-location")
         .bind("story")
@@ -7080,24 +7191,32 @@ mod tests {
                 ..VisualAsset::default()
             },
         ))
-        .execute(&pool)
+        .fetch_one(&pool)
         .await
         .expect("insert stale job");
 
-        let job = claim_visual_generation_job(&pool, &config)
-            .await
-            .expect("claim job")
-            .expect("job");
-
-        assert_eq!(job.asset.id, "asset-location");
-        assert_eq!(job.attempts, 2);
-        let status: String =
-            sqlx::query_scalar("SELECT status FROM visual_generation_jobs WHERE id = ?")
-                .bind(job.id)
-                .fetch_one(&pool)
+        assert_eq!(
+            recover_unknown_visual_generation_outcomes(&pool)
                 .await
-                .expect("job status");
-        assert_eq!(status, "running");
+                .expect("recover unknown outcome"),
+            1
+        );
+        let row = sqlx::query(
+            "SELECT status,attempts,error,finished_at FROM visual_generation_jobs WHERE id = ?",
+        )
+        .bind(job_id)
+        .fetch_one(&pool)
+        .await
+        .expect("recovered job");
+        assert_eq!(row_string(&row, "status"), "failed");
+        assert_eq!(row.try_get::<i64, _>("attempts").unwrap(), 1);
+        assert!(row_string(&row, "error").contains("PROVIDER_UNKNOWN_OUTCOME"));
+        assert!(!row_string(&row, "finished_at").is_empty());
+        assert!(claim_visual_generation_job(&pool, &config)
+            .await
+            .expect("claim after recovery")
+            .is_none());
+        assert_eq!(gateway_owned_media_state_counts(&pool).await, before);
     }
 
     #[tokio::test]
