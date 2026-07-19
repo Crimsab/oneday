@@ -38,6 +38,7 @@ export function resolveLocale(saved: unknown, browserLocales: readonly string[] 
 
 export const defaultPreferences: AppPreferences = {
   locale: "en",
+  timeFormat: "system",
   density: "balanced",
   accent: DEFAULT_ACCENT,
   accentHistory: [],
@@ -102,6 +103,7 @@ export function normalizePreferences(value: LegacyPreferences | null | undefined
   const disabledMiniGames = normalizeMiniGameKinds(value?.disabledMiniGames, timingFreeChallenges);
   return {
     locale: resolveLocale(value?.locale, typeof navigator === "undefined" ? [] : navigator.languages),
+    timeFormat: oneOf(value?.timeFormat, ["system", "12", "24"], defaultPreferences.timeFormat),
     density: oneOf(value?.density, ["compact", "balanced", "comfortable"], defaultPreferences.density),
     accent: normalizeColor(value?.accent, defaultPreferences.accent),
     accentHistory: normalizeColorHistory(value?.accentHistory),

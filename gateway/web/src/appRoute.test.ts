@@ -10,6 +10,7 @@ const stories = [
 describe("app routes", () => {
   it("parses the library and every canonical story section", () => {
     expect(parseAppRoute("/stories")).toEqual({ kind: "library" });
+    expect(parseAppRoute("/setup")).toEqual({ kind: "setup" });
     for (const section of ["history", "map", "codex", "inventory", "stats", "craft", "fronts", "investigations", "projects", "achievements", "saves", "translations"]) {
       expect(parseAppRoute(`/stories/story%20one/${section}`)).toEqual({ kind: "story", storyId: "story one", section });
     }
@@ -27,6 +28,7 @@ describe("app routes", () => {
     expect(appRoutePath(route)).toBe("/stories/story%20one/map");
     expect(sameAppRoute(route, parseAppRoute(appRoutePath(route))!)).toBe(true);
     expect(sameAppRoute(route, { ...route, section: "codex" })).toBe(false);
+    expect(appRoutePath({ kind: "setup" })).toBe("/setup");
   });
 
   it("falls back from missing or archived stories to the first active story", () => {

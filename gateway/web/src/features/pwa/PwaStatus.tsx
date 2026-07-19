@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, RefreshCw, ServerOff, WifiOff, X } from "lucide-react";
+import { Download, RefreshCw, ServerOff, WifiOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { activateWaitingUpdate, subscribeToPwaUpdates } from "./pwaRuntime";
 import "./pwaStatus.css";
@@ -10,6 +10,8 @@ interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
+
+const INSTALL_DISMISSED_KEY = "oneday-pwa-install-dismissed-v1";
 
 const copy = {
   en: {
@@ -69,7 +71,8 @@ export async function checkServerConnectivity(
 export function PwaStatus() {
   const { i18n } = useTranslation();
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installDismissed, setInstallDismissed] = useState(false);
+  const [installDismissed, setInstallDismissed] = useState(() => localStorage.getItem(INSTALL_DISMISSED_KEY) === "true");
+  const [installOpen, setInstallOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
   const [connectivity, setConnectivity] = useState<Connectivity>("connected");
   const strings = copy[(i18n.resolvedLanguage?.startsWith("it") ? "it" : "en")];
@@ -87,7 +90,6 @@ export function PwaStatus() {
     const onInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
-      setInstallDismissed(false);
     };
     const onInstalled = () => setInstallPrompt(null);
     window.addEventListener("beforeinstallprompt", onInstallPrompt);
@@ -131,6 +133,13 @@ export function PwaStatus() {
     await installPrompt.prompt();
     await installPrompt.userChoice;
     setInstallPrompt(null);
+    setInstallOpen(false);
+  };
+
+  const dismissInstall = () => {
+    localStorage.setItem(INSTALL_DISMISSED_KEY, "true");
+    setInstallDismissed(true);
+    setInstallOpen(false);
   };
 
   if (!connectionMessage && !updateReady && (!installPrompt || installDismissed)) return null;
@@ -166,27 +175,15 @@ export function PwaStatus() {
         </section>
       )}
 
-      {installPrompt && !installDismissed && (
-        <section className="pwa-status-card" data-status="install" role="status">
-          <Download size={18} aria-hidden="true" />
-          <div>
-            <strong>{strings.installTitle}</strong>
-            <p>{strings.installBody}</p>
-            <button type="button" className="primary-action" onClick={() => void requestInstall()}>
-              <Download size={14} aria-hidden="true" /> {strings.install}
-            </button>
-          </div>
-          <button
-            type="button"
-            className="pwa-status-dismiss"
-            onClick={() => setInstallDismissed(true)}
-            aria-label={strings.dismiss}
-            title={strings.dismiss}
-          >
-            <X size={15} aria-hidden="true" />
-          </button>
-        </section>
-      )}
+      {installPrompt && !installDismissed && <div className="pwa-install-control">
+        <button type="button" className="pwa-install-trigger" onClick={() => setInstallOpen((value) => !value)} aria-expanded={installOpen} aria-controls="pwa-install-popover" title={strings.installTitle}>
+          <Download size={16} aria-hidden="true" /><span className="sr-only">{strings.installTitle}</span>
+        </button>
+        {installOpen && <section className="pwa-install-popover" id="pwa-install-popover" role="dialog" aria-label={strings.installTitle}>
+          <strong>{strings.installTitle}</strong><p>{strings.installBody}</p>
+          <div className="pwa-status-actions"><button type="button" className="primary-action" onClick={() => void requestInstall()}>{strings.install}</button><button type="button" onClick={dismissInstall}>{strings.dismiss}</button></div>
+        </section>}
+      </div>}
     </aside>
   );
 }

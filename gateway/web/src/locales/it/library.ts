@@ -1,7 +1,7 @@
 export const library = {
   filterStatus: "Stato delle storie", activeStories: "Attive ({{count}})", archivedStories: "Archiviate ({{count}})",
   storiesCount: "Storie ({{count}})", activeStoryCount_one: "1 storia attiva", activeStoryCount_other: "{{count}} storie attive",
-  noArchivedStories: "Nessuna storia archiviata.", current: "Attuale", storyMeta: "{{genre}} · {{language}}", updated: "Aggiornata {{value}}",
+  noArchivedStories: "Nessuna storia archiviata.", current: "Attuale", storyMeta: "{{genre}} · {{language}}", updated: "Aggiornata {{value}}", unknownUpdated: "aggiornamento non disponibile", timeFormat: "Orario", timeFormats: { system: "Sistema", 12: "12 ore", 24: "24 ore" },
   groups: { story: "Storia", character: "Personaggio", threads: "Trame attive", library: "Raccolta" },
   chapter: "Capitolo {{number}}", untitled: "Senza titolo", turn: "Turno {{turn}}", emptyNotes: "Seleziona una storia per vedere spunti, contatti e prossime piste.",
   name: "Nome", description: "Descrizione", genre: "Genere", tone: "Tono", language: "Lingua della storia", languageChangeConfirm: "Cambiare la lingua della storia? La modifica vale solo per i prossimi output. I turni esistenti restano invariati.", cancel: "Annulla", save: "Salva",

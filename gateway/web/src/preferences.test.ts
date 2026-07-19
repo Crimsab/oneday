@@ -34,6 +34,7 @@ describe("normalizePreferences", () => {
       }),
     ).toEqual({
       locale: "it",
+      timeFormat: "system",
       density: "compact",
       accent: "#73c7ff",
       accentHistory: ["#112233", "#aabbcc"],

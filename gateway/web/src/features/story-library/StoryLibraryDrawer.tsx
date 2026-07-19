@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Archive, ArchiveRestore, Check, FileDown, FileUp, Info, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { DialogDrawerShell } from "../../components/dialog/DialogDrawerShell";
 import { compactText, displayTimestamp } from "../../format";
-import type { StorySummary, StoryUpdatePayload } from "../../types";
+import type { AppPreferences, StorySummary, StoryUpdatePayload } from "../../types";
 import { activeStoryCount } from "../navigation/railState";
 import { filterStoryLibrary, type StoryLibraryStatus } from "./storyLibraryState";
 import { StoryLibraryDetail } from "./StoryLibraryDetail";
@@ -24,6 +24,8 @@ interface StoryLibraryDrawerProps {
   onUpdateStory: (storyId: string, payload: StoryUpdatePayload) => Promise<void>;
   onSetStoryArchived: (storyId: string, archived: boolean) => Promise<void>;
   onDeleteStory: (storyId: string) => Promise<void>;
+  timeFormat: AppPreferences["timeFormat"];
+  onTimeFormatChange: (timeFormat: AppPreferences["timeFormat"]) => void;
 }
 
 export function StoryLibraryDrawer({
@@ -38,6 +40,8 @@ export function StoryLibraryDrawer({
   onUpdateStory,
   onSetStoryArchived,
   onDeleteStory,
+  timeFormat,
+  onTimeFormatChange,
 }: StoryLibraryDrawerProps) {
   const { t } = useTranslation(["chrome", "library"]);
   const [status, setStatus] = useState<StoryLibraryStatus>("active");
@@ -126,6 +130,7 @@ export function StoryLibraryDrawer({
           <span className="sr-only">{t("chrome:filter")}</span>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("chrome:filter")} />
         </label>
+        <label className="story-library-time-format"><span>{t("timeFormat")}</span><select value={timeFormat} onChange={(event) => onTimeFormatChange(event.target.value as AppPreferences["timeFormat"])}><option value="system">{t("timeFormats.system")}</option><option value="12">{t("timeFormats.12")}</option><option value="24">{t("timeFormats.24")}</option></select></label>
       </div>
       <div className={`story-library-content ${detailStoryId ? "has-detail" : ""}`}>
         {visibleStories.length === 0 ? (
@@ -217,7 +222,7 @@ function StoryLibraryRow({ story, active, turn, editing, busy, onSelect, onEdit,
         <span className="story-library-row-heading"><strong>{story.name || story.id}</strong>{active && <small>{t("current")}</small>}</span>
         <span>{t("storyMeta", { genre: story.genre || t("storyFallback"), language: story.language || "-" })}</span>
         <p>{compactText(story.description || story.tone || story.id, 150)}</p>
-        <small>{turn !== undefined ? t("turn", { turn }) : t("updated", { value: displayTimestamp(story.updated_at) })}</small>
+        <small className="story-library-row-facts">{turn !== undefined && <span>{t("turn", { turn })}</span>}{story.updated_at && <span>{t("updated", { value: displayTimestamp(story.updated_at, t("unknownUpdated")) })}</span>}</small>
       </button>
       <StoryActionsMenu
         label={t("manage", { name: story.name || story.id })}

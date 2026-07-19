@@ -64,9 +64,15 @@ export function displayTimestamp(value: string | undefined, fallback = "-"): str
   const cleaned = text
     .replace(/\s+m=\+[0-9.]+s?$/i, "")
     .replace(/\s+m=\+[^\s]+$/i, "")
-  const parsed = /^\d{4}-\d{2}-\d{2}T/.test(cleaned) ? new Date(cleaned) : null;
+  const iso = /^\d{4}-\d{2}-\d{2}T/.test(cleaned) ? cleaned : goTimestampToIso(cleaned);
+  const parsed = iso ? new Date(iso) : null;
   if (parsed && !Number.isNaN(parsed.getTime())) return formatInterfaceDateTime(parsed);
-  return cleaned.replace(/^(\d{4}-\d{2}-\d{2})T/, "$1 ").replace(/Z$/, " UTC");
+  return fallback;
+}
+
+function goTimestampToIso(value: string): string | null {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})(?:\.\d+)? ([+-]\d{2})(\d{2})(?:\s+\S+)?$/);
+  return match ? `${match[1]}T${match[2]}${match[3]}:${match[4]}` : null;
 }
 
 export function messageClock(message: MessageView): string {

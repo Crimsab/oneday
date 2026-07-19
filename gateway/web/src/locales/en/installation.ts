@@ -5,6 +5,7 @@ export const installation = {
   preserve: "Existing shared configuration is preserved until you choose to save a change.",
   summaryUnavailable: "No readiness result returned",
   summary: { title: "Installation readiness", description: "These are the canonical readiness checks from this OneDay installation. Required failures block story setup; optional services can be configured later." },
+  progress: { label: "Required setup progress", value: "{{ready}} of {{total}} required checks ready" },
   items: { narrative: { title: "Story narrator" }, embeddings: { title: "Embeddings" }, image: { title: "Images" }, tts: { title: "Spoken audio" }, gateway: { title: "Browser gateway" }, storage: { title: "Story storage" }, backup: { title: "Database backup" } },
   states: { required: { ready: "Required · ready", warning: "Required · warning", failed: "Required · blocked", skipped: "Required · skipped", unknown: "Required · unknown" }, optional: { ready: "Optional · ready", warning: "Optional · attention", failed: "Optional · unavailable", skipped: "Optional · off", unknown: "Optional · unknown" } },
   codes: {

@@ -2059,6 +2059,8 @@ input:disabled {
 
 .installation-readiness { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); background: rgba(5, 12, 15, 0.5); }
 .installation-readiness > div { display: grid; gap: 4px; }
+.installation-readiness-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.installation-readiness-heading > span { color: var(--faint); font-size: .6875rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .installation-readiness > div p { font-size: 0.75rem; }
 .installation-readiness ul { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; border: 1px solid var(--line); }
 .installation-readiness-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 10px 12px; background: #0c1417; }

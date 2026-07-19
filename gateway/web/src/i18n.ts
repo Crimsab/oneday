@@ -15,7 +15,12 @@ export function formatInterfaceNumber(value: number): string {
 }
 
 export function formatInterfaceDateTime(value: Date): string {
-  return new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "en", { dateStyle: "medium", timeStyle: "short" }).format(value);
+  const timeFormat = typeof window === "undefined" ? "system" : loadPreferences().timeFormat;
+  return new Intl.DateTimeFormat(i18n.resolvedLanguage ?? "en", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    ...(timeFormat === "system" ? {} : { hour12: timeFormat === "12" }),
+  }).format(value);
 }
 
 export async function setInterfaceLocale(value: string): Promise<InterfaceLocale> {

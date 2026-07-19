@@ -53,7 +53,7 @@ export function LeftRail({
   return (
     <aside className={`left-rail rail-${presentation}`} id="story-navigation" aria-label={t("library")}>
       <div className="rail-brand">
-        <img src="/brand/oneday-mark.png" alt="" />
+        {!expanded ? <button type="button" className="rail-brand-expand" onClick={onToggleMode} aria-label={t("expandLibrary")} title={t("expandLibrary")}><img src="/brand/oneday-mark.png" alt="" /></button> : <img src="/brand/oneday-mark.png" alt="" />}
         {expanded && (
           <span>
             <strong>OneDay</strong>

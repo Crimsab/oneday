@@ -45,9 +45,9 @@ describe("clock and stat helpers", () => {
     expect(displayClock(snapshot)).toEqual({ day: 2, time: "Day 2, 09:00", cycle: "Morning" });
 	expect(displayClock(null)).toEqual({ day: null, time: "Not tracked", cycle: "Not tracked" });
     expect(messageClock(message({ id: 5, turn: 2 }))).toBe("T2");
-    expect(displayTimestamp("2026-07-03 23:44:18.215210603 +0200 CEST m=+25.421624674")).toBe(
-      "2026-07-03 23:44:18.215210603 +0200 CEST",
-    );
+    const timestamp = displayTimestamp("2026-07-03 23:44:18.215210603 +0200 CEST m=+25.421624674");
+    expect(timestamp).not.toContain("2026-07-03");
+    expect(timestamp).not.toContain("CEST");
   });
 
   it("clamps and parses numeric stats", () => {

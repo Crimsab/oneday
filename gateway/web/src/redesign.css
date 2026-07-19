@@ -1417,6 +1417,9 @@ summary:focus-visible {
 }
 .left-rail.rail-collapsed { grid-template-rows: 64px auto minmax(0, 1fr) auto; }
 .rail-brand { min-width: 0; }
+.rail-brand-expand { display: grid; place-items: center; border: 0; background: transparent; padding: 0; cursor: pointer; }
+.rail-brand-expand:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 72%, white); outline-offset: 3px; }
+.rail-brand-expand img { width: 38px; height: 38px; }
 .left-rail.rail-collapsed .rail-brand { grid-template-columns: 1fr; justify-items: center; padding: 0; }
 .left-rail.rail-collapsed .rail-brand > img { width: 38px; height: 38px; }
 .rail-stories-button,
@@ -1453,7 +1456,7 @@ summary:focus-visible {
   max-height: calc(100dvh - 32px);
   grid-template-rows: 44px auto minmax(0, 1fr);
 }
-.story-library-toolbar { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); padding: 12px 14px; }
+.story-library-toolbar { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); padding: 12px 14px; }
 .story-library-tabs { display: flex; gap: 4px; }
 .story-library-tabs button,
 .story-library-actions button,
@@ -1467,6 +1470,8 @@ summary:focus-visible {
 .story-library-search { min-width: 210px; height: 38px; display: grid; grid-template-columns: 20px minmax(0, 1fr); align-items: center; gap: 6px; border: 1px solid var(--line-soft); border-radius: 7px; background: #101518; padding: 0 10px; color: var(--faint); }
 .story-library-search:focus-within { border-color: color-mix(in srgb, var(--accent) 50%, var(--line)); }
 .story-library-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); }
+.story-library-time-format { display: inline-flex; align-items: center; gap: 6px; color: var(--faint); font-size: .6875rem; white-space: nowrap; }
+.story-library-time-format select { min-height: 32px; border: 1px solid var(--line-soft); border-radius: 6px; background: #101518; color: var(--text); padding-inline: 7px; }
 .story-library-import { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(220px, 1fr) auto minmax(260px, 1fr) auto; align-items: end; gap: 8px; border: 1px solid var(--line-soft); border-radius: 8px; background: #0d1316; padding: 10px; }
 .story-library-import-file { display: grid; gap: 5px; color: var(--muted); font-size: .6875rem; }
 .story-library-file-picker { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line-soft); border-radius: 7px; background: rgba(255,255,255,.035); padding-inline: 10px; color: var(--text); cursor: pointer; font-size: .75rem; }
@@ -1489,6 +1494,7 @@ summary:focus-visible {
 .story-library-row-heading small { border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 999px; padding: 2px 6px; color: var(--text); font-size: .625rem; }
 .story-library-select > span:not(.story-library-row-heading),
 .story-library-select > small { color: var(--faint); font-size: .6875rem; }
+.story-library-row-facts { display: flex; flex-wrap: wrap; gap: 8px; }
 .story-library-select p { min-height: 2.8em; margin: 0; color: var(--muted); font-size: .8125rem; line-height: 1.4; }
 .story-library-menu-trigger { width: 32px; height: 32px; display: grid; place-items: center; margin: 9px 7px 0 0; border: 0; border-radius: 6px; background: transparent; color: var(--faint); cursor: pointer; }
 .story-library-menu-trigger:hover,
@@ -1538,7 +1544,7 @@ summary:focus-visible {
   .mobile-rail-backdrop { position: fixed; inset: 64px 0 0; z-index: 28; display: block; border: 0; background: rgba(0,0,0,.58); }
   .rail-collapse-toggle { display: none; }
   .story-library-drawer { width: 100vw; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
-  .story-library-toolbar { grid-template-columns: 1fr auto; }
+  .story-library-toolbar { grid-template-columns: 1fr auto auto; }
   .story-library-search { grid-column: 1 / -1; grid-row: 2; }
   .story-library-list { grid-template-columns: 1fr; }
   .story-library-content.has-detail { display: block; overflow: auto; }

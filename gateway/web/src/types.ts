@@ -24,6 +24,7 @@ export type FontStylePreference = "normal" | "italic";
 
 export interface AppPreferences {
   locale: "en" | "it";
+  timeFormat: "system" | "12" | "24";
   density: DensityPreference;
   accent: string;
   accentHistory: string[];

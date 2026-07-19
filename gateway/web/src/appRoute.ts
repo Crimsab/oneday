@@ -18,6 +18,7 @@ export const storySections = [
 export type StorySection = ModuleTab | "translations";
 export type AppRoute =
   | { kind: "library" }
+  | { kind: "setup" }
   | { kind: "story"; storyId: string; section: StorySection };
 
 const sectionSet = new Set<string>(storySections);
@@ -28,6 +29,7 @@ export function isModuleSection(section: StorySection): section is ModuleTab {
 
 export function parseAppRoute(pathname: string): AppRoute | null {
   const segments = pathname.split("/").filter(Boolean);
+  if (segments.length === 1 && segments[0] === "setup") return { kind: "setup" };
   if (segments.length === 1 && segments[0] === "stories") return { kind: "library" };
   if (segments.length !== 3 || segments[0] !== "stories" || !sectionSet.has(segments[2])) return null;
   try {
@@ -41,10 +43,12 @@ export function parseAppRoute(pathname: string): AppRoute | null {
 
 export function appRoutePath(route: AppRoute): string {
   if (route.kind === "library") return "/stories";
+  if (route.kind === "setup") return "/setup";
   return `/stories/${encodeURIComponent(route.storyId)}/${route.section}`;
 }
 
 export function resolveAppRoute(requested: AppRoute | null, stories: StorySummary[]): AppRoute {
+  if (requested?.kind === "setup") return requested;
   if (requested?.kind === "library") return requested;
   if (requested?.kind === "story") {
     const story = stories.find((item) => item.id === requested.storyId);
@@ -56,7 +60,7 @@ export function resolveAppRoute(requested: AppRoute | null, stories: StorySummar
 
 export function sameAppRoute(left: AppRoute, right: AppRoute): boolean {
   return left.kind === right.kind
-    && (left.kind === "library" || (right.kind === "story" && left.storyId === right.storyId && left.section === right.section));
+    && (left.kind === "library" || left.kind === "setup" || (right.kind === "story" && left.storyId === right.storyId && left.section === right.section));
 }
 
 export interface OneDayHistoryState {

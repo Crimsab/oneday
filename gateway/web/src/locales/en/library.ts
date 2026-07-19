@@ -1,7 +1,7 @@
 export const library = {
   filterStatus: "Story status", activeStories: "Active ({{count}})", archivedStories: "Archived ({{count}})",
   storiesCount: "Stories ({{count}})", activeStoryCount_one: "1 active story", activeStoryCount_other: "{{count}} active stories",
-  noArchivedStories: "No archived stories.", current: "Current", storyMeta: "{{genre}} · {{language}}", updated: "Updated {{value}}",
+  noArchivedStories: "No archived stories.", current: "Current", storyMeta: "{{genre}} · {{language}}", updated: "Updated {{value}}", unknownUpdated: "update unavailable", timeFormat: "Time", timeFormats: { system: "System", 12: "12-hour", 24: "24-hour" },
   groups: { story: "Story", character: "Character", threads: "Active threads", library: "Library" },
   chapter: "Chapter {{number}}", untitled: "Untitled", turn: "Turn {{turn}}", emptyNotes: "Select a story to see hooks, contacts, and next leads.",
   name: "Name", description: "Description", genre: "Genre", tone: "Tone", language: "Story language", languageChangeConfirm: "Change the story language? This affects future output only. Existing turns remain unchanged.", cancel: "Cancel", save: "Save",

@@ -95,6 +95,15 @@ curl -fsS http://localhost:8788/api/health
 Open `http://localhost:8788`. The first start creates and migrates the SQLite
 database automatically in the `oneday_data` named volume.
 
+### Review setup from the browser
+
+Open **Setup** in the browser chrome, or navigate directly to `/setup` on the
+same OneDay origin (for example, `https://oneday.example.com/setup`). This
+screen shows the gateway's canonical readiness checks and links to the shared
+configuration surface; it does not store credentials in the browser. Native
+terminal setup remains `oneday setup`; rerun it with `oneday setup
+--reconfigure` when the local CLI configuration needs to change.
+
 Generated images and speech remain disabled until their providers are
 configured. They are optional and never block canonical text turns.
 

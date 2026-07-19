@@ -5,6 +5,7 @@ export const installation = {
   preserve: "La configurazione condivisa esistente viene mantenuta finché non scegli di salvare una modifica.",
   summaryUnavailable: "Nessun risultato di verifica disponibile",
   summary: { title: "Stato dell’installazione", description: "Queste sono le verifiche canoniche di questa installazione di OneDay. Un errore obbligatorio blocca la creazione della storia; i servizi facoltativi possono essere configurati più avanti." },
+  progress: { label: "Avanzamento configurazione obbligatoria", value: "{{ready}} di {{total}} verifiche obbligatorie pronte" },
   items: { narrative: { title: "Narratore della storia" }, embeddings: { title: "Embedding" }, image: { title: "Immagini" }, tts: { title: "Audio parlato" }, gateway: { title: "Gateway del browser" }, storage: { title: "Archivio delle storie" }, backup: { title: "Backup del database" } },
   states: { required: { ready: "Obbligatorio · pronto", warning: "Obbligatorio · attenzione", failed: "Obbligatorio · bloccato", skipped: "Obbligatorio · ignorato", unknown: "Obbligatorio · sconosciuto" }, optional: { ready: "Facoltativo · pronto", warning: "Facoltativo · attenzione", failed: "Facoltativo · non disponibile", skipped: "Facoltativo · disattivato", unknown: "Facoltativo · sconosciuto" } },
   codes: {

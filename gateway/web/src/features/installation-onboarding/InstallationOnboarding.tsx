@@ -51,6 +51,8 @@ export function InstallationOnboarding({
   const { t } = useTranslation("installation");
   const items = useMemo(() => installationSetupItems(readiness), [readiness]);
   const hasRequiredFailure = items.some((item) => item.required && item.state === "failed");
+  const requiredItems = items.filter((item) => item.required);
+  const readyRequiredItems = requiredItems.filter((item) => item.state === "ready").length;
 
   return (
     <section className="installation-onboarding" aria-labelledby="installation-onboarding-title">
@@ -63,7 +65,7 @@ export function InstallationOnboarding({
 
       <section className="installation-readiness" aria-labelledby="installation-readiness-title">
         <div>
-          <h2 id="installation-readiness-title">{t("summary.title")}</h2>
+          <div className="installation-readiness-heading"><h2 id="installation-readiness-title">{t("summary.title")}</h2><span role="progressbar" aria-label={t("progress.label")} aria-valuemin={0} aria-valuemax={requiredItems.length} aria-valuenow={readyRequiredItems}>{t("progress.value", { ready: readyRequiredItems, total: requiredItems.length })}</span></div>
           <p id="installation-readiness-description">{t("summary.description")}</p>
         </div>
         <ul aria-describedby="installation-readiness-description">

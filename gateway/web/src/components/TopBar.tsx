@@ -16,12 +16,13 @@ interface TopBarProps {
   onToggleLeftRail: () => void;
   onToggleInspector: () => void;
   onOpen: (overlay: OverlayKind) => void;
+  onOpenSetup: () => void;
   modelSettings: ModelSettings | null;
   translationCenterOpen: boolean;
   onTranslationCenterOpenChange: (open: boolean) => void;
 }
 
-export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen, modelSettings, translationCenterOpen, onTranslationCenterOpenChange }: TopBarProps) {
+export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen, onOpenSetup, modelSettings, translationCenterOpen, onTranslationCenterOpenChange }: TopBarProps) {
   const { t } = useTranslation("chrome");
   const clock = displayClock(snapshot);
   return (
@@ -64,6 +65,10 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, 
         <button className="chrome-button" type="button" onClick={() => onOpen("options")}>
           <Settings size={15} />
           {t("options")}
+        </button>
+        <button className="chrome-button" type="button" onClick={onOpenSetup}>
+          <Settings size={15} />
+          {t("setup")}
         </button>
         <button
           className="chrome-button"

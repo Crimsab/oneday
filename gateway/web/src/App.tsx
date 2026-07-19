@@ -138,6 +138,7 @@ function App() {
   const [moduleOverlayTab, setModuleOverlayTab] = useState<ModuleTab | null>(null);
   const [overlay, setOverlay] = useState<OverlayKind>(() => initialOverlayFromLocation());
   const [storyLibraryOpen, setStoryLibraryOpen] = useState(() => initialAppRoute?.kind === "library");
+  const [setupRouteOpen, setSetupRouteOpen] = useState(() => initialAppRoute?.kind === "setup");
   const [translationCenterOpen, setTranslationCenterOpen] = useState(() => initialAppRoute?.kind === "story" && initialAppRoute.section === "translations");
   const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 860px)").matches);
@@ -204,9 +205,16 @@ function App() {
   }, []);
 
   const applyAppRoute = useCallback((route: AppRoute) => {
+    setSetupRouteOpen(route.kind === "setup");
     setStoryLibraryOpen(route.kind === "library");
     setTranslationCenterOpen(route.kind === "story" && route.section === "translations");
     setMobileRailOpen(false);
+    if (route.kind === "setup") {
+      setOverlay((current) => current === "module" ? null : current);
+      setModuleOverlayTab(null);
+      setModuleFocusId(null);
+      return;
+    }
     if (route.kind === "library") {
       setOverlay((current) => current === "module" ? null : current);
       setModuleOverlayTab(null);
@@ -1389,6 +1397,8 @@ function App() {
     navigateAppRoute({ kind: "library" }, "push", returnTo);
   };
 
+  const openSetup = () => navigateAppRoute({ kind: "setup" }, "push");
+
   const closeRoutedSurface = () => {
     const current = parseAppRoute(window.location.pathname);
     if (current?.kind === "story" && current.section !== "translations") {
@@ -1470,11 +1480,11 @@ function App() {
   const railMode = isMobileLayout ? "expanded" : preferences.desktopRailMode;
   const activeStories = activeStoryCount(stories);
   const isFreshInstallation = sync === "Idle" && stories.length === 0;
-  const showInstallationOnboarding = isFreshInstallation && setupReadinessState === "ready" && setupReadiness !== null;
+  const showInstallationOnboarding = (isFreshInstallation || setupRouteOpen) && setupReadinessState === "ready" && setupReadiness !== null;
 
   useEffect(() => {
-    if (isFreshInstallation) setStoryLibraryOpen(false);
-  }, [isFreshInstallation]);
+    if (isFreshInstallation || setupRouteOpen) setStoryLibraryOpen(false);
+  }, [isFreshInstallation, setupRouteOpen]);
 
   return (
     <div
@@ -1493,6 +1503,7 @@ function App() {
         onToggleLeftRail={toggleLeftRail}
         onToggleInspector={toggleInspector}
         onOpen={openOverlay}
+        onOpenSetup={openSetup}
         modelSettings={modelSettings}
         translationCenterOpen={translationCenterOpen}
         onTranslationCenterOpenChange={setTranslationRouteOpen}
@@ -1520,8 +1531,8 @@ function App() {
             onConfigure={openInstallationConfiguration}
             onStartStory={() => openOverlay("new-story")}
             onRetry={() => void refreshSetupReadiness()}
-          /> : isFreshInstallation && setupReadinessState === "loading" ? <InstallationReadinessPending />
-            : isFreshInstallation && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
+          /> : (isFreshInstallation || setupRouteOpen) && setupReadinessState === "loading" ? <InstallationReadinessPending />
+            : (isFreshInstallation || setupRouteOpen) && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
               : <>
           <section className="transcript-panel" aria-labelledby="story-surface-title">
             <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || t("notifications:surface.yourStory")}</h1>
@@ -1596,6 +1607,8 @@ function App() {
         onUpdateStory={handleUpdateStory}
         onSetStoryArchived={handleSetStoryArchived}
         onDeleteStory={handleDeleteStory}
+        timeFormat={preferences.timeFormat}
+        onTimeFormatChange={(timeFormat) => setPreferences((value) => ({ ...value, timeFormat }))}
       /></Suspense>}
       {overlay && <Suspense fallback={null}><PanelDrawer
         overlay={overlay}
