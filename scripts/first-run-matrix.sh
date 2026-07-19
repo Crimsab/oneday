@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
+# Positional parameters in single-quoted bash -c snippets are intentionally
+# expanded by the isolated child shell, not by this runner.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
