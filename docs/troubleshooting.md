@@ -95,6 +95,10 @@ and migrated automatically.
   The restore directory must already exist and be empty. The workflow verifies
   the checksum, SQLite integrity, and foreign keys before it makes the restored
   database visible. It refuses a non-empty target and never writes to the source.
+- If another process creates the checksum name during publication, OneDay never
+  overwrites or deletes that path. The valid database backup may remain without
+  its trusted checksum; treat it as incomplete, do not restore from it, and
+  remove it manually only after confirming that it is your artifact.
 - For an upgrade or migration failure, keep the original stopped profile or
   server data untouched. Restore the backup into a distinct empty recovery
   target, start the new version against that target, and only promote it after

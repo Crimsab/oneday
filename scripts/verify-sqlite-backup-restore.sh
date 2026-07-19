@@ -173,24 +173,6 @@ consume_published_stage() {
   fi
 }
 
-rollback_published_file() {
-  local staged="$1"
-  local destination="$2"
-  local label="$3"
-  if [[ ! "$staged" -ef "$destination" ]]; then
-    echo "$label rollback skipped because destination identity changed" >&2
-    return 1
-  fi
-  if ! rm -f -- "$destination"; then
-    echo "$label rollback could not remove the newly published file" >&2
-    return 1
-  fi
-  if [[ -e "$destination" ]]; then
-    echo "$label rollback did not remove the newly published file" >&2
-    return 1
-  fi
-}
-
 if [[ -n "$db_path" ]]; then
   if [[ -e "$backup_path" || -e "${backup_path}.sha256" ]]; then
     echo "backup destination already exists" >&2
@@ -210,7 +192,7 @@ if [[ -n "$db_path" ]]; then
   chmod 600 "$staged_backup" "$staged_checksum"
   publish_no_clobber "$staged_backup" "$backup_path" "backup"
   if ! publish_no_clobber "$staged_checksum" "${backup_path}.sha256" "backup checksum"; then
-    rollback_published_file "$staged_backup" "$backup_path" "backup" || true
+    echo "backup was published but its checksum was not; do not restore from this incomplete backup and clean it up manually only after confirming ownership" >&2
     exit 1
   fi
   consume_published_stage "$staged_checksum" "${backup_path}.sha256" "backup checksum"
