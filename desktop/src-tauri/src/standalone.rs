@@ -407,10 +407,8 @@ mod tests {
 
     #[test]
     fn launch_plan_uses_loopback_and_never_places_the_secret_in_arguments() {
-        let root = std::env::current_dir()
-            .expect("workspace")
-            .join("target")
-            .join(format!("oneday-desktop-{}", std::process::id()));
+        let workspace = tempfile::tempdir().expect("isolated workspace");
+        let root = workspace.path().join("runtime");
         let secret = LaunchSecret::generate().expect("secret");
         let plan = LaunchPlan::create(root.clone(), root.join("resources"));
         assert!(
@@ -434,7 +432,6 @@ mod tests {
         assert!(!arguments
             .iter()
             .any(|argument| argument == &secret.environment_value()));
-        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
