@@ -114,7 +114,6 @@ import {
 import type { SettingsSectionId } from "./components/settings/settingsRegistry";
 
 const deepLinkOverlays = new Set<OverlayKind>(["help", "options", "saves", "new-story", "meta", "module"]);
-let didBootstrap = false;
 const initialAppRoute = typeof window === "undefined" ? null : parseAppRoute(window.location.pathname);
 const PanelDrawer = lazy(() => import("./components/PanelDrawer").then((module) => ({ default: module.PanelDrawer })));
 const StoryLibraryDrawer = lazy(() => import("./features/story-library/StoryLibraryDrawer").then((module) => ({ default: module.StoryLibraryDrawer })));
@@ -182,6 +181,7 @@ function App() {
   const timelineRequestVersion = useRef(0);
 	const snapshotRequests = useRef(new Map<string, ReturnType<typeof getSnapshot>>());
 	const timelineRequests = useRef(new Map<string, ReturnType<typeof getTimeline>>());
+  const bootstrapStartedRef = useRef(false);
   const visualAssetsRequestVersion = useRef(0);
   const miniGameRequestVersion = useRef(0);
   storyIdRef.current = storyId;
@@ -370,8 +370,8 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (didBootstrap) return;
-    didBootstrap = true;
+    if (bootstrapStartedRef.current) return;
+    bootstrapStartedRef.current = true;
     void refreshHealth();
     void refreshCommandDescriptors();
     void refreshModelSettings();

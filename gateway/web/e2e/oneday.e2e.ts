@@ -226,6 +226,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       return route.fulfill({ status: 200, contentType: "text/event-stream", headers: { "cache-control": "no-cache" }, body: `event: turn\ndata: ${JSON.stringify({ story_id: story.id, status: "event", client_turn: 4, event_type: "narrative.delta", event: { type: "narrative.delta", payload: { text: "A silver line appears." } }, message: "Narrative is streaming.", created_at: now })}\n\n` });
     }
     if (path === "/api/health") return json(route, { status: "ok", stories: 1 });
+    if (path === "/api/setup/readiness") return json(route, installationReadiness);
     if (path === "/api/stories" && request.method() === "GET") return json(route, [story]);
     if (path.endsWith("/translations/jobs/estimate") && request.method() === "POST") return json(route, { total_items: 4, total_characters: 220, cache_hits: 0 });
     if (path.endsWith("/translations/jobs") && request.method() === "GET") return json(route, translationJobs);
@@ -462,6 +463,16 @@ test("runs axe against rendered onboarding and gameplay surfaces", async ({ page
   const gameplayResults = await new AxeBuilder({ page }).analyze();
   expect(gameplayResults.violations).toEqual([]);
   await page.screenshot({ path: testInfo.outputPath("gameplay-a11y.png"), fullPage: true });
+});
+
+test("reopens installation setup without losing the canonical route", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/setup");
+
+  await expect(page).toHaveURL(/\/setup$/);
+  await expect(page.getByRole("heading", { name: "Review this OneDay installation" })).toBeVisible();
+  await expect(page.getByText("This check does not change existing worlds or their data.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Return to stories" })).toBeVisible();
 });
 
 test("keeps installation readiness loading and recovery states operable", async ({ page }, testInfo) => {
