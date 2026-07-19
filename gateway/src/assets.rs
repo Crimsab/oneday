@@ -3,7 +3,7 @@ use anyhow::{anyhow, Context};
 use base64::Engine;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{Row, SqliteConnection, SqlitePool};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -487,7 +487,7 @@ pub async fn visual_asset_versions(
             canonical_location_id: row_string(&row, "canonical_location_id"),
             form_id: row_string(&row, "form_id"),
             appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
-            continuity_context: json_field(&row, "continuity_context_json", json!({})),
+            continuity_context: row_json_field(&row, "continuity_context_json", json!({})),
             profile_revision_id: row_string(&row, "profile_revision_id"),
             canon_status: row_string(&row, "canon_status"),
             url: row_string(&row, "url"),
@@ -1799,7 +1799,7 @@ fn image_operation_view(row: &sqlx::sqlite::SqliteRow) -> ImageOperationView {
         model: row_string(row, "model"),
         endpoint_id: row_string(row, "endpoint_id"),
         source_version_id: row.try_get("source_version_id").unwrap_or_default(),
-        continuity_context: json_field(row, "continuity_context_json", json!({})),
+        continuity_context: row_json_field(row, "continuity_context_json", json!({})),
         mask_id: row_string(row, "mask_id"),
         result_version_id: row.try_get("result_version_id").unwrap_or_default(),
         branch_id: row_string(row, "branch_id"),
@@ -2074,7 +2074,7 @@ async fn claim_image_operation(
         source_commit_id: row_string(&row, "source_commit_id"),
         prompt: row_string(&row, "prompt"),
         negative_prompt: row_string(&row, "negative_prompt"),
-        continuity_context: json_field(&row, "continuity_context_json", json!({})),
+        continuity_context: row_json_field(&row, "continuity_context_json", json!({})),
         output,
         idempotency_key: row_string(&row, "idempotency_key"),
         source_file_path,
@@ -2862,7 +2862,7 @@ async fn claim_visual_generation_job(
         max_attempts: row.try_get("max_attempts").unwrap_or(3),
         branch_id: row_string(&row, "branch_id"),
         source_commit_id: row_string(&row, "source_commit_id"),
-        continuity_context: json_field(&row, "continuity_context_json", json!({})),
+        continuity_context: row_json_field(&row, "continuity_context_json", json!({})),
     }))
 }
 
@@ -4227,7 +4227,7 @@ async fn visual_specs(
             &snapshot.world.current_location_id,
             "",
             location,
-            vec![details],
+            vec![details.clone()],
             snapshot,
             profile,
         );
@@ -5380,7 +5380,7 @@ async fn list_visual_generation_jobs(
             canonical_location_id: row_string(&row, "canonical_location_id"),
             form_id: row_string(&row, "form_id"),
             appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
-            continuity_context: json_field(&row, "continuity_context_json", json!({})),
+            continuity_context: row_json_field(&row, "continuity_context_json", json!({})),
             profile_revision_id: row_string(&row, "profile_revision_id"),
             status: row_string(&row, "status"),
             attempts: row.try_get("attempts").unwrap_or_default(),
@@ -5437,7 +5437,7 @@ fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
         form_id: row_string(&row, "form_id"),
         lineage_key: row_string(&row, "lineage_key"),
         appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
-        continuity_context: json_field(&row, "continuity_context_json", json!({})),
+        continuity_context: row_json_field(&row, "continuity_context_json", json!({})),
         profile_revision_id: row_string(&row, "profile_revision_id"),
         canon_status: row_string(&row, "canon_status"),
         gate_reason_code: if stored_reason_code.is_empty() {
@@ -5588,6 +5588,10 @@ fn row_string(row: &sqlx::sqlite::SqliteRow, key: &str) -> String {
         .ok()
         .flatten()
         .unwrap_or_default()
+}
+
+fn row_json_field(row: &sqlx::sqlite::SqliteRow, key: &str, fallback: Value) -> Value {
+    serde_json::from_str(&row_string(row, key)).unwrap_or(fallback)
 }
 
 fn clean_or(value: &str, fallback: &str) -> String {
