@@ -45,12 +45,12 @@ fn compatible_no_auth_requires_a_literal_local_endpoint() {
     };
     assert!(validate_compatible_config(&local).is_ok());
 
-    let private_v4 = ProviderConfig {
-        base_url: "http://192.168.1.10:8080/v1".to_string(),
-        capability_probe_url: "http://192.168.1.10:8080/v1/images/capabilities".to_string(),
+    let loopback_v4 = ProviderConfig {
+        base_url: "http://127.0.0.2:8080/v1".to_string(),
+        capability_probe_url: "http://127.0.0.2:8080/v1/images/capabilities".to_string(),
         ..local.clone()
     };
-    assert!(validate_compatible_config(&private_v4).is_ok());
+    assert!(validate_compatible_config(&loopback_v4).is_ok());
 
     let ula_v6 = ProviderConfig {
         base_url: "http://[fd00::1]:8080/v1".to_string(),
