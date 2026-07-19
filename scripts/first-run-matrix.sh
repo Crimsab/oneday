@@ -28,6 +28,7 @@ if [[ ! "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
   exit 2
 fi
 workspace="$(mktemp -d "${TMPDIR:-/tmp}/oneday-first-run-matrix.XXXXXX")"
+mkdir -p "$workspace"/{cache,cargo-target,go-cache,go-tmp,playwright-results,tmp}
 cleanup() {
   if [[ -d "$workspace" && "$workspace" == "${TMPDIR:-/tmp}/oneday-first-run-matrix."* ]]; then
     rm -rf -- "$workspace"
@@ -59,6 +60,12 @@ run_isolated() {
     PATH="$PATH" \
     HOME="${HOME:-$workspace/home}" \
     TZ=UTC \
+    TMPDIR="$workspace/tmp" \
+    XDG_CACHE_HOME="$workspace/cache" \
+    CARGO_NET_OFFLINE=true \
+    CARGO_TARGET_DIR="$workspace/cargo-target" \
+    GOCACHE="$workspace/go-cache" \
+    GOTMPDIR="$workspace/go-tmp" \
     GOPROXY=off \
     GOSUMDB=off \
     ONEDAY_CONFIG="$workspace/config.yaml" \
@@ -78,7 +85,7 @@ run_web() {
   printf '== Gateway/web: empty installation, auth bootstrap, onboarding, first action ==\n'
   run_isolated cargo test --manifest-path gateway/Cargo.toml auth::tests
   run_isolated bun --cwd gateway/web x --no-install vitest run src/features/installation-onboarding/InstallationOnboarding.test.tsx src/features/portability/templateCode.test.ts
-  run_isolated bun --cwd gateway/web x --no-install playwright test e2e/oneday.e2e.ts --grep 'submits once|keeps installation readiness|reviews a story preset'
+  run_isolated bun --cwd gateway/web x --no-install playwright test --output "$workspace/playwright-results" e2e/oneday.e2e.ts --grep 'submits once|keeps installation readiness|reviews a story preset'
 }
 
 run_desktop() {

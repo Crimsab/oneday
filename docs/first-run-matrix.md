@@ -9,7 +9,8 @@ a configured provider or requires a real credential.
 
 The matrix is intentionally bounded. Each command has a five-minute default
 limit (`ONEDAY_MATRIX_TIMEOUT_SECONDS` may lower or raise it), and all temporary
-state is removed when the runner exits. Required toolchains and already-cached
+state, build caches, Cargo targets, and Playwright output are removed when the
+runner exits. Required toolchains and already-cached
 dependencies must be installed before running it; the matrix does not download
 them as a side effect.
 
