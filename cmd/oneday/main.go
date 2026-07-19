@@ -682,10 +682,7 @@ func runSetup(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := writePendingEnv(resolveDotEnvPath(), pendingEnv); err != nil {
-		return err
-	}
-	if err := setup.WriteFileAtomic(configPath, data); err != nil {
+	if err := writeSetupConfigAndEnv(configPath, data, resolveDotEnvPath(), pendingEnv); err != nil {
 		return err
 	}
 	fmt.Println(loc.T("cli.wrote_config"))
@@ -1071,6 +1068,8 @@ type pendingEnvUpdates struct {
 	ensure  map[string]struct{}
 }
 
+var writeSetupFileAtomic = setup.WriteFileAtomic
+
 func newPendingEnvUpdates() *pendingEnvUpdates {
 	return &pendingEnvUpdates{secrets: make(map[string]string), ensure: make(map[string]struct{})}
 }
@@ -1115,19 +1114,69 @@ func (updates *pendingEnvUpdates) Empty() bool {
 }
 
 func writePendingEnv(path string, updates *pendingEnvUpdates) error {
-	if updates.Empty() {
+	content, _, err := preparePendingEnv(path, updates)
+	if err != nil {
+		return err
+	}
+	if content == nil {
 		return nil
 	}
+	if err := writeSetupFileAtomic(path, content); err != nil {
+		return fmt.Errorf("writing .env for setup: %w", err)
+	}
+	return nil
+}
+
+type setupFileSnapshot struct {
+	exists bool
+	data   []byte
+}
+
+func preparePendingEnv(path string, updates *pendingEnvUpdates) ([]byte, setupFileSnapshot, error) {
+	if updates.Empty() {
+		return nil, setupFileSnapshot{}, nil
+	}
 	data, err := os.ReadFile(path)
+	snapshot := setupFileSnapshot{exists: err == nil, data: data}
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("reading .env for setup: %w", err)
+		return nil, setupFileSnapshot{}, fmt.Errorf("reading .env for setup: %w", err)
 	}
 	if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
-		return errors.New("writing .env for setup: path is a directory")
+		return nil, setupFileSnapshot{}, errors.New("writing .env for setup: path is a directory")
 	}
-	content := mergeDotEnvUpdates(data, updates)
-	if err := setup.WriteFileAtomic(path, content); err != nil {
+	return mergeDotEnvUpdates(data, updates), snapshot, nil
+}
+
+// writeSetupConfigAndEnv commits the config and its adjacent .env as one
+// recoverable persistence boundary. Each replacement is individually atomic;
+// if config cannot be replaced after .env commits, the original .env bytes are
+// restored before the error is returned. No backup files are created.
+func writeSetupConfigAndEnv(configPath string, configData []byte, envPath string, updates *pendingEnvUpdates) error {
+	envData, envBefore, err := preparePendingEnv(envPath, updates)
+	if err != nil {
+		return err
+	}
+	if envData == nil {
+		return writeSetupFileAtomic(configPath, configData)
+	}
+	if err := writeSetupFileAtomic(envPath, envData); err != nil {
 		return fmt.Errorf("writing .env for setup: %w", err)
+	}
+	if err := writeSetupFileAtomic(configPath, configData); err != nil {
+		if restoreErr := restoreSetupFile(envPath, envBefore); restoreErr != nil {
+			return fmt.Errorf("writing config for setup: %w (also could not restore .env: %v)", err, restoreErr)
+		}
+		return fmt.Errorf("writing config for setup: %w", err)
+	}
+	return nil
+}
+
+func restoreSetupFile(path string, snapshot setupFileSnapshot) error {
+	if snapshot.exists {
+		return writeSetupFileAtomic(path, snapshot.data)
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	return nil
 }

@@ -689,6 +689,62 @@ func TestSetupLateFailureDoesNotWritePendingMediaSecrets(t *testing.T) {
 	}
 }
 
+func TestSetupPersistenceRollsBackEnvWhenConfigCommitFails(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "config.yaml")
+	envPath := filepath.Join(root, ".env")
+	originalConfig := []byte("config_version: 3\n")
+	originalEnv := []byte("# preserved\nUNRELATED_KEY=kept\n")
+	if err := os.WriteFile(configPath, originalConfig, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envPath, originalEnv, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	updates := newPendingEnvUpdates()
+	if err := updates.SetSecret("ONEDAY_IMAGEGEN_OPENAI_API_KEY", strings.Repeat("r", 32)); err != nil {
+		t.Fatal(err)
+	}
+	originalWriter := writeSetupFileAtomic
+	calls := 0
+	writeSetupFileAtomic = func(path string, data []byte) error {
+		calls++
+		if calls == 2 && path == configPath {
+			return errors.New("forced config commit failure")
+		}
+		return setup.WriteFileAtomic(path, data)
+	}
+	defer func() { writeSetupFileAtomic = originalWriter }()
+
+	if err := writeSetupConfigAndEnv(configPath, []byte("config_version: 4\n"), envPath, updates); err == nil {
+		t.Fatal("expected config commit failure")
+	}
+	gotConfig, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotEnv, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(gotConfig, originalConfig) || !bytes.Equal(gotEnv, originalEnv) {
+		t.Fatal("failed second commit changed config or .env")
+	}
+	if calls != 3 {
+		t.Fatalf("write calls = %d, want env commit, config failure, and env rollback", calls)
+	}
+	info, err := os.Stat(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf(".env mode = %o, want 600", info.Mode().Perm())
+	}
+	if _, err := os.Stat(envPath + ".bak"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rollback must not create a backup: %v", err)
+	}
+}
+
 func TestSetupNoInputRequiresExistingNarrativeConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	data, err := config.Marshal(config.Default())
