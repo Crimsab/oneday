@@ -41,7 +41,7 @@ func TestReadinessParityAndRequiredExit(t *testing.T) {
 		HTTPGet:   func(context.Context, string) error { return nil },
 		Stat:      os.Stat,
 	}
-	report := Run(context.Background(), cfg, "/tmp/config.yaml", deps)
+	report := Run(context.Background(), cfg, "ONEDAY_CONFIG", deps)
 	if !report.RequiredFailure() {
 		t.Fatal("narrative failure must make doctor exit nonzero")
 	}
@@ -72,12 +72,12 @@ func TestReadinessConfiguresOptionalProbesWithoutRequiredFailure(t *testing.T) {
 		Stat:       os.Stat,
 		GatewayURL: "http://gateway.invalid",
 	}
-	report := Run(context.Background(), cfg, "custom.yaml", deps)
+	report := Run(context.Background(), cfg, "ONEDAY_CONFIG", deps)
 	if report.RequiredFailure() {
 		t.Fatalf("optional readiness warning must not fail doctor: %#v", report)
 	}
-	if report.ConfigPath != "custom.yaml" {
-		t.Fatalf("config path = %q", report.ConfigPath)
+	if report.ConfigSource != "ONEDAY_CONFIG" {
+		t.Fatalf("config source = %q", report.ConfigSource)
 	}
 	for _, probe := range report.Probes {
 		if probe.Name == "embeddings" && probe.Code != "EMBEDDINGS_DIMENSION_MISMATCH" {

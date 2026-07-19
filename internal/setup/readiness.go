@@ -37,8 +37,8 @@ type Probe struct {
 }
 
 type Report struct {
-	ConfigPath string  `json:"config_path"`
-	Probes     []Probe `json:"probes"`
+	ConfigSource string  `json:"config_source"`
+	Probes       []Probe `json:"probes"`
 }
 
 func (r Report) RequiredFailure() bool {
@@ -68,9 +68,9 @@ func DefaultDependencies() Dependencies {
 	}
 }
 
-func Run(ctx context.Context, cfg config.Config, configPath string, deps Dependencies) Report {
+func Run(ctx context.Context, cfg config.Config, configSource string, deps Dependencies) Report {
 	deps = withDefaults(deps)
-	report := Report{ConfigPath: configPath, Probes: make([]Probe, 0, 7)}
+	report := Report{ConfigSource: configSource, Probes: make([]Probe, 0, 7)}
 	report.Probes = append(report.Probes, narrativeProbe(ctx, cfg, deps))
 	report.Probes = append(report.Probes, embeddingProbe(ctx, cfg, deps))
 	report.Probes = append(report.Probes, imageProbe(ctx, cfg, deps))

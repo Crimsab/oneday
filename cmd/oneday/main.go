@@ -305,6 +305,9 @@ func gatewayContext() context.Context {
 
 func resolveDotEnvPath() string {
 	const envName = ".env"
+	if configPath := explicitConfigPath(); configPath != "" {
+		return filepath.Join(filepath.Dir(configPath), envName)
+	}
 
 	if _, err := os.Stat(envName); err == nil {
 		return envName
@@ -326,8 +329,8 @@ func resolveDotEnvPath() string {
 func resolveConfigPath() string {
 	const configName = "config.yaml"
 
-	if fromEnv := strings.TrimSpace(os.Getenv("ONEDAY_CONFIG")); fromEnv != "" {
-		return fromEnv
+	if configPath := explicitConfigPath(); configPath != "" {
+		return configPath
 	}
 
 	if _, err := os.Stat(configName); err == nil {
@@ -345,6 +348,20 @@ func resolveConfigPath() string {
 	}
 
 	return configName
+}
+
+func explicitConfigPath() string {
+	return strings.TrimSpace(os.Getenv("ONEDAY_CONFIG"))
+}
+
+// configDisplaySource is safe to include in diagnostics. Configuration paths
+// can reveal local usernames or deployment layouts, so doctor reports only
+// how the configuration was selected.
+func configDisplaySource() string {
+	if explicitConfigPath() != "" {
+		return "ONEDAY_CONFIG"
+	}
+	return "default config search"
 }
 
 func cliLocalizer() appi18n.Localizer {
@@ -971,15 +988,15 @@ func runDoctor(args []string) error {
 
 func runDoctorTo(args []string, out io.Writer, deps setup.Dependencies) error {
 	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil && !wantsJSON(args) {
-		fmt.Fprintln(out, cliLocalizer().T("cli.env_warn", err))
+		fmt.Fprintln(out, cliLocalizer().T("cli.env_warn", "unable to load dotenv"))
 	}
 	cfg, err := config.Load(resolveConfigPath())
 	if err != nil {
-		return err
+		return errors.New("configuration could not be loaded; run `oneday setup --reconfigure`")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 	defer cancel()
-	report := setup.Run(ctx, cfg, resolveConfigPath(), deps)
+	report := setup.Run(ctx, cfg, configDisplaySource(), deps)
 	if wantsJSON(args) {
 		encoder := json.NewEncoder(out)
 		encoder.SetIndent("", "  ")
@@ -990,7 +1007,7 @@ func runDoctorTo(args []string, out io.Writer, deps setup.Dependencies) error {
 		loc := configLocalizer(cfg)
 		fmt.Fprintln(out, loc.T("cli.doctor_title"))
 		fmt.Fprintf(out, "OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-		fmt.Fprintln(out, loc.T("cli.config_ok", resolveConfigPath()))
+		fmt.Fprintln(out, loc.T("cli.config_ok", configDisplaySource()))
 		for _, probe := range report.Probes {
 			fmt.Fprintf(out, "%s: %s [%s] %s\n", probe.Name, probe.Status, probe.Code, probe.Summary)
 		}
@@ -1440,7 +1457,8 @@ func firstLine(value string) string {
 }
 
 func ensureEnvFile() error {
-	if info, err := os.Stat(".env"); err == nil {
+	envPath := resolveDotEnvPath()
+	if info, err := os.Stat(envPath); err == nil {
 		if info.IsDir() {
 			return errors.New("creating .env: path is a directory")
 		}
@@ -1459,7 +1477,7 @@ func ensureEnvFile() error {
 		return nil
 	}
 	content := strings.Join(lines, "\n") + "\n"
-	if err := setup.WriteFileAtomic(".env", []byte(content)); err != nil {
+	if err := setup.WriteFileAtomic(envPath, []byte(content)); err != nil {
 		return fmt.Errorf("creating .env: %w", err)
 	}
 	return nil

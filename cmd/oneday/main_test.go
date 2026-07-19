@@ -459,8 +459,106 @@ func TestDoctorJSONAndTextShareReadinessProbesAndRequiredExit(t *testing.T) {
 	if !errors.Is(err, errDoctorRequiredFailure) {
 		t.Fatalf("doctor text error = %v", err)
 	}
-	if !strings.Contains(textOut.String(), "NARRATIVE_UNAVAILABLE") || !strings.Contains(textOut.String(), path) {
+	if strings.Contains(jsonOut.String(), path) || strings.Contains(textOut.String(), path) {
+		t.Fatalf("doctor output leaked private config path; json=%s text=%s", jsonOut.String(), textOut.String())
+	}
+	if !strings.Contains(jsonOut.String(), `"config_source": "ONEDAY_CONFIG"`) || !strings.Contains(textOut.String(), "NARRATIVE_UNAVAILABLE") || !strings.Contains(textOut.String(), "ONEDAY_CONFIG") {
 		t.Fatalf("unexpected text: %s", textOut.String())
+	}
+}
+
+func TestDoctorDoesNotExposePrivateConfigPathWhenConfigurationIsInvalid(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "private", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("not: [valid"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEDAY_CONFIG", path)
+	var output bytes.Buffer
+	err := runDoctorTo([]string{"doctor"}, &output, setup.Dependencies{})
+	if err == nil {
+		t.Fatal("expected invalid configuration error")
+	}
+	if strings.Contains(output.String(), path) || strings.Contains(err.Error(), path) {
+		t.Fatalf("doctor exposed private path; output=%q error=%q", output.String(), err)
+	}
+}
+
+func TestSetupWithExplicitConfigWritesAdjacentDotEnvFromDifferentWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	configDir := filepath.Join(root, "config")
+	workingDir := filepath.Join(root, "elsewhere")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(workingDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(configDir, "config.yaml")
+	data, err := config.Marshal(config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(workingDir)
+	t.Setenv("ONEDAY_CONFIG", configPath)
+	t.Setenv("ONEDAY_LITELLM_API_KEY", "")
+	t.Setenv("ONEDAY_OPENROUTER_API_KEY", "")
+
+	input, output, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := output.WriteString("\n2\ntest-litellm-model\n4\n0\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := output.Close(); err != nil {
+		t.Fatal(err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = input
+	defer func() {
+		os.Stdin = oldStdin
+		_ = input.Close()
+	}()
+
+	if err := runSetup([]string{"setup", "--reconfigure"}); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(configDir, ".env")
+	if got := resolveDotEnvPath(); got != envPath {
+		t.Fatalf("dotenv path = %q, want %q", got, envPath)
+	}
+	if _, err := os.Stat(envPath); err != nil {
+		t.Fatalf("expected adjacent dotenv: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(workingDir, ".env")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("unexpected dotenv in working directory: %v", err)
+	}
+	const dotenvKey = "ONEDAY_SETUP_DOTENV_TEST"
+	previous, wasSet := os.LookupEnv(dotenvKey)
+	if err := os.Unsetenv(dotenvKey); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if wasSet {
+			_ = os.Setenv(dotenvKey, previous)
+			return
+		}
+		_ = os.Unsetenv(dotenvKey)
+	}()
+	if err := os.WriteFile(envPath, []byte(dotenvKey+"=loaded-from-config-directory\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := config.LoadDotEnv(resolveDotEnvPath()); err != nil {
+		t.Fatal(err)
+	}
+	if got := os.Getenv(dotenvKey); got != "loaded-from-config-directory" {
+		t.Fatalf("dotenv value = %q", got)
 	}
 }
 
