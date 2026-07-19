@@ -64,6 +64,7 @@ func (db *DB) migrate() error {
 		{41, migrationV41},
 		{42, migrationV42},
 		{43, migrationV43},
+		{44, migrationV44},
 	}
 
 	for _, m := range migrations {
@@ -1958,4 +1959,14 @@ CREATE INDEX idx_translation_jobs_queue ON translation_jobs(engine,status,update
 CREATE INDEX idx_translation_items_queue ON translation_job_items(job_id,status,ordinal);
 CREATE INDEX idx_translations_lookup ON content_translations(story_id,branch_id,target_language,content_kind,content_id,created_at DESC);
 CREATE INDEX idx_translation_glossary_story ON translation_glossary_entries(story_id,target_language,source_term);
+`
+
+// migrationV44 stores the canonical visual intent used for an image request.
+// It is media provenance only: generated pixels never become story canon.
+const migrationV44 = `
+ALTER TABLE visual_assets ADD COLUMN continuity_context_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE visual_asset_versions ADD COLUMN continuity_context_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE visual_generation_jobs ADD COLUMN continuity_context_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE image_operations ADD COLUMN continuity_context_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE visual_asset_branch_overrides ADD COLUMN continuity_context_json TEXT NOT NULL DEFAULT '{}';
 `

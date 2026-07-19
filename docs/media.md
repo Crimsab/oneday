@@ -46,6 +46,27 @@ aspect ratio, resolution, quality, format, background, and timeouts can be set
 globally or by asset kind. The story wizard saves a visual direction and
 negative guidance to reduce drift across later assets.
 
+## Visual continuity intent
+
+For character portraits, location art, scene art, and image variations, OneDay
+stores a bounded `visual-continuity-v1` context alongside the media request and
+result version. It is derived from canonical text/state only: stable entity and
+location IDs, observed descriptors, the current location anchor, scene time
+and mood, the active visual-profile revision, and timeline provenance. The
+user's operation prompt remains first; the context is additional continuity
+guidance for providers that accept text prompts.
+
+This metadata explains the intended request across retries, branches, and
+provider changes, but it does not promise byte-identical output, require a
+provider seed/reference feature, or make generated pixels canonical. A process
+restart marks dispatched jobs with an unknown provider outcome as terminal and
+does not redispatch them.
+
+Scene-art identity is intentionally narrower than request provenance. Repeated
+turns in the same location and time-of-day phase reuse one scene lineage; a new
+lineage requires a meaningful visual anchor such as a location change, selected
+scene-contract visual state, weather, time phase, or profile revision.
+
 ## Spoken audio
 
 TTS supports an OpenAI-compatible cloud endpoint and a local Piper-compatible

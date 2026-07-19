@@ -31,8 +31,13 @@ func TestMigrationV33CreatesBranchAwareVisualCanonSchema(t *testing.T) {
 		{"visual_assets", "appearance_fingerprint"},
 		{"visual_assets", "profile_revision_id"},
 		{"visual_assets", "gate_state"},
+		{"visual_assets", "continuity_context_json"},
 		{"visual_asset_versions", "appearance_fingerprint"},
+		{"visual_asset_versions", "continuity_context_json"},
 		{"visual_generation_jobs", "profile_revision_id"},
+		{"visual_generation_jobs", "continuity_context_json"},
+		{"image_operations", "continuity_context_json"},
+		{"visual_asset_branch_overrides", "continuity_context_json"},
 	} {
 		exists, err := db.columnExists(item.table, item.column)
 		if err != nil || !exists {

@@ -14,6 +14,10 @@ use tokio::fs;
 use tracing::Instrument;
 use uuid::Uuid;
 
+const VISUAL_CONTINUITY_CONTEXT_VERSION: &str = "visual-continuity-v1";
+const MAX_CONTINUITY_DESCRIPTOR_CHARS: usize = 240;
+const MAX_CONTINUITY_DESCRIPTORS: usize = 4;
+
 #[derive(Debug, Serialize)]
 pub struct VisualAssetsResponse {
     pub profile: VisualProfile,
@@ -154,6 +158,7 @@ pub struct ImageOperationView {
     pub model: String,
     pub endpoint_id: String,
     pub source_version_id: Option<i64>,
+    pub continuity_context: Value,
     pub mask_id: String,
     pub result_version_id: Option<i64>,
     pub branch_id: String,
@@ -177,6 +182,7 @@ pub struct VisualAsset {
     pub form_id: String,
     pub lineage_key: String,
     pub appearance_fingerprint: String,
+    pub continuity_context: Value,
     pub profile_revision_id: String,
     pub canon_status: String,
     pub gate_state: String,
@@ -211,6 +217,7 @@ pub struct VisualAssetVersion {
     pub canonical_location_id: String,
     pub form_id: String,
     pub appearance_fingerprint: String,
+    pub continuity_context: Value,
     pub profile_revision_id: String,
     pub canon_status: String,
     pub url: String,
@@ -234,6 +241,7 @@ pub struct VisualGenerationJobView {
     pub canonical_location_id: String,
     pub form_id: String,
     pub appearance_fingerprint: String,
+    pub continuity_context: Value,
     pub profile_revision_id: String,
     pub status: String,
     pub attempts: i64,
@@ -385,6 +393,7 @@ struct VisualSpec {
     form_id: String,
     lineage_key: String,
     appearance_fingerprint: String,
+    continuity_context_json: String,
     profile_revision_id: String,
     canon_status: String,
     gate_state: String,
@@ -404,6 +413,7 @@ struct VisualGenerationJob {
     max_attempts: i64,
     branch_id: String,
     source_commit_id: String,
+    continuity_context: Value,
 }
 
 #[derive(Debug, Clone)]
@@ -449,6 +459,7 @@ pub async fn visual_asset_versions(
            SELECT id, asset_id, story_id, kind, subject, canonical_entity_id,
                   canonical_location_id, form_id, appearance_fingerprint,
                   COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
+                  COALESCE(continuity_context_json,'{}') AS continuity_context_json,
                   url, prompt, revised_prompt, negative_prompt, provider, turn,
                   v.branch_id AS branch_id, source_commit_id, source_kind,
                   CAST(created_at AS TEXT) AS created_at
@@ -476,6 +487,7 @@ pub async fn visual_asset_versions(
             canonical_location_id: row_string(&row, "canonical_location_id"),
             form_id: row_string(&row, "form_id"),
             appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
+            continuity_context: json_field(&row, "continuity_context_json", json!({})),
             profile_revision_id: row_string(&row, "profile_revision_id"),
             canon_status: row_string(&row, "canon_status"),
             url: row_string(&row, "url"),
@@ -588,6 +600,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
         ("form_id", "TEXT NOT NULL DEFAULT ''"),
         ("lineage_key", "TEXT NOT NULL DEFAULT ''"),
         ("appearance_fingerprint", "TEXT NOT NULL DEFAULT ''"),
+        ("continuity_context_json", "TEXT NOT NULL DEFAULT '{}'"),
         ("profile_revision_id", "TEXT"),
         ("canon_status", "TEXT NOT NULL DEFAULT 'draft'"),
         ("gate_state", "TEXT NOT NULL DEFAULT 'legacy'"),
@@ -630,6 +643,11 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
             "visual_asset_versions",
             "appearance_fingerprint",
             "TEXT NOT NULL DEFAULT ''",
+        ),
+        (
+            "visual_asset_versions",
+            "continuity_context_json",
+            "TEXT NOT NULL DEFAULT '{}'",
         ),
         ("visual_asset_versions", "profile_revision_id", "TEXT"),
         (
@@ -682,6 +700,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
             asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
             story_id TEXT NOT NULL,branch_id TEXT NOT NULL,source_commit_id TEXT NOT NULL,
             prompt_override TEXT NOT NULL DEFAULT '',negative_prompt_override TEXT NOT NULL DEFAULT '',
+            continuity_context_json TEXT NOT NULL DEFAULT '{}',
             gate_state TEXT NOT NULL DEFAULT '',gate_reason_code TEXT NOT NULL DEFAULT '',gate_reason TEXT NOT NULL DEFAULT '',generation_eligible INTEGER,
             status_override TEXT NOT NULL DEFAULT '',error_override TEXT NOT NULL DEFAULT '',provider_override TEXT NOT NULL DEFAULT '',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -698,6 +717,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
         ("status_override", "TEXT NOT NULL DEFAULT ''"),
         ("error_override", "TEXT NOT NULL DEFAULT ''"),
         ("provider_override", "TEXT NOT NULL DEFAULT ''"),
+        ("continuity_context_json", "TEXT NOT NULL DEFAULT '{}'"),
     ] {
         ensure_text_column(pool, "visual_asset_branch_overrides", column, definition).await?;
     }
@@ -751,6 +771,13 @@ async fn ensure_image_operation_schema(pool: &SqlitePool) -> anyhow::Result<()> 
         "CREATE INDEX IF NOT EXISTS idx_image_operations_queue ON image_operations(status,created_at)",
     )
     .execute(pool)
+    .await?;
+    ensure_text_column(
+        pool,
+        "image_operations",
+        "continuity_context_json",
+        "TEXT NOT NULL DEFAULT '{}'",
+    )
     .await?;
     Ok(())
 }
@@ -921,6 +948,7 @@ async fn ensure_visual_generation_job_schema(pool: &SqlitePool) -> anyhow::Resul
         ("canonical_location_id", "TEXT NOT NULL DEFAULT ''"),
         ("form_id", "TEXT NOT NULL DEFAULT ''"),
         ("appearance_fingerprint", "TEXT NOT NULL DEFAULT ''"),
+        ("continuity_context_json", "TEXT NOT NULL DEFAULT '{}'"),
         ("profile_revision_id", "TEXT"),
     ] {
         ensure_text_column(pool, "visual_generation_jobs", column, definition).await?;
@@ -1428,7 +1456,7 @@ fn automatic_visual_priority(asset: &VisualAsset) -> u8 {
     match asset.kind.as_str() {
         "map_background" => 0,
         "map_icon" => 1,
-        "location" => 2,
+        "location" | "scene" => 2,
         "character" => 3,
         _ => 4,
     }
@@ -1473,8 +1501,10 @@ pub async fn create_image_operation(
     mut request: ImageOperationRequest,
 ) -> anyhow::Result<VisualAssetsResponse> {
     ensure_asset_belongs_to_story(&state.pool, story_id, asset_id).await?;
-    let route_asset = load_asset(&state.pool, story_id, asset_id)
+    let route_asset = list_assets(&state.pool, story_id)
         .await?
+        .into_iter()
+        .find(|asset| asset.id == asset_id)
         .ok_or_else(|| {
             PublicError::not_found("visual_asset_not_found", "visual asset not found")
         })?;
@@ -1592,7 +1622,10 @@ pub async fn create_image_operation(
         Some(mask)
     };
 
-    let native = native_request_from_api(&request, source, mask.clone(), &config);
+    let mut dispatch_request = request.clone();
+    dispatch_request.prompt =
+        prompt_with_continuity(&request.prompt, &route_asset.continuity_context);
+    let native = native_request_from_api(&dispatch_request, source, mask.clone(), &config);
     crate::imagegen::validate_native_request(&imagegen_adapter_config(&config), &native)
         .map_err(public_image_operation_error)?;
 
@@ -1629,9 +1662,9 @@ pub async fn create_image_operation(
     let insert = sqlx::query(
         r#"INSERT INTO image_operations
            (id,story_id,asset_id,operation,status,provider,model,endpoint_id,source_version_id,
-            parent_version_id,mask_id,branch_id,source_commit_id,prompt,negative_prompt,
+            parent_version_id,mask_id,branch_id,source_commit_id,prompt,negative_prompt,continuity_context_json,
             requested_parameters_json,idempotency_key)
-           VALUES (?,?,?,?, 'queued',?,?,?,?,?,?,?,?,?,?,?,?)"#,
+           VALUES (?,?,?,?, 'queued',?,?,?,?,?,?,?,?,?,?,?,?,?)"#,
     )
     .bind(&operation_id)
     .bind(story_id)
@@ -1647,6 +1680,7 @@ pub async fn create_image_operation(
     .bind(&source_commit_id)
     .bind(request.prompt.trim())
     .bind(request.negative_prompt.trim())
+    .bind(serde_json::to_string(&route_asset.continuity_context)?)
     .bind(&sanitized_request)
     .bind(request.idempotency_key.trim())
     .execute(&state.pool)
@@ -1765,6 +1799,7 @@ fn image_operation_view(row: &sqlx::sqlite::SqliteRow) -> ImageOperationView {
         model: row_string(row, "model"),
         endpoint_id: row_string(row, "endpoint_id"),
         source_version_id: row.try_get("source_version_id").unwrap_or_default(),
+        continuity_context: json_field(row, "continuity_context_json", json!({})),
         mask_id: row_string(row, "mask_id"),
         result_version_id: row.try_get("result_version_id").unwrap_or_default(),
         branch_id: row_string(row, "branch_id"),
@@ -1871,6 +1906,7 @@ struct ImageOperationRecord {
     source_commit_id: String,
     prompt: String,
     negative_prompt: String,
+    continuity_context: Value,
     output: ImageOperationOutput,
     idempotency_key: String,
     source_file_path: String,
@@ -1987,6 +2023,7 @@ async fn claim_image_operation(
            WHERE id=? AND status='queued'
            RETURNING id,story_id,asset_id,operation,provider,model,endpoint_id,source_version_id,
              COALESCE(mask_id,'') AS mask_id,branch_id,source_commit_id,prompt,negative_prompt,
+             COALESCE(continuity_context_json,'{}') AS continuity_context_json,
              requested_parameters_json,idempotency_key"#,
     )
     .bind(operation_id)
@@ -2037,6 +2074,7 @@ async fn claim_image_operation(
         source_commit_id: row_string(&row, "source_commit_id"),
         prompt: row_string(&row, "prompt"),
         negative_prompt: row_string(&row, "negative_prompt"),
+        continuity_context: json_field(&row, "continuity_context_json", json!({})),
         output,
         idempotency_key: row_string(&row, "idempotency_key"),
         source_file_path,
@@ -2087,7 +2125,7 @@ async fn execute_image_operation(
         source: None,
         mask_png_base64: String::new(),
         mask: None,
-        prompt: record.prompt.clone(),
+        prompt: prompt_with_continuity(&record.prompt, &record.continuity_context),
         negative_prompt: record.negative_prompt.clone(),
         output: record.output.clone(),
         controls: ImageOperationControls::default(),
@@ -2146,8 +2184,8 @@ async fn complete_image_operation(
         r#"INSERT INTO visual_asset_versions
            (asset_id,story_id,kind,subject,url,file_path,prompt,revised_prompt,negative_prompt,provider,
             turn,branch_id,source_commit_id,canonical_entity_id,canonical_location_id,form_id,
-            appearance_fingerprint,profile_revision_id,canon_status,parent_version_id,operation_id,mask_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"#,
+            appearance_fingerprint,profile_revision_id,canon_status,continuity_context_json,parent_version_id,operation_id,mask_id)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id"#,
     )
     .bind(&asset.id)
     .bind(&asset.story_id)
@@ -2168,6 +2206,7 @@ async fn complete_image_operation(
     .bind(&asset.appearance_fingerprint)
     .bind(&asset.profile_revision_id)
     .bind(&asset.canon_status)
+    .bind(serde_json::to_string(&record.continuity_context)?)
     .bind(record.source_version_id)
     .bind(&record.id)
     .bind(&record.mask_id)
@@ -2715,8 +2754,9 @@ async fn enqueue_visual_generation_jobs(
                   asset_id, story_id, status, attempts, max_attempts,
                   locked_until, request_payload_json, error, provider, branch_id, source_commit_id,
                   canonical_entity_id,canonical_location_id,form_id,appearance_fingerprint,profile_revision_id
+                  ,continuity_context_json
                )
-               VALUES (?, ?, 'queued', 0, 3, '', ?, '', ?, ?, ?,?,?,?,?,?)
+               VALUES (?, ?, 'queued', 0, 3, '', ?, '', ?, ?, ?,?,?,?,?,?,?)
                RETURNING id"#,
         )
         .bind(&asset.id)
@@ -2730,6 +2770,7 @@ async fn enqueue_visual_generation_jobs(
         .bind(&asset.form_id)
         .bind(&asset.appearance_fingerprint)
         .bind(&asset.profile_revision_id)
+        .bind(serde_json::to_string(&asset.continuity_context)?)
         .fetch_optional(&mut *tx)
         .await
         .with_context(|| format!("enqueueing visual generation job {}", asset.id))?;
@@ -2788,7 +2829,8 @@ async fn claim_visual_generation_job(
                ORDER BY j.created_at ASC,j.id ASC
                LIMIT 1
            )
-           RETURNING id,asset_id,story_id,attempts,max_attempts,branch_id,source_commit_id"#,
+           RETURNING id,asset_id,story_id,attempts,max_attempts,branch_id,source_commit_id,
+             COALESCE(continuity_context_json,'{}') AS continuity_context_json"#,
     )
     .bind(&lock_until)
     .bind(&now)
@@ -2820,6 +2862,7 @@ async fn claim_visual_generation_job(
         max_attempts: row.try_get("max_attempts").unwrap_or(3),
         branch_id: row_string(&row, "branch_id"),
         source_commit_id: row_string(&row, "source_commit_id"),
+        continuity_context: json_field(&row, "continuity_context_json", json!({})),
     }))
 }
 
@@ -3088,9 +3131,9 @@ async fn record_asset_version(
               asset_id, story_id, kind, subject, url, file_path, prompt,
               revised_prompt, negative_prompt, provider, turn
 			  , branch_id, source_commit_id,canonical_entity_id,canonical_location_id,
-              form_id,appearance_fingerprint,profile_revision_id,canon_status
+              form_id,appearance_fingerprint,profile_revision_id,canon_status,continuity_context_json
            )
-		   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?) RETURNING id"#,
+		   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?,?,?,?,?,?) RETURNING id"#,
     )
     .bind(&asset.id)
     .bind(&asset.story_id)
@@ -3111,6 +3154,7 @@ async fn record_asset_version(
     .bind(&asset.appearance_fingerprint)
     .bind(&asset.profile_revision_id)
     .bind(&asset.canon_status)
+    .bind(serde_json::to_string(&job.continuity_context)?)
     .fetch_one(&mut *conn)
     .await?;
     Ok(version_id)
@@ -3270,9 +3314,12 @@ async fn generate_one_asset(
     let adapter_config = imagegen_adapter_config(config);
     let request = crate::imagegen::GenerateRequest {
         subject: asset.subject.clone(),
-        prompt: clean_or(
-            &asset.prompt,
-            "Create a polished visual asset for this story.",
+        prompt: prompt_with_continuity(
+            &clean_or(
+                &asset.prompt,
+                "Create a polished visual asset for this story.",
+            ),
+            &job.continuity_context,
         ),
         negative_prompt: if config.append_negative_prompt {
             asset.negative_prompt.trim().to_string()
@@ -3421,7 +3468,9 @@ fn final_prompt(asset: &VisualAsset, config: &ImageGenerationConfig) -> String {
 
 fn asset_size(config: &ImageGenerationConfig, asset: &VisualAsset) -> String {
     match asset.kind.as_str() {
-        "location" | "map_background" => clean_or(&config.location_size, &config.default_size),
+        "location" | "scene" | "map_background" => {
+            clean_or(&config.location_size, &config.default_size)
+        }
         "character" => clean_or(&config.character_size, &config.default_size),
         _ => config.default_size.clone(),
     }
@@ -3434,7 +3483,7 @@ fn asset_generation_value(
     default_value: &str,
 ) -> Option<String> {
     let value = match kind {
-        "location" | "map_background" => clean_or(location_value, default_value),
+        "location" | "scene" | "map_background" => clean_or(location_value, default_value),
         "character" => clean_or(character_value, default_value),
         _ => default_value.trim().to_string(),
     };
@@ -4138,6 +4187,17 @@ async fn visual_specs(
             &prompt,
             &profile.fingerprint,
         ]);
+        let continuity_context_json = visual_continuity_context(
+            "location",
+            &snapshot.world.current_location_id,
+            "",
+            &snapshot.world.current_location_id,
+            "",
+            location,
+            vec![details.clone()],
+            snapshot,
+            profile,
+        );
         specs.push(VisualSpec {
             kind: "location".to_string(),
             subject: location.to_string(),
@@ -4149,15 +4209,52 @@ async fn visual_specs(
             form_id: String::new(),
             lineage_key: format!("location:{}", snapshot.world.current_location_id),
             appearance_fingerprint,
+            continuity_context_json: continuity_context_json.clone(),
             profile_revision_id: profile.id.clone(),
-            canon_status: gate.canon_status,
-            gate_state: gate.state,
-            gate_reason_code: gate.reason_code,
-            gate_reason: gate.reason,
+            canon_status: gate.canon_status.clone(),
+            gate_state: gate.state.clone(),
+            gate_reason_code: gate.reason_code.clone(),
+            gate_reason: gate.reason.clone(),
             generation_eligible: gate.generation_eligible,
             prompt,
             negative_prompt: profile.negative_prompt.clone(),
             turn: snapshot.world.current_turn,
+        });
+        let scene_context_json = visual_continuity_context(
+            "scene",
+            &format!("scene:{}", snapshot.world.current_location_id),
+            "",
+            &snapshot.world.current_location_id,
+            "",
+            location,
+            vec![details],
+            snapshot,
+            profile,
+        );
+        let scene_identity = scene_visual_identity(
+            &snapshot.world.current_location_id,
+            &details,
+            snapshot,
+            profile,
+        );
+        let scene_fingerprint = visual_fingerprint(&["scene", &scene_identity]);
+        specs.push(VisualSpec {
+            kind: "scene".to_string(),
+            subject: format!("Scene at {location}"),
+            canonical_location_id: snapshot.world.current_location_id.clone(),
+            lineage_key: format!("scene:{}:{scene_fingerprint}", snapshot.world.current_location_id),
+            appearance_fingerprint: scene_fingerprint,
+            continuity_context_json: scene_context_json,
+            profile_revision_id: profile.id.clone(),
+            canon_status: gate.canon_status.clone(),
+            gate_state: gate.state.clone(),
+            gate_reason_code: gate.reason_code.clone(),
+            gate_reason: gate.reason.clone(),
+            generation_eligible: gate.generation_eligible,
+            prompt: format!("{} Scene at {}. Details: {}. Composition: wide cinematic scene with clear foreground, midground, and background. Palette: {}.", profile.world_style_prompt, location, clean_or(&canonical_details, &fallback_details), clean_or(&profile.palette, "dark warm noir")),
+            negative_prompt: profile.negative_prompt.clone(),
+            turn: snapshot.world.current_turn,
+            ..VisualSpec::default()
         });
     }
 
@@ -4248,6 +4345,21 @@ async fn visual_specs(
             &visual_details,
             &profile.fingerprint,
         ]);
+        let continuity_context_json = visual_continuity_context(
+            "character",
+            &npc.id,
+            &npc.id,
+            &snapshot.world.current_location_id,
+            &form_id,
+            location,
+            vec![
+                visual_details.clone(),
+                role.to_string(),
+                relationship.clone(),
+            ],
+            snapshot,
+            profile,
+        );
         specs.push(VisualSpec {
             kind: "character".to_string(),
             subject: npc.name.clone(),
@@ -4259,6 +4371,7 @@ async fn visual_specs(
             form_id: form_id.clone(),
             lineage_key: format!("character:{}:{form_id}:{appearance_fingerprint}", npc.id),
             appearance_fingerprint,
+            continuity_context_json,
             profile_revision_id: profile.id.clone(),
             canon_status: gate.canon_status,
             gate_state: gate.state,
@@ -4271,6 +4384,173 @@ async fn visual_specs(
         });
     }
     Ok(specs)
+}
+
+fn visual_continuity_context(
+    asset_kind: &str,
+    stable_subject_id: &str,
+    canonical_entity_id: &str,
+    canonical_location_id: &str,
+    form_id: &str,
+    location_anchor: &str,
+    descriptors: Vec<String>,
+    snapshot: &db::StorySnapshot,
+    profile: &VisualProfile,
+) -> String {
+    let descriptors = descriptors
+        .into_iter()
+        .map(|descriptor| compact_continuity_text(&descriptor))
+        .filter(|descriptor| !descriptor.is_empty())
+        .take(MAX_CONTINUITY_DESCRIPTORS)
+        .collect::<Vec<_>>();
+    let scene_mood = [
+        first_string(
+            &snapshot.world.scene_contract,
+            &["mood", "tone", "atmosphere", "lighting"],
+        ),
+        first_string(&snapshot.world.weather, &["label", "description"]),
+        Some(snapshot.story.tone.clone()),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|value| compact_continuity_text(&value))
+    .find(|value| !value.is_empty())
+    .unwrap_or_default();
+    serde_json::json!({
+        "version": VISUAL_CONTINUITY_CONTEXT_VERSION,
+        "asset_kind": asset_kind,
+        "stable_subject_id": stable_subject_id,
+        "canonical_entity_id": canonical_entity_id,
+        "canonical_location_id": canonical_location_id,
+        "form_id": form_id,
+        "location_anchor": compact_continuity_text(location_anchor),
+        "descriptors": descriptors,
+        "scene_time": compact_continuity_text(&first_string(&snapshot.world.world_time, &["display_text"]).unwrap_or_default()),
+        "scene_mood": scene_mood,
+        "provenance": {
+            "source": "canonical_text_state",
+            "turn": snapshot.world.current_turn,
+            "profile_revision_id": profile.id,
+        }
+    })
+    .to_string()
+}
+
+// Scene identity deliberately excludes turn and full clock text. Those fields
+// remain in continuity provenance, while this payload changes only for a
+// visual anchor: location/details, explicit scene visual state, weather, a
+// coarse time-of-day phase, or visual profile revision.
+fn scene_visual_identity(
+    location_id: &str,
+    details: &str,
+    snapshot: &db::StorySnapshot,
+    profile: &VisualProfile,
+) -> String {
+    let scene_contract = [
+        "visual_anchor",
+        "setting",
+        "mood",
+        "tone",
+        "atmosphere",
+        "lighting",
+        "time_of_day",
+        "weather",
+    ]
+    .into_iter()
+    .filter_map(|key| {
+        first_string(&snapshot.world.scene_contract, &[key])
+            .map(|value| (key.to_string(), compact_continuity_text(&value)))
+            .filter(|(_, value)| !value.is_empty())
+            .map(|(key, value)| (key, Value::String(value)))
+    })
+    .collect::<serde_json::Map<_, _>>();
+    let weather = ["label", "intensity", "description"]
+        .into_iter()
+        .filter_map(|key| {
+            first_string(&snapshot.world.weather, &[key])
+                .map(|value| (key.to_string(), compact_continuity_text(&value)))
+                .filter(|(_, value)| !value.is_empty())
+                .map(|(key, value)| (key, Value::String(value)))
+        })
+        .collect::<serde_json::Map<_, _>>();
+    serde_json::json!({
+        "version": VISUAL_CONTINUITY_CONTEXT_VERSION,
+        "location_id": location_id,
+        "location_details": compact_continuity_text(details),
+        "scene_contract": scene_contract,
+        "weather": weather,
+        "time_phase": scene_time_phase(&snapshot.world.world_time),
+        "profile_fingerprint": profile.fingerprint,
+    })
+    .to_string()
+}
+
+fn scene_time_phase(world_time: &Value) -> &'static str {
+    let minute = world_time
+        .get("minute_of_day")
+        .and_then(Value::as_i64)
+        .unwrap_or_default()
+        .rem_euclid(24 * 60);
+    match minute {
+        0..=299 => "night",
+        300..=479 => "dawn",
+        480..=1019 => "day",
+        1020..=1199 => "dusk",
+        _ => "night",
+    }
+}
+
+fn compact_continuity_text(value: &str) -> String {
+    value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(MAX_CONTINUITY_DESCRIPTOR_CHARS)
+        .collect()
+}
+
+fn prompt_with_continuity(user_prompt: &str, continuity_context: &Value) -> String {
+    let mut prompt = user_prompt.trim().to_string();
+    if continuity_context.get("version").and_then(Value::as_str)
+        != Some(VISUAL_CONTINUITY_CONTEXT_VERSION)
+    {
+        return prompt;
+    }
+    let descriptors = continuity_context
+        .get("descriptors")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .map(compact_continuity_text)
+        .collect::<Vec<_>>()
+        .join("; ");
+    let fields = [
+        ("subject", "stable_subject_id"),
+        ("location", "location_anchor"),
+        ("time", "scene_time"),
+        ("mood", "scene_mood"),
+    ]
+    .into_iter()
+    .filter_map(|(label, key)| {
+        continuity_context
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(|value| format!("{label}: {value}"))
+    })
+    .chain((!descriptors.is_empty()).then(|| format!("canonical descriptors: {descriptors}")))
+    .collect::<Vec<_>>()
+    .join("; ");
+    if !fields.is_empty() {
+        if !prompt.is_empty() {
+            prompt.push_str("\n\n");
+        }
+        prompt.push_str("Canonical visual continuity (preserve when compatible with the user direction; generated media is not story canon): ");
+        prompt.push_str(&fields);
+    }
+    prompt
 }
 
 fn known_map_specs(
@@ -4471,6 +4751,7 @@ fn known_map_specs(
             form_id: String::new(),
             lineage_key: format!("known-map:{scope_kind}:{scope_id}:{graph_fingerprint}"),
             appearance_fingerprint: graph_fingerprint,
+            continuity_context_json: String::new(),
             profile_revision_id: profile.id.clone(),
             canon_status: "canonical".to_string(),
             gate_state: if eligible { "known_map_ready" } else { "known_map_waiting" }.to_string(),
@@ -4500,6 +4781,7 @@ fn known_map_specs(
             form_id: String::new(),
             lineage_key: format!("map-icon:{id}"),
             appearance_fingerprint: icon_fingerprint,
+            continuity_context_json: String::new(),
             profile_revision_id: profile.id.clone(),
             canon_status: "canonical".to_string(),
             gate_state: "known_map_symbol".to_string(),
@@ -4899,12 +5181,12 @@ async fn ensure_asset_rows(
                   id,story_id,kind,subject,entity_id,canonical_entity_id,canonical_location_id,
                   map_scope_kind,map_scope_id,form_id,lineage_key,appearance_fingerprint,profile_revision_id,canon_status,
                   gate_state,gate_reason_code,gate_reason,generation_eligible,prompt,negative_prompt,
-                  status,provider,source,turn,branch_id,source_commit_id
+                  continuity_context_json,status,provider,source,turn,branch_id,source_commit_id
                )
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','codex-imagegen','auto-profile',?,?,?)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'pending','codex-imagegen','auto-profile',?,?,?)
                ON CONFLICT(story_id,branch_id,lineage_key) DO UPDATE SET
                   gate_state=excluded.gate_state,gate_reason_code=excluded.gate_reason_code,gate_reason=excluded.gate_reason,
-                  generation_eligible=excluded.generation_eligible,turn=excluded.turn,
+                  generation_eligible=excluded.generation_eligible,continuity_context_json=excluded.continuity_context_json,turn=excluded.turn,
                   updated_at=CURRENT_TIMESTAMP"#,
         )
         .bind(id)
@@ -4927,6 +5209,7 @@ async fn ensure_asset_rows(
         .bind(if spec.generation_eligible { 1_i64 } else { 0_i64 })
         .bind(&spec.prompt)
         .bind(&spec.negative_prompt)
+        .bind(&spec.continuity_context_json)
         .bind(spec.turn)
         .bind(&branch_id)
         .bind(&source_commit_id)
@@ -4955,7 +5238,7 @@ async fn upsert_asset_branch_override(
            ), ancestors(id) AS (
              SELECT head_commit_id FROM active
              UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
-           ) SELECT o.prompt_override,o.negative_prompt_override FROM visual_asset_branch_overrides o CROSS JOIN active x
+          ) SELECT o.prompt_override,o.negative_prompt_override FROM visual_asset_branch_overrides o CROSS JOIN active x
              WHERE o.asset_id=? AND o.source_commit_id IN (SELECT id FROM ancestors)
                AND o.branch_id!=x.branch_id
                AND (o.source_commit_id!=COALESCE(x.fork_commit_id,'') OR o.updated_at<=x.branch_created)
@@ -4976,12 +5259,13 @@ async fn upsert_asset_branch_override(
         .unwrap_or_else(|| spec.negative_prompt.clone());
     sqlx::query(
         r#"INSERT INTO visual_asset_branch_overrides
-           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,gate_state,gate_reason_code,gate_reason,generation_eligible)
-           VALUES (?,?,?,?,?,?,?,?,?,?)
+           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,continuity_context_json,gate_state,gate_reason_code,gate_reason,generation_eligible)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(asset_id,branch_id) DO UPDATE SET
              source_commit_id=excluded.source_commit_id,
              prompt_override=CASE WHEN visual_asset_branch_overrides.prompt_override='' THEN excluded.prompt_override ELSE visual_asset_branch_overrides.prompt_override END,
              negative_prompt_override=CASE WHEN visual_asset_branch_overrides.negative_prompt_override='' THEN excluded.negative_prompt_override ELSE visual_asset_branch_overrides.negative_prompt_override END,
+             continuity_context_json=excluded.continuity_context_json,
              gate_state=excluded.gate_state,gate_reason_code=excluded.gate_reason_code,gate_reason=excluded.gate_reason,
              generation_eligible=excluded.generation_eligible,updated_at=CURRENT_TIMESTAMP"#,
     )
@@ -4991,6 +5275,7 @@ async fn upsert_asset_branch_override(
     .bind(source_commit_id)
     .bind(prompt)
     .bind(negative_prompt)
+    .bind(&spec.continuity_context_json)
     .bind(&spec.gate_state)
     .bind(&spec.gate_reason_code)
     .bind(&spec.gate_reason)
@@ -5018,6 +5303,7 @@ async fn list_assets(pool: &SqlitePool, story_id: &str) -> anyhow::Result<Vec<Vi
            SELECT v.id,v.story_id,v.kind,v.subject,v.entity_id,v.canonical_entity_id,
                   v.canonical_location_id,v.map_scope_kind,v.map_scope_id,v.form_id,v.lineage_key,v.appearance_fingerprint,
                   COALESCE(v.profile_revision_id,'') AS profile_revision_id,v.canon_status,
+                  COALESCE(NULLIF(o.continuity_context_json,'{}'),v.continuity_context_json,'{}') AS continuity_context_json,
                   COALESCE(NULLIF(o.gate_state,''),v.gate_state) AS gate_state,
                   COALESCE(NULLIF(o.gate_reason_code,''),v.gate_reason_code) AS gate_reason_code,
                   COALESCE(NULLIF(o.gate_reason,''),v.gate_reason) AS gate_reason,
@@ -5065,6 +5351,7 @@ async fn list_visual_generation_jobs(
     let rows = sqlx::query(
         r#"SELECT id, asset_id, story_id, canonical_entity_id, canonical_location_id,
                   form_id, appearance_fingerprint, COALESCE(profile_revision_id,'') AS profile_revision_id,
+                  COALESCE(continuity_context_json,'{}') AS continuity_context_json,
                   status, attempts, max_attempts,
                   locked_until, error, provider, started_at, finished_at,
                   branch_id, source_commit_id,
@@ -5093,6 +5380,7 @@ async fn list_visual_generation_jobs(
             canonical_location_id: row_string(&row, "canonical_location_id"),
             form_id: row_string(&row, "form_id"),
             appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
+            continuity_context: json_field(&row, "continuity_context_json", json!({})),
             profile_revision_id: row_string(&row, "profile_revision_id"),
             status: row_string(&row, "status"),
             attempts: row.try_get("attempts").unwrap_or_default(),
@@ -5119,6 +5407,7 @@ async fn load_asset(
         r#"SELECT id, story_id, kind, subject, entity_id, canonical_entity_id,
                   canonical_location_id, map_scope_kind, map_scope_id, form_id, lineage_key, appearance_fingerprint,
                   COALESCE(profile_revision_id,'') AS profile_revision_id, canon_status,
+                  COALESCE(continuity_context_json,'{}') AS continuity_context_json,
                   gate_state, gate_reason_code, gate_reason, generation_eligible, prompt, negative_prompt,
                   status, url, provider, source, error, turn, branch_id, source_commit_id,
                   CAST(updated_at AS TEXT) AS updated_at
@@ -5148,6 +5437,7 @@ fn visual_asset_from_row(row: sqlx::sqlite::SqliteRow) -> VisualAsset {
         form_id: row_string(&row, "form_id"),
         lineage_key: row_string(&row, "lineage_key"),
         appearance_fingerprint: row_string(&row, "appearance_fingerprint"),
+        continuity_context: json_field(&row, "continuity_context_json", json!({})),
         profile_revision_id: row_string(&row, "profile_revision_id"),
         canon_status: row_string(&row, "canon_status"),
         gate_reason_code: if stored_reason_code.is_empty() {
@@ -6911,6 +7201,7 @@ mod tests {
             source_commit_id: "commit-main".into(),
             prompt: "repair it".into(),
             negative_prompt: String::new(),
+            continuity_context: json!({}),
             output: ImageOperationOutput::default(),
             idempotency_key: "op-finalize-key".into(),
             source_file_path: String::new(),
@@ -7051,6 +7342,138 @@ mod tests {
             .expect("canonical character asset");
         assert!(asset.prompt.contains("ink-stained gloves"));
         assert!(!asset.prompt.contains("derive from story context"));
+    }
+
+    #[tokio::test]
+    async fn canonical_context_is_stable_for_repeated_character_and_location_requests() {
+        let pool = visual_job_pool().await;
+        sqlx::query(
+            r#"INSERT INTO npcs (id,story_id,name,role,appearance,discovery_json,last_seen_turn)
+               VALUES ('npc-context','story','Mara','guide','Red coat and silver braid.',
+               '{"stage":"established","visual_readiness":"canonical","visual_completeness":85}',3)"#,
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let first = visual_assets(&pool, "story").await.unwrap();
+        let second = visual_assets(&pool, "story").await.unwrap();
+        for kind in ["location", "character"] {
+            let one = first
+                .assets
+                .iter()
+                .find(|asset| asset.kind == kind)
+                .unwrap();
+            let two = second
+                .assets
+                .iter()
+                .find(|asset| asset.kind == kind)
+                .unwrap();
+            assert_eq!(one.continuity_context, two.continuity_context);
+            assert_eq!(
+                one.continuity_context
+                    .get("version")
+                    .and_then(Value::as_str),
+                Some(VISUAL_CONTINUITY_CONTEXT_VERSION)
+            );
+        }
+        let scene = first
+            .assets
+            .iter()
+            .find(|asset| asset.kind == "scene")
+            .unwrap();
+        assert_eq!(scene.continuity_context["asset_kind"], "scene");
+        assert_eq!(scene.canonical_location_id, "loc-station");
+    }
+
+    #[tokio::test]
+    async fn scene_lineage_ignores_unrelated_turns_but_tracks_visual_anchors() {
+        let pool = visual_job_pool().await;
+        let config = test_config();
+        let request = GenerateVisualAssetsRequest {
+            asset_ids: vec![],
+            force: false,
+            allow_silhouette: false,
+            limit: Some(1),
+        };
+        let first = visual_assets(&pool, "story").await.unwrap();
+        let first_scene = first
+            .assets
+            .iter()
+            .find(|asset| asset.kind == "scene")
+            .unwrap()
+            .clone();
+        enqueue_visual_generation_jobs(
+            &pool,
+            std::slice::from_ref(&first_scene),
+            &request,
+            &config,
+        )
+        .await
+        .unwrap();
+
+        // A later turn and a clock update within the same visual phase must
+        // reuse the asset and deduplicate its already queued paid job.
+        sqlx::query("UPDATE world_state SET current_turn=4 WHERE story_id='story'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("UPDATE world_clocks SET minute_of_day=90,display_text='Day 0, 01:30' WHERE story_id='story'")
+            .execute(&pool)
+            .await
+            .unwrap();
+        let unchanged = visual_assets(&pool, "story").await.unwrap();
+        let unchanged_scene = unchanged
+            .assets
+            .iter()
+            .find(|asset| asset.kind == "scene")
+            .unwrap();
+        assert_eq!(unchanged_scene.id, first_scene.id);
+        enqueue_visual_generation_jobs(
+            &pool,
+            std::slice::from_ref(&first_scene),
+            &request,
+            &config,
+        )
+        .await
+        .unwrap();
+        let jobs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM visual_generation_jobs WHERE asset_id=? AND status IN ('queued','running')",
+        )
+        .bind(&first_scene.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(jobs, 1);
+
+        sqlx::query(
+            "UPDATE world_state SET scene_contract_json='{\"mood\":\"tense\",\"visual_anchor\":\"lantern checkpoint\"}' WHERE story_id='story'",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let changed = visual_assets(&pool, "story").await.unwrap();
+        let changed_scene = changed
+            .assets
+            .iter()
+            .find(|asset| asset.kind == "scene" && asset.id != first_scene.id)
+            .unwrap();
+        assert_ne!(changed_scene.lineage_key, first_scene.lineage_key);
+    }
+
+    #[test]
+    fn continuity_prompt_keeps_user_direction_first_and_bounded() {
+        let context = json!({
+            "version": VISUAL_CONTINUITY_CONTEXT_VERSION,
+            "stable_subject_id": "npc-mara",
+            "location_anchor": "Rainy Dock",
+            "scene_time": "Day 2, dusk",
+            "scene_mood": "rain",
+            "descriptors": ["red coat".repeat(80)],
+        });
+        let prompt = prompt_with_continuity("Make the coat blue", &context);
+        assert!(prompt.starts_with("Make the coat blue"));
+        assert!(prompt.contains("Canonical visual continuity"));
+        assert!(prompt.len() < 900);
     }
 
     #[tokio::test]
@@ -7279,6 +7702,7 @@ mod tests {
             max_attempts: 3,
             branch_id: "branch-main".into(),
             source_commit_id: "commit-main".into(),
+            continuity_context: json!({}),
         };
         let second = VisualGenerationJob {
             id: 5,
@@ -7287,6 +7711,7 @@ mod tests {
             max_attempts: 3,
             branch_id: "branch-main".into(),
             source_commit_id: "commit-main".into(),
+            continuity_context: json!({}),
         };
 
         assert_eq!(retry_delay_seconds(&first), 35);
@@ -7348,6 +7773,7 @@ mod tests {
             max_attempts: 3,
             branch_id: "branch-main".into(),
             source_commit_id: "commit-main".into(),
+            continuity_context: json!({}),
         };
 
         mark_asset_failed(&pool, &job, "provider down", &config)

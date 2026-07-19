@@ -28,8 +28,8 @@ func TestReleaseUpgradeFromV114(t *testing.T) {
 	if err := db.Conn().QueryRow(`SELECT MAX(version) FROM schema_version`).Scan(&latestVersion); err != nil {
 		t.Fatalf("latest schema version: %v", err)
 	}
-	if latestVersion != 43 {
-		t.Fatalf("latest schema version=%d, want 43", latestVersion)
+	if latestVersion != 44 {
+		t.Fatalf("latest schema version=%d, want 44", latestVersion)
 	}
 
 	for _, table := range []string{
