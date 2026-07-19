@@ -125,6 +125,7 @@ export interface SetupReadinessProbe {
   status: "ready" | "warning" | "failed" | "skipped" | string;
   required: boolean;
   summary: string;
+  action: string;
 }
 
 export interface SetupReadinessReport {

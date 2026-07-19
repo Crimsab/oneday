@@ -380,7 +380,7 @@ var italianStoryCatalog = map[string]string{
 
 var italianSetupCatalog = map[string]string{
 	"provider_codex":   "  1) Codex OAuth (usa `codex login` locale)",
-	"provider_litellm": "  2) LiteLLM / proxy homelab", "provider_openrouter": "  3) OpenRouter",
+	"provider_litellm": "  2) LiteLLM / gateway compatibile con OpenAI", "provider_openrouter": "  3) OpenRouter",
 	"provider_codex_rag": "  4) Codex OAuth + embedding RAG locali", "selection": "Selezione [1]: ",
 	"codex_login":  "Se Codex non ha ancora eseguito l'accesso, usa: codex login",
 	"rag_disabled": "RAG: disabilitato; nessun provider di embedding configurato",

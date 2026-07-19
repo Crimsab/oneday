@@ -8,6 +8,14 @@ oneday doctor --json
 oneday config show --safe
 ```
 
+`oneday doctor --json` is the canonical readiness and recovery contract used by
+the terminal and browser. Each probe has a stable `code`, `status`, `required`,
+safe `summary`, and redacted `action`. Actions are one of `configure`,
+`check_credentials`, `check_connection`, `retry_later`, `check_capability`,
+`review_billing`, `create_backup`, `restore_empty_target`, or
+`preserve_original`; clients can localize them without parsing provider errors.
+The report intentionally omits credentials, provider responses, and local paths.
+
 When running from source, replace `oneday` with `go run ./cmd/oneday`.
 
 ## No narrative provider works
@@ -78,9 +86,24 @@ and migrated automatically.
   not only `oneday.db`.
 - Stop a standalone profile before copying it. For an active server, take a
   SQLite-safe backup rather than a raw copy during writes.
-- Restore into a stopped target and run `oneday doctor` before serving it.
-  Restoring replaces that target profile's data; it does not merge with remote
-  or standalone stories.
+- The source checkout includes a checksummed SQLite-safe verification workflow:
+
+  ```bash
+  ./scripts/verify-sqlite-backup-restore.sh --db source.sqlite --backup oneday-backup.sqlite --restore-dir empty-recovery-target
+  ```
+
+  The restore directory must already exist and be empty. The workflow verifies
+  the checksum, SQLite integrity, and foreign keys before it makes the restored
+  database visible. It refuses a non-empty target and never writes to the source.
+- For an upgrade or migration failure, keep the original stopped profile or
+  server data untouched. Restore the backup into a distinct empty recovery
+  target, start the new version against that target, and only promote it after
+  its normal migration and `oneday doctor` checks pass. If migration fails,
+  discard the recovery target and investigate; do not retry against or overwrite
+  the original.
+- Restoring replaces only the chosen target profile. It does not merge remote
+  and standalone stories. A browser connected to a server reports that server’s
+  backup state; standalone backups are created from the local standalone profile.
 
 ## Images stay pending or fail
 

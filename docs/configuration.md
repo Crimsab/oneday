@@ -191,12 +191,18 @@ the data privacy boundary.
 - `game.reward_budget` accepts `generous`, `balanced`, or `harsh`.
 
 SQLite is canonical for both clients. Back up the entire data directory while
-OneDay is stopped, or use a SQLite-safe backup procedure.
+OneDay is stopped, or use a SQLite-safe backup procedure. The checked-in
+`scripts/verify-sqlite-backup-restore.sh` utility creates a checksummed database
+backup and restores only into an existing empty target after integrity and
+foreign-key checks pass. Keep generated assets with that database backup.
 
 For a standalone desktop profile, stop its local gateway from the Desktop
 settings window (or quit the desktop application) before copying its profile's
 `data/` directory. For a live terminal/server database, use a SQLite online
 backup procedure instead of copying a changing database and WAL files. Restore
 into an empty or stopped target data directory, preserve the directory as a
-unit, then run `oneday doctor` before serving it. A backup restores its own
-profile only; it does not sync or merge with another profile or remote server.
+unit, then run the upgraded target and `oneday doctor` before serving it. Never
+point a migration retry at the original after a failure: keep it stopped and
+unchanged, restore into a separate empty recovery target, and promote only the
+verified target. A backup restores its own profile only; it does not sync or
+merge with another profile or remote server.

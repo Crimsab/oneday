@@ -11,6 +11,7 @@ interface SetupItem {
   required: boolean;
   code: string;
   summary: string;
+  action: string;
 }
 
 const canonicalProbeOrder: SetupProbeName[] = ["narrative", "embeddings", "image", "tts", "gateway", "storage", "backup"];
@@ -27,6 +28,7 @@ export function installationSetupItems(readiness: SetupReadinessReport): SetupIt
       required: probe?.required ?? (name === "narrative" || name === "storage"),
       code: probe?.code ?? "",
       summary: probe?.summary ?? "",
+      action: probe?.action ?? "",
     };
   });
 }
@@ -39,10 +41,12 @@ export function InstallationOnboarding({
   readiness,
   onConfigure,
   onStartStory,
+  onRetry,
 }: {
   readiness: SetupReadinessReport;
   onConfigure: () => void;
   onStartStory: () => void;
+  onRetry: () => void;
 }) {
   const { t } = useTranslation("installation");
   const items = useMemo(() => installationSetupItems(readiness), [readiness]);
@@ -69,6 +73,10 @@ export function InstallationOnboarding({
                 <strong>{t(`items.${item.name}.title`)}</strong>
                 <span>{t(`codes.${item.code}`, { defaultValue: item.summary || t("summaryUnavailable") })}</span>
                 {item.code && <code>{item.code}</code>}
+                {item.action && <details>
+                  <summary>{t("recovery.details")}</summary>
+                  <p>{t(`recovery.actions.${item.action}`, { defaultValue: t("recovery.unknown") })}</p>
+                </details>}
               </div>
               <span aria-label={`${t(`items.${item.name}.title`)}: ${item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}`}>
                 {item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}
@@ -93,6 +101,7 @@ export function InstallationOnboarding({
 
       <div className="installation-onboarding-actions">
         <button type="button" onClick={onConfigure}>{t("configure")}</button>
+        <button type="button" onClick={onRetry}>{t("recovery.retry")}</button>
         <button type="button" className="primary-action" onClick={onStartStory} disabled={hasRequiredFailure}>
           {t("startStory")}
         </button>
@@ -102,6 +111,7 @@ export function InstallationOnboarding({
           {t("requiredBlocked")}
         </p>
       )}
+      <p className="installation-onboarding-preserve">{t("recovery.ownership")}</p>
     </section>
   );
 }

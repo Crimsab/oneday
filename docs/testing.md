@@ -34,6 +34,13 @@ bun run test
 bun run build
 ```
 
+The backup/recovery shell fixture is deterministic and never writes to its
+source database:
+
+```bash
+bash scripts/verify-sqlite-backup-restore-test.sh
+```
+
 Run the focused cross-system regression sweep with:
 
 ```bash
@@ -60,9 +67,7 @@ action composer without depending on a live model provider.
 
 ## Full CI coverage
 
-The `CI` workflow uses one consolidated job so the private, single-runner pool
-does not pay a new ephemeral-runner startup cost between every language gate.
-It runs:
+The `CI` workflow uses one consolidated job and runs:
 
 - workflow syntax validation with Actionlint;
 - a Gitleaks scan of tracked content;
@@ -72,10 +77,6 @@ It runs:
 - Rust formatting, tests, Clippy, and a debug build;
 - frontend unit tests, production build, and Playwright desktop/mobile gates;
 - a complete gateway Docker image build.
-
-Private repository runs use the dedicated OneDay runner. Public pull requests
-use GitHub-hosted runners and never execute contributor code on private lab
-infrastructure.
 
 ## Release verification
 

@@ -24,6 +24,8 @@ struct DoctorProbe {
     status: String,
     required: bool,
     summary: String,
+    #[serde(default)]
+    action: String,
 }
 
 /// The browser-safe subset of the canonical `oneday doctor --json` report.
@@ -40,6 +42,7 @@ pub struct ReadinessProbe {
     pub status: String,
     pub required: bool,
     pub summary: String,
+    pub action: String,
 }
 
 pub async fn readiness(state: Arc<AppState>) -> anyhow::Result<ReadinessReport> {
@@ -79,15 +82,33 @@ fn parse_doctor_report(raw: &[u8]) -> anyhow::Result<ReadinessReport> {
             status: bounded_text(probe.status),
             required: probe.required,
             summary: bounded_text(probe.summary),
+            action: bounded_text(probe.action),
         })
         .collect::<Vec<_>>();
-    if probes
-        .iter()
-        .any(|probe| probe.name.is_empty() || probe.code.is_empty() || probe.status.is_empty())
-    {
+    if probes.iter().any(|probe| {
+        probe.name.is_empty()
+            || probe.code.is_empty()
+            || probe.status.is_empty()
+            || !valid_action(&probe.action)
+    }) {
         return Err(anyhow!("canonical doctor report contains an invalid probe"));
     }
     Ok(ReadinessReport { probes })
+}
+
+fn valid_action(value: &str) -> bool {
+    matches!(
+        value,
+        "" | "configure"
+            | "check_credentials"
+            | "check_connection"
+            | "retry_later"
+            | "check_capability"
+            | "review_billing"
+            | "create_backup"
+            | "restore_empty_target"
+            | "preserve_original"
+    )
 }
 
 fn bounded_text(value: String) -> String {
@@ -107,7 +128,7 @@ mod tests {
         let report = parse_doctor_report(br#"{
           "config_source":"/private/config.yaml",
           "probes":[
-            {"name":"narrative","code":"NARRATIVE_NOT_CONFIGURED","status":"failed","required":true,"summary":"no narrative provider is enabled"},
+            {"name":"narrative","code":"NARRATIVE_NOT_CONFIGURED","status":"failed","required":true,"summary":"no narrative provider is enabled","action":"configure"},
             {"name":"image","code":"IMAGE_DISABLED","status":"skipped","required":false,"summary":"image generation is disabled"},
             {"name":"tts","code":"TTS_DISABLED","status":"skipped","required":false,"summary":"text-to-speech is disabled"}
           ]
@@ -119,7 +140,7 @@ mod tests {
         assert!(!report.probes[1].required);
         assert_eq!(
             serde_json::to_string(&report).unwrap(),
-            r#"{"probes":[{"name":"narrative","code":"NARRATIVE_NOT_CONFIGURED","status":"failed","required":true,"summary":"no narrative provider is enabled"},{"name":"image","code":"IMAGE_DISABLED","status":"skipped","required":false,"summary":"image generation is disabled"},{"name":"tts","code":"TTS_DISABLED","status":"skipped","required":false,"summary":"text-to-speech is disabled"}]}"#
+            r#"{"probes":[{"name":"narrative","code":"NARRATIVE_NOT_CONFIGURED","status":"failed","required":true,"summary":"no narrative provider is enabled","action":"configure"},{"name":"image","code":"IMAGE_DISABLED","status":"skipped","required":false,"summary":"image generation is disabled","action":""},{"name":"tts","code":"TTS_DISABLED","status":"skipped","required":false,"summary":"text-to-speech is disabled","action":""}]}"#
         );
     }
 
@@ -144,5 +165,6 @@ mod tests {
     fn rejects_unbounded_or_missing_probe_output() {
         assert!(parse_doctor_report(br#"{"probes":[]}"#).is_err());
         assert!(parse_doctor_report(&vec![b'x'; MAX_DOCTOR_JSON_BYTES + 1]).is_err());
+        assert!(parse_doctor_report(br#"{"probes":[{"name":"narrative","code":"NARRATIVE_TIMEOUT","status":"failed","required":true,"summary":"safe","action":"untrusted_action"}]}"#).is_err());
     }
 }

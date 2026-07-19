@@ -119,6 +119,9 @@ func TestReadinessUsesExplicitDatabasePathForBackupWithoutLeakingIt(t *testing.T
 		if probe.Name == "backup" && probe.Code != "BACKUP_READY" {
 			t.Fatalf("backup must inspect explicit database path: %#v", probe)
 		}
+		if probe.Name == "backup" && probe.Action != ActionCreateBackup {
+			t.Fatalf("backup recovery action = %q, want %q", probe.Action, ActionCreateBackup)
+		}
 	}
 }
 
@@ -127,5 +130,64 @@ func TestDefaultDependenciesReadsExplicitDatabasePath(t *testing.T) {
 	t.Setenv("ONEDAY_DB_PATH", path)
 	if got := DefaultDependencies().DatabasePath; got != path {
 		t.Fatalf("database path = %q, want %q", got, path)
+	}
+}
+
+func TestProviderDiagnosticStatesAreStableAndRedacted(t *testing.T) {
+	cfg := config.Default()
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = "test"
+	cfg.AI.Generation.UtilityModel = "test"
+	cfg.DataDir = t.TempDir()
+
+	tests := []struct {
+		name    string
+		failure error
+		code    string
+		action  string
+	}{
+		{"unreachable", ProviderFailure(ProviderUnreachable), "NARRATIVE_UNREACHABLE", ActionCheckConnection},
+		{"timeout", context.DeadlineExceeded, "NARRATIVE_TIMEOUT", ActionRetryLater},
+		{"incompatible", ProviderFailure(ProviderIncompatible), "NARRATIVE_INCOMPATIBLE", ActionCheckCapability},
+		{"ambiguous paid outcome", ProviderFailure(ProviderAmbiguousPaid), "NARRATIVE_AMBIGUOUS_PAID_OUTCOME", ActionReviewBilling},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			report := Run(context.Background(), cfg, "ONEDAY_CONFIG", Dependencies{
+				Narrative: func(context.Context, config.Config) error { return tt.failure },
+				Embedding: func(context.Context, aifactory.EmbeddingProviderSpec) (int, error) { return 0, nil },
+				HTTPGet:   func(context.Context, string) error { return nil },
+				Stat:      os.Stat,
+			})
+			probe := report.Probes[0]
+			if probe.Code != tt.code || probe.Action != tt.action || probe.Status != StatusFailed {
+				t.Fatalf("probe = %#v", probe)
+			}
+			if strings.Contains(probe.Summary, "secret") || strings.Contains(probe.Summary, "http") {
+				t.Fatalf("probe leaked raw diagnostic data: %#v", probe)
+			}
+		})
+	}
+}
+
+func TestNarrativeMissingCredentialHasRecoveryAction(t *testing.T) {
+	cfg := config.Default()
+	cfg.AI.ProviderPriority = []string{"openrouter"}
+	cfg.AI.OpenRouter.Enabled = true
+	cfg.AI.OpenRouter.DefaultModel = "test"
+	cfg.AI.Generation.UtilityModel = "test"
+	cfg.DataDir = t.TempDir()
+	report := Run(context.Background(), cfg, "ONEDAY_CONFIG", Dependencies{
+		Narrative: func(context.Context, config.Config) error {
+			t.Fatal("provider must not be called without its credential")
+			return nil
+		},
+		Embedding: func(context.Context, aifactory.EmbeddingProviderSpec) (int, error) { return 0, nil },
+		HTTPGet:   func(context.Context, string) error { return nil },
+		Stat:      os.Stat,
+	})
+	probe := report.Probes[0]
+	if probe.Code != "NARRATIVE_MISSING_CREDENTIAL" || probe.Action != ActionCheckCredentials {
+		t.Fatalf("probe = %#v", probe)
 	}
 }

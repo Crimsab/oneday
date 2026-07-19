@@ -3,15 +3,21 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: verify-sqlite-backup-restore.sh --db PATH [--work-dir PATH]
+Usage:
+  verify-sqlite-backup-restore.sh --db PATH --backup PATH [--restore-dir EMPTY_DIR] [--work-dir PATH]
+  verify-sqlite-backup-restore.sh --backup PATH --restore-dir EMPTY_DIR [--work-dir PATH]
 
-Creates a SQLite online backup and a restore copy under a temporary directory,
-then verifies checksums, integrity_check, and foreign_key_check. The source
-database is opened read-only by sqlite3 and is never modified.
+Creates or verifies a checksummed SQLite online backup, then optionally restores
+it into an existing empty directory. The backup and restored database both pass
+integrity_check and foreign_key_check before they are made visible. The source
+database is opened read-only and is never modified. A non-empty restore target
+is refused so recovery cannot overwrite an existing original.
 EOF
 }
 
 db_path=""
+backup_path=""
+restore_dir=""
 work_dir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -21,6 +27,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --work-dir)
       work_dir="${2:-}"
+      shift 2
+      ;;
+    --backup)
+      backup_path="${2:-}"
+      shift 2
+      ;;
+    --restore-dir)
+      restore_dir="${2:-}"
       shift 2
       ;;
     -h|--help)
@@ -34,8 +48,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$db_path" || ! -f "$db_path" ]]; then
+if [[ -z "$backup_path" ]]; then
+  echo "--backup is required" >&2
+  exit 2
+fi
+if [[ -n "$db_path" && ! -f "$db_path" ]]; then
   echo "--db must name an existing SQLite database" >&2
+  exit 2
+fi
+if [[ -z "$db_path" && -z "$restore_dir" ]]; then
+  echo "--db is required when not restoring an existing backup" >&2
   exit 2
 fi
 if ! command -v sqlite3 >/dev/null 2>&1; then
@@ -59,8 +81,9 @@ else
 fi
 trap 'rm -rf "$temp_dir"' EXIT
 
-backup_path="$temp_dir/backup.sqlite"
-restore_path="$temp_dir/restore.sqlite"
+staged_backup="$temp_dir/backup.sqlite"
+staged_checksum="$temp_dir/backup.sqlite.sha256"
+staged_restore="$temp_dir/restore.sqlite"
 
 sql_quote() {
   sed "s/'/''/g" <<<"$1"
@@ -79,28 +102,83 @@ verify_database() {
   local integrity
   integrity="$(sqlite3 -readonly -cmd '.timeout 5000' "$path" 'PRAGMA integrity_check;')"
   if [[ "$integrity" != "ok" ]]; then
-    echo "integrity_check failed for $path: $integrity" >&2
+    echo "integrity_check failed" >&2
     exit 1
   fi
   local foreign_keys
   foreign_keys="$(sqlite3 -readonly -cmd '.timeout 5000' "$path" 'PRAGMA foreign_key_check;')"
   if [[ -n "$foreign_keys" ]]; then
-    echo "foreign_key_check failed for $path:" >&2
-    printf '%s\n' "$foreign_keys" >&2
+    echo "foreign_key_check failed" >&2
     exit 1
   fi
 }
 
-sqlite_backup "$db_path" "$backup_path"
-verify_database "$backup_path"
-sqlite_backup "$backup_path" "$restore_path"
-verify_database "$restore_path"
+write_checksum() {
+  local path="$1"
+  local sum
+  sum="$(checksum "$path")"
+  printf '%s  %s\n' "$sum" "$(basename "$path")"
+}
 
-backup_sum="$(checksum "$backup_path")"
-restore_sum="$(checksum "$restore_path")"
-if [[ "$backup_sum" != "$restore_sum" ]]; then
-  echo "backup and restored checksums differ" >&2
-  exit 1
+verify_checksum() {
+  local path="$1"
+  local checksum_path="${path}.sha256"
+  if [[ ! -f "$checksum_path" ]]; then
+    echo "backup checksum is missing" >&2
+    exit 1
+  fi
+  local expected actual
+  expected="$(awk 'NF { print $1; exit }' "$checksum_path")"
+  actual="$(checksum "$path")"
+  if [[ ! "$expected" =~ ^[[:xdigit:]]{64}$ ]] || [[ "$expected" != "$actual" ]]; then
+    echo "backup checksum does not match" >&2
+    exit 1
+  fi
+}
+
+if [[ -n "$db_path" ]]; then
+  if [[ -e "$backup_path" || -e "${backup_path}.sha256" ]]; then
+    echo "backup destination already exists" >&2
+    exit 2
+  fi
+  backup_parent="$(dirname "$backup_path")"
+  if [[ ! -d "$backup_parent" ]]; then
+    echo "backup parent directory does not exist" >&2
+    exit 2
+  fi
+  sqlite_backup "$db_path" "$staged_backup"
+  verify_database "$staged_backup"
+  write_checksum "$staged_backup" >"$staged_checksum"
+  chmod 600 "$staged_backup" "$staged_checksum"
+  mv "$staged_backup" "$backup_path"
+  mv "$staged_checksum" "${backup_path}.sha256"
 fi
 
-printf 'backup/restore verified: sha256=%s\n' "$backup_sum"
+verify_checksum "$backup_path"
+verify_database "$backup_path"
+
+backup_sum="$(checksum "$backup_path")"
+
+if [[ -n "$restore_dir" ]]; then
+  if [[ ! -d "$restore_dir" ]]; then
+    echo "restore target must be an existing empty directory" >&2
+    exit 2
+  fi
+  if [[ -n "$(find "$restore_dir" -mindepth 1 -print -quit)" ]]; then
+    echo "restore target is not empty; original was not changed" >&2
+    exit 2
+  fi
+  sqlite_backup "$backup_path" "$staged_restore"
+  verify_database "$staged_restore"
+  restore_sum="$(checksum "$staged_restore")"
+  if [[ "$backup_sum" != "$restore_sum" ]]; then
+    echo "backup and restored checksums differ" >&2
+    exit 1
+  fi
+  chmod 600 "$staged_restore"
+  mv "$staged_restore" "$restore_dir/oneday.db"
+  printf 'backup/restore verified: sha256=%s\n' "$backup_sum"
+  exit 0
+fi
+
+printf 'backup verified: sha256=%s\n' "$backup_sum"

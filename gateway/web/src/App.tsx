@@ -1519,6 +1519,7 @@ function App() {
             readiness={setupReadiness}
             onConfigure={openInstallationConfiguration}
             onStartStory={() => openOverlay("new-story")}
+            onRetry={() => void refreshSetupReadiness()}
           /> : isFreshInstallation && setupReadinessState === "loading" ? <InstallationReadinessPending />
             : isFreshInstallation && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
               : <>

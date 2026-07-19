@@ -560,6 +560,10 @@ func wantsGatewayTimeline(args []string) bool {
 	return len(args) >= 1 && args[0] == "gateway-timeline"
 }
 
+func setupLiteLLMLabel(loc appi18n.Localizer) string {
+	return loc.SetupPresentation("provider_litellm", "  2) LiteLLM / OpenAI-compatible gateway")
+}
+
 func runSetup(args []string) error {
 	reader := bufio.NewReader(os.Stdin)
 	configPath := resolveConfigPath()
@@ -615,7 +619,7 @@ func runSetup(args []string) error {
 	fmt.Println()
 	fmt.Println(loc.T("cli.choose_provider"))
 	fmt.Println(loc.SetupPresentation("provider_codex", "  1) Codex OAuth (uses local `codex login`)"))
-	fmt.Println(loc.SetupPresentation("provider_litellm", "  2) LiteLLM / homelab proxy"))
+	fmt.Println(setupLiteLLMLabel(loc))
 	fmt.Println(loc.SetupPresentation("provider_openrouter", "  3) OpenRouter"))
 	fmt.Println(loc.SetupPresentation("provider_codex_rag", "  4) Codex OAuth + local RAG embeddings"))
 	fmt.Print(loc.SetupPresentation("selection", "Selection [1]: "))
@@ -1585,7 +1589,7 @@ func runDoctorTo(args []string, out io.Writer, deps setup.Dependencies) error {
 		fmt.Fprintln(out, loc.T("cli.config_ok", configDisplaySource()))
 		for _, probe := range report.Probes {
 			fmt.Fprintf(out, "%s: %s [%s] %s\n", probe.Name, probe.Status, probe.Code, loc.DoctorProbeSummary(probe.Code, probe.Summary))
-			if action := loc.DoctorProbeAction(probe.Code); action != "" {
+			if action := loc.DoctorRecoveryAction(probe.Action); action != "" {
 				fmt.Fprintln(out, action)
 			}
 		}

@@ -186,6 +186,19 @@ func TestProviderConsistencyWarnings(t *testing.T) {
 	}
 }
 
+func TestSetupProviderPresentationUsesPublicSafeLiteLLMLabels(t *testing.T) {
+	forbidden := "home" + "lab"
+	for _, locale := range []appi18n.Locale{appi18n.English, appi18n.Italian} {
+		label := setupLiteLLMLabel(appi18n.New(locale))
+		if strings.Contains(strings.ToLower(label), forbidden) {
+			t.Fatalf("%s setup label exposes private deployment wording: %q", locale, label)
+		}
+		if !strings.Contains(label, "LiteLLM") {
+			t.Fatalf("%s setup label lost the provider identity: %q", locale, label)
+		}
+	}
+}
+
 func TestDiscoverStoryPacks(t *testing.T) {
 	dir := t.TempDir()
 	root := filepath.Join(dir, "plugins", "examples")
@@ -870,7 +883,7 @@ func TestDoctorJSONAndTextShareReadinessProbesAndRequiredExit(t *testing.T) {
 	if !errors.Is(err, errDoctorRequiredFailure) {
 		t.Fatalf("doctor error = %v", err)
 	}
-	if strings.Contains(jsonOut.String(), "secret") || !strings.Contains(jsonOut.String(), "NARRATIVE_UNAVAILABLE") {
+	if strings.Contains(jsonOut.String(), "secret") || !strings.Contains(jsonOut.String(), "NARRATIVE_UNREACHABLE") {
 		t.Fatalf("unexpected JSON: %s", jsonOut.String())
 	}
 	var textOut bytes.Buffer
@@ -881,7 +894,7 @@ func TestDoctorJSONAndTextShareReadinessProbesAndRequiredExit(t *testing.T) {
 	if strings.Contains(jsonOut.String(), path) || strings.Contains(textOut.String(), path) {
 		t.Fatalf("doctor output leaked private config path; json=%s text=%s", jsonOut.String(), textOut.String())
 	}
-	if !strings.Contains(jsonOut.String(), `"config_source": "ONEDAY_CONFIG"`) || !strings.Contains(textOut.String(), "NARRATIVE_UNAVAILABLE") || !strings.Contains(textOut.String(), "ONEDAY_CONFIG") {
+	if !strings.Contains(jsonOut.String(), `"config_source": "ONEDAY_CONFIG"`) || !strings.Contains(jsonOut.String(), `"action": "check_connection"`) || !strings.Contains(textOut.String(), "NARRATIVE_UNREACHABLE") || !strings.Contains(textOut.String(), "Next: verify the configured service is reachable") || !strings.Contains(textOut.String(), "ONEDAY_CONFIG") {
 		t.Fatalf("unexpected text: %s", textOut.String())
 	}
 }
@@ -907,13 +920,13 @@ func TestDoctorHumanSummaryLocalizesByStableProbeCode(t *testing.T) {
 	if err := runDoctorTo([]string{"doctor"}, &textOut, deps); !errors.Is(err, errDoctorRequiredFailure) {
 		t.Fatalf("text doctor error = %v", err)
 	}
-	if !strings.Contains(textOut.String(), "il provider narrativo attivo") || !strings.Contains(textOut.String(), "Passo successivo") {
+	if !strings.Contains(textOut.String(), "il provider narrativo non è raggiungibile") || !strings.Contains(textOut.String(), "Passo successivo") {
 		t.Fatalf("Italian doctor output = %s", textOut.String())
 	}
 	if err := runDoctorTo([]string{"doctor", "--json"}, &jsonOut, deps); !errors.Is(err, errDoctorRequiredFailure) {
 		t.Fatalf("json doctor error = %v", err)
 	}
-	if !strings.Contains(jsonOut.String(), "enabled narrative provider did not pass") || strings.Contains(jsonOut.String(), "Passo successivo") {
+	if !strings.Contains(jsonOut.String(), "provider readiness check reported unreachable") || strings.Contains(jsonOut.String(), "Passo successivo") {
 		t.Fatalf("JSON contract changed: %s", jsonOut.String())
 	}
 }
