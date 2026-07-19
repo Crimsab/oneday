@@ -405,6 +405,18 @@ struct VisualSpec {
     turn: i64,
 }
 
+struct VisualContinuityInput<'a> {
+    asset_kind: &'a str,
+    stable_subject_id: &'a str,
+    canonical_entity_id: &'a str,
+    canonical_location_id: &'a str,
+    form_id: &'a str,
+    location_anchor: &'a str,
+    descriptors: Vec<String>,
+    snapshot: &'a db::StorySnapshot,
+    profile: &'a VisualProfile,
+}
+
 #[derive(Debug)]
 struct VisualGenerationJob {
     id: i64,
@@ -4187,17 +4199,17 @@ async fn visual_specs(
             &prompt,
             &profile.fingerprint,
         ]);
-        let continuity_context_json = visual_continuity_context(
-            "location",
-            &snapshot.world.current_location_id,
-            "",
-            &snapshot.world.current_location_id,
-            "",
-            location,
-            vec![details.clone()],
+        let continuity_context_json = visual_continuity_context(VisualContinuityInput {
+            asset_kind: "location",
+            stable_subject_id: &snapshot.world.current_location_id,
+            canonical_entity_id: "",
+            canonical_location_id: &snapshot.world.current_location_id,
+            form_id: "",
+            location_anchor: location,
+            descriptors: vec![details.clone()],
             snapshot,
             profile,
-        );
+        });
         specs.push(VisualSpec {
             kind: "location".to_string(),
             subject: location.to_string(),
@@ -4220,17 +4232,18 @@ async fn visual_specs(
             negative_prompt: profile.negative_prompt.clone(),
             turn: snapshot.world.current_turn,
         });
-        let scene_context_json = visual_continuity_context(
-            "scene",
-            &format!("scene:{}", snapshot.world.current_location_id),
-            "",
-            &snapshot.world.current_location_id,
-            "",
-            location,
-            vec![details.clone()],
+        let scene_subject_id = format!("scene:{}", snapshot.world.current_location_id);
+        let scene_context_json = visual_continuity_context(VisualContinuityInput {
+            asset_kind: "scene",
+            stable_subject_id: &scene_subject_id,
+            canonical_entity_id: "",
+            canonical_location_id: &snapshot.world.current_location_id,
+            form_id: "",
+            location_anchor: location,
+            descriptors: vec![details.clone()],
             snapshot,
             profile,
-        );
+        });
         let scene_identity = scene_visual_identity(
             &snapshot.world.current_location_id,
             &details,
@@ -4345,21 +4358,21 @@ async fn visual_specs(
             &visual_details,
             &profile.fingerprint,
         ]);
-        let continuity_context_json = visual_continuity_context(
-            "character",
-            &npc.id,
-            &npc.id,
-            &snapshot.world.current_location_id,
-            &form_id,
-            location,
-            vec![
+        let continuity_context_json = visual_continuity_context(VisualContinuityInput {
+            asset_kind: "character",
+            stable_subject_id: &npc.id,
+            canonical_entity_id: &npc.id,
+            canonical_location_id: &snapshot.world.current_location_id,
+            form_id: &form_id,
+            location_anchor: location,
+            descriptors: vec![
                 visual_details.clone(),
                 role.to_string(),
                 relationship.clone(),
             ],
             snapshot,
             profile,
-        );
+        });
         specs.push(VisualSpec {
             kind: "character".to_string(),
             subject: npc.name.clone(),
@@ -4386,18 +4399,9 @@ async fn visual_specs(
     Ok(specs)
 }
 
-fn visual_continuity_context(
-    asset_kind: &str,
-    stable_subject_id: &str,
-    canonical_entity_id: &str,
-    canonical_location_id: &str,
-    form_id: &str,
-    location_anchor: &str,
-    descriptors: Vec<String>,
-    snapshot: &db::StorySnapshot,
-    profile: &VisualProfile,
-) -> String {
-    let descriptors = descriptors
+fn visual_continuity_context(input: VisualContinuityInput<'_>) -> String {
+    let descriptors = input
+        .descriptors
         .into_iter()
         .map(|descriptor| compact_continuity_text(&descriptor))
         .filter(|descriptor| !descriptor.is_empty())
@@ -4405,11 +4409,11 @@ fn visual_continuity_context(
         .collect::<Vec<_>>();
     let scene_mood = [
         first_string(
-            &snapshot.world.scene_contract,
+            &input.snapshot.world.scene_contract,
             &["mood", "tone", "atmosphere", "lighting"],
         ),
-        first_string(&snapshot.world.weather, &["label", "description"]),
-        Some(snapshot.story.tone.clone()),
+        first_string(&input.snapshot.world.weather, &["label", "description"]),
+        Some(input.snapshot.story.tone.clone()),
     ]
     .into_iter()
     .flatten()
@@ -4418,19 +4422,19 @@ fn visual_continuity_context(
     .unwrap_or_default();
     serde_json::json!({
         "version": VISUAL_CONTINUITY_CONTEXT_VERSION,
-        "asset_kind": asset_kind,
-        "stable_subject_id": stable_subject_id,
-        "canonical_entity_id": canonical_entity_id,
-        "canonical_location_id": canonical_location_id,
-        "form_id": form_id,
-        "location_anchor": compact_continuity_text(location_anchor),
+        "asset_kind": input.asset_kind,
+        "stable_subject_id": input.stable_subject_id,
+        "canonical_entity_id": input.canonical_entity_id,
+        "canonical_location_id": input.canonical_location_id,
+        "form_id": input.form_id,
+        "location_anchor": compact_continuity_text(input.location_anchor),
         "descriptors": descriptors,
-        "scene_time": compact_continuity_text(&first_string(&snapshot.world.world_time, &["display_text"]).unwrap_or_default()),
+        "scene_time": compact_continuity_text(&first_string(&input.snapshot.world.world_time, &["display_text"]).unwrap_or_default()),
         "scene_mood": scene_mood,
         "provenance": {
             "source": "canonical_text_state",
-            "turn": snapshot.world.current_turn,
-            "profile_revision_id": profile.id,
+            "turn": input.snapshot.world.current_turn,
+            "profile_revision_id": input.profile.id,
         }
     })
     .to_string()
