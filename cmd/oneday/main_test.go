@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/crimsab/oneday/internal/ai"
+	"github.com/crimsab/oneday/internal/aifactory"
 	"github.com/crimsab/oneday/internal/config"
 	"github.com/crimsab/oneday/internal/game/contracts"
 	appi18n "github.com/crimsab/oneday/internal/i18n"
