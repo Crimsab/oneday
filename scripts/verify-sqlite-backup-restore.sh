@@ -79,14 +79,15 @@ if [[ -n "$work_dir" ]]; then
 else
   temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/oneday-backup.XXXXXX")"
 fi
-trap 'rm -rf "$temp_dir"' EXIT
-
-staged_backup="$temp_dir/backup.sqlite"
-staged_checksum="$temp_dir/backup.sqlite.sha256"
-staged_restore="$temp_dir/restore.sqlite"
+backup_stage_dir=""
+restore_stage_dir=""
+cleanup() {
+  rm -rf -- "$temp_dir" "$backup_stage_dir" "$restore_stage_dir"
+}
+trap cleanup EXIT
 
 sql_quote() {
-  sed "s/'/''/g" <<<"$1"
+  printf '%s\n' "${1//\'/\'\'}"
 }
 
 sqlite_backup() {
@@ -136,6 +137,50 @@ verify_checksum() {
   fi
 }
 
+# Staging happens beside the destination so ln(1) can atomically create a new
+# hard link. Unlike a check followed by mv, ln fails if another process wins the
+# name first and never replaces its file. The staged link is consumed only after
+# confirming that it is the exact inode published at the destination.
+publish_no_clobber() {
+  local staged="$1"
+  local destination="$2"
+  local label="$3"
+  test_pause_before_publish "$label"
+  if ! ln -- "$staged" "$destination"; then
+    echo "$label destination already exists; nothing was overwritten" >&2
+    return 1
+  fi
+  if [[ ! "$staged" -ef "$destination" ]]; then
+    echo "$label publication could not be verified; staged data was retained" >&2
+    return 1
+  fi
+  if ! rm -f -- "$staged" || [[ -e "$staged" ]]; then
+    echo "$label staged file was not consumed; destination was left unchanged" >&2
+    return 1
+  fi
+  if [[ ! -f "$destination" ]]; then
+    echo "$label publication did not create a regular file" >&2
+    return 1
+  fi
+}
+
+# This synchronized pause is only for the deterministic shell regression. It
+# is inert unless all ONEDAY_BACKUP_TEST_* values are supplied by that test.
+test_pause_before_publish() {
+  local label="$1"
+  if [[ "${ONEDAY_BACKUP_TEST_PUBLISH_LABEL:-}" != "$label" ]]; then
+    return
+  fi
+  local ready_path="${ONEDAY_BACKUP_TEST_PUBLISH_READY:-}"
+  if [[ -z "$ready_path" ]]; then
+    return
+  fi
+  : > "$ready_path"
+  while [[ -e "$ready_path" ]]; do
+    sleep 0.01
+  done
+}
+
 if [[ -n "$db_path" ]]; then
   if [[ -e "$backup_path" || -e "${backup_path}.sha256" ]]; then
     echo "backup destination already exists" >&2
@@ -146,12 +191,15 @@ if [[ -n "$db_path" ]]; then
     echo "backup parent directory does not exist" >&2
     exit 2
   fi
+  backup_stage_dir="$(mktemp -d "$backup_parent/.oneday-backup.XXXXXX")"
+  staged_backup="$backup_stage_dir/backup.sqlite"
+  staged_checksum="$backup_stage_dir/backup.sqlite.sha256"
   sqlite_backup "$db_path" "$staged_backup"
   verify_database "$staged_backup"
   write_checksum "$staged_backup" >"$staged_checksum"
   chmod 600 "$staged_backup" "$staged_checksum"
-  mv "$staged_backup" "$backup_path"
-  mv "$staged_checksum" "${backup_path}.sha256"
+  publish_no_clobber "$staged_backup" "$backup_path" "backup"
+  publish_no_clobber "$staged_checksum" "${backup_path}.sha256" "backup checksum"
 fi
 
 verify_checksum "$backup_path"
@@ -168,6 +216,8 @@ if [[ -n "$restore_dir" ]]; then
     echo "restore target is not empty; original was not changed" >&2
     exit 2
   fi
+  restore_stage_dir="$(mktemp -d "$restore_dir/.oneday-restore.XXXXXX")"
+  staged_restore="$restore_stage_dir/oneday.db"
   sqlite_backup "$backup_path" "$staged_restore"
   verify_database "$staged_restore"
   restore_sum="$(checksum "$staged_restore")"
@@ -176,7 +226,7 @@ if [[ -n "$restore_dir" ]]; then
     exit 1
   fi
   chmod 600 "$staged_restore"
-  mv "$staged_restore" "$restore_dir/oneday.db"
+  publish_no_clobber "$staged_restore" "$restore_dir/oneday.db" "restore"
   printf 'backup/restore verified: sha256=%s\n' "$backup_sum"
   exit 0
 fi
