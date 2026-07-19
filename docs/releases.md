@@ -29,7 +29,7 @@ The source-controlled release metadata is:
    version-matched engine and gateway sidecars, Tauri installers, updater
    signatures, and an HTTPS `latest.json` feed.
 
-All jobs in this path use GitHub-hosted runners. The release path has no HomeLab
+All jobs in this path use GitHub-hosted runners. The release path has no private self-hosted
 runner, hostname, filesystem, cache, or credential dependency. Intermediate
 workflow artifacts expire after one day; unsigned pull-request desktop packages
 expire after two days. GitHub Release assets are the durable deliverables.
