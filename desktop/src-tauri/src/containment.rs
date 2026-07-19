@@ -9,6 +9,25 @@ pub struct ProcessContainment {
 pub fn configure(command: &mut Command) {
     use std::os::unix::process::CommandExt;
     command.process_group(0);
+
+    #[cfg(target_os = "linux")]
+    {
+        let desktop_pid = unsafe { libc::getpid() };
+        unsafe {
+            command.pre_exec(move || {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) == -1 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                // PR_SET_PDEATHSIG is installed after fork. If the desktop
+                // exited in that short window, fail the child before exec so
+                // it can never become an orphaned gateway.
+                if libc::getppid() != desktop_pid {
+                    libc::_exit(1);
+                }
+                Ok(())
+            });
+        }
+    }
 }
 
 #[cfg(unix)]
@@ -145,6 +164,60 @@ impl Drop for ProcessContainment {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_children_request_kill_when_the_desktop_exits() {
+        use std::time::{Duration, Instant};
+
+        let output = std::process::Command::new(std::env::current_exe().expect("test binary"))
+            .args(["--ignored", "linux_parent_death_helper", "--nocapture"])
+            .output()
+            .expect("launch parent-death helper");
+        assert!(output.status.success());
+        let stdout = String::from_utf8(output.stdout).expect("helper output");
+        let child_pid: libc::pid_t = stdout
+            .lines()
+            .find_map(|line| line.strip_prefix("ONEDAY_CHILD_PID="))
+            .expect("helper child pid")
+            .parse()
+            .expect("numeric helper child pid");
+
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            let state = std::fs::read_to_string(format!("/proc/{child_pid}/stat"))
+                .ok()
+                .and_then(|stat| stat.rsplit_once(") ").map(|(_, fields)| fields.to_owned()))
+                .and_then(|fields| fields.split_whitespace().next().map(str::to_owned));
+            if state.as_deref().is_none_or(|state| state == "Z") {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(25));
+        }
+
+        unsafe { libc::kill(child_pid, libc::SIGKILL) };
+        panic!("contained child survived its desktop parent");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "helper process for linux_children_request_kill_when_the_desktop_exits"]
+    #[allow(clippy::zombie_processes)] // The helper must exit without reaping to exercise PDEATHSIG.
+    fn linux_parent_death_helper() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let mut command = Command::new("sleep");
+        command
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        super::configure(&mut command);
+        let child = command.spawn().expect("spawn contained child");
+        println!("ONEDAY_CHILD_PID={}", child.id());
+        std::io::stdout().flush().expect("flush child pid");
+    }
+
     #[cfg(unix)]
     #[test]
     fn unix_signals_target_the_whole_process_group() {
