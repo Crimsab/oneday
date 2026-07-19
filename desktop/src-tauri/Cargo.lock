@@ -2481,6 +2481,8 @@ name = "oneday-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "getrandom 0.3.4",
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

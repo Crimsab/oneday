@@ -4,9 +4,27 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use url::Url;
 
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(
+    tag = "mode",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum Profile {
+    Remote { server_url: String },
+    Standalone { profile_id: String },
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct ServerSettings {
-    pub server_url: String,
+pub struct DesktopSettings {
+    pub profile: Profile,
+}
+
+// Reads the remote-only v1 settings once, then writes the explicit profile
+// shape on the next successful profile switch.
+#[derive(Deserialize)]
+struct LegacyServerSettings {
+    server_url: String,
 }
 
 pub fn validate_server_url(raw: &str) -> Result<Url, String> {
@@ -41,20 +59,42 @@ pub fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| format!("Could not locate the desktop configuration directory: {error}"))
 }
 
-pub fn load(app: &AppHandle) -> Result<Option<ServerSettings>, String> {
+pub fn standalone_profile_dir(app: &AppHandle, profile_id: &str) -> Result<PathBuf, String> {
+    if profile_id.len() != 32 || !profile_id.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("The standalone profile ID is invalid.".into());
+    }
+    app.path()
+        .app_data_dir()
+        .map(|path| path.join("profiles").join(profile_id))
+        .map_err(|error| {
+            format!("Could not locate the standalone application data directory: {error}")
+        })
+}
+
+pub fn load(app: &AppHandle) -> Result<Option<DesktopSettings>, String> {
     let path = settings_path(app)?;
     if !path.exists() {
         return Ok(None);
     }
     let bytes =
         fs::read(&path).map_err(|error| format!("Could not read desktop settings: {error}"))?;
-    let settings: ServerSettings = serde_json::from_slice(&bytes)
-        .map_err(|_| "Desktop settings are invalid. Enter the server URL again.".to_string())?;
-    validate_server_url(&settings.server_url)?;
-    Ok(Some(settings))
+    if let Ok(settings) = serde_json::from_slice::<DesktopSettings>(&bytes) {
+        validate_profile(&settings.profile)?;
+        return Ok(Some(settings));
+    }
+    let legacy: LegacyServerSettings = serde_json::from_slice(&bytes).map_err(|_| {
+        "Desktop settings are invalid. Choose a connection profile again.".to_string()
+    })?;
+    validate_server_url(&legacy.server_url)?;
+    Ok(Some(DesktopSettings {
+        profile: Profile::Remote {
+            server_url: legacy.server_url,
+        },
+    }))
 }
 
-pub fn save(app: &AppHandle, settings: &ServerSettings) -> Result<(), String> {
+pub fn save(app: &AppHandle, settings: &DesktopSettings) -> Result<(), String> {
+    validate_profile(&settings.profile)?;
     let path = settings_path(app)?;
     let parent = path
         .parent()
@@ -70,6 +110,19 @@ pub fn save(app: &AppHandle, settings: &ServerSettings) -> Result<(), String> {
     fs::rename(&temporary, &path)
         .map_err(|error| format!("Could not save desktop settings: {error}"))?;
     Ok(())
+}
+
+fn validate_profile(profile: &Profile) -> Result<(), String> {
+    match profile {
+        Profile::Remote { server_url } => validate_server_url(server_url).map(|_| ()),
+        Profile::Standalone { profile_id }
+            if profile_id.len() == 32
+                && profile_id.bytes().all(|byte| byte.is_ascii_hexdigit()) =>
+        {
+            Ok(())
+        }
+        Profile::Standalone { .. } => Err("The standalone profile ID is invalid.".into()),
+    }
 }
 
 #[cfg(unix)]
@@ -106,5 +159,21 @@ mod tests {
         assert!(validate_server_url("https://user:pass@oneday.example.com").is_err());
         assert!(validate_server_url("https://oneday.example.com/app").is_err());
         assert!(validate_server_url("https://oneday.example.com?token=value").is_err());
+    }
+
+    #[test]
+    fn standalone_profiles_are_isolated_and_remote_profiles_hold_no_data_path() {
+        let standalone = Profile::Standalone {
+            profile_id: "a".repeat(32),
+        };
+        assert!(validate_profile(&standalone).is_ok());
+        assert!(validate_profile(&Profile::Remote {
+            server_url: "https://oneday.example.com".into(),
+        })
+        .is_ok());
+        assert!(validate_profile(&Profile::Standalone {
+            profile_id: "../not-a-profile".into(),
+        })
+        .is_err());
     }
 }

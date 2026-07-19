@@ -7,10 +7,21 @@ import {
 } from "@tauri-apps/plugin-notification";
 
 export interface DesktopState {
+  profile: DesktopProfile | null;
   serverUrl: string | null;
+  lifecycle: DesktopLifecycle;
   startedMinimized: boolean;
   updater: { enabled: boolean; reason: string };
 }
+
+export type DesktopProfile =
+  | { mode: "remote"; serverUrl: string }
+  | { mode: "standalone"; profileId: string };
+
+export type DesktopLifecycle =
+  | { state: "stopped" | "starting" | "draining" }
+  | { state: "ready"; endpoint: string }
+  | { state: "failed"; message: string };
 
 export interface StorySummary {
   id: string;
@@ -27,6 +38,9 @@ export interface TransferResult {
 export const desktopBridge = {
   state: () => invoke<DesktopState>("desktop_state"),
   connect: (serverUrl: string) => invoke<void>("connect_server", { serverUrl }),
+  startStandalone: () => invoke<void>("start_standalone"),
+  restartStandalone: () => invoke<void>("restart_standalone"),
+  stopStandalone: () => invoke<void>("stop_standalone"),
   showStoryWindow: () => invoke<void>("show_story_window"),
   stories: () => invoke<StorySummary[]>("list_remote_stories"),
   importPackage: () => invoke<TransferResult>("choose_and_import_story"),

@@ -39,6 +39,12 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
     window.set_focus().map_err(|error| error.to_string())
 }
 
+pub fn close(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.close();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

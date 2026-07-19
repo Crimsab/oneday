@@ -36,6 +36,13 @@
     "longDescription": "Connect to a OneDay server from a native Windows or Linux window while the server remains the only canonical story database.",
     "copyright": "Copyright OneDay contributors",
     "createUpdaterArtifacts": false,
+    "resources": [
+      "../gateway/web/dist"
+    ],
+    "externalBin": [
+      "binaries/oneday-v0.1.0",
+      "binaries/oneday-gateway-v0.1.0"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
