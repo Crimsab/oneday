@@ -145,7 +145,6 @@ publish_no_clobber() {
   local staged="$1"
   local destination="$2"
   local label="$3"
-  test_pause_before_publish "$label"
   if ! ln -- "$staged" "$destination"; then
     echo "$label destination already exists; nothing was overwritten" >&2
     return 1
@@ -154,8 +153,18 @@ publish_no_clobber() {
     echo "$label publication could not be verified; staged data was retained" >&2
     return 1
   fi
+}
+
+consume_published_stage() {
+  local staged="$1"
+  local destination="$2"
+  local label="$3"
+  if [[ ! "$staged" -ef "$destination" ]]; then
+    echo "$label publication identity changed; staged data was retained" >&2
+    return 1
+  fi
   if ! rm -f -- "$staged" || [[ -e "$staged" ]]; then
-    echo "$label staged file was not consumed; destination was left unchanged" >&2
+    echo "$label staged file was not consumed after publication; destination may contain the newly published file" >&2
     return 1
   fi
   if [[ ! -f "$destination" ]]; then
@@ -164,21 +173,22 @@ publish_no_clobber() {
   fi
 }
 
-# This synchronized pause is only for the deterministic shell regression. It
-# is inert unless all ONEDAY_BACKUP_TEST_* values are supplied by that test.
-test_pause_before_publish() {
-  local label="$1"
-  if [[ "${ONEDAY_BACKUP_TEST_PUBLISH_LABEL:-}" != "$label" ]]; then
-    return
+rollback_published_file() {
+  local staged="$1"
+  local destination="$2"
+  local label="$3"
+  if [[ ! "$staged" -ef "$destination" ]]; then
+    echo "$label rollback skipped because destination identity changed" >&2
+    return 1
   fi
-  local ready_path="${ONEDAY_BACKUP_TEST_PUBLISH_READY:-}"
-  if [[ -z "$ready_path" ]]; then
-    return
+  if ! rm -f -- "$destination"; then
+    echo "$label rollback could not remove the newly published file" >&2
+    return 1
   fi
-  : > "$ready_path"
-  while [[ -e "$ready_path" ]]; do
-    sleep 0.01
-  done
+  if [[ -e "$destination" ]]; then
+    echo "$label rollback did not remove the newly published file" >&2
+    return 1
+  fi
 }
 
 if [[ -n "$db_path" ]]; then
@@ -199,7 +209,12 @@ if [[ -n "$db_path" ]]; then
   write_checksum "$staged_backup" >"$staged_checksum"
   chmod 600 "$staged_backup" "$staged_checksum"
   publish_no_clobber "$staged_backup" "$backup_path" "backup"
-  publish_no_clobber "$staged_checksum" "${backup_path}.sha256" "backup checksum"
+  if ! publish_no_clobber "$staged_checksum" "${backup_path}.sha256" "backup checksum"; then
+    rollback_published_file "$staged_backup" "$backup_path" "backup" || true
+    exit 1
+  fi
+  consume_published_stage "$staged_checksum" "${backup_path}.sha256" "backup checksum"
+  consume_published_stage "$staged_backup" "$backup_path" "backup"
 fi
 
 verify_checksum "$backup_path"
@@ -227,6 +242,7 @@ if [[ -n "$restore_dir" ]]; then
   fi
   chmod 600 "$staged_restore"
   publish_no_clobber "$staged_restore" "$restore_dir/oneday.db" "restore"
+  consume_published_stage "$staged_restore" "$restore_dir/oneday.db" "restore"
   printf 'backup/restore verified: sha256=%s\n' "$backup_sum"
   exit 0
 fi

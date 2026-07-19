@@ -18,6 +18,18 @@ fi
 source_db="$test_dir/source.sqlite"
 backup_db="$test_dir/backup.sqlite"
 restore_dir="$test_dir/recovery"
+fake_bin="$test_dir/fake-bin"
+real_ln="$(command -v ln)"
+mkdir "$fake_bin"
+# shellcheck disable=SC2016 # The shim must receive these as literal shell code.
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'destination="${!#}"' \
+  'if [[ -n "${ONEDAY_TEST_LN_COLLISION_DEST:-}" && "$destination" == "$ONEDAY_TEST_LN_COLLISION_DEST" ]]; then' \
+  '  printf "concurrent-owner" > "$destination"' \
+  'fi' \
+  'exec "$ONEDAY_TEST_REAL_LN" "$@"' > "$fake_bin/ln"
+chmod +x "$fake_bin/ln"
 mkdir "$restore_dir"
 sqlite3 "$source_db" 'PRAGMA foreign_keys = ON; CREATE TABLE checks (id INTEGER PRIMARY KEY, value TEXT NOT NULL); INSERT INTO checks(value) VALUES ("canonical");'
 source_checksum="$(checksum "$source_db")"
@@ -27,28 +39,12 @@ test "$(sqlite3 "$restore_dir/oneday.db" 'SELECT value FROM checks;')" = "canoni
 test "$(checksum "$source_db")" = "$source_checksum"
 
 assert_concurrent_destination_wins() {
-  local label="$1"
-  local destination="$2"
-  shift 2
-  local ready_path="$test_dir/ready-${label// /-}"
-  (
-    for _ in $(seq 1 500); do
-      if [[ -e "$ready_path" ]]; then
-        printf 'concurrent-owner' > "$destination"
-        rm -f -- "$ready_path"
-        exit 0
-      fi
-      sleep 0.01
-    done
-    echo "publication pause was not reached for $label" >&2
-    exit 1
-  ) &
-  local writer_pid=$!
-  if ONEDAY_BACKUP_TEST_PUBLISH_LABEL="$label" ONEDAY_BACKUP_TEST_PUBLISH_READY="$ready_path" bash "$verify_script" "$@" >/dev/null 2>&1; then
-    echo "concurrent $label destination was accepted" >&2
+  local destination="$1"
+  shift
+  if PATH="$fake_bin:$PATH" ONEDAY_TEST_LN_COLLISION_DEST="$destination" ONEDAY_TEST_REAL_LN="$real_ln" bash "$verify_script" "$@" >/dev/null 2>&1; then
+    echo "concurrent destination was accepted" >&2
     exit 1
   fi
-  wait "$writer_pid"
   test "$(cat "$destination")" = "concurrent-owner"
 }
 
@@ -61,14 +57,15 @@ fi
 test "$(cat "$preexisting_backup")" = "existing-owner"
 
 race_backup="$test_dir/race-backup.sqlite"
-assert_concurrent_destination_wins "backup" "$race_backup" --db "$source_db" --backup "$race_backup"
+assert_concurrent_destination_wins "$race_backup" --db "$source_db" --backup "$race_backup"
 
 race_checksum="$test_dir/race-checksum.sqlite"
-assert_concurrent_destination_wins "backup checksum" "${race_checksum}.sha256" --db "$source_db" --backup "$race_checksum"
+assert_concurrent_destination_wins "${race_checksum}.sha256" --db "$source_db" --backup "$race_checksum"
+test ! -e "$race_checksum"
 
 race_restore="$test_dir/race-restore"
 mkdir "$race_restore"
-assert_concurrent_destination_wins "restore" "$race_restore/oneday.db" --backup "$backup_db" --restore-dir "$race_restore"
+assert_concurrent_destination_wins "$race_restore/oneday.db" --backup "$backup_db" --restore-dir "$race_restore"
 
 # A failed migration in the isolated recovery target cannot modify the source.
 if sqlite3 "$restore_dir/oneday.db" 'ALTER TABLE missing_table ADD COLUMN ignored TEXT;' 2>/dev/null; then
