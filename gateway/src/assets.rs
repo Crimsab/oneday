@@ -6212,7 +6212,7 @@ mod tests {
             map_icon_model: model,
             base_url: String::new(),
             api_key: String::new(),
-            imagegen_bridge_url: "http://imagegen-bridge:8787".to_string(),
+            imagegen_bridge_url: "https://imagegen-bridge.example.test".to_string(),
             ..test_config()
         };
         assert_eq!(config.model, "gpt-image-2");

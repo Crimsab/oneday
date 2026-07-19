@@ -62,7 +62,7 @@ async fn malformed_provider_responses_never_yield_generated_bytes() {
 }
 
 #[tokio::test]
-async fn midstream_provider_disconnect_is_a_terminal_invalid_response() {
+async fn midstream_provider_disconnect_is_a_terminal_unknown_outcome() {
     let app = Router::new().route(
         "/v1/images/generations",
         post(|| async {
@@ -84,7 +84,7 @@ async fn midstream_provider_disconnect_is_a_terminal_invalid_response() {
     )
     .await
     .unwrap_err();
-    assert_eq!(error_code(&error), "invalid_response");
+    assert_eq!(error_code(&error), "unknown_outcome");
     assert!(!is_retryable(&error));
 }
 
