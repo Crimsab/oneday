@@ -69,6 +69,7 @@ import { VisualAssetOperationEditor } from "./VisualAssetOperationEditor";
 import { DialogDrawerShell } from "./dialog/DialogDrawerShell";
 import { VisualAssetUpload } from "../features/visual-assets/upload/VisualAssetUpload";
 import { NewVisualAssetUpload } from "../features/visual-assets/upload/NewVisualAssetUpload";
+import { defaultMediaAssetFilters, filterMediaAssets, mediaActivity, type MediaStudioTab } from "../mediaStudioState";
 
 interface PanelDrawerProps {
   overlay: OverlayKind;
@@ -472,6 +473,8 @@ function VisualDirectionSettings({
   const [versionIndex, setVersionIndex] = useState(0);
   const [versionsBusy, setVersionsBusy] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [mediaTab, setMediaTab] = useState<MediaStudioTab>("library");
+  const [mediaFilters, setMediaFilters] = useState(defaultMediaAssetFilters);
   const readyCount = assets.filter((asset) => asset.status === "ready").length;
   const pendingCount = assets.filter(
     (asset) => asset.status !== "ready",
@@ -479,10 +482,8 @@ function VisualDirectionSettings({
   const activeJobs = jobs.filter(
     (job) => job.status === "queued" || job.status === "running",
   );
-  const visibleJobs = [
-    ...activeJobs,
-    ...jobs.filter((job) => job.status !== "queued" && job.status !== "running"),
-  ].filter((job, index, list) => list.findIndex((item) => item.id === job.id) === index).slice(0, 4);
+  const filteredAssets = useMemo(() => filterMediaAssets(assets, mediaFilters), [assets, mediaFilters]);
+  const activityJobs = useMemo(() => mediaActivity(jobs), [jobs]);
   const selectedAsset = useMemo(
     () =>
       assets.find((asset) => asset.id === selectedAssetId) ??
@@ -692,6 +693,27 @@ function VisualDirectionSettings({
         </p>
       ) : (
         <>
+          <div className="media-studio-tabs" role="tablist" aria-label={t("mediaStudio.label")}>
+            {(["library", "create", "activity"] as const).map((tab) => <button key={tab} type="button" role="tab" aria-selected={mediaTab === tab} className={mediaTab === tab ? "active" : ""} onClick={() => setMediaTab(tab)}>{t(`mediaStudio.tabs.${tab}`)}</button>)}
+          </div>
+          {mediaTab === "library" && <>
+          <div className="media-studio-filters">
+            <label><span className="sr-only">{t("mediaStudio.search")}</span><input type="search" value={mediaFilters.query} onChange={(event) => setMediaFilters((current) => ({ ...current, query: event.target.value }))} placeholder={t("mediaStudio.search")} /></label>
+            <select aria-label={t("mediaStudio.kind")} value={mediaFilters.kind} onChange={(event) => setMediaFilters((current) => ({ ...current, kind: event.target.value }))}><option value="all">{t("mediaStudio.allKinds")}</option>{[...new Set(assets.map((asset) => asset.kind))].map((kind) => <option key={kind} value={kind}>{t(`drawer:assetKind.${kind}`, { defaultValue: kind.replaceAll("_", " ") })}</option>)}</select>
+            <select aria-label={t("mediaStudio.status")} value={mediaFilters.status} onChange={(event) => setMediaFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">{t("mediaStudio.allStatuses")}</option>{[...new Set(assets.map((asset) => asset.status))].map((status) => <option key={status} value={status}>{t(`drawer:assetStatus.${status}`, { defaultValue: status })}</option>)}</select>
+            <select aria-label={t("mediaStudio.sort")} value={mediaFilters.sort} onChange={(event) => setMediaFilters((current) => ({ ...current, sort: event.target.value as typeof current.sort }))}><option value="recent">{t("mediaStudio.recent")}</option><option value="turn">{t("mediaStudio.turn")}</option><option value="name">{t("mediaStudio.name")}</option></select>
+          </div>
+          <div className="visual-asset-list media-asset-gallery">
+            {filteredAssets.map((asset) => (
+              <button type="button" className={`visual-asset-row ${asset.status} ${asset.id === selectedAsset?.id ? "selected" : ""}`} key={asset.id} title={asset.prompt} onClick={() => setSelectedAssetId(asset.id)}>
+                {readyAssetUrl(asset) ? <img src={readyAssetUrl(asset)} alt="" /> : <span className="media-asset-placeholder" aria-hidden="true" />}
+                <span>{t(`drawer:assetKind.${asset.kind}`, { defaultValue: asset.kind.replaceAll("_", " ") })}</span><strong>{asset.subject}</strong><small>{t(`drawer:canonStatus.${asset.canon_status}`, { defaultValue: asset.canon_status })} · {t(`drawer:assetStatus.${asset.status}`, { defaultValue: asset.status })}</small>
+              </button>
+            ))}
+          </div>
+          {filteredAssets.length === 0 && <p className="empty-copy">{t("mediaStudio.empty")}</p>}
+          </>}
+          {mediaTab === "create" && <>
           <div className="settings-grid visual-settings">
             <label>
               <span>{t("drawer:visuals.worldPrompt")}</span>
@@ -730,28 +752,11 @@ function VisualDirectionSettings({
               />
             </label>
           </div>
-          <div className="visual-asset-list">
-            {assets.slice(0, 8).map((asset) => (
-              <button
-                type="button"
-                className={`visual-asset-row ${asset.status} ${asset.id === selectedAsset?.id ? "selected" : ""}`}
-                key={asset.id}
-                title={asset.prompt}
-                onClick={() => setSelectedAssetId(asset.id)}
-              >
-                <span>{t(`drawer:assetKind.${asset.kind}`, { defaultValue: asset.kind.replaceAll("_", " ") })}</span>
-                <strong>{asset.subject}</strong>
-                <small title={asset.error || asset.provider}>
-                  {t(`drawer:canonStatus.${asset.canon_status}`, { defaultValue: asset.canon_status })} · {t(`drawer:assetStatus.${asset.status}`, { defaultValue: asset.status })}
-                  {asset.error ? " !" : ""}
-                </small>
-              </button>
-            ))}
-          </div>
           {storyId && <NewVisualAssetUpload storyId={storyId} onUploaded={async (assetId) => { await onReload(); setSelectedAssetId(assetId); }} />}
-          {visibleJobs.length > 0 && (
+          </>}
+          {mediaTab === "activity" && activityJobs.length > 0 && (
             <div className="visual-job-list" aria-label={t("drawer:visuals.jobs")}>
-              {visibleJobs.map((job) => (
+              {activityJobs.map((job) => (
                 <div className={`visual-job-row ${job.status}`} key={job.id}>
                   <span>{t(`drawer:assetStatus.${job.status}`, { defaultValue: job.status })}</span>
                   <strong>{assetLabel(assets, job.asset_id)}</strong>
@@ -768,7 +773,7 @@ function VisualDirectionSettings({
               ))}
             </div>
           )}
-          {selectedAsset && (
+          {mediaTab === "library" && selectedAsset && (
             <div className="visual-asset-editor">
               <div className="visual-asset-preview">
                 {selectedImageUrl ? (
@@ -1180,6 +1185,7 @@ function ModelRoutingSettings({
         {t("models.note")}
       </p>
       <div className="settings-grid">
+        <h4 className="model-section-title">{t("modelSections.routing")}</h4>
         <label>
           <span>{t("models.priority")}</span>
           <CustomSelect
@@ -1205,6 +1211,7 @@ function ModelRoutingSettings({
             options={modelSettings.providers.map((provider) => ({ value: provider.id, label: provider.label }))}
           />
         </label>
+        <h4 className="model-section-title">{t("modelSections.models")}</h4>
         <label>
           <span>{t("models.utility")}</span>
           <ModelInput
@@ -1238,6 +1245,7 @@ function ModelRoutingSettings({
             placeholder={t("models.fallbackPlaceholder")}
           />
         </label>
+        <h4 className="model-section-title">{t("modelSections.images")}</h4>
         <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
         <label>
           <span>{t("models.locationSize")}</span>
@@ -1300,6 +1308,7 @@ function ModelRoutingSettings({
           />
         </label>
       </div>
+      <h4 className="model-section-title">{t("modelSections.connections")}</h4>
       <div className="provider-editor-grid">
         {modelSettings.providers.map((provider) => {
           const providerDraft = draft.providers[provider.id];

@@ -126,6 +126,12 @@ async fn verify_edit_capability(
     })?;
     let status = response.status();
     let raw = read_limited(response, MAX_RESPONSE_BYTES).await?;
+    // Capability discovery was added by imagegen-bridge 0.3. Older bridge
+    // releases still expose the compatible edit endpoint, so a missing probe
+    // must not turn a configured manual route into an unavailable one.
+    if status.as_u16() == 404 {
+        return Ok(());
+    }
     if !status.is_success() {
         return Err(provider_error(
             "codex-oauth",

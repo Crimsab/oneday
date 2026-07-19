@@ -97,3 +97,51 @@ async fn native_bridge_request_preserves_routing_policies_and_negative_prompt() 
     assert_eq!(generated.revised_prompt, "revised");
     assert_eq!(generated.bytes, PNG);
 }
+
+#[tokio::test]
+async fn native_edit_keeps_manual_compatibility_when_a_legacy_bridge_has_no_probe() {
+    let app = Router::new()
+        .route("/v1/providers/codex-responses/capabilities", get(|| async { axum::http::StatusCode::NOT_FOUND }))
+        .route("/v1/images/edits", post(|| async { Json(json!({
+            "data": [{ "b64_json": base64::engine::general_purpose::STANDARD.encode(PNG), "revised_prompt": "legacy" }],
+            "imagegen_bridge": { "provider": "codex-responses", "model": "gpt-image-2" }
+        })) }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let config = AdapterConfig {
+        provider: "codex-oauth".into(),
+        map_icon_provider: "codex-oauth".into(),
+        providers: HashMap::new(),
+        bridge_url: format!("http://{address}"),
+        bridge_token: String::new(),
+        bridge_provider: "codex-responses".into(),
+        bridge_map_icon_provider: "codex-responses".into(),
+        bridge_fallbacks: vec![],
+        bridge_fallback_policy: "on_unavailable".into(),
+        bridge_compatibility: "normalize".into(),
+        base_url: String::new(),
+        api_key: String::new(),
+        openclaw_url: String::new(),
+    };
+    let request = NativeImageRequest {
+        operation: ImageOperation::Edit,
+        provider: "codex-oauth".into(),
+        endpoint_id: "/v1/images/edits".into(),
+        source: Some(super::CanonicalImage {
+            png: PNG.to_vec(),
+            width: 1,
+            height: 1,
+        }),
+        prompt: "Adjust the lantern".into(),
+        negative_prompt: String::new(),
+        model: "gpt-image-2".into(),
+        size: String::new(),
+        quality: String::new(),
+        output_format: "png".into(),
+        idempotency_key: "legacy-edit".into(),
+        mask: None,
+    };
+    let generated = edit(&Client::new(), &config, &request).await.unwrap();
+    assert_eq!(generated.revised_prompt, "legacy");
+}
