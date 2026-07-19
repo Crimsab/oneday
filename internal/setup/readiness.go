@@ -51,20 +51,22 @@ func (r Report) RequiredFailure() bool {
 }
 
 type Dependencies struct {
-	Narrative  func(context.Context, config.Config) error
-	Embedding  func(context.Context, aifactory.EmbeddingProviderSpec) (int, error)
-	HTTPGet    func(context.Context, string) error
-	Stat       func(string) (os.FileInfo, error)
-	GatewayURL string
+	Narrative    func(context.Context, config.Config) error
+	Embedding    func(context.Context, aifactory.EmbeddingProviderSpec) (int, error)
+	HTTPGet      func(context.Context, string) error
+	Stat         func(string) (os.FileInfo, error)
+	GatewayURL   string
+	DatabasePath string
 }
 
 func DefaultDependencies() Dependencies {
 	return Dependencies{
-		Narrative:  probeNarrative,
-		Embedding:  probeEmbedding,
-		HTTPGet:    probeHTTPGet,
-		Stat:       os.Stat,
-		GatewayURL: strings.TrimSpace(os.Getenv("ONEDAY_GATEWAY_URL")),
+		Narrative:    probeNarrative,
+		Embedding:    probeEmbedding,
+		HTTPGet:      probeHTTPGet,
+		Stat:         os.Stat,
+		GatewayURL:   strings.TrimSpace(os.Getenv("ONEDAY_GATEWAY_URL")),
+		DatabasePath: strings.TrimSpace(os.Getenv("ONEDAY_DB_PATH")),
 	}
 }
 
@@ -94,6 +96,9 @@ func withDefaults(deps Dependencies) Dependencies {
 	}
 	if deps.Stat == nil {
 		deps.Stat = defaults.Stat
+	}
+	if deps.DatabasePath == "" {
+		deps.DatabasePath = defaults.DatabasePath
 	}
 	return deps
 }
@@ -195,7 +200,7 @@ func storageProbe(cfg config.Config, deps Dependencies) Probe {
 }
 
 func backupProbe(cfg config.Config, deps Dependencies) Probe {
-	info, err := deps.Stat(filepath.Join(cfg.DataDir, "oneday.db"))
+	info, err := deps.Stat(backupDatabasePath(cfg, deps))
 	if errors.Is(err, os.ErrNotExist) {
 		return Probe{"backup", "BACKUP_NO_DATABASE", StatusSkipped, false, "no database exists yet to back up"}
 	}
@@ -206,6 +211,13 @@ func backupProbe(cfg config.Config, deps Dependencies) Probe {
 		return Probe{"backup", "BACKUP_NOT_FILE", StatusWarning, false, "database path is not a regular file"}
 	}
 	return Probe{"backup", "BACKUP_READY", StatusReady, false, "database is available for a SQLite-safe backup"}
+}
+
+func backupDatabasePath(cfg config.Config, deps Dependencies) string {
+	if path := strings.TrimSpace(deps.DatabasePath); path != "" {
+		return path
+	}
+	return filepath.Join(cfg.DataDir, "oneday.db")
 }
 
 func probeNarrative(ctx context.Context, cfg config.Config) error {

@@ -3,30 +3,29 @@ import { useTranslation } from "react-i18next";
 import type { SetupReadinessProbe, SetupReadinessReport } from "../../types";
 
 type SetupState = "ready" | "warning" | "failed" | "skipped" | "unknown";
+type SetupProbeName = "narrative" | "embeddings" | "image" | "tts" | "gateway" | "storage" | "backup";
 
 interface SetupItem {
-  id: "narrative" | "images" | "voice";
+  name: SetupProbeName;
   state: SetupState;
   required: boolean;
+  code: string;
   summary: string;
 }
 
-const probesForItems: Record<SetupItem["id"], string> = {
-  narrative: "narrative",
-  images: "image",
-  voice: "tts",
-};
+const canonicalProbeOrder: SetupProbeName[] = ["narrative", "embeddings", "image", "tts", "gateway", "storage", "backup"];
 
 export function installationSetupItems(readiness: SetupReadinessReport): SetupItem[] {
-  const probeFor = (id: SetupItem["id"]): SetupReadinessProbe | undefined =>
-    readiness.probes.find((probe) => probe.name === probesForItems[id]);
+  const probeFor = (name: SetupProbeName): SetupReadinessProbe | undefined =>
+    readiness.probes.find((probe) => probe.name === name);
 
-  return (Object.keys(probesForItems) as SetupItem["id"][]).map((id) => {
-    const probe = probeFor(id);
+  return canonicalProbeOrder.map((name) => {
+    const probe = probeFor(name);
     return {
-      id,
+      name,
       state: isSetupState(probe?.status) ? probe.status : "unknown",
-      required: probe?.required ?? id === "narrative",
+      required: probe?.required ?? (name === "narrative" || name === "storage"),
+      code: probe?.code ?? "",
       summary: probe?.summary ?? "",
     };
   });
@@ -47,7 +46,7 @@ export function InstallationOnboarding({
 }) {
   const { t } = useTranslation("installation");
   const items = useMemo(() => installationSetupItems(readiness), [readiness]);
-  const narrativeReady = items.find((item) => item.id === "narrative")?.state === "ready";
+  const hasRequiredFailure = items.some((item) => item.required && item.state === "failed");
 
   return (
     <section className="installation-onboarding" aria-labelledby="installation-onboarding-title">
@@ -65,10 +64,11 @@ export function InstallationOnboarding({
         </div>
         <ul>
           {items.map((item) => (
-            <li key={item.id} className={`installation-readiness-item ${item.state}`}>
+            <li key={item.name} className={`installation-readiness-item ${item.state}`}>
               <div>
-                <strong>{t(`items.${item.id}.title`)}</strong>
-                <span>{item.summary || t("summaryUnavailable")}</span>
+                <strong>{t(`items.${item.name}.title`)}</strong>
+                <span>{t(`codes.${item.code}`, { defaultValue: item.summary || t("summaryUnavailable") })}</span>
+                {item.code && <code>{item.code}</code>}
               </div>
               <span>{item.required ? t(`states.required.${item.state}`) : t(`states.optional.${item.state}`)}</span>
             </li>
@@ -91,11 +91,11 @@ export function InstallationOnboarding({
 
       <div className="installation-onboarding-actions">
         <button type="button" onClick={onConfigure}>{t("configure")}</button>
-        <button type="button" className="primary-action" onClick={onStartStory} disabled={!narrativeReady}>
+        <button type="button" className="primary-action" onClick={onStartStory} disabled={hasRequiredFailure}>
           {t("startStory")}
         </button>
       </div>
-      {!narrativeReady && <p className="installation-onboarding-blocked" role="status">{t("narrativeRequired")}</p>}
+      {hasRequiredFailure && <p className="installation-onboarding-blocked" role="status">{t("requiredBlocked")}</p>}
     </section>
   );
 }

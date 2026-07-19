@@ -1105,6 +1105,7 @@ fn gateway_command(state: &AppState, command: &str) -> Command {
     child
         .arg(command)
         .env("ONEDAY_CONFIG", &state.paths.config_path)
+        .env("ONEDAY_DB_PATH", &state.paths.db_path)
         .current_dir(&state.paths.oneday_root)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -1198,13 +1199,13 @@ mod tests {
     use tokio::sync::broadcast;
 
     #[tokio::test]
-    async fn gateway_command_propagates_request_id() {
+    async fn gateway_command_propagates_request_id_and_resolved_paths() {
         let root = std::env::temp_dir().join(format!("oneday-request-id-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).expect("create request-id test dir");
         let script = root.join("fake-oneday.sh");
         fs::write(
             &script,
-            "#!/usr/bin/env bash\nprintf '%s' \"$ONEDAY_REQUEST_ID\"\n",
+            "#!/usr/bin/env bash\nprintf '%s|%s|%s' \"$ONEDAY_REQUEST_ID\" \"$ONEDAY_CONFIG\" \"$ONEDAY_DB_PATH\"\n",
         )
         .expect("write request-id script");
         let mut permissions = fs::metadata(&script)
@@ -1223,7 +1224,11 @@ mod tests {
         assert!(output.status.success());
         assert_eq!(
             String::from_utf8(output.stdout).unwrap(),
-            "request-test-123"
+            format!(
+                "request-test-123|{}|{}",
+                state.paths.config_path.display(),
+                state.paths.db_path.display(),
+            )
         );
         let _ = fs::remove_dir_all(root);
     }

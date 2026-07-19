@@ -486,6 +486,61 @@ func TestDoctorDoesNotExposePrivateConfigPathWhenConfigurationIsInvalid(t *testi
 	}
 }
 
+func TestDoctorUsesExplicitDatabasePathWithoutExposingIt(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = "test"
+	cfg.AI.Generation.UtilityModel = "test"
+	cfg.DataDir = filepath.Join(root, "configured-data")
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(root, "config.yaml")
+	data, err := config.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(root, "private", "gateway-state.sqlite")
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(databasePath, []byte("sqlite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ONEDAY_CONFIG", configPath)
+	t.Setenv("ONEDAY_DB_PATH", databasePath)
+
+	deps := setup.Dependencies{
+		Narrative: func(context.Context, config.Config) error { return nil },
+		Embedding: func(context.Context, aifactory.EmbeddingProviderSpec) (int, error) { return 0, nil },
+		HTTPGet:   func(context.Context, string) error { return nil },
+		Stat:      os.Stat,
+	}
+	var output bytes.Buffer
+	if err := runDoctorTo([]string{"doctor", "--json"}, &output, deps); err != nil {
+		t.Fatalf("doctor error = %v", err)
+	}
+	if strings.Contains(output.String(), databasePath) || strings.Contains(output.String(), cfg.DataDir) {
+		t.Fatalf("doctor leaked private path: %s", output.String())
+	}
+	var report setup.Report
+	if err := json.Unmarshal(output.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	for _, probe := range report.Probes {
+		if probe.Name == "storage" && probe.Code != "STORAGE_READY" {
+			t.Fatalf("storage probe = %#v", probe)
+		}
+		if probe.Name == "backup" && probe.Code != "BACKUP_READY" {
+			t.Fatalf("backup probe = %#v", probe)
+		}
+	}
+}
+
 func TestSetupWithExplicitConfigWritesAdjacentDotEnvFromDifferentWorkingDirectory(t *testing.T) {
 	root := t.TempDir()
 	configDir := filepath.Join(root, "config")

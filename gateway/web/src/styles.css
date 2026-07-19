@@ -2060,6 +2060,7 @@ input:disabled {
 .installation-readiness-item > div { display: grid; gap: 2px; min-width: 0; }
 .installation-readiness-item strong { font-size: 0.8125rem; }
 .installation-readiness-item div span { overflow: hidden; color: var(--muted); font-size: 0.6875rem; text-overflow: ellipsis; white-space: nowrap; }
+.installation-readiness-item code { color: var(--faint); font-size: 0.625rem; overflow-wrap: anywhere; }
 .installation-readiness-item > span { flex: 0 0 auto; color: var(--muted); font-size: 0.6875rem; }
 .installation-readiness-item.ready > span { color: #8fd6a3; }
 .installation-readiness-item.warning > span { color: #f0c578; }

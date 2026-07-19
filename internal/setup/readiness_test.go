@@ -85,3 +85,47 @@ func TestReadinessConfiguresOptionalProbesWithoutRequiredFailure(t *testing.T) {
 		}
 	}
 }
+
+func TestReadinessUsesExplicitDatabasePathForBackupWithoutLeakingIt(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.DataDir = filepath.Join(root, "configured-data")
+	if err := os.MkdirAll(cfg.DataDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	databasePath := filepath.Join(root, "private", "gateway-state.sqlite")
+	if err := os.MkdirAll(filepath.Dir(databasePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(databasePath, []byte("sqlite"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	report := Run(context.Background(), cfg, "ONEDAY_CONFIG", Dependencies{
+		Narrative:    func(context.Context, config.Config) error { return nil },
+		Embedding:    func(context.Context, aifactory.EmbeddingProviderSpec) (int, error) { return 0, nil },
+		HTTPGet:      func(context.Context, string) error { return nil },
+		Stat:         os.Stat,
+		DatabasePath: databasePath,
+	})
+
+	for _, probe := range report.Probes {
+		if strings.Contains(probe.Summary, databasePath) || strings.Contains(probe.Summary, cfg.DataDir) {
+			t.Fatalf("readiness leaked a private path: %#v", probe)
+		}
+		if probe.Name == "storage" && probe.Code != "STORAGE_READY" {
+			t.Fatalf("storage must continue using configured data_dir: %#v", probe)
+		}
+		if probe.Name == "backup" && probe.Code != "BACKUP_READY" {
+			t.Fatalf("backup must inspect explicit database path: %#v", probe)
+		}
+	}
+}
+
+func TestDefaultDependenciesReadsExplicitDatabasePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gateway-state.sqlite")
+	t.Setenv("ONEDAY_DB_PATH", path)
+	if got := DefaultDependencies().DatabasePath; got != path {
+		t.Fatalf("database path = %q, want %q", got, path)
+	}
+}
