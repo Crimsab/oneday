@@ -11,7 +11,7 @@ COPY contracts /app/contracts
 RUN bun install --frozen-lockfile
 RUN bun run build
 
-FROM golang:1.25.12-bookworm@sha256:102fc956f6f6d98594cfe3cb6cd77b3d2699b6e914ab3ad6e819f3d8e83ebfac AS go-builder
+FROM golang:1.25.12-bookworm@sha256:ea341baa9bd5ba6784f6d7161ace70544349a6242d54d34a0fbfd2c4d51c9d58 AS go-builder
 WORKDIR /app
 ARG VERSION=dev
 ARG COMMIT=unknown
