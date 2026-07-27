@@ -2152,7 +2152,7 @@ summary:focus-visible {
   inset-inline-end: max(16px, calc((100vw - 1280px) / 2));
   z-index: 41;
   width: min(520px, calc(100vw - 32px));
-  grid-template-columns: minmax(0, 1fr);
+  display: block;
   max-height: none;
   overflow: auto;
   border-color: var(--line);
@@ -2161,13 +2161,14 @@ summary:focus-visible {
   box-shadow: -22px 0 64px rgba(0,0,0,.5);
   animation: visual-inspector-enter 160ms ease-out;
 }
+.visual-inspector-sheet > .visual-asset-preview,
+.visual-inspector-sheet > .visual-asset-editor-main,
+.visual-inspector-sheet > .visual-operation-editor { margin-top: 12px; }
 .visual-direction.inspector-open .visual-asset-preview { aspect-ratio: 16 / 9; }
-.visual-direction.inspector-open .visual-operation-editor { grid-column: auto; }
 .visual-inspector-sheet-head {
   position: sticky;
   top: -12px;
   z-index: 3;
-  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   justify-content: space-between;
