@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import i18n, { formatInterfaceNumber, resources, setInterfaceLocale } from "./i18n";
+import i18n, { formatInterfaceNumber, humanizeMissingKey, resources, setInterfaceLocale } from "./i18n";
 
 function paths(value: unknown, prefix = ""): string[] {
   if (!value || typeof value !== "object") return [prefix];
@@ -36,10 +36,11 @@ describe("interface catalogs", () => {
     ]);
   });
 
-  it("falls back safely without exposing raw keys", async () => {
+  it("falls back to English, then a readable label derived from the missing key", async () => {
     await setInterfaceLocale("it-IT");
     expect(i18n.t("common:save")).toBe("Salva");
-    expect(i18n.t("common:not.a.real.key")).toBe("Unavailable");
+    expect(i18n.t("common:not.a.real_key")).toBe("Real key");
+    expect(humanizeMissingKey("drawer:assetKind.map_background")).toBe("Map background");
   });
 
   it("supports interpolation, plural forms, and locale number formatting", async () => {

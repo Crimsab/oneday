@@ -3607,7 +3607,7 @@ input:disabled {
 .visual-lineage-note {
   display: grid;
   gap: 4px;
-  border-left: 2px solid color-mix(in srgb, var(--accent) 58%, var(--line));
+  border: 1px solid var(--line-soft);
   background: color-mix(in srgb, var(--accent) 6%, transparent);
   padding: 8px 10px;
   color: var(--muted);

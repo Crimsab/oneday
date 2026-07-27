@@ -1511,12 +1511,14 @@ summary:focus-visible {
 .color-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 13px 16px; }
 .settings-content .primary-action, .deferred-color-dialog .primary-action { border-color: color-mix(in srgb, var(--accent) 76%, #111) !important; background: var(--accent) !important; color: #0a0d0f !important; font-weight: 700; }
 
-.font-target-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-bottom: 1px solid var(--line-soft); background: #0d1215; padding: 10px 14px; }
-.font-target-switcher button { min-width: 0; min-height: 48px; display: grid; justify-items: start; align-content: center; gap: 2px; border-color: transparent; border-radius: 7px; background: transparent; padding: 7px 11px; color: var(--muted); text-align: left; }
-.font-target-switcher button + button { margin-left: 6px; }
-.font-target-switcher button:hover { border-color: var(--line-soft); background: rgba(255,255,255,.025); }
-.font-target-switcher button.active { border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); background: color-mix(in srgb, var(--accent) 8%, #11171b); color: var(--text); }
-.font-target-switcher span { font-size: 0.75rem; font-weight: 680; }
+.font-target-switcher { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; border-bottom: 1px solid var(--line-soft); background: #0d1215; padding: 10px 14px 14px; }
+.font-target-switcher-label { grid-column: 1 / -1; color: var(--muted); font-size: .625rem; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+.font-target-switcher button { min-width: 0; min-height: 54px; display: grid; justify-items: start; align-content: center; gap: 4px; border-color: var(--line); border-radius: 7px; background: #12191d; padding: 8px 11px; color: var(--muted); text-align: left; cursor: pointer; }
+.font-target-switcher button:hover { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: #182025; color: var(--text); }
+.font-target-switcher button.active { border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); background: color-mix(in srgb, var(--accent) 10%, #11171b); color: var(--text); }
+.font-target-switcher button > span { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.75rem; font-weight: 680; }
+.font-target-switcher button > span svg { flex: 0 0 auto; color: var(--faint); }
+.font-target-switcher button.active > span svg { color: var(--accent); }
 .font-target-switcher small { width: 100%; overflow: hidden; color: var(--faint); font-size: 0.5625rem; text-overflow: ellipsis; white-space: nowrap; }
 .typography-settings > .font-browser { display: grid; }
 .font-browser-toolbar { display: flex; gap: 8px; border-bottom: 1px solid var(--line-soft); padding: 12px 14px; }
@@ -2128,10 +2130,78 @@ summary:focus-visible {
 .pwa-install-settings h4 { display: flex; align-items: center; gap: 8px; }
 .pwa-install-settings-actions { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 9px; flex-wrap: nowrap; }
 .pwa-install-settings-actions button { min-height: 36px; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
-.pwa-install-unavailable { max-width: 34ch; margin: 0; color: var(--muted); font-size: .6875rem; line-height: 1.4; text-align: end; }
+.pwa-install-unavailable,
+.pwa-install-state { max-width: 34ch; margin: 0; color: var(--muted); font-size: .6875rem; line-height: 1.4; text-align: end; }
+.pwa-install-state { display: inline-flex; align-items: center; gap: 7px; }
+
+.options-overlay:has(.visual-direction.inspector-open) {
+  width: min(1760px, calc(100vw - 24px));
+  height: min(940px, calc(100dvh - 24px));
+  max-height: calc(100dvh - 24px);
+}
+.visual-direction.inspector-open {
+  grid-template-columns: minmax(500px, 1.18fr) minmax(380px, .82fr);
+  column-gap: 14px;
+  align-items: start;
+}
+.visual-direction.inspector-open > .model-routing-head,
+.visual-direction.inspector-open > .media-studio-tabs,
+.visual-direction.inspector-open > .media-studio-filters,
+.visual-direction.inspector-open > .model-actions {
+  grid-column: 1 / -1;
+}
+.visual-direction.inspector-open > .media-asset-gallery {
+  grid-column: 1;
+  grid-row: 4;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+.visual-direction.inspector-open > .visual-asset-editor {
+  position: sticky;
+  top: 0;
+  grid-column: 2;
+  grid-row: 4;
+  grid-template-columns: minmax(0, 1fr);
+  max-height: calc(100dvh - 190px);
+  overflow: auto;
+  border-color: var(--line);
+  border-radius: 9px;
+  box-shadow: 0 18px 48px rgba(0,0,0,.32);
+}
+.visual-direction.inspector-open .visual-asset-preview { aspect-ratio: 16 / 9; }
+.visual-direction.inspector-open .visual-operation-editor { grid-column: auto; }
+.visual-inspector-toggle {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: -19px;
+  z-index: 2;
+  width: 34px;
+  height: 52px;
+  min-height: 52px !important;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 7px 0 0 7px;
+  background: #141a1e;
+  padding: 0 !important;
+  color: var(--muted);
+  transform: translateY(-50%);
+  cursor: pointer;
+}
+.visual-inspector-toggle:hover { background: #1a2227; color: var(--text); }
 
 @media (max-width: 1050px) {
   .media-studio-filters { grid-template-columns: minmax(220px, 1fr) repeat(2, minmax(140px, .65fr)) auto; }
+  .visual-direction.inspector-open { display: block; }
+  .visual-direction.inspector-open > .visual-asset-editor {
+    position: fixed;
+    inset-block: 12px;
+    inset-inline-end: 12px;
+    z-index: 30;
+    width: min(470px, calc(100vw - 24px));
+    max-height: none;
+    border-radius: 9px;
+  }
+  .visual-inspector-toggle { inset-inline-start: -34px; }
 }
 @media (max-width: 720px) {
   .media-studio-filters { grid-template-columns: 1fr 1fr; }
@@ -2140,7 +2210,8 @@ summary:focus-visible {
   .media-asset-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pwa-install-settings > header { align-items: stretch; }
   .pwa-install-settings-actions { justify-content: flex-start; flex-wrap: wrap; }
-  .pwa-install-unavailable { max-width: none; text-align: start; }
+  .pwa-install-unavailable,
+  .pwa-install-state { max-width: none; text-align: start; }
 }
 @media (prefers-reduced-motion: reduce) {
   .custom-select-menu { animation: none; }

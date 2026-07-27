@@ -10,6 +10,7 @@ interface PwaInstallContextValue {
   hidden: boolean;
   installed: boolean;
   hide: () => void;
+  show: () => void;
   install: () => Promise<void>;
 }
 
@@ -45,6 +46,10 @@ export function PwaInstallProvider({ children }: { children: ReactNode }) {
     hide: () => {
       localStorage.setItem(INSTALL_DISMISSED_KEY, "true");
       setHidden(true);
+    },
+    show: () => {
+      localStorage.removeItem(INSTALL_DISMISSED_KEY);
+      setHidden(false);
     },
     install: async () => {
       if (!prompt) return;

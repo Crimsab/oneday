@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ImageOff, Search, SlidersHorizontal } from "lucide-react";
+import { ChevronRight, ImageOff, Search, SlidersHorizontal } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
   commandDescriptors as resolveCommandDescriptors,
@@ -485,6 +485,7 @@ function VisualDirectionSettings({
   const [saveError, setSaveError] = useState("");
   const [mediaTab, setMediaTab] = useState<MediaStudioTab>("library");
   const [mediaFilters, setMediaFilters] = useState(defaultMediaAssetFilters);
+  const [assetInspectorOpen, setAssetInspectorOpen] = useState(Boolean(focusedAssetId));
   const readyCount = assets.filter((asset) => asset.status === "ready").length;
   const pendingCount = assets.filter(
     (asset) => asset.status !== "ready",
@@ -542,7 +543,11 @@ function VisualDirectionSettings({
   }, [profile]);
 
   useEffect(() => {
-    if (focusedAssetId) setSelectedAssetId(focusedAssetId);
+    if (focusedAssetId) {
+      setSelectedAssetId(focusedAssetId);
+      setMediaTab("library");
+      setAssetInspectorOpen(true);
+    }
   }, [focusedAssetId]);
 
   useEffect(() => {
@@ -714,7 +719,7 @@ function VisualDirectionSettings({
   );
 
   return (
-    <div className="visual-direction">
+    <div className={`visual-direction ${mediaTab === "library" && selectedAsset && assetInspectorOpen ? "inspector-open" : ""}`}>
       <div className="model-routing-head">
         <span>{t("drawer:visuals.title")}</span>
         <strong>
@@ -748,7 +753,7 @@ function VisualDirectionSettings({
           </div>
           <div className="visual-asset-list media-asset-gallery">
             {filteredAssets.map((asset) => (
-              <button type="button" className={`visual-asset-row kind-${asset.kind} ${asset.status} ${asset.id === selectedAsset?.id ? "selected" : ""}`} key={asset.id} title={asset.prompt} onClick={() => setSelectedAssetId(asset.id)}>
+              <button type="button" className={`visual-asset-row kind-${asset.kind} ${asset.status} ${asset.id === selectedAsset?.id ? "selected" : ""}`} key={asset.id} title={asset.prompt} onClick={() => { setSelectedAssetId(asset.id); setAssetInspectorOpen(true); }}>
                 <span className="media-asset-visual">
                   {readyAssetUrl(asset) ? <img src={readyAssetUrl(asset)} alt="" /> : <span className="media-asset-placeholder"><ImageOff size={22} aria-hidden="true" /><small>{catalogLabel(`drawer:assetStatus.${asset.status}`, asset.status)}</small></span>}
                 </span>
@@ -797,7 +802,7 @@ function VisualDirectionSettings({
               />
             </label>
           </div>
-          {storyId && <NewVisualAssetUpload storyId={storyId} onUploaded={async (assetId) => { await onReload(); setSelectedAssetId(assetId); }} />}
+          {storyId && <NewVisualAssetUpload storyId={storyId} onUploaded={async (assetId) => { await onReload(); setSelectedAssetId(assetId); setMediaTab("library"); setAssetInspectorOpen(true); }} />}
           </>}
           {mediaTab === "activity" && activityJobs.length > 0 && (
             <div className="visual-job-list" aria-label={t("drawer:visuals.jobs")}>
@@ -818,21 +823,24 @@ function VisualDirectionSettings({
               ))}
             </div>
           )}
-          {mediaTab === "library" && selectedAsset && (
+          {mediaTab === "library" && selectedAsset && assetInspectorOpen && (
             <div className="visual-asset-editor">
+              <button type="button" className="visual-inspector-toggle" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} title={t("common:close")}>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
               <div className={`visual-asset-preview kind-${selectedAsset.kind}`}>
                 {selectedImageUrl ? (
                   <img src={activeVersion?.url || selectedImageUrl} alt="" />
                 ) : (
-                  <div>{t(`drawer:assetStatus.${selectedAsset.status}`, { defaultValue: selectedAsset.status })}</div>
+                  <div>{catalogLabel(`drawer:assetStatus.${selectedAsset.status}`, selectedAsset.status)}</div>
                 )}
               </div>
               <div className="visual-asset-editor-main">
                 <div className="visual-asset-editor-head">
-                  <span>{t(`drawer:assetKind.${selectedAsset.kind}`, { defaultValue: selectedAsset.kind.replaceAll("_", " ") })}</span>
+                  <span>{catalogLabel(`drawer:assetKind.${selectedAsset.kind}`, selectedAsset.kind)}</span>
                   <strong>{selectedAsset.subject}</strong>
                   <small title={selectedAsset.provider}>
-                    {t(`drawer:canonStatus.${selectedAsset.canon_status}`, { defaultValue: selectedAsset.canon_status })} · {t(`drawer:assetStatus.${selectedAsset.status}`, { defaultValue: selectedAsset.status })}
+                    {catalogLabel(`drawer:canonStatus.${selectedAsset.canon_status}`, selectedAsset.canon_status)} · {catalogLabel(`drawer:assetStatus.${selectedAsset.status}`, selectedAsset.status)}
                   </small>
                 </div>
                 <div className="visual-lineage-note">
@@ -904,7 +912,7 @@ function VisualDirectionSettings({
                       {t("drawer:visuals.versionFrom", { date: displayTimestamp(activeVersion.created_at), provider: activeVersion.provider || t("drawer:visuals.unknownProvider") })}
                     </p>
                     <p>
-                      {t(`drawer:canonStatus.${activeVersion.canon_status}`, { defaultValue: activeVersion.canon_status })} · {activeVersion.form_id ? `${t("drawer:visuals.form", { id: compactId(activeVersion.form_id) })} · ` : ""}
+                      {catalogLabel(`drawer:canonStatus.${activeVersion.canon_status}`, activeVersion.canon_status)} · {activeVersion.form_id ? `${t("drawer:visuals.form", { id: compactId(activeVersion.form_id) })} · ` : ""}
                       {activeVersion.id === selectedAsset.selected_version_id ? t("drawer:visuals.currentlySelected") : t("drawer:visuals.previewOnly")}
                     </p>
                     {activeVersion.revised_prompt ? (

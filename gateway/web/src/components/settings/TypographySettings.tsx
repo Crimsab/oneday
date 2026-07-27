@@ -1,4 +1,4 @@
-import { Link2, Pencil, RotateCcw, ScanSearch, Search, Trash2, Upload, X } from "lucide-react";
+import { Check, Link2, MousePointerClick, Pencil, RotateCcw, ScanSearch, Search, Trash2, Upload, X } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -201,8 +201,9 @@ export function TypographySettings({ preferences, onChange }: { preferences: App
       </header>
 
       <div className="font-target-switcher" role="group" aria-label={t("font.targetLabel")}>
+        <strong className="font-target-switcher-label">{t("font.targetLabel")}</strong>
         {(["interface", "reading"] as FontTarget[]).map((value) => <button type="button" key={value} className={target === value ? "active" : ""} aria-pressed={target === value} onClick={() => setTarget(value)}>
-          <span>{t(`font.target.${value}`)}</span>
+          <span>{t(`font.target.${value}`)} {target === value ? <Check size={14} aria-hidden="true" /> : <MousePointerClick size={14} aria-hidden="true" />}</span>
           <small>{value === "interface" ? preferences.interfaceFontFamily : preferences.readingFontFamily}</small>
         </button>)}
       </div>

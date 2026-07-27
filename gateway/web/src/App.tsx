@@ -1221,6 +1221,9 @@ function AuthenticatedApp() {
     setModuleFocusId(null);
     setModuleOverlayTab(null);
     setOptionsInitialSection("appearance");
+    if (setupRouteOpen) {
+      navigateAppRoute(resolveAppRoute(null, storiesRef.current), "replace");
+    }
   };
 
   const openInstallationConfiguration = () => {
@@ -1540,11 +1543,25 @@ function AuthenticatedApp() {
   const railMode = isMobileLayout ? "expanded" : preferences.desktopRailMode;
   const activeStories = activeStoryCount(stories);
   const isFreshInstallation = sync === "Idle" && stories.length === 0;
-  const showInstallationOnboarding = (isFreshInstallation || setupRouteOpen) && setupReadinessState === "ready" && setupReadiness !== null;
+  const showInstallationOnboarding = isFreshInstallation && setupReadinessState === "ready" && setupReadiness !== null;
 
   useEffect(() => {
-    if (isFreshInstallation || setupRouteOpen) setStoryLibraryOpen(false);
-  }, [isFreshInstallation, setupRouteOpen]);
+    if (!isFreshInstallation && !setupRouteOpen) return;
+    setStoryLibraryOpen(false);
+    if (!setupRouteOpen || isFreshInstallation) return;
+
+    const activeStory = stories.find((story) => !story.is_archived);
+    if (activeStory && !storyIdRef.current) {
+      setStoryId(activeStory.id);
+      setSelectedTab("history");
+    }
+    if (overlay !== "options") {
+      setVisualAssetFocusId(null);
+      setOptionsInitialSection("operator");
+      void refreshModelSettings();
+      setOverlay("options");
+    }
+  }, [isFreshInstallation, overlay, refreshModelSettings, setupRouteOpen, stories]);
 
   return (
     <div
@@ -1592,8 +1609,8 @@ function AuthenticatedApp() {
             onConfigure={openInstallationConfiguration}
             onStartStory={() => setupRouteOpen && !isFreshInstallation ? navigateAppRoute(resolveAppRoute(null, storiesRef.current), "replace") : openOverlay("new-story")}
             onRetry={() => void refreshSetupReadiness()}
-          /> : (isFreshInstallation || setupRouteOpen) && setupReadinessState === "loading" ? <InstallationReadinessPending />
-            : (isFreshInstallation || setupRouteOpen) && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
+          /> : isFreshInstallation && setupReadinessState === "loading" ? <InstallationReadinessPending />
+            : isFreshInstallation && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
               : <>
           <section className="transcript-panel" aria-labelledby="story-surface-title">
             <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || t("notifications:surface.yourStory")}</h1>
