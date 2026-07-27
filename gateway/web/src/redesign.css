@@ -2171,7 +2171,7 @@ summary:focus-visible {
 .visual-direction.inspector-open .visual-operation-editor { grid-column: auto; }
 .visual-inspector-toggle {
   position: absolute;
-  inset-block-start: 50%;
+  inset-block-start: 160px;
   inset-inline-start: -19px;
   z-index: 2;
   width: 34px;
@@ -2184,7 +2184,6 @@ summary:focus-visible {
   background: #141a1e;
   padding: 0 !important;
   color: var(--muted);
-  transform: translateY(-50%);
   cursor: pointer;
 }
 .visual-inspector-toggle:hover { background: #1a2227; color: var(--text); }
