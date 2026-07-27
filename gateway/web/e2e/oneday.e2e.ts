@@ -426,6 +426,9 @@ test("shows a reconnect gate before requesting protected application data", asyn
     if (path === "/api/auth/session") {
       return json(route, { authenticated: false, bootstrap_available: true });
     }
+    if (path === "/api/health") {
+      return json(route, { status: "ok", stories: 1 });
+    }
     protectedRequests.push(path);
     return json(route, { code: "authentication_required" }, 401);
   });
