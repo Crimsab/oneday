@@ -486,6 +486,8 @@ function VisualDirectionSettings({
   const [mediaTab, setMediaTab] = useState<MediaStudioTab>("library");
   const [mediaFilters, setMediaFilters] = useState(defaultMediaAssetFilters);
   const [assetInspectorOpen, setAssetInspectorOpen] = useState(Boolean(focusedAssetId));
+  const assetInspectorTitleId = useId();
+  const assetInspectorCloseRef = useRef<HTMLButtonElement | null>(null);
   const readyCount = assets.filter((asset) => asset.status === "ready").length;
   const pendingCount = assets.filter(
     (asset) => asset.status !== "ready",
@@ -549,6 +551,24 @@ function VisualDirectionSettings({
       setAssetInspectorOpen(true);
     }
   }, [focusedAssetId]);
+
+  useEffect(() => {
+    if (!assetInspectorOpen) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusFrame = window.requestAnimationFrame(() => assetInspectorCloseRef.current?.focus());
+    const closeInspector = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setAssetInspectorOpen(false);
+    };
+    document.addEventListener("keydown", closeInspector, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("keydown", closeInspector, true);
+      previousFocus?.focus();
+    };
+  }, [assetInspectorOpen]);
 
   useEffect(() => {
     if (!selectedAssetId && assets[0]) setSelectedAssetId(assets[0].id);
@@ -824,10 +844,18 @@ function VisualDirectionSettings({
             </div>
           )}
           {mediaTab === "library" && selectedAsset && assetInspectorOpen && (
-            <div className="visual-asset-editor">
-              <button type="button" className="visual-inspector-toggle" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} title={t("common:close")}>
-                <ChevronRight size={18} aria-hidden="true" />
-              </button>
+            <>
+            <button type="button" className="visual-inspector-backdrop" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} />
+            <div className="visual-asset-editor visual-inspector-sheet" role="dialog" aria-modal="true" aria-labelledby={assetInspectorTitleId}>
+              <div className="visual-inspector-sheet-head">
+                <span>
+                  <small>{t("drawer:visuals.title")}</small>
+                  <strong id={assetInspectorTitleId}>{selectedAsset.subject}</strong>
+                </span>
+                <button ref={assetInspectorCloseRef} type="button" className="visual-inspector-toggle" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} title={t("common:close")}>
+                  <ChevronRight size={18} aria-hidden="true" />
+                </button>
+              </div>
               <div className={`visual-asset-preview kind-${selectedAsset.kind}`}>
                 {selectedImageUrl ? (
                   <img src={activeVersion?.url || selectedImageUrl} alt="" />
@@ -989,6 +1017,7 @@ function VisualDirectionSettings({
                 />
               )}
             </div>
+            </>
           )}
           <div className="model-actions">
             <button
