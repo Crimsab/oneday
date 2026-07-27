@@ -33,4 +33,12 @@ describe("important localized surfaces", () => {
     expect(source).not.toContain("payload.error");
     expect(source).toContain("api_errors:");
   });
+
+  it("resolves story-library time controls from the library namespace", () => {
+    const source = readFileSync(new URL("features/story-library/StoryLibraryDrawer.tsx", import.meta.url), "utf8");
+    expect(source).toContain('t("library:timeFormat")');
+    expect(source).toContain('t("library:timeFormats.system")');
+    expect(source).not.toContain('t("timeFormat")');
+    expect(source).not.toContain('t("timeFormats.system")');
+  });
 });

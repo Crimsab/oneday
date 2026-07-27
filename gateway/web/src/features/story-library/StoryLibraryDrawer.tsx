@@ -130,7 +130,7 @@ export function StoryLibraryDrawer({
           <span className="sr-only">{t("chrome:filter")}</span>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("chrome:filter")} />
         </label>
-        <label className="story-library-time-format"><span>{t("timeFormat")}</span><select value={timeFormat} onChange={(event) => onTimeFormatChange(event.target.value as AppPreferences["timeFormat"])}><option value="system">{t("timeFormats.system")}</option><option value="12">{t("timeFormats.12")}</option><option value="24">{t("timeFormats.24")}</option></select></label>
+        <label className="story-library-time-format"><span>{t("library:timeFormat")}</span><select value={timeFormat} onChange={(event) => onTimeFormatChange(event.target.value as AppPreferences["timeFormat"])}><option value="system">{t("library:timeFormats.system")}</option><option value="12">{t("library:timeFormats.12")}</option><option value="24">{t("library:timeFormats.24")}</option></select></label>
       </div>
       <div className={`story-library-content ${detailStoryId ? "has-detail" : ""}`}>
         {visibleStories.length === 0 ? (
