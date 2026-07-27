@@ -37,6 +37,7 @@ const originalFetch = globalThis.fetch;
 describe("api request handling", () => {
   afterEach(async () => {
 	vi.useRealTimers();
+    vi.unstubAllGlobals();
     await setInterfaceLocale("en");
     globalThis.fetch = originalFetch;
   });
@@ -73,6 +74,12 @@ describe("api request handling", () => {
   });
 
   it("announces authentication loss when a protected request returns 401", async () => {
+    vi.stubGlobal("window", new EventTarget());
+    vi.stubGlobal("CustomEvent", class extends Event {
+      constructor(type: string) {
+        super(type);
+      }
+    });
     const listener = vi.fn();
     window.addEventListener(AUTHENTICATION_REQUIRED_EVENT, listener);
     mockFetch(new Response(JSON.stringify({ code: "authentication_required" }), { status: 401 }));
