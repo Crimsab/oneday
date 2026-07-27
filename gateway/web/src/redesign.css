@@ -2141,9 +2141,9 @@ summary:focus-visible {
   z-index: 40;
   border: 0;
   border-radius: 4px;
-  background: rgba(3, 7, 9, .58);
+  background: rgba(3, 7, 9, .4);
   padding: 0;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(1px);
   cursor: default;
 }
 .visual-direction.inspector-open > .visual-inspector-sheet {
