@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ChevronRight, ImageOff, Search, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ImageOff, Search, SlidersHorizontal, X } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
   commandDescriptors as resolveCommandDescriptors,
@@ -858,7 +858,7 @@ function VisualDirectionSettings({
                   </small>
                 </div>
                 <button ref={assetInspectorCloseRef} type="button" className="visual-inspector-toggle" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} title={t("common:close")}>
-                  <ChevronRight size={18} aria-hidden="true" />
+                  <X size={18} aria-hidden="true" />
                 </button>
               </div>
               <div className="visual-inspector-workspace">

@@ -2141,16 +2141,16 @@ summary:focus-visible {
   z-index: 40;
   border: 0;
   border-radius: 4px;
-  background: rgba(3, 7, 9, .22);
+  background: rgba(3, 7, 9, .5);
   padding: 0;
   cursor: default;
 }
 .visual-direction.inspector-open > .visual-inspector-sheet {
   position: fixed;
-  inset-block: max(16px, calc((100dvh - 900px) / 2));
-  inset-inline-end: max(16px, calc((100vw - 1280px) / 2));
+  inset-block: max(28px, calc((100dvh - 876px) / 2));
+  inset-inline: max(28px, calc((100vw - 1256px) / 2));
   z-index: 41;
-  width: min(1060px, calc(100vw - 64px));
+  width: auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
@@ -2158,10 +2158,10 @@ summary:focus-visible {
   max-height: none;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 0 4px 4px 0;
+  border-radius: 5px;
   background: #0b1013;
   padding: 0;
-  box-shadow: -24px 0 72px rgba(0,0,0,.56);
+  box-shadow: 0 24px 80px rgba(0,0,0,.62);
   animation: visual-inspector-enter 160ms ease-out;
 }
 .visual-inspector-sheet-head {
@@ -2338,8 +2338,8 @@ summary:focus-visible {
   padding-bottom: 2px;
 }
 @keyframes visual-inspector-enter {
-  from { opacity: 0; transform: translateX(24px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateY(8px) scale(.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 @media (max-width: 1050px) {
@@ -2381,7 +2381,8 @@ summary:focus-visible {
 }
 @media (min-width: 721px) and (max-width: 980px) {
   .visual-direction.inspector-open > .visual-inspector-sheet {
-    width: calc(100vw - 32px);
+    inset: 16px;
+    width: auto;
   }
   .visual-inspector-workspace {
     grid-template-columns: minmax(0, 1fr);
