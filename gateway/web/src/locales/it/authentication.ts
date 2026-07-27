@@ -1,0 +1,15 @@
+export const authentication = {
+  kicker: "Sessione browser protetta",
+  checkingTitle: "Verifica dell’accesso",
+  checkingDescription: "OneDay sta controllando la sessione di questo browser.",
+  title: "Riconnetti OneDay",
+  description: "La sessione del browser è scaduta oppure il gateway è stato aggiornato. Inserisci il token bootstrap configurato per continuare.",
+  unavailable: "Il gateway non può creare una sessione browser in questo momento. Riavvialo con un token bootstrap configurato, quindi ricarica la pagina.",
+  tokenLabel: "Token bootstrap del browser",
+  tokenHint: "Il token viene scambiato con un cookie HttpOnly e non viene salvato dall’interfaccia del browser.",
+  invalid: "Il token non è valido o non è disponibile. Controlla il token bootstrap configurato nel gateway e riprova.",
+  failed: "OneDay non è riuscito a ripristinare la sessione browser. Controlla il gateway e riprova.",
+  submit: "Riconnetti",
+  submitting: "Riconnessione",
+  privacy: "I dati delle storie restano nel gateway. La riconnessione non li reimposta e non li modifica.",
+} as const;

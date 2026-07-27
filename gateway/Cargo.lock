@@ -1421,6 +1421,7 @@ dependencies = [
  "chrono",
  "clap",
  "futures-core",
+ "hmac",
  "image",
  "libc",
  "opentelemetry",

@@ -60,13 +60,13 @@ See [Desktop](desktop.md) for storage locations and sidecar requirements.
 
 ## Gateway access boundary
 
-The gateway binds to loopback by default. Its browser path is a one-shot
-bootstrap exchange: a bootstrap credential is consumed once to mint a short
-lived browser session. A separately configured direct bearer credential is for
-non-browser callers such as a local desktop launch; it must not be reused as a
-bootstrap credential. An interactive, loopback-only terminal start can print a
-one-shot bootstrap URL. A non-interactive or non-loopback start needs an
-explicit bootstrap credential unless it is direct-bearer-only.
+The gateway binds to loopback by default. Its browser path exchanges a bootstrap
+credential for a short-lived, signed browser session. An interactive credential
+generated at startup is one-shot. An explicitly configured bootstrap credential
+remains available for later reauthentication, and its derived session signature
+key makes existing sessions survive gateway restarts. A separately configured
+direct bearer credential is for non-browser callers such as a local desktop
+launch; it must not be reused as a bootstrap credential.
 
 The gateway validates `Host` against its listener and any explicitly configured
 allowed hosts. Authenticated mutations also require a same-origin `Origin` when

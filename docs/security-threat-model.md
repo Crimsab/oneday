@@ -35,12 +35,14 @@ boundary and must be treated as data movement.
 
 ### Loopback, Host, Origin, and CSRF
 
-The gateway listens on loopback by default. Its browser bootstrap credential is
-one-shot: exchanging it consumes the credential, invalidates it in memory, and
-issues a browser session that expires after 12 hours. The session is set in an
-HttpOnly, `SameSite=Strict` cookie; a secure public origin receives a secure
-host-only cookie. Browser session, bootstrap, and direct bearer credentials are
-distinct values.
+The gateway listens on loopback by default. Exchanging a browser bootstrap
+credential issues a signed session that expires after 12 hours. An interactive
+bootstrap credential generated at startup is consumed once. An explicitly
+configured bootstrap credential remains available for reauthentication and
+derives the signing key, so sessions remain valid across restarts unless that
+credential changes. The session is set in an HttpOnly, `SameSite=Strict`
+cookie; a secure public origin receives a secure host-only cookie. Browser
+session, bootstrap, and direct bearer credentials are distinct values.
 
 For every request, the gateway validates a single `Host` header against the
 listener and configured allowed hosts. Authenticated mutations validate a
@@ -58,7 +60,9 @@ Deployment requirements:
   rate limits, request-size limits, and logging policy;
 - never put a bootstrap token or direct bearer credential in a public URL,
   bookmark, support ticket, proxy log, or browser history;
-- use a new bootstrap credential when the one-shot value has been consumed.
+- use a new interactive bootstrap credential when its one-shot value has been
+  consumed; keep configured bootstrap credentials in the deployment secret
+  store and rotate them deliberately.
 
 An interactive loopback terminal launch can print a bootstrap URL to that
 terminal. Non-interactive or non-loopback starts require explicit bootstrap

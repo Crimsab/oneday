@@ -69,9 +69,22 @@ interface ErrorPayload {
   code?: string;
 }
 
+export interface AuthSessionStatus {
+  authenticated: boolean;
+  bootstrap_available: boolean;
+}
+
+export interface BootstrapSessionResponse {
+  session_token: string;
+  token_type: "Bearer";
+  expires_in: number;
+}
+
 interface RequestOptions extends RequestInit {
 	timeoutMs?: number;
 }
+
+export const AUTHENTICATION_REQUIRED_EVENT = "oneday:authentication-required";
 
 const READ_TIMEOUT_MS = 30_000;
 const MUTATION_TIMEOUT_MS = 360_000;
@@ -132,6 +145,14 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   })) as ErrorPayload;
   if (!response.ok) {
     const message = localizedError(payload, response.status);
+    if (
+      response.status === 401
+      && path !== "/api/auth/session"
+      && path !== "/api/auth/bootstrap"
+      && typeof window !== "undefined"
+    ) {
+      window.dispatchEvent(new CustomEvent(AUTHENTICATION_REQUIRED_EVENT));
+    }
     throw new ApiRequestError(message, response.status, payload);
   }
   return payload as T;
@@ -146,6 +167,18 @@ function localizedError(payload: ErrorPayload, status: number): string {
 
 export function getHealth(): Promise<Health> {
   return request<Health>("/api/health");
+}
+
+export function getAuthSession(): Promise<AuthSessionStatus> {
+  return request<AuthSessionStatus>("/api/auth/session");
+}
+
+export function bootstrapBrowserSession(token: string): Promise<BootstrapSessionResponse> {
+  return request<BootstrapSessionResponse>("/api/auth/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
 }
 
 export function getSetupReadiness(): Promise<SetupReadinessReport> {

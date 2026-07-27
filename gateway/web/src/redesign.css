@@ -41,6 +41,124 @@ select {
   font-family: var(--sans);
 }
 
+.authentication-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(208, 154, 72, 0.08), transparent 38rem),
+    var(--bg);
+  padding: clamp(20px, 5vw, 64px);
+}
+
+.authentication-panel {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 24px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  padding: clamp(24px, 5vw, 40px);
+}
+
+.authentication-brand {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+}
+
+.authentication-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.authentication-copy h1,
+.authentication-copy p {
+  margin: 0;
+}
+
+.authentication-copy h1 {
+  color: var(--text);
+  font-size: clamp(1.75rem, 5vw, 2.25rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.authentication-copy > p:last-child,
+.authentication-hint,
+.authentication-footnote {
+  color: var(--muted);
+}
+
+.authentication-kicker {
+  color: var(--accent);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.authentication-form {
+  display: grid;
+  gap: 10px;
+}
+
+.authentication-form label {
+  color: var(--text);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.authentication-form input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-2);
+  color: var(--text);
+  padding: 0 12px;
+}
+
+.authentication-hint,
+.authentication-error,
+.authentication-footnote {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.authentication-error {
+  color: #ff9b94;
+}
+
+.authentication-form .primary-button {
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--accent) 68%, var(--line));
+  border-radius: 7px;
+  background: var(--accent);
+  color: #161009;
+  font-weight: 700;
+  padding: 0 16px;
+}
+
+.authentication-form .primary-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 88%, white);
+}
+
+.authentication-form .primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,

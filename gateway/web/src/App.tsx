@@ -4,6 +4,8 @@ import { actionFingerprint, resolvePendingActionIdentity, type PendingActionIden
 import { actionModeToText, commandToAction, tabHotkeys } from "./commands";
 import {
   ApiRequestError,
+  AUTHENTICATION_REQUIRED_EVENT,
+  getAuthSession,
   cancelVisualGenerationJob,
   cleanupVisualAssetFiles,
   createSave,
@@ -36,6 +38,7 @@ import {
   updateVisualAssetPrompt,
   updateVisualProfile,
 } from "./api";
+import { AuthenticationGate } from "./components/AuthenticationGate";
 import { Composer } from "./components/Composer";
 import { Inspector } from "./components/Inspector";
 import { MiniGameHost } from "./components/MiniGameHost";
@@ -125,7 +128,59 @@ function initialOverlayFromLocation(): OverlayKind {
   return deepLinkOverlays.has(overlay) ? overlay : null;
 }
 
+type AuthenticationState =
+  | { kind: "checking"; bootstrapAvailable: false }
+  | { kind: "authenticated"; bootstrapAvailable: boolean }
+  | { kind: "required"; bootstrapAvailable: boolean };
+
 function App() {
+  const [authentication, setAuthentication] = useState<AuthenticationState>({
+    kind: "checking",
+    bootstrapAvailable: false,
+  });
+
+  useEffect(() => {
+    let active = true;
+    const requireAuthentication = () => {
+      setAuthentication((current) => ({
+        kind: "required",
+        bootstrapAvailable: current.bootstrapAvailable,
+      }));
+    };
+
+    window.addEventListener(AUTHENTICATION_REQUIRED_EVENT, requireAuthentication);
+    void getAuthSession()
+      .then((session) => {
+        if (!active) return;
+        setAuthentication({
+          kind: session.authenticated ? "authenticated" : "required",
+          bootstrapAvailable: session.bootstrap_available,
+        });
+      })
+      .catch(() => {
+        if (!active) return;
+        setAuthentication({ kind: "required", bootstrapAvailable: false });
+      });
+
+    return () => {
+      active = false;
+      window.removeEventListener(AUTHENTICATION_REQUIRED_EVENT, requireAuthentication);
+    };
+  }, []);
+
+  if (authentication.kind !== "authenticated") {
+    return (
+      <AuthenticationGate
+        checking={authentication.kind === "checking"}
+        bootstrapAvailable={authentication.bootstrapAvailable}
+      />
+    );
+  }
+
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
   const { t } = useTranslation(["common", "story", "notifications"]);
   const [stories, setStories] = useState<StorySummary[]>([]);
   const [storyId, setStoryId] = useState(() => initialAppRoute?.kind === "story" ? initialAppRoute.storyId : "");

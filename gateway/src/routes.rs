@@ -31,6 +31,7 @@ pub fn router(state: Arc<AppState>, auth_state: Arc<auth::AuthState>) -> Router 
             "/api/auth/bootstrap",
             get(auth::bootstrap_get).post(auth::bootstrap_post),
         )
+        .route("/api/auth/session", get(auth::session_status))
         .route(
             "/api/config/models",
             get(model_settings).put(update_model_settings),

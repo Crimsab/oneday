@@ -225,6 +225,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     if (path.endsWith("/events")) {
       return route.fulfill({ status: 200, contentType: "text/event-stream", headers: { "cache-control": "no-cache" }, body: `event: turn\ndata: ${JSON.stringify({ story_id: story.id, status: "event", client_turn: 4, event_type: "narrative.delta", event: { type: "narrative.delta", payload: { text: "A silver line appears." } }, message: "Narrative is streaming.", created_at: now })}\n\n` });
     }
+    if (path === "/api/auth/session") return json(route, { authenticated: true, bootstrap_available: true });
     if (path === "/api/health") return json(route, { status: "ok", stories: 1 });
     if (path === "/api/setup/readiness") return json(route, installationReadiness);
     if (path === "/api/stories" && request.method() === "GET") return json(route, [story]);
@@ -403,6 +404,7 @@ async function mockEmptyInstallation(page: Page, options: { readinessFailure?: b
     : null;
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/auth/session") return json(route, { authenticated: true, bootstrap_available: true });
     if (path === "/api/stories") return json(route, []);
     if (path === "/api/health") return json(route, { status: "ok", stories: 0 });
     if (path === "/api/setup/readiness") {
@@ -416,6 +418,25 @@ async function mockEmptyInstallation(page: Page, options: { readinessFailure?: b
   });
   return { releaseReadiness };
 }
+
+test("shows a reconnect gate before requesting protected application data", async ({ page }) => {
+  const protectedRequests: string[] = [];
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/auth/session") {
+      return json(route, { authenticated: false, bootstrap_available: true });
+    }
+    protectedRequests.push(path);
+    return json(route, { code: "authentication_required" }, 401);
+  });
+
+  await page.goto("/");
+
+  await expect(page.getByRole("heading", { name: "Reconnect to OneDay" })).toBeVisible();
+  await expect(page.getByLabel("Browser bootstrap token")).toHaveAttribute("type", "password");
+  await expect(page.getByRole("button", { name: "Reconnect" })).toBeDisabled();
+  expect(protectedRequests).toEqual([]);
+});
 
 test("submits once, clears optimistically, and renders stream/challenge lifecycle", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ showGenerationDiagnostics: true })));

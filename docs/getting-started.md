@@ -121,8 +121,10 @@ The gateway is loopback-first. An interactive local gateway can emit a one-shot
 bootstrap URL that establishes a browser session; it is secret material, not a
 shareable URL. When the gateway runs non-interactively or beyond loopback,
 configure the bootstrap credential and a trusted reverse-proxy origin before
-opening it remotely. A direct bearer token is a separate API/desktop-launch
-credential, not a value to put in a browser URL. See [Configuration](configuration.md#gateway-authentication-and-reverse-proxies).
+opening it remotely. That configured credential can be entered again when the
+web interface asks to reconnect; the browser does not store it. A direct bearer
+token is a separate API/desktop-launch credential, not a value to put in a
+browser URL. See [Configuration](configuration.md#gateway-authentication-and-reverse-proxies).
 
 ## Desktop profiles
 

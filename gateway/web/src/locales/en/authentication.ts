@@ -1,0 +1,15 @@
+export const authentication = {
+  kicker: "Protected browser session",
+  checkingTitle: "Checking access",
+  checkingDescription: "OneDay is confirming this browser session.",
+  title: "Reconnect to OneDay",
+  description: "The browser session expired or the gateway was updated. Enter the configured browser bootstrap token to continue.",
+  unavailable: "This gateway cannot create a browser session right now. Restart it with a configured bootstrap token, then reload this page.",
+  tokenLabel: "Browser bootstrap token",
+  tokenHint: "The token is exchanged for an HttpOnly session cookie and is never stored by the browser interface.",
+  invalid: "The token is invalid or unavailable. Check the configured gateway bootstrap token and try again.",
+  failed: "OneDay could not restore the browser session. Check the gateway and try again.",
+  submit: "Reconnect",
+  submitting: "Reconnecting",
+  privacy: "Story data remains on the gateway. Reconnecting does not reset or modify it.",
+} as const;

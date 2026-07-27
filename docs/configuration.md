@@ -46,8 +46,10 @@ configured for direct bearer access only.
 from the bootstrap token and is not a browser-login substitute. Both values
 must be at least 32 bytes and must remain in a secret store or process
 environment, never in `config.yaml` or a URL. Browser bootstrap sessions are
-not one-shot: the bootstrap credential is consumed once, while the issued
-browser session expires after 12 hours.
+signed and expire after 12 hours. Interactive bootstrap credentials are
+consumed once. An explicitly configured bootstrap credential remains available
+for reauthentication, while issued sessions remain valid across gateway
+restarts as long as that configured credential does not change.
 
 When serving a public origin through a reverse proxy:
 

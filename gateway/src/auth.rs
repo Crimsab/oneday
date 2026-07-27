@@ -5,13 +5,15 @@ use axum::extract::{Extension, Json, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, Method, Request, StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use hmac::{Hmac, Mac};
 use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
 const SESSION_COOKIE: &str = "oneday_session";
@@ -42,8 +44,8 @@ enum Rejection {
 #[derive(Debug)]
 struct Credentials {
     bootstrap_hash: Option<[u8; 32]>,
-    browser_session_hash: Option<[u8; 32]>,
-    browser_session_expires_at: Option<Instant>,
+    browser_session_key: Option<[u8; 32]>,
+    bootstrap_reusable: bool,
     direct_bearer_hash: Option<[u8; 32]>,
 }
 
@@ -51,6 +53,7 @@ struct Credentials {
 pub struct AuthState {
     allowed_hosts: HashSet<String>,
     credentials: Mutex<Credentials>,
+    session_ttl: Duration,
 }
 
 pub struct Startup {
@@ -110,6 +113,8 @@ impl AuthState {
                 bootstrap_token.as_deref(),
                 direct_bearer.as_deref(),
                 allowed_hosts,
+                provision == BootstrapProvision::Configured,
+                SESSION_TTL,
             )),
             interactive_bootstrap_url,
         })
@@ -119,15 +124,18 @@ impl AuthState {
         bootstrap_token: Option<&str>,
         direct_bearer: Option<&str>,
         allowed_hosts: HashSet<String>,
+        bootstrap_reusable: bool,
+        session_ttl: Duration,
     ) -> Self {
         Self {
             allowed_hosts,
             credentials: Mutex::new(Credentials {
                 bootstrap_hash: bootstrap_token.map(token_hash),
-                browser_session_hash: None,
-                browser_session_expires_at: None,
+                browser_session_key: bootstrap_token.map(browser_session_key),
+                bootstrap_reusable,
                 direct_bearer_hash: direct_bearer.map(token_hash),
             }),
+            session_ttl,
         }
     }
 
@@ -140,10 +148,14 @@ impl AuthState {
             return Err(Rejection::Unauthorized);
         }
 
-        let session_token = random_token();
-        credentials.bootstrap_hash = None;
-        credentials.browser_session_hash = Some(token_hash(&session_token));
-        credentials.browser_session_expires_at = Some(Instant::now() + SESSION_TTL);
+        let key = credentials
+            .browser_session_key
+            .as_ref()
+            .ok_or(Rejection::Forbidden)?;
+        let session_token = sign_browser_session(key, self.session_ttl)?;
+        if !credentials.bootstrap_reusable {
+            credentials.bootstrap_hash = None;
+        }
         Ok(session_token)
     }
 
@@ -173,30 +185,18 @@ impl AuthState {
             .ok()
             .and_then(|credentials| credentials.direct_bearer_hash)
             .is_some_and(|expected| constant_time_eq(&expected, &presented_hash));
-        let browser_matches = self.browser_session_matches_hash(&presented_hash);
+        let browser_matches = self.browser_session_matches(presented);
         direct_matches | browser_matches
     }
 
     fn browser_session_matches(&self, presented: &str) -> bool {
-        self.browser_session_matches_hash(&token_hash(presented))
-    }
-
-    fn browser_session_matches_hash(&self, presented_hash: &[u8; 32]) -> bool {
-        let Ok(mut credentials) = self.credentials.lock() else {
+        let Ok(credentials) = self.credentials.lock() else {
             return false;
         };
-        if credentials
-            .browser_session_expires_at
-            .is_some_and(|expires_at| Instant::now() >= expires_at)
-        {
-            credentials.browser_session_hash = None;
-            credentials.browser_session_expires_at = None;
-            return false;
-        }
         credentials
-            .browser_session_hash
+            .browser_session_key
             .as_ref()
-            .is_some_and(|expected| constant_time_eq(expected, presented_hash))
+            .is_some_and(|key| verify_browser_session(key, presented))
     }
 
     fn authorize_request(&self, request: &Request<Body>) -> Result<Access, Rejection> {
@@ -227,6 +227,14 @@ impl AuthState {
 
     pub fn is_authenticated(&self, headers: &HeaderMap) -> bool {
         self.authenticate_headers(headers).is_some()
+    }
+
+    fn bootstrap_available(&self) -> bool {
+        self.credentials
+            .lock()
+            .ok()
+            .and_then(|credentials| credentials.bootstrap_hash)
+            .is_some()
     }
 }
 
@@ -277,7 +285,7 @@ pub async fn bootstrap_get(
     Query(query): Query<BootstrapQuery>,
 ) -> Response {
     match state.exchange_bootstrap(&query.token) {
-        Ok(session_token) => bootstrap_response(&headers, session_token, true),
+        Ok(session_token) => bootstrap_response(&headers, session_token, state.session_ttl, true),
         Err(rejection) => rejection_response(rejection),
     }
 }
@@ -288,12 +296,36 @@ pub async fn bootstrap_post(
     Json(payload): Json<BootstrapRequest>,
 ) -> Response {
     match state.exchange_bootstrap(&payload.token) {
-        Ok(session_token) => bootstrap_response(&headers, session_token, false),
+        Ok(session_token) => bootstrap_response(&headers, session_token, state.session_ttl, false),
         Err(rejection) => rejection_response(rejection),
     }
 }
 
-fn bootstrap_response(headers: &HeaderMap, session_token: String, redirect: bool) -> Response {
+pub async fn session_status(
+    Extension(state): Extension<Arc<AuthState>>,
+    headers: HeaderMap,
+) -> Response {
+    let mut response = (
+        StatusCode::OK,
+        Json(json!({
+            "authenticated": state.is_authenticated(&headers),
+            "bootstrap_available": state.bootstrap_available(),
+        })),
+    )
+        .into_response();
+    apply_common_security_headers(response.headers_mut());
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+fn bootstrap_response(
+    headers: &HeaderMap,
+    session_token: String,
+    session_ttl: Duration,
+    redirect: bool,
+) -> Response {
     let secure = headers
         .get(header::HOST)
         .and_then(|value| value.to_str().ok())
@@ -306,7 +338,7 @@ fn bootstrap_response(headers: &HeaderMap, session_token: String, redirect: bool
             Json(json!({
                 "session_token": session_token,
                 "token_type": "Bearer",
-                "expires_in": SESSION_TTL.as_secs(),
+                "expires_in": session_ttl.as_secs(),
             })),
         )
             .into_response()
@@ -318,7 +350,7 @@ fn bootstrap_response(headers: &HeaderMap, session_token: String, redirect: bool
     };
     let cookie = format!(
         "{cookie_name}={session_token}; HttpOnly; SameSite=Strict; Path=/; Max-Age={}{}",
-        SESSION_TTL.as_secs(),
+        session_ttl.as_secs(),
         if secure { "; Secure" } else { "" },
     );
     if let Ok(cookie) = HeaderValue::from_str(&cookie) {
@@ -401,7 +433,12 @@ fn apply_document_security_headers(headers: &mut HeaderMap) {
 }
 
 fn is_public_request(method: &Method, path: &str) -> bool {
-    if method == Method::GET && matches!(path, "/api/health" | "/api/auth/bootstrap") {
+    if method == Method::GET
+        && matches!(
+            path,
+            "/api/health" | "/api/auth/bootstrap" | "/api/auth/session"
+        )
+    {
         return true;
     }
     if method == Method::POST && path == "/api/auth/bootstrap" {
@@ -590,6 +627,63 @@ fn validate_separate_credentials(bootstrap: &str, direct_bearer: &str) -> anyhow
 
 fn random_token() -> String {
     format!("{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
+}
+
+fn browser_session_key(bootstrap_token: &str) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    digest.update(b"oneday-browser-session-v1\0");
+    digest.update(bootstrap_token.as_bytes());
+    digest.finalize().into()
+}
+
+fn sign_browser_session(key: &[u8; 32], ttl: Duration) -> Result<String, Rejection> {
+    let expires_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| Rejection::Forbidden)?
+        .checked_add(ttl)
+        .ok_or(Rejection::Forbidden)?
+        .as_secs();
+    let payload = format!("{expires_at}:{}", Uuid::new_v4().simple());
+    let encoded_payload = URL_SAFE_NO_PAD.encode(payload.as_bytes());
+    let mut mac = Hmac::<Sha256>::new_from_slice(key).map_err(|_| Rejection::Forbidden)?;
+    mac.update(encoded_payload.as_bytes());
+    let signature = URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes());
+    Ok(format!("{encoded_payload}.{signature}"))
+}
+
+fn verify_browser_session(key: &[u8; 32], token: &str) -> bool {
+    let Some((encoded_payload, encoded_signature)) = token.rsplit_once('.') else {
+        return false;
+    };
+    let Ok(payload) = URL_SAFE_NO_PAD.decode(encoded_payload) else {
+        return false;
+    };
+    let Ok(payload) = std::str::from_utf8(&payload) else {
+        return false;
+    };
+    let Some((expires_at, nonce)) = payload.split_once(':') else {
+        return false;
+    };
+    if nonce.len() != 32 || !nonce.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return false;
+    }
+    let Ok(expires_at) = expires_at.parse::<u64>() else {
+        return false;
+    };
+    let Ok(now) = SystemTime::now().duration_since(UNIX_EPOCH) else {
+        return false;
+    };
+    if now.as_secs() >= expires_at {
+        return false;
+    }
+    let Ok(signature) = URL_SAFE_NO_PAD.decode(encoded_signature) else {
+        return false;
+    };
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(key) else {
+        return false;
+    };
+    mac.update(encoded_payload.as_bytes());
+    mac.verify_slice(&signature).is_ok()
 }
 
 fn token_hash(token: &str) -> [u8; 32] {
@@ -798,6 +892,8 @@ mod tests {
             Some("bootstrap-token-with-at-least-thirty-two-characters"),
             None,
             HashSet::from(["localhost:8788".to_string()]),
+            false,
+            SESSION_TTL,
         )
     }
 
@@ -835,6 +931,10 @@ mod tests {
             Ok(Access::Public)
         );
         assert_eq!(
+            state.authorize_request(&request(Method::GET, "/api/auth/session")),
+            Ok(Access::Public)
+        );
+        assert_eq!(
             state.authorize_request(&request(Method::GET, "/assets/app.js")),
             Ok(Access::Public)
         );
@@ -859,6 +959,46 @@ mod tests {
     }
 
     #[test]
+    fn configured_bootstrap_is_reusable_and_sessions_survive_restart() {
+        let bootstrap = "configured-bootstrap-token-with-thirty-two-plus-characters";
+        let allowed_hosts = HashSet::from(["localhost:8788".to_string()]);
+        let state = AuthState::new(
+            Some(bootstrap),
+            None,
+            allowed_hosts.clone(),
+            true,
+            SESSION_TTL,
+        );
+
+        let first_session = state
+            .exchange_bootstrap(bootstrap)
+            .expect("configured bootstrap exchange succeeds");
+        let second_session = state
+            .exchange_bootstrap(bootstrap)
+            .expect("configured bootstrap remains available for reauthentication");
+        assert_ne!(first_session, second_session);
+        assert!(state.browser_session_matches(&first_session));
+
+        let restarted = AuthState::new(Some(bootstrap), None, allowed_hosts, true, SESSION_TTL);
+        assert!(restarted.browser_session_matches(&first_session));
+        assert!(restarted.bootstrap_available());
+    }
+
+    #[test]
+    fn signed_browser_sessions_reject_tampering() {
+        let state = test_state();
+        let session = state
+            .exchange_bootstrap("bootstrap-token-with-at-least-thirty-two-characters")
+            .expect("bootstrap exchange succeeds");
+        let mut tampered = session.into_bytes();
+        let last = tampered.last_mut().expect("session is not empty");
+        *last = if *last == b'a' { b'b' } else { b'a' };
+        let tampered = String::from_utf8(tampered).expect("session remains utf-8");
+
+        assert!(!state.browser_session_matches(&tampered));
+    }
+
+    #[test]
     fn direct_bearer_is_separate_from_one_shot_bootstrap() {
         let bootstrap = "browser-bootstrap-token-with-thirty-two-plus-characters";
         let direct = "desktop-per-launch-bearer-with-thirty-two-plus-characters";
@@ -866,6 +1006,8 @@ mod tests {
             Some(bootstrap),
             Some(direct),
             HashSet::from(["localhost:8788".to_string()]),
+            false,
+            SESSION_TTL,
         );
 
         let mut native = request(Method::GET, "/api/stories");
@@ -941,6 +1083,8 @@ mod tests {
             None,
             Some(direct),
             HashSet::from(["localhost:8788".to_string()]),
+            false,
+            SESSION_TTL,
         ));
 
         let mut protected = request(Method::GET, "/api/stories");
@@ -1080,7 +1224,7 @@ mod tests {
     fn remote_sessions_use_secure_cookies_and_loopback_development_remains_usable() {
         let remote_headers =
             HeaderMap::from_iter([(header::HOST, HeaderValue::from_static("oneday.example.com"))]);
-        let remote = bootstrap_response(&remote_headers, "session".into(), false);
+        let remote = bootstrap_response(&remote_headers, "session".into(), SESSION_TTL, false);
         assert!(remote.headers()[header::SET_COOKIE]
             .to_str()
             .unwrap()
@@ -1092,7 +1236,7 @@ mod tests {
 
         let local_headers =
             HeaderMap::from_iter([(header::HOST, HeaderValue::from_static("localhost:8788"))]);
-        let local = bootstrap_response(&local_headers, "session".into(), true);
+        let local = bootstrap_response(&local_headers, "session".into(), SESSION_TTL, true);
         let cookie = local.headers()[header::SET_COOKIE].to_str().unwrap();
         assert!(cookie.contains("HttpOnly; SameSite=Strict"));
         assert!(!cookie.contains("; Secure"));
@@ -1133,7 +1277,7 @@ mod tests {
 
         let headers =
             HeaderMap::from_iter([(header::HOST, HeaderValue::from_static("localhost:8788"))]);
-        let bootstrap = bootstrap_response(&headers, "session".into(), true);
+        let bootstrap = bootstrap_response(&headers, "session".into(), SESSION_TTL, true);
         assert_eq!(
             bootstrap.headers()["content-security-policy"],
             CONTENT_SECURITY_POLICY

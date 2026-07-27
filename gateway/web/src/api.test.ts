@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { setInterfaceLocale } from "./i18n";
 import {
   ApiRequestError,
+  AUTHENTICATION_REQUIRED_EVENT,
+  bootstrapBrowserSession,
   cancelVisualGenerationJob,
   cleanupVisualAssetFiles,
   createStory,
@@ -10,6 +12,7 @@ import {
   getChapters,
   getCommandDescriptors,
   getHistory,
+  getAuthSession,
   getMessageAudio,
   getMessageDiagnostics,
   getModelDiscovery,
@@ -41,6 +44,42 @@ describe("api request handling", () => {
   it("returns JSON payloads from the gateway", async () => {
     mockFetch(new Response(JSON.stringify([{ id: "story", name: "Story" }]), { status: 200 }));
     await expect(getStories()).resolves.toMatchObject([{ id: "story", name: "Story" }]);
+  });
+
+  it("checks the browser session before protected application requests", async () => {
+    mockFetch(new Response(JSON.stringify({ authenticated: false, bootstrap_available: true }), { status: 200 }));
+
+    await expect(getAuthSession()).resolves.toEqual({
+      authenticated: false,
+      bootstrap_available: true,
+    });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/auth/session",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+  });
+
+  it("exchanges a bootstrap token without storing it in the client", async () => {
+    mockFetch(new Response(JSON.stringify({ session_token: "signed", token_type: "Bearer", expires_in: 43_200 }), { status: 200 }));
+
+    await bootstrapBrowserSession("browser-bootstrap");
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/auth/bootstrap",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ token: "browser-bootstrap" }),
+      }),
+    );
+  });
+
+  it("announces authentication loss when a protected request returns 401", async () => {
+    const listener = vi.fn();
+    window.addEventListener(AUTHENTICATION_REQUIRED_EVENT, listener);
+    mockFetch(new Response(JSON.stringify({ code: "authentication_required" }), { status: 401 }));
+
+    await expect(getStories()).rejects.toMatchObject({ status: 401 });
+    expect(listener).toHaveBeenCalledOnce();
+    window.removeEventListener(AUTHENTICATION_REQUIRED_EVENT, listener);
   });
 
   it("reads the protected installation readiness report", async () => {

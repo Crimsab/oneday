@@ -56,9 +56,13 @@ and migrated automatically.
   credentials.
 - Confirm the proxy preserves the public `Host` header and that the host (with
   a non-default port if applicable) appears in `ONEDAY_GATEWAY_ALLOWED_HOSTS`.
-- A one-shot bootstrap URL is consumed after use. Start a new local interactive
-  gateway or provide a fresh configured bootstrap token; do not reuse a URL
-  from logs or browser history.
+- A bootstrap URL emitted by an interactive local start is one-shot. Start a
+  new interactive gateway rather than reusing a URL from logs or browser
+  history. A configured `ONEDAY_GATEWAY_BOOTSTRAP_TOKEN` can be entered again
+  in the reconnect screen and remains valid until deliberately rotated.
+- If the reconnect screen appears after a deployment, enter the configured
+  bootstrap token once. Signed browser sessions then survive later gateway
+  restarts and expire after 12 hours.
 - Do not send the direct bearer credential as a bootstrap token. It intentionally
   disables browser bootstrap when it is the only configured credential.
 - Remote browser access requires HTTPS. Plain HTTP is only accepted for
