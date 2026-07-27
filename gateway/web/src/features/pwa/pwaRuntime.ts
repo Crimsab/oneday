@@ -17,16 +17,7 @@ export async function activateWaitingUpdate(): Promise<void> {
     window.location.reload();
     return;
   }
-
-  const controllerChanged = new Promise<void>((resolve) => {
-    navigator.serviceWorker.addEventListener("controllerchange", () => resolve(), { once: true });
-  });
-  await applyWaitingUpdate(false);
-  await Promise.race([
-    controllerChanged,
-    new Promise<void>((resolve) => window.setTimeout(resolve, 4_000)),
-  ]);
-  window.location.reload();
+  await applyWaitingUpdate();
 }
 
 function startRegistration(): void {

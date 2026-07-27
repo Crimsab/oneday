@@ -39,6 +39,7 @@ describe("PWA cache boundary", () => {
     expect(pwaWorkbox.navigateFallbackDenylist).toEqual(NETWORK_ONLY_PATH_PATTERNS);
     expect(pwaWorkbox.runtimeCaching.map((route) => route.urlPattern)).toEqual(NETWORK_ONLY_URL_PATTERNS);
     expect(pwaWorkbox.runtimeCaching.every((route) => route.handler === "NetworkOnly")).toBe(true);
+    expect(pwaWorkbox).toMatchObject({ clientsClaim: true, skipWaiting: false });
   });
 });
 

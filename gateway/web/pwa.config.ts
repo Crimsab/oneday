@@ -41,7 +41,7 @@ export const pwaManifest = {
 
 export const pwaWorkbox = {
   cleanupOutdatedCaches: true,
-  clientsClaim: false,
+  clientsClaim: true,
   skipWaiting: false,
   globPatterns: ["**/*.{html,js,css,woff2,png,svg,ico,webmanifest}"],
   navigateFallback: "index.html",
