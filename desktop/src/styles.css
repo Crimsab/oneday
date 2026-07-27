@@ -1,10 +1,10 @@
-:root { font-family: "Segoe UI", system-ui, sans-serif; color: #edf1f3; background: #0b1013; font-synthesis: none; }
+:root { font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; color: #edf1f3; background: #0b1013; font-synthesis: none; }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; min-width: 360px; min-height: 100vh; background: radial-gradient(circle at 80% -10%, #25333d 0, transparent 36%), #0b1013; }
 button, input, select { font: inherit; }
 button, select, input { border-radius: 8px; border: 1px solid #334047; }
-button { min-height: 42px; padding: 0 16px; color: #101415; background: #e7c56c; font-weight: 700; cursor: pointer; }
+button { min-height: 42px; padding: 0 16px; display: inline-flex; align-items: center; justify-content: center; color: #101415; background: #e7c56c; font-weight: 700; line-height: 1.2; text-align: center; cursor: pointer; }
 button:hover:not(:disabled) { background: #f0d283; }
 button:disabled { opacity: .46; cursor: not-allowed; }
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #e7c56c; outline-offset: 2px; }
@@ -25,6 +25,7 @@ h2 { margin-bottom: 6px; font-size: 1rem; }
 form label { display: block; margin-bottom: 7px; font-weight: 700; font-size: .86rem; }
 .field-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 .profile-actions, .local-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.profile-actions button { min-height: 44px; padding-inline: 18px; font-size: .9375rem; font-weight: 650; letter-spacing: -.01em; }
 .profile-actions .selected { border-color: #e7c56c; box-shadow: inset 0 0 0 1px #e7c56c; }
 input[type="url"], select { min-width: 0; min-height: 42px; padding: 0 12px; color: #edf1f3; background: #0b1114; }
 .hint { margin: 8px 0 0; font-size: .78rem; }
