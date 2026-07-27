@@ -20,7 +20,7 @@ const copy = {
     installBody: "Open OneDay like a desktop app while keeping stories safely on your server.",
     install: "Install",
     updateTitle: "Update available",
-    updateBody: "A new OneDay build is ready. Apply it when you are ready to reload.",
+    updateBody: "Reload to apply the latest fixes. Your stories stay safely on the server.",
     update: "Update now",
     later: "Later",
     offlineTitle: "You are offline",
@@ -36,7 +36,7 @@ const copy = {
     installBody: "Apri OneDay come app desktop mantenendo le storie al sicuro sul tuo server.",
     install: "Installa",
     updateTitle: "Aggiornamento disponibile",
-    updateBody: "Una nuova versione di OneDay è pronta. Applicala quando puoi ricaricare l'app.",
+    updateBody: "Ricarica per applicare le ultime correzioni. Le tue storie restano al sicuro sul server.",
     update: "Aggiorna ora",
     later: "Più tardi",
     offlineTitle: "Sei offline",
@@ -175,7 +175,7 @@ export function PwaStatus() {
         </section>
       )}
 
-      {installPrompt && !installDismissed && <div className="pwa-install-control">
+      {installPrompt && !installDismissed && !connectionMessage && !updateReady && <div className="pwa-install-control">
         <button type="button" className="pwa-install-trigger" onClick={() => setInstallOpen((value) => !value)} aria-expanded={installOpen} aria-controls="pwa-install-popover" title={strings.installTitle}>
           <Download size={16} aria-hidden="true" /><span className="sr-only">{strings.installTitle}</span>
         </button>

@@ -1798,20 +1798,20 @@ summary:focus-visible {
 .mobile-rail-backdrop { display: none; }
 
 .story-library-drawer {
-  width: min(980px, calc(100vw - 32px));
+  width: min(1320px, calc(100vw - 32px));
   height: min(790px, calc(100dvh - 32px));
   max-height: calc(100dvh - 32px);
   grid-template-rows: 44px auto minmax(0, 1fr);
 }
-.story-library-toolbar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "tabs actions actions" "search search time"; align-items: center; gap: 10px 12px; border-bottom: 1px solid var(--line-soft); padding: 12px 14px; }
+.story-library-toolbar { display: grid; grid-template-columns: auto auto minmax(220px, 1fr) auto; grid-template-areas: "tabs actions search time"; align-items: center; gap: 10px; border-bottom: 1px solid var(--line-soft); padding: 10px 14px; }
 .story-library-tabs { grid-area: tabs; display: flex; gap: 4px; }
 .story-library-tabs button,
 .story-library-actions button,
 .story-library-empty button,
-.story-library-edit-actions button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 7px; background: transparent; padding: 0 10px; color: var(--muted); cursor: pointer; }
+.story-library-edit-actions button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid transparent; border-radius: 7px; background: transparent; padding: 0 10px; color: var(--muted); cursor: pointer; line-height: 1; white-space: nowrap; }
 .story-library-tabs button.active { border-color: color-mix(in srgb, var(--accent) 52%, var(--line)); background: #1a2025; color: var(--text); }
 .story-library-actions { grid-area: actions; min-width: 0; display: flex; justify-content: flex-end; gap: 6px; }
-.story-library-actions button { flex: 0 0 auto; white-space: nowrap; }
+.story-library-actions button { flex: 0 0 auto; }
 .story-library-actions button { border-color: var(--line-soft); }
 .story-library-actions .story-library-new,
 .story-library-edit-actions .primary { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); color: var(--text); }
@@ -1879,6 +1879,11 @@ summary:focus-visible {
 .story-detail-list p, .story-detail-state { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.45; }
 .story-detail-state { padding: 24px; text-align: center; }
 .story-detail-state.error { color: var(--danger); }
+
+@media (max-width: 1100px) {
+  .story-library-drawer { width: min(980px, calc(100vw - 32px)); }
+  .story-library-toolbar { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "tabs actions actions" "search search time"; padding-block: 12px; }
+}
 
 @media (max-width: 860px) {
   .app-shell.rail-expanded,

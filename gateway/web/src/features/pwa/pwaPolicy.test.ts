@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { NETWORK_ONLY_PATH_PATTERNS, NETWORK_ONLY_URL_PATTERNS, isServerCanonicalPath, pwaManifest, pwaWorkbox } from "../../../pwa.config";
 import { checkServerConnectivity } from "./PwaStatus";
@@ -65,5 +66,12 @@ describe("server connectivity", () => {
   it("reports a reachable network with an unavailable server", async () => {
     const request = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("network error"));
     await expect(checkServerConnectivity(true, request)).resolves.toBe("server-unreachable");
+  });
+});
+
+describe("PWA status surface", () => {
+  it("does not overlap the install action with higher-priority status cards", () => {
+    const source = readFileSync(new URL("PwaStatus.tsx", import.meta.url), "utf8");
+    expect(source).toContain("!connectionMessage && !updateReady");
   });
 });
