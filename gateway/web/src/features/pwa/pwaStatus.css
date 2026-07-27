@@ -29,11 +29,6 @@
   grid-template-columns: 20px minmax(0, 1fr) 28px;
 }
 
-.pwa-install-control { position: fixed; inset-block-end: 16px; inset-inline-end: 16px; z-index: 20; pointer-events: auto; }
-.pwa-install-trigger { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; background: #131a1e; color: var(--text); cursor: pointer; }
-.pwa-install-trigger:hover, .pwa-install-trigger:focus-visible { border-color: color-mix(in srgb, var(--accent) 60%, var(--line)); }
-.pwa-install-popover { position: absolute; inset-block-end: calc(100% + 8px); inset-inline-end: 0; width: min(300px, calc(100vw - 32px)); display: grid; gap: 8px; border: 1px solid var(--line); border-radius: 7px; background: #131a1e; padding: 14px; box-shadow: 0 12px 32px rgba(0,0,0,.35); }
-.pwa-install-popover p { margin: 0; color: var(--muted); font-size: .8125rem; line-height: 1.45; }
 
 .pwa-status-card > svg {
   margin-block-start: 1px;

@@ -7,12 +7,15 @@ import "./styles.css";
 import "./redesign.css";
 import { installSupportDiagnostics } from "./supportDiagnostics";
 import { PwaStatus } from "./features/pwa/PwaStatus";
+import { PwaInstallProvider } from "./features/pwa/PwaInstallContext";
 
 installSupportDiagnostics();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <App />
-    <PwaStatus />
+    <PwaInstallProvider>
+      <App />
+      <PwaStatus />
+    </PwaInstallProvider>
   </StrictMode>,
 );

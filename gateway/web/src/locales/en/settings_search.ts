@@ -33,5 +33,6 @@ export const settings_search = {
   "generation-diagnostics": ["Message diagnostics", "Choose whether to show redacted provider, model, latency, and metadata beneath messages."],
   "preferences-portability": ["Preference portability", "Export, import, or reset OneDay’s local player preferences."],
   "theme-portability": ["Theme portability", "Export or import a personal theme and optional locally stored fonts."],
+  "pwa-installation": ["OneDay app on this device", "Install the PWA or permanently hide the suggestion."],
   "support-bundle": ["Support bundle", "Create a redacted technical report for support."],
 } as const;

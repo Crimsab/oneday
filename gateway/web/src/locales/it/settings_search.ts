@@ -33,5 +33,6 @@ export const settings_search = {
   "generation-diagnostics": ["Diagnostica messaggi", "Scegli se mostrare provider, modello, latenza e metadati redatti sotto i messaggi."],
   "preferences-portability": ["Portabilità preferenze", "Esporta, importa o ripristina le preferenze locali del giocatore."],
   "theme-portability": ["Portabilità del tema", "Esporta o importa un tema personale e gli eventuali font conservati in locale."],
+  "pwa-installation": ["App OneDay sul dispositivo", "Installa la PWA o nascondi definitivamente il suggerimento."],
   "support-bundle": ["Pacchetto assistenza", "Crea un report tecnico redatto per l’assistenza."],
 } as const;

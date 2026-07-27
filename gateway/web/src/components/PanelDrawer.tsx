@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { ImageOff, Search, SlidersHorizontal } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
   commandDescriptors as resolveCommandDescriptors,
@@ -493,6 +494,31 @@ function VisualDirectionSettings({
   );
   const filteredAssets = useMemo(() => filterMediaAssets(assets, mediaFilters), [assets, mediaFilters]);
   const activityJobs = useMemo(() => mediaActivity(jobs), [jobs]);
+  const kindOptions = useMemo(() => [
+    { value: "all", label: t("drawer:mediaStudio.allKinds") },
+    ...[...new Set(assets.map((asset) => asset.kind))].map((kind) => ({ value: kind, label: catalogLabel(`drawer:assetKind.${kind}`, kind) })),
+  ], [assets, t]);
+  const statusOptions = useMemo(() => [
+    { value: "all", label: t("drawer:mediaStudio.allStatuses") },
+    ...[...new Set(assets.map((asset) => asset.status))].map((status) => ({ value: status, label: catalogLabel(`drawer:assetStatus.${status}`, status) })),
+  ], [assets, t]);
+  const locationOptions = useMemo(() => [
+    { value: "all", label: t("drawer:mediaStudio.allLocations") },
+    ...[...new Set(assets.map((asset) => asset.canonical_location_id).filter((value): value is string => Boolean(value)))].map((value) => ({ value, label: value })),
+  ], [assets, t]);
+  const entityOptions = useMemo(() => [
+    { value: "all", label: t("drawer:mediaStudio.allEntities") },
+    ...[...new Set(assets.map((asset) => asset.canonical_entity_id).filter((value): value is string => Boolean(value)))].map((value) => ({ value, label: value })),
+  ], [assets, t]);
+  const turnOptions = useMemo(() => [
+    { value: "all", label: t("drawer:mediaStudio.allTurns") },
+    ...[...new Set(assets.map((asset) => asset.turn).filter((turn) => turn > 0))].sort((a, b) => b - a).map((turn) => ({ value: String(turn), label: String(turn) })),
+  ], [assets, t]);
+  const sortOptions = useMemo(() => [
+    { value: "recent", label: t("drawer:mediaStudio.recent") },
+    { value: "turn", label: t("drawer:mediaStudio.turn") },
+    { value: "name", label: t("drawer:mediaStudio.name") },
+  ], [t]);
   const selectedAsset = useMemo(
     () =>
       assets.find((asset) => asset.id === selectedAssetId) ??
@@ -707,19 +733,26 @@ function VisualDirectionSettings({
           </div>
           {mediaTab === "library" && <>
           <div className="media-studio-filters">
-            <label><span className="sr-only">{t("drawer:mediaStudio.search")}</span><input type="search" value={mediaFilters.query} onChange={(event) => setMediaFilters((current) => ({ ...current, query: event.target.value }))} placeholder={t("drawer:mediaStudio.search")} /></label>
-            <select aria-label={t("drawer:mediaStudio.kind")} value={mediaFilters.kind} onChange={(event) => setMediaFilters((current) => ({ ...current, kind: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allKinds")}</option>{[...new Set(assets.map((asset) => asset.kind))].map((kind) => <option key={kind} value={kind}>{t(`drawer:assetKind.${kind}`, { defaultValue: kind.replaceAll("_", " ") })}</option>)}</select>
-            <select aria-label={t("drawer:mediaStudio.status")} value={mediaFilters.status} onChange={(event) => setMediaFilters((current) => ({ ...current, status: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allStatuses")}</option>{[...new Set(assets.map((asset) => asset.status))].map((status) => <option key={status} value={status}>{t(`drawer:assetStatus.${status}`, { defaultValue: status })}</option>)}</select>
-            <select aria-label={t("drawer:mediaStudio.location")} value={mediaFilters.location} onChange={(event) => setMediaFilters((current) => ({ ...current, location: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allLocations")}</option>{[...new Set(assets.map((asset) => asset.canonical_location_id).filter(Boolean))].map((location) => <option key={location} value={location}>{location}</option>)}</select>
-            <select aria-label={t("drawer:mediaStudio.entity")} value={mediaFilters.entity} onChange={(event) => setMediaFilters((current) => ({ ...current, entity: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allEntities")}</option>{[...new Set(assets.map((asset) => asset.canonical_entity_id).filter(Boolean))].map((entity) => <option key={entity} value={entity}>{entity}</option>)}</select>
-            <select aria-label={t("drawer:mediaStudio.turn")} value={mediaFilters.turn} onChange={(event) => setMediaFilters((current) => ({ ...current, turn: event.target.value }))}><option value="all">{t("drawer:mediaStudio.allTurns")}</option>{[...new Set(assets.map((asset) => asset.turn).filter((turn) => turn > 0))].sort((a, b) => b - a).map((turn) => <option key={turn} value={turn}>{turn}</option>)}</select>
-            <select aria-label={t("drawer:mediaStudio.sort")} value={mediaFilters.sort} onChange={(event) => setMediaFilters((current) => ({ ...current, sort: event.target.value as typeof current.sort }))}><option value="recent">{t("drawer:mediaStudio.recent")}</option><option value="turn">{t("drawer:mediaStudio.turn")}</option><option value="name">{t("drawer:mediaStudio.name")}</option></select>
+            <label className="media-search-field"><Search size={17} aria-hidden="true" /><span className="sr-only">{t("drawer:mediaStudio.search")}</span><input type="search" value={mediaFilters.query} onChange={(event) => setMediaFilters((current) => ({ ...current, query: event.target.value }))} placeholder={t("drawer:mediaStudio.search")} /></label>
+            <CustomSelect ariaLabel={t("drawer:mediaStudio.kind")} value={mediaFilters.kind} options={kindOptions} onChange={(kind) => setMediaFilters((current) => ({ ...current, kind }))} />
+            <CustomSelect ariaLabel={t("drawer:mediaStudio.status")} value={mediaFilters.status} options={statusOptions} onChange={(status) => setMediaFilters((current) => ({ ...current, status }))} />
+            <CustomSelect ariaLabel={t("drawer:mediaStudio.sort")} value={mediaFilters.sort} options={sortOptions} onChange={(sort) => setMediaFilters((current) => ({ ...current, sort: sort as typeof current.sort }))} />
+            <details className="media-filter-details">
+              <summary><SlidersHorizontal size={15} aria-hidden="true" /> {t("drawer:mediaStudio.moreFilters")}</summary>
+              <div>
+                <CustomSelect ariaLabel={t("drawer:mediaStudio.location")} value={mediaFilters.location} options={locationOptions} onChange={(location) => setMediaFilters((current) => ({ ...current, location }))} />
+                <CustomSelect ariaLabel={t("drawer:mediaStudio.entity")} value={mediaFilters.entity} options={entityOptions} onChange={(entity) => setMediaFilters((current) => ({ ...current, entity }))} />
+                <CustomSelect ariaLabel={t("drawer:mediaStudio.turn")} value={String(mediaFilters.turn)} options={turnOptions} onChange={(turn) => setMediaFilters((current) => ({ ...current, turn }))} />
+              </div>
+            </details>
           </div>
           <div className="visual-asset-list media-asset-gallery">
             {filteredAssets.map((asset) => (
-              <button type="button" className={`visual-asset-row ${asset.status} ${asset.id === selectedAsset?.id ? "selected" : ""}`} key={asset.id} title={asset.prompt} onClick={() => setSelectedAssetId(asset.id)}>
-                {readyAssetUrl(asset) ? <img src={readyAssetUrl(asset)} alt="" /> : <span className="media-asset-placeholder" aria-hidden="true" />}
-                <span>{t(`drawer:assetKind.${asset.kind}`, { defaultValue: asset.kind.replaceAll("_", " ") })}</span><strong>{asset.subject}</strong><small>{t(`drawer:canonStatus.${asset.canon_status}`, { defaultValue: asset.canon_status })} · {t(`drawer:assetStatus.${asset.status}`, { defaultValue: asset.status })}</small>
+              <button type="button" className={`visual-asset-row kind-${asset.kind} ${asset.status} ${asset.id === selectedAsset?.id ? "selected" : ""}`} key={asset.id} title={asset.prompt} onClick={() => setSelectedAssetId(asset.id)}>
+                <span className="media-asset-visual">
+                  {readyAssetUrl(asset) ? <img src={readyAssetUrl(asset)} alt="" /> : <span className="media-asset-placeholder"><ImageOff size={22} aria-hidden="true" /><small>{catalogLabel(`drawer:assetStatus.${asset.status}`, asset.status)}</small></span>}
+                </span>
+                <span className="media-asset-copy"><span>{catalogLabel(`drawer:assetKind.${asset.kind}`, asset.kind)}</span><strong>{asset.subject}</strong><small>{catalogLabel(`drawer:canonStatus.${asset.canon_status}`, asset.canon_status)} · {catalogLabel(`drawer:assetStatus.${asset.status}`, asset.status)}</small></span>
               </button>
             ))}
           </div>
@@ -787,7 +820,7 @@ function VisualDirectionSettings({
           )}
           {mediaTab === "library" && selectedAsset && (
             <div className="visual-asset-editor">
-              <div className="visual-asset-preview">
+              <div className={`visual-asset-preview kind-${selectedAsset.kind}`}>
                 {selectedImageUrl ? (
                   <img src={activeVersion?.url || selectedImageUrl} alt="" />
                 ) : (
@@ -2203,6 +2236,12 @@ function storyDefinitionSummary(value: unknown): {
 
 function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function catalogLabel(key: string, raw: string): string {
+  if (i18n.exists(key)) return i18n.t(key);
+  const normalized = raw.replaceAll("_", " ").trim();
+  return normalized ? normalized.charAt(0).toLocaleUpperCase() + normalized.slice(1) : raw;
 }
 
 function compactId(value: string): string {

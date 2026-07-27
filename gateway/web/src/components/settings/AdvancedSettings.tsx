@@ -6,6 +6,7 @@ import { commitThemeFontImport, listStoredFonts, rollbackThemeFontImport, stageT
 import { exportTheme, previewThemeImport, type ThemePreview } from "../../features/themes/themePortability";
 import { exportThemeBundle, previewThemeBundle, type ThemeBundlePreview } from "../../features/themes/themeBundle";
 import { buildSupportBundle, clearSupportEvents, getSupportEvents, type SupportEvent } from "../../supportDiagnostics";
+import { PwaInstallSettings } from "../../features/pwa/PwaInstallSettings";
 import type { AppPreferences, ModelSettings, StorySnapshot } from "../../types";
 import { SettingsToggle } from "./GeneralSettings";
 
@@ -217,6 +218,7 @@ export function AdvancedSettings({
         </div>
         {themePreview && <div className="theme-import-preview" role="region" aria-label={themePreview.theme.meta.name}><strong>{themePreview.theme.meta.name}</strong>{themePreview.changes.length ? <dl>{themePreview.changes.map((change) => <div key={change.key}><dt>{change.key}</dt><dd><span>{change.before}</span><span>{change.after}</span></dd></div>)}</dl> : <p>{t("advanced.imported")}</p>}{themePreview.missingFontIds.length > 0 && <p className="settings-inline-warning">{themePreview.missingFontIds.join(", ")}</p>}<div className="advanced-reset-confirm"><button type="button" onClick={() => setThemePreview(null)}>{t("common:cancel")}</button><button type="button" className="primary-action" onClick={() => void applyPortableTheme()}>{t("advanced.import")}</button></div></div>}
       </section>}
+      {scope === "player" && <PwaInstallSettings />}
     </div>
   );
 }

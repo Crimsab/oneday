@@ -1459,8 +1459,6 @@ function AuthenticatedApp() {
     navigateAppRoute({ kind: "library" }, "push", returnTo);
   };
 
-  const openSetup = () => navigateAppRoute({ kind: "setup" }, "push");
-
   const closeRoutedSurface = () => {
     const current = parseAppRoute(window.location.pathname);
     if (current?.kind === "story" && current.section !== "translations") {
@@ -1565,7 +1563,7 @@ function AuthenticatedApp() {
         onToggleLeftRail={toggleLeftRail}
         onToggleInspector={toggleInspector}
         onOpen={openOverlay}
-        onOpenSetup={openSetup}
+        onOpenSetup={openInstallationConfiguration}
         modelSettings={modelSettings}
         translationCenterOpen={translationCenterOpen}
         onTranslationCenterOpenChange={setTranslationRouteOpen}

@@ -24,6 +24,7 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
   const id = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const placementFrameRef = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)));
   const [position, setPosition] = useState({ top: 0, left: 0, width: 180 });
@@ -46,11 +47,22 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
     });
   };
 
+  const schedulePlacement = () => {
+    if (placementFrameRef.current !== null) return;
+    placementFrameRef.current = window.requestAnimationFrame(() => {
+      placementFrameRef.current = null;
+      placeMenu();
+    });
+  };
+
   useLayoutEffect(() => {
     if (!open) return;
     placeMenu();
-    const frame = window.requestAnimationFrame(placeMenu);
-    return () => window.cancelAnimationFrame(frame);
+    schedulePlacement();
+    return () => {
+      if (placementFrameRef.current !== null) window.cancelAnimationFrame(placementFrameRef.current);
+      placementFrameRef.current = null;
+    };
   }, [open, options.length]);
 
   useEffect(() => {
@@ -59,14 +71,15 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
       const target = event.target as Node;
       if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    const reposition = () => placeMenu();
     window.addEventListener("pointerdown", closeOutside, true);
-    window.addEventListener("resize", reposition);
-    window.addEventListener("scroll", reposition, true);
+    window.addEventListener("resize", schedulePlacement);
+    window.addEventListener("scroll", schedulePlacement, { capture: true, passive: true });
     return () => {
       window.removeEventListener("pointerdown", closeOutside, true);
-      window.removeEventListener("resize", reposition);
-      window.removeEventListener("scroll", reposition, true);
+      window.removeEventListener("resize", schedulePlacement);
+      window.removeEventListener("scroll", schedulePlacement, true);
+      if (placementFrameRef.current !== null) window.cancelAnimationFrame(placementFrameRef.current);
+      placementFrameRef.current = null;
     };
   }, [open]);
 
@@ -111,7 +124,10 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
         aria-expanded={open}
         aria-haspopup="listbox"
         disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          if (!open) placeMenu();
+          setOpen((current) => !current);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape" && open) {
             event.preventDefault();
@@ -151,7 +167,9 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
               className={index === activeIndex ? "active" : ""}
               disabled={option.disabled}
               key={option.value}
-              onPointerMove={() => setActiveIndex(index)}
+              onPointerMove={() => {
+                if (activeIndex !== index) setActiveIndex(index);
+              }}
               onClick={() => choose(option)}
             >
               {optionLabel(option)}

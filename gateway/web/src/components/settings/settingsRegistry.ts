@@ -64,6 +64,7 @@ export const settingsSearchEntries: SettingsSearchEntry[] = [
   entry("generation-diagnostics", "preferences", "Message diagnostics", "Choose whether to show redacted generation details below messages.", "trace telemetry provider debugging"),
   entry("preferences-portability", "preferences", "Preference portability", "Export, import, or reset browser preferences.", "json backup restore defaults"),
   entry("theme-portability", "preferences", "Theme portability", "Export or import a personal theme and optional locally stored fonts.", "theme zip font browser local"),
+  entry("pwa-installation", "preferences", "Install OneDay app", "Install or permanently hide the browser PWA prompt.", "pwa device download browser app"),
   entry("provider-order", "operator", "Provider routing", "Set AI provider priority and enablement.", "routing fallback codex"),
   entry("narrative-model", "operator", "Narrative model", "Choose the primary story model.", "ai narrator"),
   entry("utility-model", "operator", "Utility model", "Choose the model for supporting tasks.", "ai helper"),
