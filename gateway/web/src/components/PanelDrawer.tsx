@@ -901,14 +901,14 @@ function VisualDirectionSettings({
                   </div>
                   {activeVersion && (
                     <p className="visual-version-caption">
-                      {t("drawer:visuals.versionFrom", { date: displayTimestamp(activeVersion.created_at), provider: activeVersion.provider || t("drawer:visuals.unknownProvider") })}
+                      {t("image_editing:sourceVersion", { id: activeVersion.id })} · {activeVersion.provider || t("drawer:visuals.unknownProvider")}
                     </p>
                   )}
                 </div>
                 <div className="visual-inspector-controls">
                   <details className="visual-inspector-section" open>
                     <summary>
-                      <span>{t("drawer:visuals.assetPrompt")}</span>
+                      <span>{t("drawer:visuals.promptSection")}</span>
                       <ChevronDown size={16} aria-hidden="true" />
                     </summary>
                     <div className="visual-inspector-section-body visual-prompt-fields">
