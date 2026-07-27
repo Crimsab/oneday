@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronRight, ImageOff, Search, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, ChevronRight, ImageOff, Search, SlidersHorizontal } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
   commandDescriptors as resolveCommandDescriptors,
@@ -470,7 +470,7 @@ function VisualDirectionSettings({
     payload: VisualAssetOperationRequest,
   ) => Promise<VisualAssetsResponse | void>;
 }) {
-  const { t } = useTranslation(["server", "common", "drawer"]);
+  const { t } = useTranslation(["server", "common", "drawer", "image_editing"]);
   const [draft, setDraft] = useState<VisualProfileUpdate>(() =>
     profileDraft(profile),
   );
@@ -848,174 +848,213 @@ function VisualDirectionSettings({
             <button type="button" className="visual-inspector-backdrop" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} />
             <div className="visual-asset-editor visual-inspector-sheet" role="dialog" aria-modal="true" aria-labelledby={assetInspectorTitleId}>
               <div className="visual-inspector-sheet-head">
-                <span>
-                  <small>{t("drawer:visuals.title")}</small>
+                <div className="visual-inspector-title">
+                  <span>{catalogLabel(`drawer:assetKind.${selectedAsset.kind}`, selectedAsset.kind)}</span>
                   <strong id={assetInspectorTitleId}>{selectedAsset.subject}</strong>
-                </span>
+                  <small title={selectedAsset.provider}>
+                    {catalogLabel(`drawer:canonStatus.${selectedAsset.canon_status}`, selectedAsset.canon_status)}
+                    <i aria-hidden="true" />
+                    {catalogLabel(`drawer:assetStatus.${selectedAsset.status}`, selectedAsset.status)}
+                  </small>
+                </div>
                 <button ref={assetInspectorCloseRef} type="button" className="visual-inspector-toggle" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} title={t("common:close")}>
                   <ChevronRight size={18} aria-hidden="true" />
                 </button>
               </div>
-              <div className={`visual-asset-preview kind-${selectedAsset.kind}`}>
-                {selectedImageUrl ? (
-                  <img src={activeVersion?.url || selectedImageUrl} alt="" />
-                ) : (
-                  <div>{catalogLabel(`drawer:assetStatus.${selectedAsset.status}`, selectedAsset.status)}</div>
-                )}
-              </div>
-              <div className="visual-asset-editor-main">
-                <div className="visual-asset-editor-head">
-                  <span>{catalogLabel(`drawer:assetKind.${selectedAsset.kind}`, selectedAsset.kind)}</span>
-                  <strong>{selectedAsset.subject}</strong>
-                  <small title={selectedAsset.provider}>
-                    {catalogLabel(`drawer:canonStatus.${selectedAsset.canon_status}`, selectedAsset.canon_status)} · {catalogLabel(`drawer:assetStatus.${selectedAsset.status}`, selectedAsset.status)}
-                  </small>
-                </div>
-                <div className="visual-lineage-note">
-                  <strong>{t(`drawer:gate.${selectedAsset.gate_state}`, { defaultValue: selectedAsset.gate_state.replaceAll("_", " ") })}</strong>
-                  <span>{visualGateReason(selectedAsset, t) || t("common:missing")}</span>
-                  <small>
-                    {t("drawer:visuals.profileRevision", { revision: profile.revision })}
-                    {selectedAsset.form_id ? ` · ${t("drawer:visuals.form", { id: compactId(selectedAsset.form_id) })}` : ""}
-                    {` · ${selectedAsset.inherited ? t("drawer:visuals.inherited") : t("drawer:visuals.currentBranch")}`}
-                  </small>
-                </div>
-                <label>
-                  <span>{t("drawer:visuals.assetPrompt")}</span>
-                  <textarea
-                    value={assetDraft.prompt}
-                    onChange={(event) =>
-                      setAssetDraft((current) => ({
-                        ...current,
-                        prompt: event.target.value,
-                      }))
-                    }
-                    rows={5}
-                  />
-                </label>
-                <label>
-                  <span>{t("drawer:visuals.negativePrompt")}</span>
-                  <input
-                    value={assetDraft.negative_prompt}
-                    onChange={(event) =>
-                      setAssetDraft((current) => ({
-                        ...current,
-                        negative_prompt: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <div className="visual-version-bar">
-                  <button
-                    type="button"
-                    disabled={busy || versionIndex <= 0}
-                    onClick={() =>
-                      setVersionIndex((value) => Math.max(0, value - 1))
-                    }
-                  >
-                    {t("drawer:visuals.newer")}
-                  </button>
-                  <span>
-                    {versionsBusy
-                      ? t("drawer:visuals.loadingVersions")
-                      : versions.length
-                        ? t("drawer:visuals.position", { current: versions.length - versionIndex, total: versions.length, state: activeVersion?.id === selectedAsset.selected_version_id ? t("drawer:visuals.selected") : t("drawer:visuals.preview") })
-                        : t("drawer:visuals.noVersions")}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy || versionIndex >= versions.length - 1}
-                    onClick={() =>
-                      setVersionIndex((value) =>
-                        Math.min(versions.length - 1, value + 1),
-                      )
-                    }
-                  >
-                    {t("drawer:visuals.older")}
-                  </button>
-                </div>
-                {activeVersion && (
-                  <div className="model-note">
-                    <p>
+              <div className="visual-inspector-workspace">
+                <div className="visual-inspector-canvas">
+                  <div className={`visual-asset-preview kind-${selectedAsset.kind}`}>
+                    {selectedImageUrl ? (
+                      <img src={activeVersion?.url || selectedImageUrl} alt="" />
+                    ) : (
+                      <div>{catalogLabel(`drawer:assetStatus.${selectedAsset.status}`, selectedAsset.status)}</div>
+                    )}
+                  </div>
+                  <div className="visual-version-bar">
+                    <button
+                      type="button"
+                      disabled={busy || versionIndex <= 0}
+                      onClick={() =>
+                        setVersionIndex((value) => Math.max(0, value - 1))
+                      }
+                    >
+                      {t("drawer:visuals.newer")}
+                    </button>
+                    <span>
+                      {versionsBusy
+                        ? t("drawer:visuals.loadingVersions")
+                        : versions.length
+                          ? t("drawer:visuals.position", { current: versions.length - versionIndex, total: versions.length, state: activeVersion?.id === selectedAsset.selected_version_id ? t("drawer:visuals.selected") : t("drawer:visuals.preview") })
+                          : t("drawer:visuals.noVersions")}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={busy || versionIndex >= versions.length - 1}
+                      onClick={() =>
+                        setVersionIndex((value) =>
+                          Math.min(versions.length - 1, value + 1),
+                        )
+                      }
+                    >
+                      {t("drawer:visuals.older")}
+                    </button>
+                  </div>
+                  {activeVersion && (
+                    <p className="visual-version-caption">
                       {t("drawer:visuals.versionFrom", { date: displayTimestamp(activeVersion.created_at), provider: activeVersion.provider || t("drawer:visuals.unknownProvider") })}
                     </p>
-                    <p>
-                      {catalogLabel(`drawer:canonStatus.${activeVersion.canon_status}`, activeVersion.canon_status)} · {activeVersion.form_id ? `${t("drawer:visuals.form", { id: compactId(activeVersion.form_id) })} · ` : ""}
-                      {activeVersion.id === selectedAsset.selected_version_id ? t("drawer:visuals.currentlySelected") : t("drawer:visuals.previewOnly")}
-                    </p>
-                    {activeVersion.revised_prompt ? (
-                      <p>{t("drawer:visuals.revised", { prompt: activeVersion.revised_prompt })}</p>
-                    ) : null}
-                  </div>
-                )}
-                {storyId && (
-                  <VisualAssetUpload
-                    storyId={storyId}
-                    assetId={selectedAsset.id}
-                    onUploaded={async () => {
-                      await onReload();
-                      const nextVersions = await onVersionsLoad(selectedAsset.id);
-                      setVersions(nextVersions);
-                      setVersionIndex(0);
-                    }}
-                  />
-                )}
-                <div className="model-actions">
-                  <button
-                    type="button"
-                    onClick={() => void saveAssetPrompt()}
-                    disabled={busy}
-                  >
-                    {t("drawer:visuals.savePrompt")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void selectVersion()}
-                    disabled={busy || !activeVersion}
-                  >
-                    {t("drawer:visuals.useVersion")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void stepSelection("undo")}
-                    disabled={busy || !selectedAsset.can_undo_selection}
-                  >
-                    {t("drawer:visuals.undo")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void stepSelection("redo")}
-                    disabled={busy || !selectedAsset.can_redo_selection}
-                  >
-                    {t("drawer:visuals.redo")}
-                  </button>
-                  <button
-                    type="button"
-                    className="primary-action"
-                    onClick={() => void regenerateSelectedAsset()}
-                    disabled={busy || selectedJobActive || !generationAllowed}
-                  >
-                    {selectedJobActive
-                      ? t("drawer:visuals.generating")
-                      : selectedAsset.gate_state === "silhouette_available"
-                        ? t("drawer:visuals.silhouette")
-                        : t("drawer:visuals.regenerate")}
-                  </button>
+                  )}
+                </div>
+                <div className="visual-inspector-controls">
+                  <details className="visual-inspector-section" open>
+                    <summary>
+                      <span>{t("drawer:visuals.assetPrompt")}</span>
+                      <ChevronDown size={16} aria-hidden="true" />
+                    </summary>
+                    <div className="visual-inspector-section-body visual-prompt-fields">
+                      <label>
+                        <span>{t("drawer:visuals.assetPrompt")}</span>
+                        <textarea
+                          value={assetDraft.prompt}
+                          onChange={(event) =>
+                            setAssetDraft((current) => ({
+                              ...current,
+                              prompt: event.target.value,
+                            }))
+                          }
+                          rows={6}
+                        />
+                      </label>
+                      <label>
+                        <span>{t("drawer:visuals.negativePrompt")}</span>
+                        <textarea
+                          value={assetDraft.negative_prompt}
+                          onChange={(event) =>
+                            setAssetDraft((current) => ({
+                              ...current,
+                              negative_prompt: event.target.value,
+                            }))
+                          }
+                          rows={3}
+                        />
+                      </label>
+                      <div className="visual-inspector-primary-actions">
+                        <button
+                          type="button"
+                          onClick={() => void saveAssetPrompt()}
+                          disabled={busy}
+                        >
+                          {t("drawer:visuals.savePrompt")}
+                        </button>
+                        <button
+                          type="button"
+                          className="primary-action"
+                          onClick={() => void regenerateSelectedAsset()}
+                          disabled={busy || selectedJobActive || !generationAllowed}
+                        >
+                          {selectedJobActive
+                            ? t("drawer:visuals.generating")
+                            : selectedAsset.gate_state === "silhouette_available"
+                              ? t("drawer:visuals.silhouette")
+                              : t("drawer:visuals.regenerate")}
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+
+                  <details className="visual-inspector-section">
+                    <summary>
+                      <span>{t("drawer:visuals.versions")}</span>
+                      <ChevronDown size={16} aria-hidden="true" />
+                    </summary>
+                    <div className="visual-inspector-section-body">
+                      {activeVersion && (
+                        <div className="model-note">
+                          <p>
+                            {catalogLabel(`drawer:canonStatus.${activeVersion.canon_status}`, activeVersion.canon_status)} · {activeVersion.form_id ? `${t("drawer:visuals.form", { id: compactId(activeVersion.form_id) })} · ` : ""}
+                            {activeVersion.id === selectedAsset.selected_version_id ? t("drawer:visuals.currentlySelected") : t("drawer:visuals.previewOnly")}
+                          </p>
+                          {activeVersion.revised_prompt ? (
+                            <p>{t("drawer:visuals.revised", { prompt: activeVersion.revised_prompt })}</p>
+                          ) : null}
+                        </div>
+                      )}
+                      <div className="visual-inspector-secondary-actions">
+                        <button type="button" onClick={() => void selectVersion()} disabled={busy || !activeVersion}>
+                          {t("drawer:visuals.useVersion")}
+                        </button>
+                        <button type="button" onClick={() => void stepSelection("undo")} disabled={busy || !selectedAsset.can_undo_selection}>
+                          {t("drawer:visuals.undo")}
+                        </button>
+                        <button type="button" onClick={() => void stepSelection("redo")} disabled={busy || !selectedAsset.can_redo_selection}>
+                          {t("drawer:visuals.redo")}
+                        </button>
+                      </div>
+                    </div>
+                  </details>
+
+                  {activeVersion && (activeVersion.url || selectedImageUrl) && (
+                    <details className="visual-inspector-section visual-inspector-edit-section">
+                      <summary>
+                        <span>{t("image_editing:heading")}</span>
+                        <ChevronDown size={16} aria-hidden="true" />
+                      </summary>
+                      <div className="visual-inspector-section-body">
+                        <VisualAssetOperationEditor
+                          asset={selectedAsset}
+                          sourceVersionId={activeVersion.id}
+                          sourceUrl={activeVersion.url || selectedImageUrl}
+                          prompt={assetDraft.prompt}
+                          negativePrompt={assetDraft.negative_prompt}
+                          routeCapabilities={routeOperationCapabilities}
+                          operations={operations}
+                          disabled={busy || selectedJobActive}
+                          onRun={(payload) => onAssetOperation(selectedAsset.id, payload)}
+                        />
+                      </div>
+                    </details>
+                  )}
+
+                  {storyId && (
+                    <details className="visual-inspector-section">
+                      <summary>
+                        <span>{t("drawer:visuals.upload.title")}</span>
+                        <ChevronDown size={16} aria-hidden="true" />
+                      </summary>
+                      <div className="visual-inspector-section-body">
+                        <VisualAssetUpload
+                          storyId={storyId}
+                          assetId={selectedAsset.id}
+                          onUploaded={async () => {
+                            await onReload();
+                            const nextVersions = await onVersionsLoad(selectedAsset.id);
+                            setVersions(nextVersions);
+                            setVersionIndex(0);
+                          }}
+                        />
+                      </div>
+                    </details>
+                  )}
+
+                  <details className="visual-inspector-section">
+                    <summary>
+                      <span>{t("drawer:visuals.assetDetails")}</span>
+                      <ChevronDown size={16} aria-hidden="true" />
+                    </summary>
+                    <div className="visual-inspector-section-body">
+                      <div className="visual-lineage-note">
+                        <strong>{t(`drawer:gate.${selectedAsset.gate_state}`, { defaultValue: selectedAsset.gate_state.replaceAll("_", " ") })}</strong>
+                        <span>{visualGateReason(selectedAsset, t) || t("common:missing")}</span>
+                        <small>
+                          {t("drawer:visuals.profileRevision", { revision: profile.revision })}
+                          {selectedAsset.form_id ? ` · ${t("drawer:visuals.form", { id: compactId(selectedAsset.form_id) })}` : ""}
+                          {` · ${selectedAsset.inherited ? t("drawer:visuals.inherited") : t("drawer:visuals.currentBranch")}`}
+                        </small>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               </div>
-              {activeVersion && (activeVersion.url || selectedImageUrl) && (
-                <VisualAssetOperationEditor
-                  asset={selectedAsset}
-                  sourceVersionId={activeVersion.id}
-                  sourceUrl={activeVersion.url || selectedImageUrl}
-                  prompt={assetDraft.prompt}
-                  negativePrompt={assetDraft.negative_prompt}
-                  routeCapabilities={routeOperationCapabilities}
-                  operations={operations}
-                  disabled={busy || selectedJobActive}
-                  onRun={(payload) => onAssetOperation(selectedAsset.id, payload)}
-                />
-              )}
             </div>
             </>
           )}
