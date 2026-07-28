@@ -1,6 +1,8 @@
 export const image_editing = {
   heading: "Modifica questa immagine",
   description: "Crea una nuova versione dall’immagine mostrata. OneDay non sostituisce mai l’operazione con una meno precisa senza chiedere.",
+  viewer: { title: "Visualizzatore immagine", open: "Apri {{subject}} nel visualizzatore", close: "Chiudi visualizzatore", controls: "Controlli zoom", help: "Rotella per lo zoom · trascina quando ingrandita · 0 per adattare" },
+  annotations: { title: "Annotazioni visive", tools: "Strumenti annotazione", draw: "Disegna", note: "Nota", undo: "Annulla ultima annotazione", clear: "Cancella annotazioni", noteLabel: "Testo della nota", notePlaceholder: "Per esempio: rimuovi questa persona", noteHelp: "Scrivi la nota, poi clicca il punto corrispondente sull’immagine.", canvas: "Disegna o posiziona note sull’immagine", empty: "Facoltativo: disegna o aggiungi note. L’immagine annotata e le istruzioni saranno inviate insieme al modello.", count_one: "{{count}} annotazione pronta", count_other: "{{count}} annotazioni pronte", drawnInstruction: "I segni rossi indicano le aree da modificare; non devono comparire nel risultato finale.", promptTemplate: "{{prompt}}\n\nInterpreta l’immagine allegata come riferimento annotato. I segni e i riquadri sono istruzioni temporanee e non devono apparire nel risultato finale.\nAnnotazioni:\n{{annotations}}" },
   sourceVersion: "Sorgente v{{id}}",
   operationLabel: "Operazione immagine",
   operations: {

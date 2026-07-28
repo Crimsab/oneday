@@ -14,8 +14,11 @@ import type {
   VisualAssetsResponse,
 } from "../types";
 import { MaskEditor, type MaskEditorHandle } from "./MaskEditor";
+import { AnnotationEditor, type AnnotationEditorHandle } from "./AnnotationEditor";
+import { uploadVisualAssetVersion } from "../features/visual-assets/upload/uploadVisualAsset";
 
 interface VisualAssetOperationEditorProps {
+  storyId: string;
   asset: VisualAsset;
   sourceVersionId: number;
   sourceUrl: string;
@@ -28,6 +31,7 @@ interface VisualAssetOperationEditorProps {
 }
 
 export function VisualAssetOperationEditor({
+  storyId,
   asset,
   sourceVersionId,
   sourceUrl,
@@ -40,12 +44,14 @@ export function VisualAssetOperationEditor({
 }: VisualAssetOperationEditorProps) {
   const { t } = useTranslation("image_editing");
   const maskRef = useRef<MaskEditorHandle>(null);
+  const annotationRef = useRef<AnnotationEditorHandle>(null);
   const capabilities = useMemo(
     () => availableVisualOperations(asset, routeCapabilities),
     [asset, routeCapabilities],
   );
   const [operation, setOperation] = useState<EditableImageOperation | null>(capabilities[0]?.operation ?? null);
   const [hasMask, setHasMask] = useState(false);
+  const [hasAnnotations, setHasAnnotations] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -55,6 +61,7 @@ export function VisualAssetOperationEditor({
       : capabilities[0]?.operation ?? null);
     setError("");
     setHasMask(false);
+    setHasAnnotations(false);
   }, [asset.id, sourceVersionId, capabilities]);
 
   if (capabilities.length === 0 || !operation) return null;
@@ -79,10 +86,30 @@ export function VisualAssetOperationEditor({
     setSubmitting(true);
     setError("");
     try {
+      let effectiveSourceVersionId = sourceVersionId;
+      let effectivePrompt = trimmedPrompt;
+      if (operation === "edit" && hasAnnotations) {
+        const annotatedPng = annotationRef.current?.exportAnnotatedPngBase64() ?? null;
+        if (annotatedPng) {
+          const bytes = Uint8Array.from(atob(annotatedPng), (character) => character.charCodeAt(0));
+          const reference = new File([bytes], `annotated-reference-v${sourceVersionId}.png`, { type: "image/png" });
+          const uploaded = await uploadVisualAssetVersion({
+            storyId,
+            assetId: asset.id,
+            file: reference,
+            selectAfterUpload: false,
+          });
+          effectiveSourceVersionId = uploaded.version_id;
+          effectivePrompt = t("annotations.promptTemplate", {
+            prompt: trimmedPrompt,
+            annotations: annotationRef.current?.promptSummary() || t("annotations.drawnInstruction"),
+          });
+        }
+      }
       await onRun({
         operation,
-        source_version_id: sourceVersionId,
-        prompt: trimmedPrompt,
+        source_version_id: effectiveSourceVersionId,
+        prompt: effectivePrompt,
         negative_prompt: acceptsNegativePrompt && negativePrompt.trim() ? negativePrompt.trim() : undefined,
         mask_png_base64: mask ?? undefined,
         fallback: { mode: "forbid" },
@@ -97,11 +124,8 @@ export function VisualAssetOperationEditor({
 
   return (
     <section className="visual-operation-editor" aria-labelledby={`visual-operation-${asset.id}`}>
-      <div className="visual-operation-heading">
-        <div>
-          <strong id={`visual-operation-${asset.id}`}>{t("heading")}</strong>
-          <p>{t("description")}</p>
-        </div>
+      <div className="visual-operation-intro">
+        <p id={`visual-operation-${asset.id}`}>{t("description")}</p>
         <span>{t("sourceVersion", { id: sourceVersionId })}</span>
       </div>
       <div className="visual-operation-tabs" role="radiogroup" aria-label={t("operationLabel")}>
@@ -135,6 +159,16 @@ export function VisualAssetOperationEditor({
             onCoverageChange={setHasMask}
           />
         </>
+      )}
+      {operation === "edit" && (
+        <AnnotationEditor
+          key={`${asset.id}:${sourceVersionId}`}
+          ref={annotationRef}
+          sourceUrl={sourceUrl}
+          sourceAlt={t("sourceAlt", { subject: asset.subject })}
+          disabled={disabled || submitting}
+          onAnnotationChange={setHasAnnotations}
+        />
       )}
       {!acceptsNegativePrompt && negativePrompt.trim() && (
         <p className="visual-operation-muted">{t("negativePromptIgnored")}</p>

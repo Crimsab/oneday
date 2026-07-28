@@ -57,7 +57,7 @@ export function VisualAssetUpload({ storyId, assetId, onUploaded }: {
     <section className="visual-asset-upload" aria-label={t("visuals.upload.region")}>
       <div className="visual-asset-dropzone" onDragOver={(event) => event.preventDefault()} onDrop={drop}>
         <Upload size={18} aria-hidden="true" />
-        <div><strong>{t("visuals.upload.title")}</strong><small>{t("visuals.upload.hint")}</small></div>
+        <div><small>{t("visuals.upload.hint")}</small></div>
         <button type="button" onClick={() => inputRef.current?.click()} disabled={progress !== null}>{t("visuals.upload.choose")}</button>
         <input ref={inputRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => choose(event.target.files?.item(0) ?? null)} hidden />
       </div>

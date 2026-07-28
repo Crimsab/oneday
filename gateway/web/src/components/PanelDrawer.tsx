@@ -69,6 +69,7 @@ import { CustomSelect } from "./CustomSelect";
 import { visualGateReason } from "../presentation";
 import i18n from "../i18n";
 import { VisualAssetOperationEditor } from "./VisualAssetOperationEditor";
+import { ImageLightbox } from "./ImageLightbox";
 import { DialogDrawerShell } from "./dialog/DialogDrawerShell";
 import { VisualAssetUpload } from "../features/visual-assets/upload/VisualAssetUpload";
 import { NewVisualAssetUpload } from "../features/visual-assets/upload/NewVisualAssetUpload";
@@ -486,6 +487,7 @@ function VisualDirectionSettings({
   const [mediaTab, setMediaTab] = useState<MediaStudioTab>("library");
   const [mediaFilters, setMediaFilters] = useState(defaultMediaAssetFilters);
   const [assetInspectorOpen, setAssetInspectorOpen] = useState(Boolean(focusedAssetId));
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const assetInspectorTitleId = useId();
   const assetInspectorCloseRef = useRef<HTMLButtonElement | null>(null);
   const readyCount = assets.filter((asset) => asset.status === "ready").length;
@@ -558,6 +560,7 @@ function VisualDirectionSettings({
     const focusFrame = window.requestAnimationFrame(() => assetInspectorCloseRef.current?.focus());
     const closeInspector = (event: globalThis.KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (document.querySelector(".image-lightbox")) return;
       event.preventDefault();
       event.stopPropagation();
       setAssetInspectorOpen(false);
@@ -573,6 +576,10 @@ function VisualDirectionSettings({
   useEffect(() => {
     if (!selectedAssetId && assets[0]) setSelectedAssetId(assets[0].id);
   }, [assets, selectedAssetId]);
+
+  useEffect(() => {
+    setImageViewerOpen(false);
+  }, [assetInspectorOpen, selectedAsset?.id]);
 
   useEffect(() => {
     const asset = selectedAsset;
@@ -863,13 +870,24 @@ function VisualDirectionSettings({
               </div>
               <div className="visual-inspector-workspace">
                 <div className="visual-inspector-canvas">
-                  <div className={`visual-asset-preview kind-${selectedAsset.kind}`}>
+                  <button
+                    type="button"
+                    className={`visual-asset-preview visual-preview-zoom kind-${selectedAsset.kind}`}
+                    disabled={!selectedImageUrl}
+                    aria-label={t("image_editing:viewer.open", { subject: selectedAsset.subject })}
+                    onClick={() => setImageViewerOpen(true)}
+                    onPointerMove={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      event.currentTarget.style.setProperty("--zoom-x", `${((event.clientX - rect.left) / rect.width) * 100}%`);
+                      event.currentTarget.style.setProperty("--zoom-y", `${((event.clientY - rect.top) / rect.height) * 100}%`);
+                    }}
+                  >
                     {selectedImageUrl ? (
                       <img src={activeVersion?.url || selectedImageUrl} alt="" />
                     ) : (
                       <div>{catalogLabel(`drawer:assetStatus.${selectedAsset.status}`, selectedAsset.status)}</div>
                     )}
-                  </div>
+                  </button>
                   <div className="visual-version-bar">
                     <button
                       type="button"
@@ -964,10 +982,11 @@ function VisualDirectionSettings({
 
                   <details className="visual-inspector-section">
                     <summary>
-                      <span>{t("drawer:visuals.versions")}</span>
+                      <span>{t("drawer:visualEditor.versions")}</span>
                       <ChevronDown size={16} aria-hidden="true" />
                     </summary>
                     <div className="visual-inspector-section-body">
+                      <p className="visual-section-help">{t("drawer:visualEditor.versionsHelp")}</p>
                       {activeVersion && (
                         <div className="model-note">
                           <p>
@@ -981,13 +1000,13 @@ function VisualDirectionSettings({
                       )}
                       <div className="visual-inspector-secondary-actions">
                         <button type="button" onClick={() => void selectVersion()} disabled={busy || !activeVersion}>
-                          {t("drawer:visuals.useVersion")}
+                          {t("drawer:visualEditor.useVersion")}
                         </button>
                         <button type="button" onClick={() => void stepSelection("undo")} disabled={busy || !selectedAsset.can_undo_selection}>
-                          {t("drawer:visuals.undo")}
+                          {t("drawer:visualEditor.undo")}
                         </button>
                         <button type="button" onClick={() => void stepSelection("redo")} disabled={busy || !selectedAsset.can_redo_selection}>
-                          {t("drawer:visuals.redo")}
+                          {t("drawer:visualEditor.redo")}
                         </button>
                       </div>
                     </div>
@@ -1001,6 +1020,7 @@ function VisualDirectionSettings({
                       </summary>
                       <div className="visual-inspector-section-body">
                         <VisualAssetOperationEditor
+                          storyId={storyId}
                           asset={selectedAsset}
                           sourceVersionId={activeVersion.id}
                           sourceUrl={activeVersion.url || selectedImageUrl}
@@ -1038,23 +1058,29 @@ function VisualDirectionSettings({
 
                   <details className="visual-inspector-section">
                     <summary>
-                      <span>{t("drawer:visuals.assetDetails")}</span>
+                      <span>{t("drawer:visualEditor.details")}</span>
                       <ChevronDown size={16} aria-hidden="true" />
                     </summary>
                     <div className="visual-inspector-section-body">
                       <div className="visual-lineage-note">
-                        <strong>{t(`drawer:gate.${selectedAsset.gate_state}`, { defaultValue: selectedAsset.gate_state.replaceAll("_", " ") })}</strong>
-                        <span>{visualGateReason(selectedAsset, t) || t("common:missing")}</span>
+                        <strong>{selectedAsset.gate_state === "explicit_request_available" ? t("drawer:visualEditor.manualTitle") : t(`drawer:gate.${selectedAsset.gate_state}`, { defaultValue: selectedAsset.gate_state.replaceAll("_", " ") })}</strong>
+                        <span>{selectedAsset.gate_state === "explicit_request_available" ? t("drawer:visualEditor.manualReason") : visualGateReason(selectedAsset, t) || t("common:missing")}</span>
                         <small>
-                          {t("drawer:visuals.profileRevision", { revision: profile.revision })}
+                          {t("drawer:visualEditor.profileRevision", { revision: profile.revision })}
                           {selectedAsset.form_id ? ` · ${t("drawer:visuals.form", { id: compactId(selectedAsset.form_id) })}` : ""}
-                          {` · ${selectedAsset.inherited ? t("drawer:visuals.inherited") : t("drawer:visuals.currentBranch")}`}
+                          {` · ${selectedAsset.inherited ? t("drawer:visualEditor.inherited") : t("drawer:visualEditor.currentBranch")}`}
                         </small>
                       </div>
                     </div>
                   </details>
                 </div>
               </div>
+              <ImageLightbox
+                open={imageViewerOpen}
+                src={activeVersion?.url || selectedImageUrl}
+                alt={selectedAsset.subject}
+                onClose={() => setImageViewerOpen(false)}
+              />
             </div>
             </>
           )}
