@@ -2356,6 +2356,24 @@ summary:focus-visible {
 .visual-inspector-secondary-actions button { flex: 1 1 auto; min-height: 34px; }
 .visual-inspector-section .visual-lineage-note,
 .visual-inspector-section .model-note { margin: 0; }
+.visual-version-prompt {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 8px;
+}
+.visual-version-prompt > summary {
+  color: var(--muted);
+  font-size: .6875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.visual-version-prompt > p {
+  max-height: 180px;
+  overflow: auto;
+  margin: 8px 0 0;
+  color: var(--faint);
+  font-size: .6875rem;
+  line-height: 1.5;
+}
 .visual-inspector-edit-section .visual-operation-editor {
   border-top: 0;
   padding-top: 0;

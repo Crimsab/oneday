@@ -994,7 +994,10 @@ function VisualDirectionSettings({
                             {activeVersion.id === selectedAsset.selected_version_id ? t("drawer:visuals.currentlySelected") : t("drawer:visuals.previewOnly")}
                           </p>
                           {activeVersion.revised_prompt ? (
-                            <p>{t("drawer:visuals.revised", { prompt: activeVersion.revised_prompt })}</p>
+                            <details className="visual-version-prompt">
+                              <summary>{t("drawer:visualEditor.versionPrompt")}</summary>
+                              <p>{activeVersion.revised_prompt}</p>
+                            </details>
                           ) : null}
                         </div>
                       )}
