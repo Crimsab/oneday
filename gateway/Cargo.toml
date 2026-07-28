@@ -14,8 +14,8 @@ futures-core = "0.3"
 hmac = "0.12"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 libc = "0.2"
-opentelemetry = { version = "0.31", default-features = false, features = ["trace"] }
-opentelemetry-otlp = { version = "0.31", default-features = false, features = ["http-proto", "reqwest-client", "reqwest-rustls", "trace"] }
+opentelemetry = { version = "0.32", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["http-proto", "reqwest-client", "reqwest-rustls", "trace"] }
 opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
@@ -28,7 +28,7 @@ tokio = { version = "1", features = ["fs", "macros", "process", "rt-multi-thread
 tokio-util = { version = "0.7", features = ["io"] }
 tower-http = { version = "0.6", features = ["compression-gzip", "fs", "request-id", "trace"] }
 tracing = "0.1"
-tracing-opentelemetry = { version = "0.32", default-features = false }
+tracing-opentelemetry = { version = "0.33", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
