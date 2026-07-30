@@ -93,18 +93,19 @@ func TestStoryTurnLockRenewPreventsExpiry(t *testing.T) {
 	defer db.Close()
 	createStoryFixture(t, db, "story-lock-renew")
 
-	first, err := db.AcquireStoryTurnLock(context.Background(), "story-lock-renew", "owner-a", 40*time.Millisecond)
+	const leaseTTL = 500 * time.Millisecond
+	first, err := db.AcquireStoryTurnLock(context.Background(), "story-lock-renew", "owner-a", leaseTTL)
 	if err != nil {
 		t.Fatalf("Acquire first: %v", err)
 	}
-	heartbeat := first.StartHeartbeat(context.Background(), 10*time.Millisecond, 40*time.Millisecond)
+	heartbeat := first.StartHeartbeat(context.Background(), 25*time.Millisecond, leaseTTL)
 	defer func() { _ = heartbeat.Stop() }()
 	defer first.Release()
 
-	time.Sleep(120 * time.Millisecond)
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Millisecond)
+	time.Sleep(750 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := db.AcquireStoryTurnLock(ctx, "story-lock-renew", "owner-b", 40*time.Millisecond); err == nil {
+	if _, err := db.AcquireStoryTurnLock(ctx, "story-lock-renew", "owner-b", leaseTTL); err == nil {
 		t.Fatal("Acquire second succeeded while renewed first owner held the lock")
 	}
 	if err := heartbeat.Stop(); err != nil {
@@ -113,7 +114,7 @@ func TestStoryTurnLockRenewPreventsExpiry(t *testing.T) {
 	if err := first.Release(); err != nil {
 		t.Fatalf("Release: %v", err)
 	}
-	if second, err := db.AcquireStoryTurnLock(context.Background(), "story-lock-renew", "owner-b", 40*time.Millisecond); err != nil {
+	if second, err := db.AcquireStoryTurnLock(context.Background(), "story-lock-renew", "owner-b", leaseTTL); err != nil {
 		t.Fatalf("Acquire second after stop/release: %v", err)
 	} else {
 		_ = second.Release()
