@@ -824,7 +824,8 @@ test("keeps story branches inline and closes the menu outside or with escape", a
   await expect(page.locator("#branch-menu")).toHaveCount(0);
 });
 
-test("keeps the collapsed rail controls inside a short desktop viewport", async ({ page }) => {
+test("keeps the collapsed rail controls inside a short desktop viewport", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "This geometry check covers the desktop rail.");
   await page.setViewportSize({ width: 1280, height: 560 });
   await mockGateway(page);
   await page.goto("/");
