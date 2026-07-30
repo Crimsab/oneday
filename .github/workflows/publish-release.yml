@@ -367,7 +367,7 @@ jobs:
       - name: Check out release scripts
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ needs.validate.outputs.tag }}
+          ref: ${{ github.sha }}
 
       - name: Download CLI release inputs
         uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
