@@ -41,6 +41,47 @@ gh release view "${tag}" \
   --jq '.assets[].name' > "${remote_asset_list}"
 mapfile -t remote_assets < "${remote_asset_list}"
 
+remote_has_checksums=false
+for remote_asset in "${remote_assets[@]}"; do
+  if [[ "${remote_asset}" == "SHA256SUMS" ]]; then
+    remote_has_checksums=true
+    break
+  fi
+done
+
+# SHA256SUMS seals the published asset set. A rerun may reproduce equivalent
+# packages with byte-different generated metadata (for example, an SBOM
+# creation timestamp), so validate the already published bundle instead of
+# trying to replace immutable release assets.
+if [[ "${remote_has_checksums}" == "true" ]]; then
+  for local_asset in "${local_assets[@]}"; do
+    name="$(basename "${local_asset}")"
+    found=false
+    for remote_asset in "${remote_assets[@]}"; do
+      if [[ "${remote_asset}" == "${name}" ]]; then
+        found=true
+        break
+      fi
+    done
+    if [[ "${found}" == "false" ]]; then
+      echo "sealed release asset set is incomplete: ${name} is missing" >&2
+      exit 1
+    fi
+  done
+
+  published_dir="${download_dir}/published"
+  mkdir -p "${published_dir}"
+  gh release download "${tag}" \
+    --repo "${repository}" \
+    --dir "${published_dir}"
+  (
+    cd "${published_dir}"
+    sha256sum --check SHA256SUMS --strict
+  )
+  echo "published release assets are complete and match their checksums"
+  exit 0
+fi
+
 declare -a missing_assets=()
 for local_asset in "${local_assets[@]}"; do
   name="$(basename "${local_asset}")"

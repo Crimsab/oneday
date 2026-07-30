@@ -87,15 +87,13 @@ SBOM. For public repositories, GitHub's Sigstore-backed attestations bind build
 provenance to CLI archives, desktop artifacts, the checksum index, updater feed,
 and container digest.
 
-Release asset names are additive-only. Before uploading, the publisher downloads
-every existing same-name asset and compares its bytes. Identical assets are
-skipped, any mismatch fails the job before new files are uploaded, and only
-missing names are sent to GitHub without replacement semantics. If a job stops
-after a partial upload, retry the publish job while its one-day workflow inputs
-remain available; the preflight safely skips the identical subset. A rebuilt
-workflow may continue only when its bytes match. A mismatch requires
-investigation and a new release tag, never deletion or silent replacement of the
-published binary.
+Release asset names are additive-only. Before the checksum index exists, the
+publisher compares every same-name asset byte for byte and uploads only missing
+names without replacement semantics. `SHA256SUMS` then seals the published asset
+set. On a rerun, the publisher checks that every expected name exists and
+validates the already published bundle against that index. It never replaces a
+published asset. A partial or conflicting set requires investigation and a new
+release tag, never deletion or silent replacement of the published binary.
 
 ## Signed desktop updater
 
