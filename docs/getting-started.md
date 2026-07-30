@@ -1,9 +1,9 @@
 # Getting started
 
-OneDay can run as a native terminal application, a browser application, or a
-desktop application. Terminal and browser clients can use the same configured
-engine/database. Desktop makes you choose between a remote server and a new,
-isolated standalone local profile—there is no automatic sync between them.
+Choose one runtime: terminal, browser, or desktop. Terminal and browser clients
+can use the same engine and database. Desktop can connect to that server or run
+a separate standalone profile. OneDay does not synchronize profiles
+automatically.
 
 ## Choose a runtime
 

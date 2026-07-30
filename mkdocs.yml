@@ -13,32 +13,36 @@ strict: true
 theme:
   name: material
   language: en
-  logo: assets/oneday-icon.png
-  favicon: assets/oneday-icon.png
+  logo: docs/assets/oneday-icon.png
+  favicon: docs/assets/oneday-icon.png
   features:
     - navigation.footer
     - navigation.indexes
     - navigation.sections
     - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.tracking
     - navigation.top
+    - toc.follow
     - search.highlight
     - search.share
     - search.suggest
     - content.code.copy
+    - content.tabs.link
   icon:
     repo: fontawesome/brands/github
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: deep purple
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: deep purple
+      primary: custom
+      accent: custom
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -46,6 +50,9 @@ theme:
 plugins:
   - search:
       lang: en
+
+extra_css:
+  - docs/stylesheets/extra.css
 
 markdown_extensions:
   - abbr
@@ -75,6 +82,7 @@ nav:
   - Start:
       - Your first story: docs/first-story.md
       - Getting started: docs/getting-started.md
+      - Desktop profiles: docs/desktop.md
       - Configuration: docs/configuration.md
       - Docker deployment: docs/docker.md
       - Troubleshooting: docs/troubleshooting.md
@@ -89,6 +97,8 @@ nav:
       - Architecture: docs/architecture.md
       - Browser gateway: docs/browser-gateway.md
       - Extensions and story packs: docs/extensions.md
+      - First-run matrix: docs/first-run-matrix.md
+      - Security threat model: docs/security-threat-model.md
   - Contribute:
       - Development: docs/development.md
       - Testing: docs/testing.md

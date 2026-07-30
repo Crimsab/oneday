@@ -23,25 +23,29 @@ embeddings setup if Ollama is available.
 
 ## Browser with Docker
 
-Docker does not inherit host Codex or Claude logins. Configure LiteLLM or
-OpenRouter instead:
+Docker does not inherit host Codex or Claude logins. Use a LiteLLM-compatible
+endpoint or OpenRouter for the standard container setup.
 
 ```bash
-cp config.example.yaml config.yaml
-cp .env.example .env
+git clone https://github.com/Crimsab/oneday.git
+cd oneday
+docker compose pull
+docker compose run --rm oneday-tools docker init
+docker compose up -d
+docker compose run --rm oneday-tools docker token
 ```
 
-In `config.yaml`, enable the provider and use its environment placeholder. Put
-the real key in `.env`, then start OneDay:
+Open `http://localhost:8788` and enter the generated browser credential. Open
+**Setup**, configure one narrative provider, and run its readiness check.
 
 ```bash
-docker compose pull
-docker compose up -d
 curl -fsS http://localhost:8788/api/health
 ```
 
-Open `http://localhost:8788`. If the provider runs on the Docker host, replace
-`127.0.0.1` with `host.docker.internal` in `config.yaml`.
+If no published container tag is available, use the current-source commands in
+[Getting started](getting-started.md#browser-with-docker). If the provider runs
+on the Docker host, use `host.docker.internal` instead of `127.0.0.1` in its
+URL.
 
 ## Create the world
 

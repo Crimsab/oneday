@@ -39,13 +39,12 @@ Then open `http://127.0.0.1:8000`.
 ## GitHub Pages deployment
 
 `.github/workflows/docs.yml` builds and validates documentation changes on pull
-requests and on `main`. While the repository is private, it stops after that
-validation because the current GitHub plan does not provide private Pages.
-After the repository becomes public, enable Pages once in **Settings > Pages**
-and select **GitHub Actions** as the source. A documentation push or a manual
-workflow run then builds a Pages artifact and deploys it to the protected
-`github-pages` environment. The deployment job receives only the permissions
-required by GitHub Pages: `pages: write` and `id-token: write`.
+requests and on `main`. Changes on `main` build a Pages artifact and deploy it
+to the protected `github-pages` environment. The deployment job receives only
+the permissions required by GitHub Pages: `pages: write` and `id-token: write`.
+
+The public site is available at
+[crimsab.github.io/oneday](https://crimsab.github.io/oneday/).
 
 The generated Pages artifact is retained for one day. Python, Bun, MkDocs
 caches, and the generated `site/` directory are not stored as long-lived
@@ -58,5 +57,7 @@ Actions artifacts.
 3. Add it to `nav` in `mkdocs.yml`.
 4. Run `make docs-build` and `bun scripts/check-docs.ts`.
 
-Brand colors, typography, logo, favicon, hero treatment, social cards, and a
-custom domain are intentionally left for the design pass.
+The Material theme configuration lives in `mkdocs.yml`. OneDay-specific layout,
+color, typography, focus, and responsive rules live in
+`docs/stylesheets/extra.css`. Keep custom rules small and preserve Material's
+accessible navigation and interaction behavior.

@@ -5,8 +5,9 @@ The public `compose.yaml` is portable and has no host-specific paths or networks
 
 ## Start from the current source
 
-This path works before a container release exists. Docker builds the Go engine,
-Rust gateway, and React client. The host does not need these toolchains.
+Use this path for the current checkout or when no published container tag is
+available. Docker builds the Go engine, Rust gateway, and React client. The
+host does not need these toolchains.
 
 Build the image:
 
@@ -194,7 +195,7 @@ docker compose -f compose.yaml -f compose.build.yaml up -d --build oneday-gatewa
 This produces `oneday-gateway:local`. It does not change the release defaults
 in `.env` or `compose.yaml`.
 
-## Update
+## Update a published image
 
 ```bash
 git pull --ff-only

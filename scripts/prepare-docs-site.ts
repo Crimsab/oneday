@@ -36,15 +36,19 @@ const docs = listed.stdout
   .split("\0")
   .filter(
     (path) =>
-      path.endsWith(".md") || path === "docs/assets/oneday-icon.png",
+      path.endsWith(".md") ||
+      path.endsWith(".css") ||
+      path.endsWith(".png") ||
+      path.endsWith(".webp") ||
+      path.endsWith(".svg"),
   )
   .sort();
-const sources = ["README.md", ...rootSources, ...docs];
+const sources = ["docs-home.md", ...rootSources, ...docs];
 
 await rm(output, { recursive: true, force: true });
 
 for (const source of sources) {
-  const destination = source === "README.md" ? "index.md" : source;
+  const destination = source === "docs-home.md" ? "index.md" : source;
   const target = join(output, destination);
   await mkdir(dirname(target), { recursive: true });
   await copyFile(join(root, source), target);
