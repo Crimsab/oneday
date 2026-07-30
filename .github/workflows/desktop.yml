@@ -5,16 +5,32 @@ on:
   pull_request:
     branches: [main]
     paths:
+      - "cmd/**"
       - "desktop/**"
+      - "gateway/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "scripts/build-ldflags.sh"
+      - "scripts/release-desktop-macos-test.sh"
       - "scripts/release-prepare-desktop.sh"
       - "scripts/release-desktop-artifacts.sh"
+      - "scripts/release-metadata.sh"
       - ".github/workflows/desktop.yml"
   push:
     branches: [main]
     paths:
+      - "cmd/**"
       - "desktop/**"
+      - "gateway/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "scripts/build-ldflags.sh"
+      - "scripts/release-desktop-macos-test.sh"
       - "scripts/release-prepare-desktop.sh"
       - "scripts/release-desktop-artifacts.sh"
+      - "scripts/release-metadata.sh"
       - ".github/workflows/desktop.yml"
 
 permissions:

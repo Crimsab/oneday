@@ -12,6 +12,17 @@ bundle_dir="${fixture}/bundle"
 normalized_dir="${fixture}/normalized"
 mkdir -p "${asset_dir}" "${bundle_dir}/dmg" "${bundle_dir}/macos"
 
+mkdir -p "${fixture}/bin"
+printf '#!/usr/bin/env bash\nexit 97\n' > "${fixture}/bin/date"
+chmod +x "${fixture}/bin/date"
+PATH="${fixture}/bin:${PATH}" \
+  "${repo_root}/scripts/release-metadata.sh" \
+  "${tag}" "${fixture}/release-metadata.json"
+jq -e '
+  .releaseTag == "v9.8.7" and
+  (.sourceDate | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
+' "${fixture}/release-metadata.json" >/dev/null
+
 printf 'dmg fixture\n' > "${bundle_dir}/dmg/OneDay.dmg"
 printf 'updater fixture\n' > "${bundle_dir}/macos/OneDay.app.tar.gz"
 printf 'macOS artifact signature long enough for validation\n' > "${bundle_dir}/macos/OneDay.app.tar.gz.sig"

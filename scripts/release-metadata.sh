@@ -41,7 +41,12 @@ fi
 
 source_commit="$(git -C "${repo_root}" rev-parse HEAD)"
 source_date_epoch="$(git -C "${repo_root}" show -s --format=%ct HEAD)"
-source_date="$(date -u -d "@${source_date_epoch}" +'%Y-%m-%dT%H:%M:%SZ')"
+source_date="$(
+  TZ=UTC git -C "${repo_root}" show -s \
+    --format=%cd \
+    --date=format-local:'%Y-%m-%dT%H:%M:%SZ' \
+    HEAD
+)"
 
 payload="$(jq -n \
   --arg tag "${tag}" \
