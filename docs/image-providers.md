@@ -97,7 +97,8 @@ configuration. A third-party provider route is a validation error.
 ### Optional Docker profile
 
 The public OneDay Compose stack does not include a Codex login or start a bridge
-by default. The opt-in [`compose.imagegen-bridge.yaml`](../compose.imagegen-bridge.yaml)
+by default. The opt-in
+[`compose.imagegen-bridge.yaml`](https://github.com/Crimsab/oneday/blob/main/compose.imagegen-bridge.yaml)
 profile connects OneDay to a private Compose-network bridge and exposes the
 bridge dashboard only on host loopback. It pins the bridge release and stores
 Codex OAuth, bridge state, and artifacts separately. Follow the
