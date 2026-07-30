@@ -159,6 +159,37 @@ select {
   opacity: 0.48;
 }
 
+.authentication-recovery {
+  border-block: 1px solid var(--line-soft);
+  padding-block: 12px;
+}
+
+.authentication-recovery summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.authentication-recovery p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.authentication-recovery code {
+  display: block;
+  overflow-x: auto;
+  margin-top: 8px;
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 10px 12px;
+  white-space: nowrap;
+}
+
 button:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
@@ -511,7 +542,7 @@ summary:focus-visible {
 .custom-select-trigger svg { flex: 0 0 auto; color: var(--faint); transition: transform .15s ease; }
 .custom-select-trigger[aria-expanded="true"] svg { transform: rotate(180deg); color: var(--muted); }
 .custom-select-menu { position: fixed; z-index: 110; max-height: min(300px, calc(100dvh - 16px)); overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #12181c; padding: 4px; box-shadow: 0 18px 48px rgba(0,0,0,.68); }
-.custom-select-menu { animation: custom-select-enter .11s ease-out both; transform-origin: top center; will-change: transform, opacity; }
+.custom-select-menu { animation: custom-select-enter .11s ease-out both; transform-origin: top center; }
 .custom-select-menu button { width: 100%; min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: var(--selected-border-width) solid transparent; border-radius: 5px; background: transparent; padding: 0 7px; color: var(--muted); cursor: pointer; font: inherit; text-align: left; }
 .custom-select-menu button:hover:not(:disabled),
 .custom-select-menu button.active { background: rgba(255,255,255,.055); color: var(--text); }
@@ -2273,7 +2304,6 @@ summary:focus-visible {
   pointer-events: none;
   transform-origin: var(--zoom-x, 50%) var(--zoom-y, 50%);
   transition: transform 180ms ease-out;
-  will-change: transform;
 }
 @media (hover: hover) and (pointer: fine) {
   .visual-preview-zoom:not(:disabled):hover img { transform: scale(1.38); }
@@ -2599,7 +2629,6 @@ summary:focus-visible {
   object-fit: contain;
   transform-origin: center;
   user-select: none;
-  will-change: transform;
 }
 .image-lightbox > p {
   position: relative;
@@ -2636,6 +2665,7 @@ summary:focus-visible {
     width: 100vw;
     border: 0;
     border-radius: 0;
+    animation: none;
   }
   .visual-inspector-sheet-head { padding-inline: 14px 10px; }
   .visual-inspector-title { grid-template-columns: minmax(0, 1fr); gap: 4px; }

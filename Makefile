@@ -5,7 +5,7 @@ BUILD_DIR=build
 LDFLAGS=$(shell bash ./scripts/build-ldflags.sh)
 DOCS_VENV?=.venv-docs
 
-.PHONY: test coverage vet verify docs-install docs-prepare docs-build docs-serve docs-check qa-matrix qa-matrix-auto first-run-matrix universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
+.PHONY: test coverage vet verify docs-install docs-prepare docs-build docs-serve docs-check docker-init-test qa-matrix qa-matrix-auto first-run-matrix universal-release-check release-check friend-safe-check build build-bench build-ascii-bench build-cross all
 
 test:
 	go test ./...
@@ -18,10 +18,13 @@ coverage:
 vet:
 	go vet ./...
 
-verify: docs-check test vet qa-matrix-auto
+verify: docs-check docker-init-test test vet qa-matrix-auto
 
 docs-check:
 	bun scripts/check-docs.ts
+
+docker-init-test:
+	./scripts/docker-init-test.sh
 
 docs-install:
 	python3 -m venv $(DOCS_VENV)

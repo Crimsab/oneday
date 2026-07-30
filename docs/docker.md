@@ -10,19 +10,29 @@ Release images are published for `linux/amd64` as
 pin a version such as `1.9.0` for reproducible deployments.
 
 ```bash
-cp config.example.yaml config.yaml
-cp .env.example .env
-$EDITOR config.yaml
-$EDITOR .env
-docker compose pull
-docker compose up -d
+./scripts/docker-init.sh
+```
+
+The initializer preserves existing files, creates private `config.yaml` and
+`.env` files when missing, generates a high-entropy reusable browser bootstrap
+credential, adjusts localhost Host validation to `ONEDAY_PORT`, pulls the
+configured image, and starts Compose. It never prints the credential. Retrieve
+it explicitly when the browser asks you to reconnect:
+
+```bash
+./scripts/docker-bootstrap-token.sh
 ```
 
 The service listens on `${ONEDAY_PORT:-8788}` and exposes `/api/health`.
 Compose persists application data in the `oneday_data` named volume and mounts
 `config.yaml` read/write so model settings saved in the browser reach the Go engine.
 Automatic images and TTS are off in the public template until their providers
-are configured; neither is required for story generation.
+are configured; neither is required for story generation. After the first login,
+open **Setup** and configure at least one narrative provider in the protected
+operator workspace.
+
+For automation that should only prepare files without starting containers, use
+`./scripts/docker-init.sh --prepare-only`.
 
 ## Provider networking
 

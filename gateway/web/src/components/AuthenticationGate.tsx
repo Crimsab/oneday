@@ -58,27 +58,35 @@ export function AuthenticationGate({
         </div>
 
         {!checking && bootstrapAvailable && (
-          <form className="authentication-form" onSubmit={submit}>
-            <label htmlFor="oneday-browser-token">{t("tokenLabel")}</label>
-            <input
-              id="oneday-browser-token"
-              name="oneday-browser-token"
-              type="password"
-              autoComplete="current-password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              aria-describedby="oneday-browser-token-hint"
-              aria-invalid={Boolean(error)}
-              autoFocus
-            />
-            <p id="oneday-browser-token-hint" className="authentication-hint">
-              {t("tokenHint")}
-            </p>
-            {error && <p className="authentication-error" role="alert">{error}</p>}
-            <button className="primary-button" type="submit" disabled={!token.trim() || submitting}>
-              {submitting ? t("submitting") : t("submit")}
-            </button>
-          </form>
+          <>
+            <form className="authentication-form" onSubmit={submit}>
+              <label htmlFor="oneday-browser-token">{t("tokenLabel")}</label>
+              <input
+                id="oneday-browser-token"
+                name="oneday-browser-token"
+                type="password"
+                autoComplete="current-password"
+                value={token}
+                onChange={(event) => setToken(event.target.value)}
+                aria-describedby="oneday-browser-token-hint"
+                aria-invalid={Boolean(error)}
+                autoFocus
+              />
+              <p id="oneday-browser-token-hint" className="authentication-hint">
+                {t("tokenHint")}
+              </p>
+              {error && <p className="authentication-error" role="alert">{error}</p>}
+              <button className="primary-button" type="submit" disabled={!token.trim() || submitting}>
+                {submitting ? t("submitting") : t("submit")}
+              </button>
+            </form>
+            <details className="authentication-recovery">
+              <summary>{t("recoveryTitle")}</summary>
+              <p>{t("recoveryDocker")}</p>
+              <code>./scripts/docker-bootstrap-token.sh</code>
+              <p>{t("recoveryOther")}</p>
+            </details>
+          </>
         )}
 
         {!checking && (

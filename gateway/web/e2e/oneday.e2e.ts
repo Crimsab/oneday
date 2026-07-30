@@ -193,7 +193,7 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
     response.operation_capabilities = [
       { operation: "edit", supported: true, availability: "available", controls: { negative_prompt: false } },
       { operation: "inpaint", supported: true, availability: "available", mask: { required: true, kind: "raster", soft_values: "supported", adherence: "best_effort" }, controls: { negative_prompt: false } },
-      { operation: "image_transform", supported: true, availability: "available", controls: { negative_prompt: false } },
+      { operation: "image_transform", supported: false, availability: "unavailable", controls: { negative_prompt: false } },
       { operation: "variation", supported: false, availability: "unavailable" },
     ];
     response.operations = imageOperations;
@@ -297,6 +297,14 @@ async function mockGateway(page: Page, options: { failAction?: boolean; activeMi
       });
     }
     if (path.endsWith("/visual-assets/asset-mira-new/versions")) return json(route, visualVersions);
+    if (path.endsWith("/visual-assets/asset-mira-new/versions/upload") && request.method() === "POST") {
+      return json(route, {
+        asset_id: "asset-mira-new",
+        version_id: 77,
+        selected: false,
+        visual_assets: currentVisualResponse(),
+      }, 201);
+    }
     if (path.endsWith("/visual-assets/asset-mira-new") && request.method() === "PUT") {
       visualPrompt = request.postDataJSON().prompt;
       return json(route, currentVisualResponse());
@@ -436,6 +444,8 @@ test("shows a reconnect gate before requesting protected application data", asyn
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Reconnect to OneDay" })).toBeVisible();
+  await page.getByText("Where do I find this token?").click();
+  await expect(page.getByText("./scripts/docker-bootstrap-token.sh")).toBeVisible();
   await expect(page.getByLabel("Browser bootstrap token")).toHaveAttribute("type", "password");
   await expect(page.getByRole("button", { name: "Reconnect" })).toBeDisabled();
   expect(protectedRequests).toEqual([]);
@@ -497,6 +507,15 @@ test("reopens installation setup without losing the canonical route", async ({ p
   await expect(page.getByRole("heading", { name: "Review this OneDay installation" })).toBeVisible();
   await expect(page.getByText("This check does not change existing worlds or their data.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Return to stories" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Reconfigure shared setup" }).click();
+  const dialog = page.getByRole("dialog", { name: "Options" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/setup$/);
+  await expect(page.getByRole("heading", { name: "Review this OneDay installation" })).toBeVisible();
 });
 
 test("keeps installation readiness loading and recovery states operable", async ({ page }, testInfo) => {
@@ -1006,16 +1025,98 @@ test("shows canonical visual lineage and branch-local selection controls", async
   await expect(mediaStudio.getByRole("tab", { name: "Activity" })).toBeVisible();
   await expect(dialog.getByPlaceholder("Search assets")).toBeVisible();
   expect(errors).toEqual([]);
-  await expect(dialog.getByText("New canonical form")).toBeVisible();
-  await expect(dialog.getByText("Mira's restored form has not been rendered on this branch.")).toBeVisible();
-  await expect(dialog.getByText(/Profile rev 3.*form form-mira-restored.*current branch/)).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Undo selection" })).toBeEnabled();
+  await dialog.locator(".media-asset-gallery .visual-asset-row").filter({ hasText: "Mira" }).click();
+  const inspector = dialog.locator(".visual-inspector-sheet");
+  await expect(inspector).toBeVisible();
+  await inspector.locator("summary").filter({ hasText: "Availability and source" }).click();
+  await expect(inspector.getByText("New canonical form")).toBeVisible();
+  await expect(inspector.getByText("Mira's restored form has not been rendered on this branch.")).toBeVisible();
+  await expect(inspector.getByText(/Visual direction v3.*form form-mira-restored.*Created on this branch/)).toBeVisible();
+  await inspector.locator("summary").filter({ hasText: "Versions" }).click();
+  await expect(inspector.getByRole("button", { name: "Undo last change" })).toBeEnabled();
   const undoResponse = page.waitForResponse((response) => response.url().endsWith("/visual-assets/asset-mira-new/selection/undo"));
-  await dialog.getByRole("button", { name: "Undo selection" }).click();
+  await inspector.getByRole("button", { name: "Undo last change" }).click();
   await undoResponse;
   await expect(page.getByText("Visual selection undone.")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Redo selection" })).toBeEnabled();
+  await expect(inspector.getByRole("button", { name: "Restore change" })).toBeEnabled();
   expect(errors).toEqual([]);
+});
+
+test("keeps the media library controls and asset editor coherent at every viewport", async ({ page }, testInfo) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Options" }).click();
+  const options = page.getByRole("dialog", { name: "Options" });
+  await options.getByPlaceholder("Search settings").fill("known location icons");
+  await options.getByRole("button", { name: /Map art/ }).click();
+
+  const filters = options.locator(".media-studio-filters");
+  await expect(filters).toBeVisible();
+  const geometry = await filters.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const controls = Array.from(element.children).map((child) => {
+      const rect = child.getBoundingClientRect();
+      return { top: rect.top, right: rect.right, height: rect.height };
+    });
+    return {
+      viewport: innerWidth,
+      documentWidth: document.documentElement.scrollWidth,
+      bounds: { left: bounds.left, right: bounds.right },
+      controls,
+    };
+  });
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewport + 1);
+  expect(geometry.controls.every((control) => Math.abs(control.height - 40) <= 1)).toBe(true);
+  expect(geometry.controls.every((control) => control.right <= geometry.bounds.right + 1)).toBe(true);
+  if (geometry.viewport > 720) {
+    expect(Math.max(...geometry.controls.map((control) => control.top)) - Math.min(...geometry.controls.map((control) => control.top))).toBeLessThanOrEqual(1);
+  }
+
+  await options.getByRole("combobox", { name: "Asset type" }).click();
+  const kindMenu = page.getByRole("listbox", { name: "Asset type" });
+  await expect(kindMenu).toBeVisible();
+  const menuBounds = await kindMenu.boundingBox();
+  expect(menuBounds).not.toBeNull();
+  expect(menuBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(menuBounds!.x + menuBounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+  await page.keyboard.press("Escape");
+
+  const moreFilters = options.locator(".media-filter-details");
+  await moreFilters.locator("summary").click();
+  await expect(moreFilters).toHaveAttribute("open", "");
+  await expect(moreFilters.getByRole("combobox", { name: "Location" })).toBeVisible();
+  await moreFilters.locator("summary").click();
+
+  const mapIcon = options.locator(".media-asset-gallery .visual-asset-row.kind-map_icon").first();
+  await expect(mapIcon.locator(".media-asset-visual")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  const mira = options.locator(".media-asset-gallery .visual-asset-row").filter({ hasText: "Mira" });
+  await mira.scrollIntoViewIfNeeded();
+  await mira.click();
+  const inspector = options.locator(".visual-inspector-sheet");
+  await expect(inspector).toBeVisible();
+  const inspectorGeometry = await inspector.evaluate((element) => {
+    const sheet = element.getBoundingClientRect();
+    const canvas = element.querySelector(".visual-inspector-canvas")!.getBoundingClientRect();
+    const controls = element.querySelector(".visual-inspector-controls")!.getBoundingClientRect();
+    return {
+      viewport: { width: innerWidth, height: innerHeight },
+      sheet: { left: sheet.left, top: sheet.top, right: sheet.right, bottom: sheet.bottom },
+      canvas: { width: canvas.width, height: canvas.height },
+      controls: { left: controls.left, top: controls.top, width: controls.width, height: controls.height },
+    };
+  });
+  expect(inspectorGeometry.sheet.left).toBeGreaterThanOrEqual(0);
+  expect(inspectorGeometry.sheet.top).toBeGreaterThanOrEqual(0);
+  expect(inspectorGeometry.sheet.right).toBeLessThanOrEqual(inspectorGeometry.viewport.width + 1);
+  expect(inspectorGeometry.sheet.bottom).toBeLessThanOrEqual(inspectorGeometry.viewport.height + 1);
+  expect(inspectorGeometry.canvas.width).toBeGreaterThan(250);
+  expect(inspectorGeometry.controls.width).toBeGreaterThan(250);
+  if (inspectorGeometry.viewport.width > 980) {
+    expect(inspectorGeometry.controls.left).toBeGreaterThan(inspectorGeometry.sheet.left + inspectorGeometry.canvas.width - 2);
+  } else {
+    expect(inspectorGeometry.controls.top).toBeGreaterThan(inspectorGeometry.sheet.top + 200);
+  }
+  await inspector.screenshot({ path: testInfo.outputPath("visual-asset-editor.png") });
 });
 
 test("keeps asset prompt edits stable and reveals completed image versions", async ({ page }) => {
@@ -1026,27 +1127,37 @@ test("keeps asset prompt edits stable and reveals completed image versions", asy
   await dialog.getByPlaceholder("Search settings").fill("known location icons");
   await dialog.getByRole("button", { name: /Map art/ }).click();
 
-  const prompt = dialog.getByLabel("Asset prompt");
+  const mira = dialog.locator(".media-asset-gallery .visual-asset-row").filter({ hasText: "Mira" });
+  await mira.click();
+  let inspector = dialog.locator(".visual-inspector-sheet");
+  let prompt = inspector.getByLabel("Asset prompt");
   await prompt.fill("Mira beneath rain-dark archive glass");
+  await inspector.locator(".visual-inspector-toggle").click();
   const reload = page.waitForResponse((response) => response.url().endsWith("/visual-assets"));
   await dialog.getByRole("button", { name: "Reload assets" }).click();
   await reload;
+  await mira.click();
+  inspector = dialog.locator(".visual-inspector-sheet");
+  prompt = inspector.getByLabel("Asset prompt");
   await expect(prompt).toHaveValue("Mira beneath rain-dark archive glass");
 
   const queued = page.waitForResponse((response) => response.url().endsWith("/visual-assets/generate"));
-  await dialog.getByRole("button", { name: "Regenerate", exact: true }).click();
+  await inspector.getByRole("button", { name: "Regenerate", exact: true }).click();
   await queued;
   await expect(prompt).toHaveValue("Mira beneath rain-dark archive glass");
-  await expect(dialog.getByRole("button", { name: "Generating…" })).toBeDisabled();
+  await expect(inspector.getByRole("button", { name: "Generating…" })).toBeDisabled();
 
+  await inspector.locator(".visual-inspector-toggle").click();
   const completed = page.waitForResponse((response) => response.url().endsWith("/visual-assets"));
   await dialog.getByRole("button", { name: "Reload assets" }).click();
   await completed;
-  await expect(dialog.getByText("2 / 2 · selected")).toBeVisible();
-  await dialog.getByRole("button", { name: "Older →" }).click();
-  await expect(dialog.getByText("1 / 2 · preview")).toBeVisible();
-  await dialog.getByRole("button", { name: "← Newer" }).click();
-  await expect(dialog.getByText("2 / 2 · selected")).toBeVisible();
+  await mira.click();
+  inspector = dialog.locator(".visual-inspector-sheet");
+  await expect(inspector.getByText("2 / 2 · selected")).toBeVisible();
+  await inspector.getByRole("button", { name: "Older →" }).click();
+  await expect(inspector.getByText("1 / 2 · preview")).toBeVisible();
+  await inspector.getByRole("button", { name: "← Newer" }).click();
+  await expect(inspector.getByText("2 / 2 · selected")).toBeVisible();
 });
 
 test("opens a codex image directly in its editable visual asset workspace", async ({ page }) => {
@@ -1070,13 +1181,16 @@ test("paints a full-resolution mask and submits inpainting without fallback", as
   await dialog.getByPlaceholder("Search settings").fill("known location icons");
   await dialog.getByRole("button", { name: /Map art/ }).click();
 
-  await expect(dialog.getByRole("radio", { name: /Directed edit/ })).toBeVisible();
-  await expect(dialog.getByRole("radio", { name: /Paint an area/ })).toBeVisible();
-  await expect(dialog.getByRole("radio", { name: /Transform/ })).toBeVisible();
-  await expect(dialog.getByRole("radio", { name: /Variation/ })).toHaveCount(0);
-  await dialog.getByRole("radio", { name: /Paint an area/ }).click();
+  await dialog.locator(".media-asset-gallery .visual-asset-row").filter({ hasText: "Mira" }).click();
+  const inspector = dialog.locator(".visual-inspector-sheet");
+  await inspector.locator("summary").filter({ hasText: "Edit this image" }).click();
+  await expect(inspector.getByRole("radio", { name: /Directed edit/ })).toBeVisible();
+  await expect(inspector.getByRole("radio", { name: /Paint an area/ })).toBeVisible();
+  await expect(inspector.getByRole("radio", { name: /Transform/ })).toHaveCount(0);
+  await expect(inspector.getByRole("radio", { name: /Variation/ })).toHaveCount(0);
+  await inspector.getByRole("radio", { name: /Paint an area/ }).click();
 
-  const canvas = dialog.getByRole("application", { name: "Paint the image area that may change" });
+  const canvas = inspector.getByRole("application", { name: "Paint the image area that may change" });
   await expect(canvas).toBeVisible();
   await canvas.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
@@ -1086,13 +1200,13 @@ test("paints a full-resolution mask and submits inpainting without fallback", as
   await page.mouse.move(box!.x + box!.width * 0.58, box!.y + box!.height * 0.55, { steps: 8 });
   await page.mouse.up();
 
-  await expect(dialog.getByRole("button", { name: "Undo stroke" })).toBeEnabled();
-  await dialog.getByRole("button", { name: "Undo stroke" }).click();
-  await expect(dialog.getByRole("button", { name: "Redo stroke" })).toBeEnabled();
-  await dialog.getByRole("button", { name: "Redo stroke" }).click();
+  await expect(inspector.getByRole("button", { name: "Undo stroke" })).toBeEnabled();
+  await inspector.getByRole("button", { name: "Undo stroke" }).click();
+  await expect(inspector.getByRole("button", { name: "Redo stroke" })).toBeEnabled();
+  await inspector.getByRole("button", { name: "Redo stroke" }).click();
 
   const operationRequest = page.waitForRequest((request) => request.url().endsWith("/visual-assets/asset-mira-new/operations"));
-  await dialog.getByRole("button", { name: "Create inpainted version" }).click();
+  await inspector.getByRole("button", { name: "Create inpainted version" }).click();
   const payload = (await operationRequest).postDataJSON();
   expect(payload).toMatchObject({
     operation: "inpaint",
@@ -1103,8 +1217,54 @@ test("paints a full-resolution mask and submits inpainting without fallback", as
   expect(payload.idempotency_key).toEqual(expect.any(String));
   expect(payload.mask_png_base64).toMatch(/^[A-Za-z0-9+/]+=*$/);
   await expect(page.getByText("The image operation was queued as a new version.")).toBeVisible();
-  await expect(dialog.getByText("Queued", { exact: true }).last()).toBeVisible();
-  await expect(dialog.getByText("mock · mock-image")).toBeVisible();
+  await expect(inspector.getByText("Queued", { exact: true }).last()).toBeVisible();
+  await expect(inspector.getByText("mock · mock-image")).toBeVisible();
+});
+
+test("zooms asset previews and sends visual annotations with the edited source", async ({ page }) => {
+  await mockGateway(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Options" }).click();
+  const options = page.getByRole("dialog", { name: "Options" });
+  await options.getByPlaceholder("Search settings").fill("known location icons");
+  await options.getByRole("button", { name: /Map art/ }).click();
+  await options.locator(".media-asset-gallery .visual-asset-row").filter({ hasText: "Mira" }).click();
+
+  const inspector = options.locator(".visual-inspector-sheet");
+  const preview = inspector.getByRole("button", { name: "Open Mira in the image viewer" });
+  await expect(preview).toBeVisible();
+  await preview.click();
+  const viewer = page.getByRole("dialog", { name: "Image viewer" });
+  await expect(viewer).toBeVisible();
+  await viewer.getByRole("button", { name: "Zoom in" }).click();
+  await expect(viewer.getByText("120%")).toBeVisible();
+  await viewer.getByRole("group", { name: "Zoom controls" }).getByRole("button", { name: "Close image viewer" }).click();
+  await expect(viewer).toHaveCount(0);
+
+  await inspector.locator("summary").filter({ hasText: "Edit this image" }).click();
+  await inspector.getByRole("radio", { name: /Directed edit/ }).click();
+  await inspector.getByRole("button", { name: "Note" }).click();
+  await inspector.getByLabel("Note text").fill("Remove the reflection");
+  const canvas = inspector.getByRole("application", { name: "Draw or place notes on the image" });
+  await canvas.scrollIntoViewIfNeeded();
+  const box = await canvas.boundingBox();
+  expect(box).not.toBeNull();
+  await page.mouse.click(box!.x + box!.width * 0.65, box!.y + box!.height * 0.4);
+  await expect(inspector.getByText("1 annotation ready")).toBeVisible();
+
+  const uploadRequest = page.waitForRequest((request) => request.url().endsWith("/visual-assets/asset-mira-new/versions/upload"));
+  const operationRequest = page.waitForRequest((request) => request.url().endsWith("/visual-assets/asset-mira-new/operations"));
+  await inspector.getByRole("button", { name: "Create edited version" }).click();
+  const upload = await uploadRequest;
+  expect(upload.postData()).toContain("annotated-reference-v21.png");
+  const payload = (await operationRequest).postDataJSON();
+  expect(payload).toMatchObject({
+    operation: "edit",
+    source_version_id: 77,
+    fallback: { mode: "forbid" },
+  });
+  expect(payload.prompt).toContain("Remove the reflection");
+  expect(payload.prompt).toContain("temporary");
 });
 
 test("uses the dedicated inventory-aware crafting conversation and separates achievements", async ({ page }) => {

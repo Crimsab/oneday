@@ -1221,9 +1221,11 @@ function AuthenticatedApp() {
     setModuleFocusId(null);
     setModuleOverlayTab(null);
     setOptionsInitialSection("appearance");
-    if (setupRouteOpen) {
-      navigateAppRoute(resolveAppRoute(null, storiesRef.current), "replace");
-    }
+  };
+
+  const openSetupReview = () => {
+    void refreshSetupReadiness();
+    navigateAppRoute({ kind: "setup" }, "push");
   };
 
   const openInstallationConfiguration = () => {
@@ -1543,10 +1545,11 @@ function AuthenticatedApp() {
   const railMode = isMobileLayout ? "expanded" : preferences.desktopRailMode;
   const activeStories = activeStoryCount(stories);
   const isFreshInstallation = sync === "Idle" && stories.length === 0;
-  const showInstallationOnboarding = isFreshInstallation && setupReadinessState === "ready" && setupReadiness !== null;
+  const showSetupSurface = isFreshInstallation || setupRouteOpen;
+  const showInstallationOnboarding = showSetupSurface && setupReadinessState === "ready" && setupReadiness !== null;
 
   useEffect(() => {
-    if (!isFreshInstallation && !setupRouteOpen) return;
+    if (!showSetupSurface) return;
     setStoryLibraryOpen(false);
     if (!setupRouteOpen || isFreshInstallation) return;
 
@@ -1555,13 +1558,7 @@ function AuthenticatedApp() {
       setStoryId(activeStory.id);
       setSelectedTab("history");
     }
-    if (overlay !== "options") {
-      setVisualAssetFocusId(null);
-      setOptionsInitialSection("operator");
-      void refreshModelSettings();
-      setOverlay("options");
-    }
-  }, [isFreshInstallation, overlay, refreshModelSettings, setupRouteOpen, stories]);
+  }, [isFreshInstallation, setupRouteOpen, showSetupSurface, stories]);
 
   return (
     <div
@@ -1580,7 +1577,7 @@ function AuthenticatedApp() {
         onToggleLeftRail={toggleLeftRail}
         onToggleInspector={toggleInspector}
         onOpen={openOverlay}
-        onOpenSetup={openInstallationConfiguration}
+        onOpenSetup={openSetupReview}
         modelSettings={modelSettings}
         translationCenterOpen={translationCenterOpen}
         onTranslationCenterOpenChange={setTranslationRouteOpen}
@@ -1609,8 +1606,8 @@ function AuthenticatedApp() {
             onConfigure={openInstallationConfiguration}
             onStartStory={() => setupRouteOpen && !isFreshInstallation ? navigateAppRoute(resolveAppRoute(null, storiesRef.current), "replace") : openOverlay("new-story")}
             onRetry={() => void refreshSetupReadiness()}
-          /> : isFreshInstallation && setupReadinessState === "loading" ? <InstallationReadinessPending />
-            : isFreshInstallation && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
+          /> : showSetupSurface && setupReadinessState === "loading" ? <InstallationReadinessPending />
+            : showSetupSurface && setupReadinessState === "error" ? <InstallationReadinessError onRetry={() => void refreshSetupReadiness()} />
               : <>
           <section className="transcript-panel" aria-labelledby="story-surface-title">
             <h1 className="sr-only" id="story-surface-title">{snapshot?.story.name || t("notifications:surface.yourStory")}</h1>

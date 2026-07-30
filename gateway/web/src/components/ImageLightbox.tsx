@@ -89,7 +89,7 @@ export function ImageLightbox({ open, src, alt, onClose }: ImageLightboxProps) {
 
   return (
     <div className="image-lightbox" role="dialog" aria-modal="true" aria-label={t("viewer.title")}>
-      <button type="button" className="image-lightbox-backdrop" onClick={onClose} aria-label={t("viewer.close")} />
+      <div className="image-lightbox-backdrop" onClick={onClose} aria-hidden="true" />
       <div className="image-lightbox-toolbar">
         <strong>{alt}</strong>
         <div role="group" aria-label={t("viewer.controls")}>

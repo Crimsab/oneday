@@ -76,24 +76,24 @@ For a local or hosted LiteLLM-compatible endpoint, set its URL/model in
 
 ## Browser with Docker
 
-Prepare local configuration before starting Compose:
+Initialize and start the complete Go + Rust + React image:
 
 ```bash
-cp config.example.yaml config.yaml
-cp .env.example .env
+./scripts/docker-init.sh
 ```
 
-Edit `config.yaml` so at least one provider is enabled and set its key in `.env`.
-Then pull and start the complete Go + Rust + React image:
+The command creates private local configuration without replacing existing
+settings and generates the browser bootstrap credential. Retrieve it only when
+the protected login screen requests it:
 
 ```bash
-docker compose pull
-docker compose up -d
+./scripts/docker-bootstrap-token.sh
 curl -fsS http://localhost:8788/api/health
 ```
 
 Open `http://localhost:8788`. The first start creates and migrates the SQLite
-database automatically in the `oneday_data` named volume.
+database automatically in the `oneday_data` named volume. After signing in,
+open **Setup** to configure the narrative provider and verify readiness.
 
 ### Review setup from the browser
 
@@ -125,6 +125,10 @@ opening it remotely. That configured credential can be entered again when the
 web interface asks to reconnect; the browser does not store it. A direct bearer
 token is a separate API/desktop-launch credential, not a value to put in a
 browser URL. See [Configuration](configuration.md#gateway-authentication-and-reverse-proxies).
+Docker users can retrieve the generated credential with
+`./scripts/docker-bootstrap-token.sh`; other installations should read
+`ONEDAY_GATEWAY_BOOTSTRAP_TOKEN` from the secret environment used to launch the
+gateway.
 
 ## Desktop profiles
 

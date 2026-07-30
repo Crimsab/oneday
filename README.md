@@ -95,21 +95,23 @@ history, saves, diagnostics, and local CLI provider integrations.
 ```bash
 git clone https://github.com/Crimsab/oneday.git
 cd oneday
-cp config.example.yaml config.yaml
-cp .env.example .env
+./scripts/docker-init.sh
 ```
 
-Enable a provider in `config.yaml`, add its key to `.env`, then start the stack:
+The initializer creates private local configuration, generates the reusable
+browser bootstrap credential, pulls the image, and starts the stack without
+overwriting existing settings. Retrieve the credential only when the login
+screen asks for it:
 
 ```bash
-docker compose pull
-docker compose up -d
+./scripts/docker-bootstrap-token.sh
 curl -fsS http://localhost:8788/api/health
 ```
 
 Open [http://localhost:8788](http://localhost:8788). The first start creates and
-migrates the persistent database automatically. Visual and spoken media are
-optional and remain disabled until their providers are configured.
+migrates the persistent database automatically. Open **Setup** after signing in
+to configure a narrative provider. Visual and spoken media are optional and
+remain disabled until their providers are configured.
 
 Docker does not bundle host Codex or Claude CLI credentials. The standard
 container path is LiteLLM/OpenRouter; advanced users can add private CLI mounts

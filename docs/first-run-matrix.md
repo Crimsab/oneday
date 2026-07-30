@@ -12,7 +12,9 @@ never inherits the caller's OAuth, provider, or application configuration. An
 offline parent runner may supply only non-sensitive pre-populated cache/toolchain
 directories through `ONEDAY_MATRIX_GOMODCACHE`,
 `ONEDAY_MATRIX_CARGO_REGISTRY_DIR`, `ONEDAY_MATRIX_CARGO_GIT_DIR`, and
-`ONEDAY_MATRIX_RUSTUP_HOME`, plus `ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH`
+`ONEDAY_MATRIX_RUSTUP_HOME`, plus an existing
+`ONEDAY_MATRIX_CARGO_TARGET_DIR` when compiled artifacts should be reused,
+`ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH`
 for already-installed Playwright browsers, and
 `ONEDAY_MATRIX_BUN_INSTALL_CACHE_DIR` for Bun's package cache. The runner
 links or references those directories from an empty temporary tool home; it
@@ -24,10 +26,16 @@ artifacts therefore cannot enter the test workspace; the working tree never
 receives `node_modules`, Vite outputs, or desktop test outputs. Playwright
 runs use polling so the proof does not depend on a host file-watcher quota.
 
+The desktop copy receives inert, version-matched sidecar and web-resource
+fixtures before Cargo evaluates the Tauri bundle contract. They are created
+only inside the temporary tracked-source copy and are never executable release
+artifacts.
+
 The matrix is intentionally bounded. Each command has a five-minute default
 limit (`ONEDAY_MATRIX_TIMEOUT_SECONDS` may lower or raise it), and all temporary
-state, build caches, Cargo targets, and Playwright output are removed when the
-runner exits. Required toolchains and already-cached
+state, default build caches, default Cargo targets, and Playwright output are
+removed when the runner exits. An explicitly supplied external Cargo target
+directory is reused and retained. Required toolchains and already-cached
 dependencies must be installed before running it; the matrix does not download
 them as a side effect.
 

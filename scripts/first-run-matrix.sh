@@ -35,6 +35,7 @@ mkdir -p "$workspace"/{bun-cache,cache,cargo-home,cargo-target,desktop,gateway-w
 go_mod_cache="${ONEDAY_MATRIX_GOMODCACHE:-$workspace/go-mod}"
 cargo_registry_dir="${ONEDAY_MATRIX_CARGO_REGISTRY_DIR:-}"
 cargo_git_dir="${ONEDAY_MATRIX_CARGO_GIT_DIR:-}"
+cargo_target_dir="${ONEDAY_MATRIX_CARGO_TARGET_DIR:-$workspace/cargo-target}"
 rustup_home="${ONEDAY_MATRIX_RUSTUP_HOME:-$workspace/rustup}"
 playwright_browsers_path="${ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH:-$workspace/playwright-browsers}"
 bun_install_cache_dir="${ONEDAY_MATRIX_BUN_INSTALL_CACHE_DIR:-$workspace/bun-cache}"
@@ -56,6 +57,9 @@ if [[ -n "$cargo_git_dir" ]]; then
   require_cache_directory ONEDAY_MATRIX_CARGO_GIT_DIR "$cargo_git_dir"
   ln -s "$cargo_git_dir" "$workspace/cargo-home/git"
 fi
+if [[ "$cargo_target_dir" != "$workspace/cargo-target" ]]; then
+  require_cache_directory ONEDAY_MATRIX_CARGO_TARGET_DIR "$cargo_target_dir"
+fi
 require_cache_directory ONEDAY_MATRIX_GOMODCACHE "$go_mod_cache"
 require_cache_directory ONEDAY_MATRIX_RUSTUP_HOME "$rustup_home"
 require_cache_directory ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH "$playwright_browsers_path"
@@ -69,7 +73,7 @@ matrix_environment=(
   "XDG_CACHE_HOME=$workspace/cache"
   "CARGO_HOME=$workspace/cargo-home"
   CARGO_NET_OFFLINE=true
-  "CARGO_TARGET_DIR=$workspace/cargo-target"
+  "CARGO_TARGET_DIR=$cargo_target_dir"
   "GOCACHE=$workspace/go-cache"
   "GOMODCACHE=$go_mod_cache"
   "GOTMPDIR=$workspace/go-tmp"
@@ -158,7 +162,7 @@ run_cargo_tests() {
   run_isolated cargo test --manifest-path "$manifest" "$filter"
 }
 
-copy_tracked_tree() {
+copy_working_tree() {
   local source_directory="$1"
   local destination_directory="$2"
   local source_path relative_path destination_path
@@ -167,17 +171,32 @@ copy_tracked_tree() {
     destination_path="$destination_directory/$relative_path"
     mkdir -p "$(dirname "$destination_path")"
     cp -- "$repo_root/$source_path" "$destination_path"
-  done < <(git -C "$repo_root" ls-files -z -- "$source_directory")
+  done < <(git -C "$repo_root" ls-files -z --cached --others --exclude-standard -- "$source_directory")
 }
 
 prepare_web_workspace() {
-  copy_tracked_tree gateway/web "$workspace/gateway-web"
+  copy_working_tree gateway/web "$workspace/gateway-web"
   matrix_env bash -c 'cd "$1" && bun install --frozen-lockfile --offline' -- "$workspace/gateway-web"
 }
 
 prepare_desktop_workspace() {
-  copy_tracked_tree desktop "$workspace/desktop"
+  copy_working_tree desktop "$workspace/desktop"
   matrix_env bash -c 'cd "$1" && bun install --frozen-lockfile --offline' -- "$workspace/desktop"
+}
+
+prepare_desktop_contract_resources() {
+  local desktop_root="$workspace/desktop"
+  local version target extension
+  version="$(jq -er '.version' "$desktop_root/package.json")"
+  target="$(matrix_env rustc -vV | awk '/^host:/ { print $2; exit }')"
+  extension=""
+  if [[ "$target" == *-windows-* ]]; then
+    extension=".exe"
+  fi
+  mkdir -p "$desktop_root/src-tauri/binaries" "$desktop_root/gateway/web/dist"
+  printf 'first-run matrix sidecar fixture\n' > "$desktop_root/src-tauri/binaries/oneday-v${version}-${target}${extension}"
+  printf 'first-run matrix sidecar fixture\n' > "$desktop_root/src-tauri/binaries/oneday-gateway-v${version}-${target}${extension}"
+  printf '<!doctype html><title>OneDay first-run fixture</title>\n' > "$desktop_root/gateway/web/dist/index.html"
 }
 
 run_web_tool() {
@@ -218,12 +237,13 @@ run_web() {
 }
 
 run_desktop() {
-  require_commands cargo bun git timeout
+  require_commands cargo bun git jq rustc timeout
   printf '== Desktop: isolated standalone and remote profile contracts ==\n'
-  run_cargo_tests desktop/src-tauri/Cargo.toml config::tests
-  run_cargo_tests desktop/src-tauri/Cargo.toml standalone::tests
-  run_cargo_tests desktop/src-tauri/Cargo.toml portability::tests
   prepare_desktop_workspace
+  prepare_desktop_contract_resources
+  run_cargo_tests "$workspace/desktop/src-tauri/Cargo.toml" config::tests
+  run_cargo_tests "$workspace/desktop/src-tauri/Cargo.toml" standalone::tests
+  run_cargo_tests "$workspace/desktop/src-tauri/Cargo.toml" portability::tests
   run_isolated bash -c 'cd "$1" && bun run test' -- "$workspace/desktop"
 }
 

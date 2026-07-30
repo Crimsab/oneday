@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw, ServerOff, WifiOff } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { activateWaitingUpdate, subscribeToPwaUpdates } from "./pwaRuntime";
@@ -32,6 +32,7 @@ const copy = {
     retry: "Riprova",
   },
 } as const;
+const UPDATE_REMINDER_MS = 30 * 60 * 1000;
 
 export async function checkServerConnectivity(
   online = navigator.onLine,
@@ -57,13 +58,26 @@ export function PwaStatus() {
   const { i18n } = useTranslation();
   const [updateReady, setUpdateReady] = useState(false);
   const [connectivity, setConnectivity] = useState<Connectivity>("connected");
+  const updateReminder = useRef<number | null>(null);
   const strings = copy[(i18n.resolvedLanguage?.startsWith("it") ? "it" : "en")];
 
   const refreshConnectivity = useCallback(async () => {
     setConnectivity(await checkServerConnectivity());
   }, []);
 
-  useEffect(() => subscribeToPwaUpdates(() => setUpdateReady(true)), []);
+  useEffect(() => {
+    const unsubscribe = subscribeToPwaUpdates(() => setUpdateReady(true));
+    return () => {
+      unsubscribe();
+      if (updateReminder.current !== null) window.clearTimeout(updateReminder.current);
+    };
+  }, []);
+
+  const remindLater = useCallback(() => {
+    setUpdateReady(false);
+    if (updateReminder.current !== null) window.clearTimeout(updateReminder.current);
+    updateReminder.current = window.setTimeout(() => setUpdateReady(true), UPDATE_REMINDER_MS);
+  }, []);
 
   useEffect(() => {
     void refreshConnectivity();
@@ -120,7 +134,7 @@ export function PwaStatus() {
               <button type="button" className="primary-action" onClick={() => void activateWaitingUpdate()}>
                 {strings.update}
               </button>
-              <button type="button" onClick={() => setUpdateReady(false)}>{strings.later}</button>
+              <button type="button" onClick={remindLater}>{strings.later}</button>
             </div>
           </div>
         </section>

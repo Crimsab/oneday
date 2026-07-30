@@ -852,7 +852,7 @@ function VisualDirectionSettings({
           )}
           {mediaTab === "library" && selectedAsset && assetInspectorOpen && (
             <>
-            <button type="button" className="visual-inspector-backdrop" onClick={() => setAssetInspectorOpen(false)} aria-label={t("common:close")} />
+            <div className="visual-inspector-backdrop" onClick={() => setAssetInspectorOpen(false)} aria-hidden="true" />
             <div className="visual-asset-editor visual-inspector-sheet" role="dialog" aria-modal="true" aria-labelledby={assetInspectorTitleId}>
               <div className="visual-inspector-sheet-head">
                 <div className="visual-inspector-title">

@@ -65,6 +65,12 @@ Do not expose a bare HTTP listener or rely on a reverse proxy to repair an
 incorrect Host/Origin configuration. See the [security threat model](security-threat-model.md)
 for the boundary and residual risks.
 
+The gateway intentionally has no network-wide `AUTH=off` mode. Docker users can
+generate and retain the required credential with `./scripts/docker-init.sh` and
+retrieve it explicitly with `./scripts/docker-bootstrap-token.sh`. This keeps
+browser access recoverable without weakening the listener or storing the
+credential in browser state.
+
 ## Player preferences and operator configuration
 
 The browser keeps player preferences separate from installation configuration.

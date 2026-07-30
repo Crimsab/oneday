@@ -3898,7 +3898,6 @@ input:disabled {
   max-width: none;
   transform-origin: 0 0;
   user-select: none;
-  will-change: transform;
 }
 
 .mask-editor-overlay {
@@ -4052,12 +4051,6 @@ input:disabled {
   .visual-operation-job small,
   .visual-operation-job p {
     grid-column: 2;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mask-editor-viewport img {
-    will-change: auto;
   }
 }
 
