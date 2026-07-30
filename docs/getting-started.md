@@ -76,26 +76,31 @@ For a local or hosted LiteLLM-compatible endpoint, set its URL/model in
 
 ## Browser with Docker
 
-Initialize and start the complete Go + Rust + React image:
+Build the complete Go + Rust + React image inside Docker:
 
 ```bash
-docker compose run --rm oneday-tools docker init
-docker compose up -d
+docker compose -f compose.yaml -f compose.build.yaml build oneday-gateway
 ```
 
-The one-shot initializer uses the Go binary already in the image, so the same
-commands work in PowerShell, macOS, and Linux without installing a host runtime.
-It creates private local configuration without replacing existing settings and
-generates the browser bootstrap credential. Retrieve it only when the protected
-login screen requests it:
+Initialize and start OneDay:
 
 ```bash
-docker compose run --rm oneday-tools docker token
+docker compose -f compose.yaml -f compose.build.yaml run --rm oneday-tools docker init
+docker compose -f compose.yaml -f compose.build.yaml up -d
+```
+
+The commands work in PowerShell, macOS, and Linux. You do not need Go, Rust, or
+Bun on the host. The initializer creates private local configuration without
+replacing existing settings. It also creates the browser credential. Show the
+credential only when the protected login screen requests it:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml run --rm oneday-tools docker token
 curl -fsS http://localhost:8788/api/health
 ```
 
-Unix users can alternatively run `./scripts/docker-init.sh`, which prepares the
-same files and starts Compose in one step.
+After a stable container image is available, you can omit the build overlay and
+use the shorter released-image commands in the [Docker guide](docker.md).
 
 Open `http://localhost:8788`. The first start creates and migrates the SQLite
 database automatically in the `oneday_data` named volume. After signing in,
@@ -131,9 +136,9 @@ opening it remotely. That configured credential can be entered again when the
 web interface asks to reconnect; the browser does not store it. A direct bearer
 token is a separate API/desktop-launch credential, not a value to put in a
 browser URL. See [Configuration](configuration.md#gateway-authentication-and-reverse-proxies).
-Docker users can retrieve the generated credential with
-`docker compose run --rm oneday-tools docker token`; other installations should read
-`ONEDAY_GATEWAY_BOOTSTRAP_TOKEN` from the secret environment used to launch the
+Docker users can retrieve the generated credential with the `docker token`
+command above. Other installations must read
+`ONEDAY_GATEWAY_BOOTSTRAP_TOKEN` from the secret environment that launches the
 gateway.
 
 ## Desktop profiles

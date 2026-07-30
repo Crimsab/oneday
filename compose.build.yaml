@@ -1,4 +1,7 @@
 services:
+  oneday-tools:
+    image: ${ONEDAY_BUILD_IMAGE:-oneday-gateway:local}
+
   oneday-gateway:
     image: ${ONEDAY_BUILD_IMAGE:-oneday-gateway:local}
     build:

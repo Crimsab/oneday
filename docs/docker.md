@@ -3,31 +3,49 @@
 The Docker image contains the Go engine, Rust gateway, and compiled React UI.
 The public `compose.yaml` is portable and has no host-specific paths or networks.
 
-## Start
+## Start from the current source
 
-Release images are published for `linux/amd64` and `linux/arm64` as
-`ghcr.io/crimsab/oneday`. Pulling `latest` tracks the newest stable release;
-pin a version such as `1.9.0` for reproducible deployments.
+This path works before a container release exists. Docker builds the Go engine,
+Rust gateway, and React client. The host does not need these toolchains.
+
+Build the image:
 
 ```bash
+docker compose -f compose.yaml -f compose.build.yaml build oneday-gateway
+```
+
+Initialize and start OneDay:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml run --rm oneday-tools docker init
+docker compose -f compose.yaml -f compose.build.yaml up -d
+```
+
+The initializer preserves existing files. It creates private `config.yaml` and
+`.env` files when they are missing. It also creates a high-entropy browser
+credential. It does not print the credential. Show it only when the browser
+asks you to reconnect:
+
+```bash
+docker compose -f compose.yaml -f compose.build.yaml run --rm oneday-tools docker token
+```
+
+These commands work in PowerShell, macOS, and Linux. Windows does not need WSL
+or Git Bash.
+
+## Start from a published image
+
+Use this shorter path only when the
+[container page](https://github.com/Crimsab/oneday/pkgs/container/oneday)
+contains the selected tag. `latest` means the newest stable container release.
+For a reproducible installation, set `ONEDAY_IMAGE` to a versioned tag.
+
+```bash
+docker compose pull
 docker compose run --rm oneday-tools docker init
 docker compose up -d
-```
-
-The first command is a one-shot service backed by the Go binary already in the
-OneDay image; no host shell, Go, Bun, or Rust installation is required. It runs
-unchanged in PowerShell, macOS, and Linux. The initializer preserves existing
-files, creates private `config.yaml` and `.env` files when missing, generates a
-high-entropy reusable browser bootstrap credential, and adjusts localhost Host
-validation to `ONEDAY_PORT`. It never prints the credential. Retrieve it
-explicitly when the browser asks you to reconnect:
-
-```bash
 docker compose run --rm oneday-tools docker token
 ```
-
-`./scripts/docker-init.sh` remains an optional Unix shortcut that also starts
-Compose. Windows does not need WSL or Git Bash for the portable commands above.
 
 The service listens on `${ONEDAY_PORT:-8788}` and exposes `/api/health`.
 Compose persists application data in the `oneday_data` named volume and mounts
@@ -37,8 +55,8 @@ are configured; neither is required for story generation. After the first login,
 open **Setup** and configure at least one narrative provider in the protected
 operator workspace.
 
-For automation that should only prepare files without starting containers, run
-only `docker compose run --rm oneday-tools docker init`.
+For automation that must only prepare files, run the applicable `docker init`
+command without the subsequent `up` command.
 
 ## Provider networking
 
@@ -165,17 +183,16 @@ profile when it better fits the deployment:
   disabled, and omit image provider credentials. Failed or absent media never
   blocks canonical story text or state.
 
-## Build from source
+## Rebuild the current source
 
-The default Compose file consumes the published image. Contributors can build
-the current checkout with the development overlay:
+After a source update, rebuild and recreate the gateway:
 
 ```bash
-docker compose -f compose.yaml -f compose.build.yaml up -d --build
+docker compose -f compose.yaml -f compose.build.yaml up -d --build oneday-gateway
 ```
 
-This produces `oneday-gateway:local` without changing the release-oriented
-defaults in `.env` or `compose.yaml`.
+This produces `oneday-gateway:local`. It does not change the release defaults
+in `.env` or `compose.yaml`.
 
 ## Update
 

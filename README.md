@@ -20,11 +20,106 @@ tone, language, rules, and play style belong to each story.
 **Any genre · Free-form actions · Branching timelines · Minigames · Crafting ·
 Investigations · Optional combat · Images and voices**
 
-[Get started](#quick-start) · [Documentation](docs/README.md) ·
+[Get started](#start-oneday) · [Documentation](docs/README.md) ·
 [Releases](https://github.com/Crimsab/oneday/releases) ·
 [Report a bug](https://github.com/Crimsab/oneday/issues/new/choose)
 
 </div>
+
+## Start OneDay
+
+Choose one installation method.
+
+| Method | Use it when | You need |
+| --- | --- | --- |
+| [Docker](#docker-recommended) | You want the browser or PWA on Windows, macOS, or Linux | Git and Docker Compose v2 |
+| [Desktop](#desktop) | A release contains a package for your operating system | The matching package from GitHub Releases |
+| [Terminal](#terminal-from-source) | You want the terminal client or you develop OneDay | Go 1.25.12 or newer |
+
+At least one narrative AI provider is required. Images and speech are optional.
+
+### Docker (recommended)
+
+This method builds OneDay inside Docker. You do not need Go, Rust, Bun, or a
+shell script on the host.
+
+1. Clone the repository.
+
+   ```bash
+   git clone https://github.com/Crimsab/oneday.git
+   cd oneday
+   ```
+
+2. Build the local image.
+
+   ```bash
+   docker compose -f compose.yaml -f compose.build.yaml build oneday-gateway
+   ```
+
+3. Create the local configuration and browser credential.
+
+   ```bash
+   docker compose -f compose.yaml -f compose.build.yaml run --rm oneday-tools docker init
+   ```
+
+4. Start OneDay.
+
+   ```bash
+   docker compose -f compose.yaml -f compose.build.yaml up -d
+   ```
+
+5. Show the browser credential when the login screen asks for it.
+
+   ```bash
+   docker compose -f compose.yaml -f compose.build.yaml run --rm oneday-tools docker token
+   ```
+
+6. Open [http://localhost:8788](http://localhost:8788).
+
+7. Enter the credential. Then open **Setup** and configure a narrative
+   provider.
+
+The commands are the same in PowerShell, macOS, and Linux. The first start
+creates the SQLite database in a Docker volume. A normal `docker compose down`
+keeps this data.
+
+Docker does not use Codex or Claude credentials from the host. Use a
+LiteLLM-compatible endpoint or OpenRouter for the standard container setup.
+See the [Docker guide](docs/docker.md) for released images, provider networking,
+updates, and backups.
+
+### Desktop
+
+Open the [latest release](https://github.com/Crimsab/oneday/releases/latest).
+Install a desktop package only when the release contains one for your operating
+system and CPU.
+
+On the first launch, choose one profile:
+
+- **Connect to a server** opens an existing HTTPS OneDay server. It does not
+  create a local story database.
+- **Run on this device** creates an isolated local profile. It does not
+  synchronize stories with a server.
+
+The CI builds unsigned Windows, Linux, Apple Silicon macOS, and Intel macOS
+packages. A public release can omit desktop packages until updater signing and
+the release workflow are enabled. If no matching package exists, use Docker.
+Read the [desktop guide](docs/desktop.md) before you choose a profile.
+
+### Terminal from source
+
+Run these commands:
+
+```bash
+git clone https://github.com/Crimsab/oneday.git
+cd oneday
+go run ./cmd/oneday setup
+go run ./cmd/oneday doctor
+go run ./cmd/oneday
+```
+
+The setup command creates local configuration. The doctor command checks it
+before OneDay starts. Continue with [Your first story](docs/first-story.md).
 
 ## More than generated prose
 
@@ -87,60 +182,6 @@ client](docs/desktop.md) before choosing a profile.
 The Bubble Tea client provides the complete narrative loop, guided story
 creation, slash commands, choices and free actions, combat/crafting surfaces,
 history, saves, diagnostics, and local CLI provider integrations.
-
-## Quick start
-
-### Browser with Docker
-
-```bash
-git clone https://github.com/Crimsab/oneday.git
-cd oneday
-docker compose run --rm oneday-tools docker init
-docker compose up -d
-```
-
-The one-shot tool runs the Go binary already included in the image. It works
-unchanged from PowerShell, macOS, and Linux, creates private local
-configuration, and generates the reusable browser bootstrap credential without
-overwriting existing settings. Retrieve the credential only when the login
-screen asks for it:
-
-```bash
-docker compose run --rm oneday-tools docker token
-curl -fsS http://localhost:8788/api/health
-```
-
-Unix users may use `./scripts/docker-init.sh` as a one-command shortcut that
-prepares the same files and starts the stack; it is not required.
-
-Open [http://localhost:8788](http://localhost:8788). The first start creates and
-migrates the persistent database automatically. Open **Setup** after signing in
-to configure a narrative provider. Visual and spoken media are optional and
-remain disabled until their providers are configured.
-
-Docker does not bundle host Codex or Claude CLI credentials. The standard
-container path is LiteLLM/OpenRouter; advanced users can add private CLI mounts
-through a Compose override.
-
-### Terminal from source
-
-Requires Go 1.25.12 or newer:
-
-```bash
-git clone https://github.com/Crimsab/oneday.git
-cd oneday
-go run ./cmd/oneday setup
-go run ./cmd/oneday doctor
-go run ./cmd/oneday
-```
-
-For builds and release availability, consult the [Releases
-page](https://github.com/Crimsab/oneday/releases). Do not assume a package exists
-for every operating system or that a package includes every optional provider.
-
-Read [Your first story](docs/first-story.md) for the shortest provider-to-story
-walkthrough, or the full [getting-started guide](docs/getting-started.md) for
-Docker-host networking, RAG, and verification details.
 
 ## AI providers and media
 
