@@ -83,10 +83,13 @@ The commands are the same in PowerShell, macOS, and Linux. The first start
 creates the SQLite database in a Docker volume. A normal `docker compose down`
 keeps this data.
 
-Docker does not use Codex or Claude credentials from the host. Use a
-LiteLLM-compatible endpoint or OpenRouter for the standard container setup.
-See the [Docker guide](docs/docker.md) for released images, provider networking,
-updates, and backups.
+The standard gateway image does not contain the Codex or Claude CLI, so it
+cannot use their host logins for narrative generation. Use a LiteLLM-compatible
+endpoint or OpenRouter for narrative generation in the standard container
+setup. Codex OAuth image generation is available through the optional
+`imagegen-bridge` profile: its helper copies only the host `auth.json` into a
+dedicated Docker volume. See the [Docker guide](docs/docker.md) for that
+profile, released images, provider networking, updates, and backups.
 
 ### Desktop
 

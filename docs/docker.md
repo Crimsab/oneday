@@ -56,6 +56,17 @@ are configured; neither is required for story generation. After the first login,
 open **Setup** and configure at least one narrative provider in the protected
 operator workspace.
 
+The standard gateway image does not contain the Codex or Claude CLI. Copying a
+host login into that container alone would therefore not enable those narrative
+providers: OneDay invokes `codex exec` or `claude -p`, not an HTTP API made from
+the copied token. Use LiteLLM or OpenRouter for narrative generation in this
+standard stack, or run the terminal client on a host where the selected CLI is
+installed and authenticated.
+
+Codex OAuth is still supported in Docker for image generation. The optional
+profile below supplies the required image runtime and safely copies only the
+host Codex `auth.json` into its own named volume.
+
 For automation that must only prepare files, run the applicable `docker init`
 command without the subsequent `up` command.
 

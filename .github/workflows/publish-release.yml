@@ -25,6 +25,7 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       commit: ${{ steps.release.outputs.commit }}
       source_date: ${{ steps.release.outputs.source_date }}
+      image_name: ${{ steps.release.outputs.image_name }}
     permissions:
       contents: read
     steps:
@@ -51,11 +52,13 @@ jobs:
           ./scripts/release-metadata.sh "$RELEASE_TAG" release-metadata.json
           [[ "$(jq -r .releaseTag release-metadata.json)" == "$RELEASE_TAG" ]]
           [[ "$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")" == "$(git rev-parse HEAD)" ]]
+          repository="${GITHUB_REPOSITORY,,}"
           {
             echo "tag=$RELEASE_TAG"
             echo "version=${RELEASE_TAG#v}"
             echo "commit=$(jq -r .sourceCommit release-metadata.json)"
             echo "source_date=$(jq -r .sourceDate release-metadata.json)"
+            echo "image_name=ghcr.io/$repository"
           } >> "$GITHUB_OUTPUT"
 
   cli:
@@ -287,7 +290,7 @@ jobs:
         COMMIT=${{ needs.validate.outputs.commit }}
         BUILD_DATE=${{ needs.validate.outputs.source_date }}
         DIRTY=false
-      meta-images: ghcr.io/${{ github.repository }}
+      meta-images: ${{ needs.validate.outputs.image_name }}
       meta-tags: |
         type=raw,value=${{ needs.validate.outputs.version }}
         type=semver,pattern={{major}}.{{minor}},value=${{ needs.validate.outputs.version }}
@@ -319,13 +322,11 @@ jobs:
       contents: read
       id-token: write
       packages: write
-    env:
-      IMAGE: ghcr.io/${{ github.repository }}@${{ needs.container-build.outputs.digest }}
     steps:
       - name: Scan published container
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: ${{ env.IMAGE }}
+          image-ref: ${{ needs.validate.outputs.image_name }}@${{ needs.container-build.outputs.digest }}
           format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -335,7 +336,7 @@ jobs:
         if: github.event.repository.private == false
         uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
         with:
-          subject-name: ghcr.io/${{ github.repository }}
+          subject-name: ${{ needs.validate.outputs.image_name }}
           subject-digest: ${{ needs.container-build.outputs.digest }}
           push-to-registry: true
 

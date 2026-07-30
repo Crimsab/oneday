@@ -1,8 +1,10 @@
 # Your first story
 
 This guide takes OneDay from a fresh checkout to a persistent story. Choose the
-terminal path for local Codex or Claude credentials; choose Docker for the full
-browser interface with LiteLLM or OpenRouter.
+terminal path to use local Codex or Claude CLI credentials for narrative
+generation. Choose Docker for the full browser interface. Its standard gateway
+uses LiteLLM or OpenRouter for narrative generation, while an optional private
+profile can reuse Codex OAuth for generated images.
 
 ## Terminal with Codex OAuth
 
@@ -23,8 +25,13 @@ embeddings setup if Ollama is available.
 
 ## Browser with Docker
 
-Docker does not inherit host Codex or Claude logins. Use a LiteLLM-compatible
-endpoint or OpenRouter for the standard container setup.
+The standard gateway image does not contain the Codex or Claude CLI. Use a
+LiteLLM-compatible endpoint or OpenRouter for narrative generation. If you also
+want Codex OAuth image generation, follow the
+[optional imagegen-bridge profile](docker.md#optional-codex-oauth-imagegen-bridge-profile).
+Its helper copies only the host Codex `auth.json` into a dedicated volume; it
+does not mount your home directory or expose the OAuth file to the OneDay
+gateway.
 
 ```bash
 git clone https://github.com/Crimsab/oneday.git
