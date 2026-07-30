@@ -332,6 +332,7 @@ var englishCatalog = map[string]Message{
 	"cli.help.doctor": {Text: "  oneday doctor [--json]         Check configuration and provider readiness"}, "cli.help.config_show": {Text: "  oneday config show --safe      Print effective configuration without secrets"}, "cli.help.config_locale": {Text: "  oneday config locale en|it|auto Set the interface language"},
 	"cli.help.rag_benchmark": {Text: "  oneday rag benchmark           Test the active embedding route"}, "cli.help.rag_reindex": {Text: "  oneday rag reindex [--all]     Rebuild story embeddings"},
 	"cli.help.story_packs": {Text: "  oneday story-packs list        Discover and validate story packs"}, "cli.help.export": {Text: "  oneday export [options]        Export story data"},
+	"cli.help.docker": {Text: "  oneday docker init|token       Prepare portable Docker access or retrieve its login token"},
 	"cli.help.version": {Text: "  oneday version                 Print build information"}, "cli.help.help": {Text: "  oneday help                    Show this help"}, "cli.help.docs": {Text: "The browser application is served by oneday-gateway. See docs/first-story.md and docs/getting-started.md for native and Docker setup."},
 	"cli.story_packs_invalid_count": {One: "Found %d invalid story pack.", Other: "Found %d invalid story packs."},
 }

@@ -14,7 +14,7 @@ const installationReadiness = {
 
 async function openRail(page: Page) {
   if (!(await page.locator("#story-navigation").isVisible())) {
-    await page.getByRole("button", { name: "Library" }).click();
+    await page.locator('button[aria-controls="story-navigation"]').click();
   }
 }
 
@@ -445,7 +445,7 @@ test("shows a reconnect gate before requesting protected application data", asyn
 
   await expect(page.getByRole("heading", { name: "Reconnect to OneDay" })).toBeVisible();
   await page.getByText("Where do I find this token?").click();
-  await expect(page.getByText("./scripts/docker-bootstrap-token.sh")).toBeVisible();
+  await expect(page.getByText("docker compose run --rm oneday-tools docker token")).toBeVisible();
   await expect(page.getByLabel("Browser bootstrap token")).toHaveAttribute("type", "password");
   await expect(page.getByRole("button", { name: "Reconnect" })).toBeDisabled();
   expect(protectedRequests).toEqual([]);

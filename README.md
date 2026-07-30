@@ -76,7 +76,7 @@ visual editor with brush/eraser masks, zoom, pan, and local stroke history.
 
 ### Desktop
 
-The Windows/Linux desktop client can either connect to one HTTPS OneDay server
+The Windows, Linux, and macOS desktop client can either connect to one HTTPS OneDay server
 or run a bundled local gateway and engine in an isolated standalone profile.
 Remote mode creates no local story database; standalone mode is local-only.
 They do not synchronize, merge, or share stories automatically. See [Desktop
@@ -95,18 +95,23 @@ history, saves, diagnostics, and local CLI provider integrations.
 ```bash
 git clone https://github.com/Crimsab/oneday.git
 cd oneday
-./scripts/docker-init.sh
+docker compose run --rm oneday-tools docker init
+docker compose up -d
 ```
 
-The initializer creates private local configuration, generates the reusable
-browser bootstrap credential, pulls the image, and starts the stack without
+The one-shot tool runs the Go binary already included in the image. It works
+unchanged from PowerShell, macOS, and Linux, creates private local
+configuration, and generates the reusable browser bootstrap credential without
 overwriting existing settings. Retrieve the credential only when the login
 screen asks for it:
 
 ```bash
-./scripts/docker-bootstrap-token.sh
+docker compose run --rm oneday-tools docker token
 curl -fsS http://localhost:8788/api/health
 ```
+
+Unix users may use `./scripts/docker-init.sh` as a one-command shortcut that
+prepares the same files and starts the stack; it is not required.
 
 Open [http://localhost:8788](http://localhost:8788). The first start creates and
 migrates the persistent database automatically. Open **Setup** after signing in

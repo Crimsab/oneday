@@ -39,6 +39,7 @@ cargo_target_dir="${ONEDAY_MATRIX_CARGO_TARGET_DIR:-$workspace/cargo-target}"
 rustup_home="${ONEDAY_MATRIX_RUSTUP_HOME:-$workspace/rustup}"
 playwright_browsers_path="${ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH:-$workspace/playwright-browsers}"
 bun_install_cache_dir="${ONEDAY_MATRIX_BUN_INSTALL_CACHE_DIR:-$workspace/bun-cache}"
+go_root="$(go env GOROOT)"
 
 require_cache_directory() {
   local name="$1"
@@ -66,7 +67,7 @@ require_cache_directory ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH "$playwright_brow
 require_cache_directory ONEDAY_MATRIX_BUN_INSTALL_CACHE_DIR "$bun_install_cache_dir"
 matrix_environment=(
   env -i
-  "PATH=$PATH"
+  "PATH=$go_root/bin:$PATH"
   "HOME=$workspace/home"
   TZ=UTC
   "TMPDIR=$workspace/tmp"
@@ -75,8 +76,10 @@ matrix_environment=(
   CARGO_NET_OFFLINE=true
   "CARGO_TARGET_DIR=$cargo_target_dir"
   "GOCACHE=$workspace/go-cache"
+  "GOROOT=$go_root"
   "GOMODCACHE=$go_mod_cache"
   "GOTMPDIR=$workspace/go-tmp"
+  GOTOOLCHAIN=local
   GOPROXY=off
   GOSUMDB=off
   "RUSTUP_HOME=$rustup_home"

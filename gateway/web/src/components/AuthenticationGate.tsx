@@ -83,7 +83,7 @@ export function AuthenticationGate({
             <details className="authentication-recovery">
               <summary>{t("recoveryTitle")}</summary>
               <p>{t("recoveryDocker")}</p>
-              <code>./scripts/docker-bootstrap-token.sh</code>
+              <code>docker compose run --rm oneday-tools docker token</code>
               <p>{t("recoveryOther")}</p>
             </details>
           </>

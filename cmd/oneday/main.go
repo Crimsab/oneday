@@ -52,6 +52,13 @@ func main() {
 		}
 		return
 	}
+	if wantsDockerCommand(os.Args[1:]) {
+		if err := runDockerCommand(os.Args[2:], os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "Docker setup failed: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if wantsDoctor(os.Args[1:]) {
 		if err := runDoctor(os.Args[1:]); err != nil {
 			if errors.Is(err, errDoctorRequiredFailure) {
@@ -437,7 +444,7 @@ func printUsage(w io.Writer) {
 		"cli.help.title", "", "cli.help.usage", "", "cli.help.commands",
 		"cli.help.play", "cli.help.setup", "cli.help.doctor", "cli.help.config_show",
 		"cli.help.config_locale", "cli.help.rag_benchmark", "cli.help.rag_reindex",
-		"cli.help.story_packs", "cli.help.export", "cli.help.version", "cli.help.help",
+		"cli.help.story_packs", "cli.help.export", "cli.help.docker", "cli.help.version", "cli.help.help",
 		"", "cli.help.docs",
 	} {
 		if key == "" {
@@ -456,6 +463,10 @@ func wantsDoctor(args []string) bool {
 		}
 	}
 	return false
+}
+
+func wantsDockerCommand(args []string) bool {
+	return len(args) >= 1 && args[0] == "docker"
 }
 
 func wantsJSON(args []string) bool {

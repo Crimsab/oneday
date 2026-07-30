@@ -79,17 +79,23 @@ For a local or hosted LiteLLM-compatible endpoint, set its URL/model in
 Initialize and start the complete Go + Rust + React image:
 
 ```bash
-./scripts/docker-init.sh
+docker compose run --rm oneday-tools docker init
+docker compose up -d
 ```
 
-The command creates private local configuration without replacing existing
-settings and generates the browser bootstrap credential. Retrieve it only when
-the protected login screen requests it:
+The one-shot initializer uses the Go binary already in the image, so the same
+commands work in PowerShell, macOS, and Linux without installing a host runtime.
+It creates private local configuration without replacing existing settings and
+generates the browser bootstrap credential. Retrieve it only when the protected
+login screen requests it:
 
 ```bash
-./scripts/docker-bootstrap-token.sh
+docker compose run --rm oneday-tools docker token
 curl -fsS http://localhost:8788/api/health
 ```
+
+Unix users can alternatively run `./scripts/docker-init.sh`, which prepares the
+same files and starts Compose in one step.
 
 Open `http://localhost:8788`. The first start creates and migrates the SQLite
 database automatically in the `oneday_data` named volume. After signing in,
@@ -126,7 +132,7 @@ web interface asks to reconnect; the browser does not store it. A direct bearer
 token is a separate API/desktop-launch credential, not a value to put in a
 browser URL. See [Configuration](configuration.md#gateway-authentication-and-reverse-proxies).
 Docker users can retrieve the generated credential with
-`./scripts/docker-bootstrap-token.sh`; other installations should read
+`docker compose run --rm oneday-tools docker token`; other installations should read
 `ONEDAY_GATEWAY_BOOTSTRAP_TOKEN` from the secret environment used to launch the
 gateway.
 

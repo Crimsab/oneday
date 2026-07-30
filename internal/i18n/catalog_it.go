@@ -332,6 +332,7 @@ var italianCatalog = map[string]Message{
 	"cli.help.doctor": {Text: "  oneday doctor [--json]         Controlla configurazione e disponibilità dei provider"}, "cli.help.config_show": {Text: "  oneday config show --safe      Mostra la configurazione effettiva senza segreti"}, "cli.help.config_locale": {Text: "  oneday config locale en|it|auto Imposta la lingua dell'interfaccia"},
 	"cli.help.rag_benchmark": {Text: "  oneday rag benchmark           Prova la route di embedding attiva"}, "cli.help.rag_reindex": {Text: "  oneday rag reindex [--all]     Rigenera gli embedding delle storie"},
 	"cli.help.story_packs": {Text: "  oneday story-packs list        Trova e convalida i pacchetti storia"}, "cli.help.export": {Text: "  oneday export [opzioni]        Esporta i dati della storia"},
+	"cli.help.docker": {Text: "  oneday docker init|token       Prepara Docker in modo portabile o recupera il token di accesso"},
 	"cli.help.version": {Text: "  oneday version                 Mostra le informazioni di build"}, "cli.help.help": {Text: "  oneday help                    Mostra questa guida"}, "cli.help.docs": {Text: "L'applicazione web è servita da oneday-gateway. Consulta docs/first-story.md e docs/getting-started.md per l'installazione nativa e Docker."},
 	"cli.story_packs_invalid_count": {One: "Trovato %d pacchetto storia non valido.", Other: "Trovati %d pacchetti storia non validi."},
 }

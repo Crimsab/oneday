@@ -66,10 +66,11 @@ incorrect Host/Origin configuration. See the [security threat model](security-th
 for the boundary and residual risks.
 
 The gateway intentionally has no network-wide `AUTH=off` mode. Docker users can
-generate and retain the required credential with `./scripts/docker-init.sh` and
-retrieve it explicitly with `./scripts/docker-bootstrap-token.sh`. This keeps
-browser access recoverable without weakening the listener or storing the
-credential in browser state.
+generate and retain the required credential with
+`docker compose run --rm oneday-tools docker init` and retrieve it explicitly
+with `docker compose run --rm oneday-tools docker token`. These commands work
+unchanged in PowerShell, macOS, and Linux. This keeps browser access recoverable
+without weakening the listener or storing the credential in browser state.
 
 ## Player preferences and operator configuration
 

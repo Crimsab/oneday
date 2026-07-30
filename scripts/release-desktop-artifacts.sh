@@ -2,7 +2,7 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: $0 <linux|windows> <version> <bundle-directory> <output-directory>" >&2
+  echo "usage: $0 <linux|windows|macos-aarch64|macos-x86_64> <version> <bundle-directory> <output-directory>" >&2
   exit 2
 }
 
@@ -22,7 +22,9 @@ copy_unique() {
   local pattern="$1"
   local destination="$2"
   local -a matches=()
-  mapfile -d '' matches < <(find "${bundle_dir}" -type f -path "${pattern}" -print0)
+  while IFS= read -r -d '' match; do
+    matches+=("${match}")
+  done < <(find "${bundle_dir}" -type f -path "${pattern}" -print0)
   if [[ "${#matches[@]}" -ne 1 ]]; then
     echo "expected one artifact matching ${pattern}, found ${#matches[@]}" >&2
     exit 1
@@ -41,6 +43,13 @@ case "${platform}" in
     base="oneday-desktop-${version}-windows-x86_64-setup.exe"
     copy_unique '*/nsis/*-setup.exe' "${base}"
     copy_unique '*/nsis/*-setup.exe.sig' "${base}.sig"
+    ;;
+  macos-aarch64|macos-x86_64)
+    architecture="${platform#macos-}"
+    base="oneday-desktop-${version}-macos-${architecture}"
+    copy_unique '*/dmg/*.dmg' "${base}.dmg"
+    copy_unique '*/macos/*.app.tar.gz' "${base}.app.tar.gz"
+    copy_unique '*/macos/*.app.tar.gz.sig' "${base}.app.tar.gz.sig"
     ;;
   *)
     usage

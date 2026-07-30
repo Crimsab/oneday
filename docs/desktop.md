@@ -1,7 +1,7 @@
 # OneDay Desktop
 
-OneDay Desktop is a Tauri 2 client for Windows and Linux. At first use, choose
-one of two intentionally separate profiles:
+OneDay Desktop is a Tauri 2 client for Windows, Linux, and macOS. At first use,
+choose one of two intentionally separate profiles:
 
 | Profile | What runs | Where canonical stories live |
 | --- | --- | --- |
@@ -51,6 +51,7 @@ as `XDG_CONFIG_HOME` and `XDG_DATA_HOME` take precedence on Linux.
 | --- | --- | --- |
 | Linux | `$XDG_CONFIG_HOME/dev.oneday.desktop/desktop.json` (default `~/.config/...`) | `$XDG_DATA_HOME/dev.oneday.desktop/profiles/<profile-id>/` (default `~/.local/share/...`) |
 | Windows | `%APPDATA%\dev.oneday.desktop\desktop.json` | `%APPDATA%\dev.oneday.desktop\profiles\<profile-id>\` |
+| macOS | `~/Library/Application Support/dev.oneday.desktop/desktop.json` | `~/Library/Application Support/dev.oneday.desktop/profiles/<profile-id>/` |
 
 `<profile-id>` is an opaque identifier, not a story name. A standalone profile
 root contains its own `config.yaml`, `data/` directory, and bounded local
@@ -108,7 +109,7 @@ before sharing.
   acquiring native desktop permissions; it does not replace server-side access
   controls.
 
-## Build locally on Linux
+## Build locally
 
 Install WebKitGTK 4.1, AppIndicator, librsvg, and the other platform packages
 listed by Tauri for the Linux distribution. Then run:
@@ -121,8 +122,20 @@ bun run tauri build --bundles appimage,deb
 ```
 
 The bundles are written below `desktop/src-tauri/target/release/bundle/` and are
-not tracked by Git. Windows NSIS installers are built by the dedicated desktop
-workflow on a Windows runner.
+not tracked by Git. On a Mac, use the same setup and run:
+
+```bash
+cd desktop
+bun install --frozen-lockfile
+bun run check
+bun run tauri build --bundles app,dmg
+```
+
+The dedicated desktop workflow builds Linux AppImage/deb, Windows NSIS, macOS
+Apple Silicon app/DMG, and macOS Intel app/DMG packages on native hosted
+runners. Ordinary workflow artifacts are deliberately updater-unsigned. Public
+release jobs add Tauri updater signatures; Apple Developer signing and
+notarization still require protected maintainer credentials.
 
 ## Signed updater
 

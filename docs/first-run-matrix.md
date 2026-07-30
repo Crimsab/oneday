@@ -62,10 +62,10 @@ complete matrix with `make first-run-matrix`.
 | Profile and recovery isolation | Profile tests keep standalone/remote state separate. The previous-release SQL fixture is copied before upgrade and the test proves the source DB bytes stay unchanged; the backup/restore fixture verifies source immutability through a failed recovery migration and refuses a non-empty target. |
 
 The desktop package itself is deliberately not claimed as an end-to-end proof by
-this matrix. It does not build or launch a signed AppImage, deb, or Windows
-installer. Package behavior remains covered by the separate platform packaging
-workflow; this matrix runs the existing Tauri and desktop UI tests and makes
-that boundary explicit.
+this matrix. It does not build or launch a signed AppImage, deb, Windows
+installer, macOS app, or DMG. Package behavior remains covered by the separate
+platform packaging workflow; this matrix runs the existing Tauri and desktop UI
+tests and makes that boundary explicit.
 
 After matrix changes, also run the proportional repository gates:
 

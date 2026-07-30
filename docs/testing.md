@@ -90,6 +90,10 @@ The `CI` workflow uses one consolidated job and runs:
 - frontend unit tests, production build, and Playwright desktop/mobile gates;
 - a complete gateway Docker image build.
 
+The separate desktop packaging workflow additionally builds native packages on
+Linux, Windows, macOS Apple Silicon, and macOS Intel runners. Its first public
+run remains the proof for hosted macOS toolchains and downloadable artifacts.
+
 ## Release verification
 
 `make release-check` remains the local release gate. In GitHub, the complete CI

@@ -25,9 +25,10 @@ The source-controlled release metadata is:
 6. The publisher independently rebuilds the CLI archives twice, compares their
    digests, builds the container, scans release inputs, creates an SPDX SBOM,
    creates GitHub artifact attestations, and uploads one final checksum index.
-7. When signed desktop publication is enabled, native Linux and Windows jobs build
-   version-matched engine and gateway sidecars, Tauri installers, updater
-   signatures, and an HTTPS `latest.json` feed.
+7. When signed desktop publication is enabled, native Linux, Windows, macOS
+   Apple Silicon, and macOS Intel jobs build version-matched engine and gateway
+   sidecars, Tauri installers, updater signatures, and an HTTPS `latest.json`
+   feed.
 
 All jobs in this path use GitHub-hosted runners. The release path has no private self-hosted
 runner, hostname, filesystem, cache, or credential dependency. Intermediate
@@ -59,7 +60,8 @@ builds sidecars named for the release version and native target, and validates
 the resolved Cargo and JavaScript package versions before invoking Tauri. These
 ephemeral edits are never committed by the workflow.
 
-Container releases use `X.Y.Z`, `X.Y`, `X`, and `latest`. The image carries OCI
+Container releases use `X.Y.Z`, `X.Y`, `X`, and `latest` and publish one
+multi-platform index for `linux/amd64` and `linux/arm64`. The image carries OCI
 source metadata, a BuildKit SBOM, and maximum-mode provenance. Public releases
 also receive a GitHub artifact attestation bound to the image digest.
 
@@ -73,11 +75,12 @@ Linux and Windows CLI archives use:
 - stable file ordering, ownership, timestamps, and ZIP metadata;
 - two independent builds whose SHA-256 lists must match before publication.
 
-Desktop jobs use native GitHub-hosted runners, locked Cargo and Bun dependency
-graphs, the same tag-derived build metadata, and version-matched sidecars. Native
-Tauri, AppImage, deb, NSIS, and cryptographic-signature tooling can add platform
-metadata or timestamps, so the workflow claims reproducible **inputs**, not
-bit-for-bit identical signed installers.
+Desktop jobs use native GitHub-hosted Linux, Windows, macOS Apple Silicon, and
+macOS Intel runners, locked Cargo and Bun dependency graphs, the same tag-derived
+build metadata, and version-matched sidecars. Native Tauri, AppImage, deb, NSIS,
+DMG, and cryptographic-signature tooling can add platform metadata or timestamps,
+so the workflow claims reproducible **inputs**, not bit-for-bit identical signed
+installers.
 
 Every release publishes `SHA256SUMS`, `release-metadata.json`, and an SPDX JSON
 SBOM. For public repositories, GitHub's Sigstore-backed attestations bind build
@@ -123,17 +126,18 @@ updates to existing installations; replacing the public key requires a planned
 transition release signed by the old trust root.
 
 `latest.json` contains only SemVer, release notes, the tagged commit date, HTTPS
-URLs, and the literal Tauri signatures for `linux-x86_64` and
-`windows-x86_64`. Using the commit date keeps an identical partial-run retry from
-changing the feed bytes. Publication verifies:
+URLs, and the literal Tauri signatures for `linux-x86_64`,
+`windows-x86_64`, `darwin-aarch64`, and `darwin-x86_64`. Using the commit date
+keeps an identical partial-run retry from changing the feed bytes. Publication
+verifies:
 
-- both platform entries and assets exist;
+- all four platform entries and assets exist;
 - every URL is the exact HTTPS URL for the tagged GitHub Release;
 - manifest signatures equal the generated `.sig` files;
 - Minisign verifies each updater asset with the configured public key.
 
 Tauri updater signing authenticates application updates. It is not Windows
-Authenticode signing.
+Authenticode signing or Apple code signing/notarization.
 
 ## Authenticode and SmartScreen
 
@@ -157,6 +161,26 @@ Authenticode material and credentials must use an external managed signing
 service or GitHub environment secrets. They must never enter source control or a
 workflow artifact.
 
+## Apple code signing and notarization
+
+The current workflows prepare updater-signed `.app.tar.gz` packages and DMGs for
+both Apple Silicon and Intel, but do not provision an Apple Developer identity or
+notarization credentials. Until an authorized maintainer adds those credentials,
+downloaded macOS builds may require an explicit user approval and must not be
+described as notarized.
+
+Before advertising a warning-free macOS installation:
+
+1. sign the application, bundled sidecars, and DMG with the intended Developer ID;
+2. submit the package to Apple's notary service and wait for success;
+3. staple the notarization ticket where supported;
+4. verify with `codesign --verify --deep --strict` and `spctl --assess`;
+5. smoke-test fresh downloads on Apple Silicon and Intel macOS.
+
+Apple signing identities, App Store Connect credentials, and notarization
+secrets belong in a protected GitHub environment. They must never enter source
+control or workflow artifacts.
+
 ## N-to-N+1 updater test
 
 Run this procedure before enabling desktop updates and after changing updater,
@@ -166,9 +190,9 @@ TLS or signature checks.
 
 1. Build version N from its tag with the staging HTTPS endpoint embedded. Record
    `release-metadata.json`, `SHA256SUMS`, the public key fingerprint, and the two
-   installer hashes.
+   installer hashes for every tested platform.
 2. Publish N's updater assets and valid feed to the staging origin. Install N on
-   clean supported Ubuntu and Windows machines.
+   clean supported Ubuntu, Windows, and macOS machines.
 3. Start standalone mode, create a story database, complete at least one turn,
    export a backup, and record the database schema reported by
    `oneday-db-check`.
@@ -182,9 +206,10 @@ TLS or signature checks.
    bundled version-matched sidecars launch.
 7. Open the existing story, check SQLite integrity and foreign keys, play another
    turn, and confirm the backup from step 3 remains restorable.
-8. Repeat on Linux AppImage and Windows NSIS. On Windows, confirm the updater can
-   close the running app and that the current-user install mode does not request
-   elevation.
+8. Repeat on Linux AppImage, Windows NSIS, macOS Apple Silicon, and macOS Intel.
+   On Windows, confirm the updater can close the running app and that the
+   current-user install mode does not request elevation. On macOS, confirm the
+   signed application passes Gatekeeper and relaunches after updating.
 9. Negative-test a modified updater asset, modified signature, wrong public key,
    malformed platform entry, and HTTP feed. Every case must fail before install
    without altering the existing application or database.

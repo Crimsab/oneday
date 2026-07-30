@@ -1,6 +1,19 @@
 name: oneday
 
 services:
+  oneday-tools:
+    profiles: ["tools"]
+    image: ${ONEDAY_IMAGE:-ghcr.io/crimsab/oneday:latest}
+    entrypoint: ["/usr/local/bin/oneday"]
+    working_dir: /workspace
+    network_mode: none
+    volumes:
+      - type: bind
+        source: .
+        target: /workspace
+    security_opt:
+      - no-new-privileges:true
+
   oneday-gateway:
     image: ${ONEDAY_IMAGE:-ghcr.io/crimsab/oneday:latest}
     restart: unless-stopped
