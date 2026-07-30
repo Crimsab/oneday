@@ -80,6 +80,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Start:
+      - Frequently asked questions: docs/faq.md
       - Your first story: docs/first-story.md
       - Getting started: docs/getting-started.md
       - Desktop profiles: docs/desktop.md

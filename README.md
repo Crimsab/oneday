@@ -211,6 +211,38 @@ is persisted with the story for consistent later assets.
 See [Configuration](docs/configuration.md) for the complete model, RAG, media,
 storage, and secret-handling reference.
 
+## Frequently asked questions
+
+### Can I use my Codex subscription?
+
+Yes. In the terminal client, run `codex login` and choose **Codex OAuth** during
+setup. For generated images in Docker, the optional `imagegen-bridge` profile
+can copy only the host Codex `auth.json` into an isolated volume. This import is
+explicit, not automatic.
+
+The standard Docker gateway does not contain the Codex CLI, so host Codex OAuth
+does not currently power narrative generation inside that container. Use the
+terminal client for subscription-backed Codex narrative generation, or use
+LiteLLM/OpenRouter for the standard browser stack.
+
+### Can I use my Claude subscription?
+
+Yes, for narrative generation when Claude Code is installed and authenticated
+on the machine running OneDay. Enable **Claude Code** in the provider
+connections and priority. Claude Code does not provide OneDay images or
+embeddings, and the standard Docker image does not contain the Claude CLI.
+
+### Do Codex and Claude work with long-term memory?
+
+Yes. Normal structured context and recent messages work with every narrative
+provider. Optional RAG also works with Codex or Claude as the narrator, but it
+needs a separate embedding provider such as local Ollama, a custom endpoint,
+LiteLLM, or OpenRouter. The retrieved memory is added to the narrative request;
+Codex and Claude Code do not create the vectors themselves.
+
+Read the [complete FAQ](docs/faq.md) for credential handling, automatic setup,
+provider selection, context, embeddings, reindexing, and Docker boundaries.
+
 ## How it works
 
 ```text
@@ -234,6 +266,7 @@ component boundaries.
 
 | Guide | Covers |
 | --- | --- |
+| [FAQ](docs/faq.md) | Codex and Claude subscriptions, context, RAG, embeddings, and Docker boundaries |
 | [Getting started](docs/getting-started.md) | Native and Docker installation |
 | [Your first story](docs/first-story.md) | Configure a provider and create the first world |
 | [Feature tour](docs/features.md) | Player-facing capabilities and interfaces |

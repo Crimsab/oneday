@@ -4,6 +4,7 @@ Use this index to find the shortest path for what you are trying to do.
 
 ## Run OneDay
 
+- [Frequently asked questions](faq.md) — Codex and Claude subscriptions, context, RAG, embeddings, and runtime boundaries.
 - [Your first story](first-story.md) — shortest path from provider setup to a persistent world.
 - [Getting started](getting-started.md) — native terminal client or browser stack with Docker.
 - [Configuration](configuration.md) — providers, models, RAG, images, secrets, and data paths.
