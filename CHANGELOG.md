@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.2](https://github.com/Crimsab/oneday/compare/v1.17.1...v1.17.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* **release:** verify Tauri updater signatures ([4cf0935](https://github.com/Crimsab/oneday/commit/4cf0935af956dd314bb4fc79f142d1c541b32a46))
+
 ## [1.17.1](https://github.com/Crimsab/oneday/compare/v1.17.0...v1.17.1) (2026-07-31)
 
 
