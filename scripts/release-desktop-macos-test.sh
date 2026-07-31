@@ -68,4 +68,30 @@ jq -e '
   .plugins.updater.windows.installMode == "passive"
 ' "${fixture}/tauri.signed.conf.json" >/dev/null
 
+if command -v minisign >/dev/null 2>&1; then
+  signing_key="${fixture}/updater.key"
+  CI=true "${repo_root}/desktop/node_modules/.bin/tauri" signer generate \
+    --ci --password '' --write-keys "${signing_key}" >/dev/null
+  public_key="$(<"${signing_key}.pub")"
+  signed_fixture="${fixture}/a"
+  printf 'real Tauri updater signature fixture\n' > "${signed_fixture}"
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD='' \
+    "${repo_root}/desktop/node_modules/.bin/tauri" signer sign \
+    --private-key-path "${signing_key}" "${signed_fixture}" >/dev/null
+  for asset in \
+    "oneday-desktop-${version}-linux-x86_64.AppImage" \
+    "oneday-desktop-${version}-windows-x86_64-setup.exe" \
+    "oneday-desktop-${version}-macos-aarch64.app.tar.gz" \
+    "oneday-desktop-${version}-macos-x86_64.app.tar.gz"
+  do
+    cp "${signed_fixture}" "${asset_dir}/${asset}"
+    cp "${signed_fixture}.sig" "${asset_dir}/${asset}.sig"
+  done
+  "${repo_root}/scripts/release-updater-manifest.sh" generate \
+    "${tag}" Crimsab/oneday "${asset_dir}" "${manifest}" \
+    "OneDay ${version}" "2026-07-30T12:00:00Z"
+  "${repo_root}/scripts/release-updater-manifest.sh" verify \
+    "${tag}" Crimsab/oneday "${asset_dir}" "${manifest}" "${public_key}"
+fi
+
 printf 'macOS release artifact tests passed\n'
