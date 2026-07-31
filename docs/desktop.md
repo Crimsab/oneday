@@ -31,10 +31,24 @@ appropriate for its network.
 For standalone, choose **Run on this device**. Startup verifies that the desktop
 bundle contains matching engine and gateway sidecars and a bundled web build,
 then starts the gateway on a fresh loopback port. The local profile still needs
-a working narrative provider before it can create narrative turns. Run
-`oneday doctor` against the profile configuration when provider or storage
-readiness is unclear. Images and speech can remain disabled: text-only media
-mode is supported and media failures do not block canonical text turns.
+a working narrative provider before it can create narrative turns.
+
+The desktop settings provide an optional Codex subscription path:
+
+1. OneDay checks for an existing Codex executable on this device.
+2. If none is found, **Install Codex** downloads the pinned official OpenAI
+   release for the current platform, verifies its size and SHA-256 digest, and
+   extracts only the expected executable into the app's private component
+   directory. No download starts before that click.
+3. **Sign in** starts `codex login`. The managed component uses a private
+   `CODEX_HOME`; OneDay does not parse the OAuth credential.
+4. Open the local OneDay Setup page and select Codex and a model. The desktop
+   restarts its gateway after sign-in so the managed executable is available.
+
+You can instead configure Claude Code, LiteLLM, OpenRouter, or another supported
+endpoint in OneDay Setup. Those choices do not download Codex. Images and speech
+can remain disabled: text-only media mode is supported and media failures do
+not block canonical text turns.
 
 Standalone is not a promise of fully offline AI. It keeps data and the gateway
 local, but a configured remote narrative provider still needs network access.
@@ -57,6 +71,11 @@ as `XDG_CONFIG_HOME` and `XDG_DATA_HOME` take precedence on Linux.
 root contains its own `config.yaml`, `data/` directory, and bounded local
 diagnostic log. Remote mode writes only `desktop.json`; its story data remains
 on the remote server.
+
+When installed, managed Codex lives under the same per-user application data
+root in `components/codex/`. Its OAuth home is separate from a system Codex
+installation. Treat that directory as private and include it in a device backup
+only if the backup storage is appropriate for credentials.
 
 To back up standalone data, stop its local gateway from the settings window or
 quit the desktop app, then copy the whole `data/` directory (or the entire

@@ -104,6 +104,11 @@ On the first launch, choose one profile:
 - **Run on this device** creates an isolated local profile. It does not
   synchronize stories with a server.
 
+In local mode, the desktop can reuse an existing Codex CLI or install a pinned,
+SHA-256-verified official Codex component after you explicitly choose it. The
+app then opens the Codex sign-in flow. If you select another provider, Codex is
+not downloaded or started.
+
 The CI builds unsigned Windows, Linux, Apple Silicon macOS, and Intel macOS
 packages. A public release can omit desktop packages until updater signing and
 the release workflow are enabled. If no matching package exists, use Docker.
@@ -216,14 +221,19 @@ storage, and secret-handling reference.
 ### Can I use my Codex subscription?
 
 Yes. In the terminal client, run `codex login` and choose **Codex OAuth** during
-setup. For generated images in Docker, the optional `imagegen-bridge` profile
-can copy only the host Codex `auth.json` into an isolated volume. This import is
-explicit, not automatic.
+setup. In desktop standalone mode, OneDay detects an existing Codex CLI or can
+install a verified private component on demand, then opens the Codex login.
+A browser served by a native gateway also works when that gateway process can
+reach the authenticated CLI; the browser never reads the credential itself.
+
+For generated images in Docker, the optional `imagegen-bridge` profile can copy
+only the host Codex `auth.json` into an isolated volume. This import is explicit,
+not automatic.
 
 The standard Docker gateway does not contain the Codex CLI, so host Codex OAuth
-does not currently power narrative generation inside that container. Use the
-terminal client for subscription-backed Codex narrative generation, or use
-LiteLLM/OpenRouter for the standard browser stack.
+does not power narrative generation inside that container. This Docker boundary
+does not apply to the native terminal, native gateway, or desktop standalone
+runtime. Use LiteLLM/OpenRouter for the standard container narrative path.
 
 ### Can I use my Claude subscription?
 

@@ -35,6 +35,15 @@ export interface TransferResult {
   path?: string;
 }
 
+export interface CodexStatus {
+  available: boolean;
+  source: "missing" | "managed" | "system";
+  version: string | null;
+  authenticated: boolean;
+  managedVersion: string;
+  message: string;
+}
+
 export const desktopBridge = {
   state: () => invoke<DesktopState>("desktop_state"),
   connect: (serverUrl: string) => invoke<void>("connect_server", { serverUrl }),
@@ -42,6 +51,7 @@ export const desktopBridge = {
   restartStandalone: () => invoke<void>("restart_standalone"),
   stopStandalone: () => invoke<void>("stop_standalone"),
   showStoryWindow: () => invoke<void>("show_story_window"),
+  showProviderSetup: () => invoke<void>("show_provider_setup"),
   stories: () => invoke<StorySummary[]>("list_remote_stories"),
   importPackage: () => invoke<TransferResult>("choose_and_import_story"),
   exportPackage: (storyId: string, kind: "archive" | "world") =>
@@ -51,6 +61,9 @@ export const desktopBridge = {
     invoke<{ available: boolean; version: string | null; message: string }>(
       "check_and_install_update",
     ),
+  codexStatus: () => invoke<CodexStatus>("codex_status"),
+  installCodex: () => invoke<CodexStatus>("install_codex_component"),
+  loginCodex: () => invoke<CodexStatus>("login_codex"),
   autostartEnabled: () => isEnabled(),
   setAutostart: async (enabled: boolean) => (enabled ? enable() : disable()),
   notificationsEnabled: () => isPermissionGranted(),

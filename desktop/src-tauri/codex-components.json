@@ -1,0 +1,34 @@
+{
+  "version": "0.146.0",
+  "releaseTag": "rust-v0.146.0",
+  "targets": {
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.146.0/codex-x86_64-pc-windows-msvc.exe.zip",
+      "sha256": "4781b618fa3a16d91c892f8a1e2c82625f9286f9bb944a5690ba727c84fc5729",
+      "size": 119675032,
+      "archive": "zip",
+      "entry": "codex-x86_64-pc-windows-msvc.exe"
+    },
+    "aarch64-apple-darwin": {
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.146.0/codex-aarch64-apple-darwin.tar.gz",
+      "sha256": "2750132d300e64f1dbffb95e3d913fd9c9dc7812bc8e1bce5c61357248b7929e",
+      "size": 102598070,
+      "archive": "tar.gz",
+      "entry": "codex-aarch64-apple-darwin"
+    },
+    "x86_64-apple-darwin": {
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.146.0/codex-x86_64-apple-darwin.tar.gz",
+      "sha256": "710d727b0fa2b4ab2189eb1bdc5ab40177c168296af264913eb7ab3ce848d04b",
+      "size": 111764146,
+      "archive": "tar.gz",
+      "entry": "codex-x86_64-apple-darwin"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/openai/codex/releases/download/rust-v0.146.0/codex-x86_64-unknown-linux-musl.tar.gz",
+      "sha256": "5ba3b9405543953081f661d0854d266f76e2abbe51d41349355a36de7673776a",
+      "size": 114169492,
+      "archive": "tar.gz",
+      "entry": "codex-x86_64-unknown-linux-musl"
+    }
+  }
+}

@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod codex_component;
 mod config;
 mod containment;
 mod lifecycle;
@@ -147,6 +148,20 @@ fn stop_local(state: &AppRuntime) -> Result<(), String> {
         },
     )?;
     result
+}
+
+#[tauri::command]
+fn show_provider_setup(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+    let server = state
+        .server_url
+        .lock()
+        .map_err(|_| "Desktop connection state is unavailable.".to_string())?
+        .clone()
+        .ok_or_else(|| "Start the local OneDay gateway first.".to_string())?;
+    let setup = server
+        .join("setup")
+        .map_err(|error| format!("Could not build the OneDay Setup URL: {error}"))?;
+    remote::open(&app, &setup)
 }
 
 async fn start_local(
@@ -420,11 +435,15 @@ fn main() {
             restart_standalone,
             stop_standalone,
             show_story_window,
+            show_provider_setup,
             portability::list_remote_stories,
             portability::choose_and_import_story,
             portability::choose_and_export_story,
             updater::updater_status,
             updater::check_and_install_update,
+            codex_component::codex_status,
+            codex_component::install_codex_component,
+            codex_component::login_codex,
         ])
         .setup(move |app| {
             let standalone_id =

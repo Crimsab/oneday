@@ -9,7 +9,17 @@ API key. The exact setup depends on the runtime:
 - **Terminal:** install the Codex CLI, run `codex login`, and choose
   **Codex OAuth** in `oneday setup`. OneDay calls `codex exec`; the Codex CLI
   reads and refreshes its own login.
-- **Docker images:** authenticate Codex on the host and enable the optional
+- **Desktop, Run on this device:** choose Codex in the desktop settings. OneDay
+  first detects an existing CLI. If none is found, **Install Codex** downloads
+  a pinned official OpenAI release only after you click it, verifies its
+  SHA-256 digest, and keeps the executable and login in the app's private data
+  directory. Sign in, then choose Codex and a model in OneDay Setup.
+- **Desktop, Connect to a server:** the desktop does not run a local provider.
+  The remote gateway must have its own provider configuration.
+- **Browser with a native gateway:** yes, when `codex` and its authenticated
+  state are available to the gateway process. The browser itself never runs or
+  reads Codex credentials; the server calls `codex exec`.
+- **Docker image generation:** authenticate Codex on the host and enable the optional
   `imagegen-bridge` profile. Its helper copies only the host `auth.json` into a
   dedicated Docker volume. This is explicit rather than automatic, so OneDay
   never mounts your full home directory or silently imports a credential.
@@ -48,9 +58,15 @@ login into that image alone is not enough.
 
 ## Does OneDay import Codex or Claude credentials automatically?
 
-No. In a terminal installation, OneDay launches the selected local CLI and the
-CLI reads its own authenticated state. OneDay does not parse or duplicate that
-state.
+Not from an arbitrary host installation. In a terminal or native-gateway
+installation, OneDay launches the selected local CLI and the CLI reads its own
+authenticated state. OneDay does not parse or duplicate that state.
+
+Desktop standalone has an explicit managed option. It detects a system Codex
+first. If you click **Install Codex**, it downloads a pinned official binary and
+uses a private `CODEX_HOME`; if you then click **Sign in**, Codex owns the OAuth
+flow and credential storage. Nothing is copied from another home directory,
+and remote desktop mode never receives this local credential.
 
 The Docker Codex image profile is the one deliberate exception: its helper
 copies only Codex `auth.json` into an isolated volume used by

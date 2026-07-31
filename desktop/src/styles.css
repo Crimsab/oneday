@@ -30,6 +30,11 @@ form label { display: block; margin-bottom: 7px; font-weight: 700; font-size: .8
 input[type="url"], select { min-width: 0; min-height: 42px; padding: 0 12px; color: #edf1f3; background: #0b1114; }
 .hint { margin: 8px 0 0; font-size: .78rem; }
 .message { min-height: 1.4rem; margin-top: 10px; color: #d7c89e; font-size: .84rem; }
+.component-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; padding-top: 4px; }
+.component-copy { display: grid; gap: 4px; min-width: 0; }
+.component-copy span { color: #aeb9be; font-size: .82rem; line-height: 1.4; }
+.component-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+[aria-busy="true"] .component-copy { opacity: .72; }
 .secondary, .tertiary { color: #e6ecef; background: #1a2429; }
 .secondary:hover:not(:disabled), .tertiary:hover:not(:disabled) { background: #243138; }
 .tertiary { border-color: transparent; background: transparent; }
@@ -40,5 +45,5 @@ input[type="url"], select { min-width: 0; min-height: 42px; padding: 0 12px; col
 .export-row { display: grid; grid-template-columns: minmax(130px, 1fr) auto auto; gap: 8px; margin-top: 10px; }
 footer { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 4px 2px; font-size: .78rem; }
 .text-button { min-height: auto; padding: 6px; border: 0; color: #d9c27f; background: transparent; }
-@media (max-width: 580px) { #app { padding: 18px; } .field-row, .export-row { grid-template-columns: 1fr; } .section-heading { display: grid; } footer { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 580px) { #app { padding: 18px; } .field-row, .export-row, .component-row { grid-template-columns: 1fr; } .component-actions { justify-content: flex-start; } .section-heading { display: grid; } .section-heading .status { justify-self: start; } footer { align-items: flex-start; flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; } }

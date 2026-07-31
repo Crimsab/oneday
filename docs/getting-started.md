@@ -12,7 +12,7 @@ automatically.
 | Terminal client | Local play, Codex OAuth, Claude Code, development | Go 1.25.12+ or a release binary |
 | Browser with Docker | Self-hosting and the complete React interface | Docker Engine with Compose v2 |
 | Desktop, remote profile | A native window for an existing server | Reachable HTTPS gateway (HTTP loopback only for development) |
-| Desktop, standalone profile | A local packaged experience | A desktop build that includes version-matched engine/gateway/web sidecars |
+| Desktop, standalone profile | A local packaged experience | A desktop build; Codex can be added on demand or another provider can be configured |
 
 At least one narrative provider must be configured. OneDay supports Codex CLI,
 Claude Code, LiteLLM-compatible endpoints, and OpenRouter. RAG embeddings are
@@ -150,9 +150,14 @@ path prefixes, and ordinary HTTP. Standalone mode runs a fresh loopback gateway
 for that desktop profile and opens its bundled web UI.
 
 Before relying on standalone mode, confirm the desktop package actually
-contains its matching gateway, engine, and web UI. Optional narrative/media
-providers are not bundled merely because the sidecars are present. For profile
-locations, backups, and shutdown details, read [Desktop](desktop.md).
+contains its matching gateway, engine, and web UI. To use a Codex subscription,
+open the desktop settings: OneDay reuses a detected Codex CLI or offers a
+verified managed install, then starts the Codex browser login. The download is
+optional and does not occur until you select it. After sign-in, open local
+OneDay Setup and choose Codex and a model. To use Claude Code, LiteLLM,
+OpenRouter, or another supported endpoint, configure that provider instead;
+Codex is not downloaded. For profile locations, backups, and shutdown details,
+read [Desktop](desktop.md).
 
 To build the current checkout instead of pulling a release image, use:
 

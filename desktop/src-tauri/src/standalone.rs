@@ -1,3 +1,4 @@
+use crate::codex_component;
 use crate::config;
 use crate::containment::{self, ProcessContainment};
 use crate::secret::LaunchSecret;
@@ -31,10 +32,15 @@ struct LaunchPlan {
     gateway_bin: PathBuf,
     engine_bin: PathBuf,
     static_dir: PathBuf,
+    codex: Option<codex_component::CodexRuntime>,
 }
 
 impl LaunchPlan {
-    fn create(profile_dir: PathBuf, resource_dir: PathBuf) -> Result<Self, String> {
+    fn create(
+        profile_dir: PathBuf,
+        resource_dir: PathBuf,
+        codex: Option<codex_component::CodexRuntime>,
+    ) -> Result<Self, String> {
         let listener = TcpListener::bind("127.0.0.1:0")
             .map_err(|error| format!("Could not reserve a loopback port: {error}"))?;
         let address = listener
@@ -54,6 +60,7 @@ impl LaunchPlan {
             gateway_bin,
             engine_bin,
             static_dir,
+            codex,
         };
         plan.validate()?;
         Ok(plan)
@@ -86,6 +93,13 @@ impl LaunchPlan {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .current_dir(&self.profile_dir);
+        if let Some(codex) = &self.codex {
+            command.env("PATH", codex_component::prepend_path(&codex.binary_dir)?);
+            if let Some(home) = &codex.home {
+                command.env("CODEX_HOME", home);
+                command.env_remove("OPENAI_API_KEY");
+            }
+        }
         containment::configure(&mut command);
         Ok(command)
     }
@@ -123,7 +137,7 @@ pub fn start(app: &AppHandle, profile_id: &str) -> Result<LocalProcess, String> 
         .resource_dir()
         .map_err(|error| format!("Could not locate bundled standalone components: {error}"))?;
     let secret = LaunchSecret::generate()?;
-    let plan = LaunchPlan::create(profile_dir, resource_dir)?;
+    let plan = LaunchPlan::create(profile_dir, resource_dir, codex_component::runtime(app)?)?;
     let log_path = prepare_log_path(&plan.profile_dir)?;
     let mut child = plan
         .command(&secret)?
@@ -411,7 +425,7 @@ mod tests {
         let workspace = tempfile::tempdir().expect("isolated workspace");
         let root = workspace.path().join("runtime");
         let secret = LaunchSecret::generate().expect("secret");
-        let plan = LaunchPlan::create(root.clone(), root.join("resources"));
+        let plan = LaunchPlan::create(root.clone(), root.join("resources"), None);
         assert!(
             plan.is_err(),
             "missing sidecars should fail safely before launch"
@@ -424,7 +438,7 @@ mod tests {
         fs::write(&gateway, "").expect("gateway");
         fs::write(&engine, "").expect("engine");
         fs::write(&static_index, "").expect("index");
-        let plan = LaunchPlan::create(root.clone(), root.join("resources")).expect("plan");
+        let plan = LaunchPlan::create(root.clone(), root.join("resources"), None).expect("plan");
         assert_eq!(plan.endpoint.scheme(), "http");
         assert_eq!(plan.endpoint.host_str(), Some("127.0.0.1"));
         let arguments = plan
