@@ -15,6 +15,7 @@ on:
       - "scripts/release-desktop-macos-test.sh"
       - "scripts/release-prepare-desktop.sh"
       - "scripts/release-desktop-artifacts.sh"
+      - "scripts/release-prepare-updater-config.sh"
       - "scripts/release-metadata.sh"
       - ".github/workflows/desktop.yml"
   push:
@@ -30,6 +31,7 @@ on:
       - "scripts/release-desktop-macos-test.sh"
       - "scripts/release-prepare-desktop.sh"
       - "scripts/release-desktop-artifacts.sh"
+      - "scripts/release-prepare-updater-config.sh"
       - "scripts/release-metadata.sh"
       - ".github/workflows/desktop.yml"
 

@@ -55,4 +55,17 @@ jq -e '
     ["darwin-aarch64", "darwin-x86_64", "linux-x86_64", "windows-x86_64"]
 ' "${manifest}" >/dev/null
 
+ONEDAY_UPDATER_ENDPOINT="https://github.com/Crimsab/oneday/releases/latest/download/latest.json" \
+ONEDAY_UPDATER_PUBKEY="untrusted comment: test updater key
+RWQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" \
+  "${repo_root}/scripts/release-prepare-updater-config.sh" \
+  "${repo_root}/desktop/src-tauri/tauri.release.conf.json" \
+  "${fixture}/tauri.signed.conf.json"
+jq -e '
+  .bundle.createUpdaterArtifacts == true and
+  .plugins.updater.endpoints == ["https://github.com/Crimsab/oneday/releases/latest/download/latest.json"] and
+  (.plugins.updater.pubkey | startswith("untrusted comment:")) and
+  .plugins.updater.windows.installMode == "passive"
+' "${fixture}/tauri.signed.conf.json" >/dev/null
+
 printf 'macOS release artifact tests passed\n'
