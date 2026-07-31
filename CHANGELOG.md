@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.17.0](https://github.com/Crimsab/oneday/compare/v1.16.0...v1.17.0) (2026-07-31)
+
+
+### Features
+
+* **desktop:** add optional managed Codex setup ([779b2d1](https://github.com/Crimsab/oneday/commit/779b2d1bfee609a30e5324295709f2edac68901b))
+
+
+### Bug Fixes
+
+* **release:** authenticate container verification ([f43acbf](https://github.com/Crimsab/oneday/commit/f43acbf871ff237f53b464f7879dafde0fa12147))
+* **release:** make sealed asset reruns idempotent ([cd92037](https://github.com/Crimsab/oneday/commit/cd92037482cd7ba3599424965ace3a24df733273))
+* **release:** normalize image references and clarify OAuth ([fae39aa](https://github.com/Crimsab/oneday/commit/fae39aa53d66cfd99a3d5b36faa23b96fc0c1803))
+* **release:** use current publisher on reruns ([b860ace](https://github.com/Crimsab/oneday/commit/b860aceaf4765fbee1e1f33fad9b066ff2387169))
+
 ## [1.16.0](https://github.com/Crimsab/oneday/compare/v1.15.0...v1.16.0) (2026-07-30)
 
 
