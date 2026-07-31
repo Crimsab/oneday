@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.17.1](https://github.com/Crimsab/oneday/compare/v1.17.0...v1.17.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* **release:** inject updater config into desktop builds ([555cd5b](https://github.com/Crimsab/oneday/commit/555cd5b8cb8d8eabd99250f38232352e7c750f7a))
+
 ## [1.17.0](https://github.com/Crimsab/oneday/compare/v1.16.0...v1.17.0) (2026-07-31)
 
 
