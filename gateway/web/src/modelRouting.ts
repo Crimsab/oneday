@@ -7,6 +7,17 @@ import type {
 } from "./types";
 import i18n from "./i18n";
 
+export const DEFAULT_CODEX_MODEL = "gpt-5.6-luna";
+export const DEFAULT_CODEX_REASONING = "low";
+
+export type ModelSetupSection = "connections" | "models" | "images" | "diagnostics";
+
+type PendingProviderConfiguration = {
+  providerConfigs: Record<string, { baseUrl: string; apiKey: string; clearApiKey: boolean }>;
+  bridgeToken: string;
+  clearBridgeToken: boolean;
+};
+
 export interface ModelProviderDraft {
   enabled: boolean;
   model: string;
@@ -61,25 +72,34 @@ export interface ImageGenerationDraft {
 export function draftFromModelSettings(
   settings: ModelSettings,
 ): ModelRoutingDraft {
-  return {
-    providerPriority: completePriority(
-      settings.provider_priority,
-      settings.providers.map((provider) => provider.id),
-    ),
-    providers: Object.fromEntries(
-      settings.providers.map((provider) => [
+  const priority = completePriority(
+    settings.provider_priority,
+    settings.providers.map((provider) => provider.id),
+  );
+  const providers = Object.fromEntries(
+    settings.providers.map((provider) => {
+      const missingCodexModel = provider.id === "codex" && provider.enabled && !provider.model?.trim();
+      return [
         provider.id,
         {
           enabled: provider.enabled,
-          model: provider.model ?? "",
-          reasoning: provider.reasoning ?? "",
+          model: missingCodexModel ? DEFAULT_CODEX_MODEL : provider.model ?? "",
+          reasoning: missingCodexModel && (!provider.reasoning || provider.reasoning === "off")
+            ? DEFAULT_CODEX_REASONING
+            : provider.reasoning ?? "",
           baseUrl: provider.base_url ?? "",
           apiKey: "",
           clearApiKey: false,
         },
-      ]),
-    ),
-    utilityModel: settings.active.utility_model,
+      ];
+    }),
+  );
+  const activeProvider = priority.find((id) => providers[id]?.enabled);
+  const activeModel = activeProvider ? providers[activeProvider]?.model.trim() : "";
+  return {
+    providerPriority: priority,
+    providers,
+    utilityModel: settings.active.utility_model || activeModel,
     repairModel: settings.active.repair_model,
     repairFallbackModels: settings.active.repair_fallback_models.join(", "),
     imageGeneration: imageGenerationDraft(settings.image_generation),
@@ -125,75 +145,85 @@ export function hasModelRoutingChanges(
 export function modelRoutingIssues(
   settings: ModelSettings,
   draft: ModelRoutingDraft,
-  pending?: { providerConfigs: Record<string, { baseUrl: string; apiKey: string; clearApiKey: boolean }>; bridgeToken: string; clearBridgeToken: boolean },
+  pending?: PendingProviderConfiguration,
 ): string[] {
-  const providerIds = settings.providers.map((provider) => provider.id);
-  const priority = completePriority(draft.providerPriority, providerIds);
+  const groups = modelRoutingIssueGroups(settings, draft, pending);
+  return ["connections", "models", "images"].flatMap(
+    (section) => groups[section as ModelSetupSection],
+  );
+}
+
+export function modelRoutingIssueGroups(
+  settings: ModelSettings,
+  draft: ModelRoutingDraft,
+  pending?: PendingProviderConfiguration,
+): Record<ModelSetupSection, string[]> {
   const enabledProviders = settings.providers.filter(
     (provider) => draft.providers[provider.id]?.enabled,
   );
-  const issues: string[] = [];
+  const groups: Record<ModelSetupSection, string[]> = {
+    connections: [],
+    models: [],
+    images: [],
+    diagnostics: [],
+  };
   if (enabledProviders.length === 0) {
-    issues.push(i18n.t("model_issues:providerRequired"));
-  }
-  const selectedProvider = priority[0];
-  if (selectedProvider && !draft.providers[selectedProvider]?.enabled) {
-    issues.push(i18n.t("model_issues:priorityEnabled"));
+    groups.connections.push(i18n.t("model_issues:providerRequired"));
   }
   for (const provider of enabledProviders) {
     const value = draft.providers[provider.id];
     if (provider.supports_model && !value?.model.trim()) {
-      issues.push(i18n.t("model_issues:modelName", { provider: provider.label }));
+      groups.connections.push(i18n.t("model_issues:modelName", { provider: provider.label }));
     }
     if (provider.supports_base_url && !value?.baseUrl.trim()) {
-      issues.push(i18n.t("model_issues:providerBaseUrl", { provider: provider.label }));
+      groups.connections.push(i18n.t("model_issues:providerBaseUrl", { provider: provider.label }));
     }
     if (
       provider.supports_api_key &&
       (value?.clearApiKey || (!provider.api_key_configured && !value?.apiKey.trim()))
     ) {
-      issues.push(i18n.t("model_issues:providerApiKey", { provider: provider.label }));
+      groups.connections.push(i18n.t("model_issues:providerApiKey", { provider: provider.label }));
     }
   }
   if (!draft.utilityModel.trim()) {
-    issues.push(i18n.t("model_issues:utility"));
+    groups.models.push(i18n.t("model_issues:utility"));
   }
   if (!draft.embeddingProvider.trim()) {
-    issues.push(i18n.t("model_issues:embedding"));
+    groups.images.push(i18n.t("model_issues:embedding"));
   }
   if (draft.imageGeneration.autoGenerate) {
     if (!draft.imageGeneration.provider.trim()) {
-      issues.push(i18n.t("model_issues:imageProvider"));
+      groups.images.push(i18n.t("model_issues:imageProvider"));
     }
     if (!draft.imageGeneration.model.trim()) {
-      issues.push(i18n.t("model_issues:imageModel"));
+      groups.images.push(i18n.t("model_issues:imageModel"));
     }
     if (!draft.imageGeneration.mapIconModel.trim()) {
-      issues.push(i18n.t("model_issues:mapIcon"));
+      groups.images.push(i18n.t("model_issues:mapIcon"));
     }
     if (draft.imageGeneration.timeoutSeconds <= 0) {
-      issues.push(i18n.t("model_issues:timeout"));
+      groups.images.push(i18n.t("model_issues:timeout"));
     }
     if (
       isOpenClawImageProvider(draft.imageGeneration.provider) &&
       !draft.imageGeneration.openClawBridgeUrl.trim()
     ) {
-      issues.push(i18n.t("model_issues:openClawUrl"));
+      groups.images.push(i18n.t("model_issues:openClawUrl"));
     }
     for (const id of new Set([draft.imageGeneration.provider, draft.imageGeneration.mapIconProvider])) {
       if (isImagegenBridgeProvider(id)) {
-        if (!draft.imageGeneration.imagegenBridgeUrl.trim()) issues.push(i18n.t("model_issues:nativeUrl"));
+        if (!draft.imageGeneration.imagegenBridgeUrl.trim()) groups.images.push(i18n.t("model_issues:nativeUrl"));
         continue;
       }
       const catalog = settings.image_providers.find((provider) => provider.id === id);
       if (!catalog || isOpenClawImageProvider(id)) continue;
       const config = pending?.providerConfigs[id];
-      if (!(config?.baseUrl.trim() || catalog.base_url.trim())) issues.push(i18n.t("model_issues:baseUrl"));
+      if (!(config?.baseUrl.trim() || catalog.base_url.trim())) groups.images.push(i18n.t("model_issues:baseUrl"));
       const keyReady = !config?.clearApiKey && (catalog.api_key_configured || Boolean(config?.apiKey.trim()));
-      if (!keyReady) issues.push(i18n.t("model_issues:apiKey"));
+      if (!keyReady) groups.images.push(i18n.t("model_issues:apiKey"));
     }
   }
-  return issues;
+  return groups;
 }
 
 function imageGenerationDraft(

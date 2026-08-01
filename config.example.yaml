@@ -14,19 +14,19 @@ ai:
   # Provider priority (first available is used, others are fallbacks)
   # Options: codex, claude-code, litellm, openrouter
   provider_priority:
-    - litellm
-    - openrouter
     - codex
     - claude-code
+    - litellm
+    - openrouter
 
   # OpenAI Codex CLI (uses local `codex login` OAuth/API auth)
   codex:
-    enabled: false
+    enabled: true
     # Path to codex CLI binary (leave empty for PATH lookup)
     binary: ""
-    model: "gpt-5.4-mini"
-    # Options: off, none, minimal, low, medium, high, xhigh
-    reasoning: "off"
+    model: "gpt-5.6-luna"
+    # Options: off, none, minimal, low, medium, high, xhigh, max, ultra
+    reasoning: "low"
     # Codex is generation-only. RAG embeddings still require LiteLLM/OpenRouter.
 
   # Claude Code CLI (uses your Claude subscription)
@@ -37,11 +37,11 @@ ai:
 
   # LiteLLM / OpenAI-compatible endpoint
   litellm:
-    enabled: true
+    enabled: false
     # Default for a LiteLLM proxy running on the same machine.
     base_url: "http://127.0.0.1:4000/v1"
     api_key: "${ONEDAY_LITELLM_API_KEY}"
-    default_model: "gpt-5.4-mini"
+    default_model: ""
 
   # OpenRouter
   openrouter:
@@ -71,10 +71,10 @@ ai:
 
   # Optional ambient ASCII-art generation for scene headers/signage/maps/etc.
   ascii_art:
-    enabled: true
+    enabled: false
     # Use the local LiteLLM alias when available; direct OpenRouter slugs also work
     # if the fallback chain reaches the OpenRouter provider.
-    model: "ascii-ambient"
+    model: ""
     temperature: 0.4
     max_tokens: 400
     timeout_seconds: 25
@@ -181,16 +181,15 @@ ai:
     max_tokens: 2048
     timeout_seconds: 60
     # Utility/ancillary model for repair, validation, and other small side calls.
-    utility_model: "gpt-5.4-mini"
+    utility_model: "gpt-5.6-luna"
     # Optional dedicated repair/validator model for schema-fix passes.
     # Primary repair model plus ordered fallbacks.
-    repair_model: "gpt-5.4-mini"
-    repair_fallback_models:
-      - "gpt-5.4-mini"
+    repair_model: ""
+    repair_fallback_models: []
 
 # RAG settings
 rag:
-  enabled: true
+  enabled: false
   # Summarize every N turns
   summarize_every: 10
   # Number of relevant chunks to retrieve

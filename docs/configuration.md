@@ -97,6 +97,13 @@ provider setup into a player preference.
 Provider order is controlled by `ai.provider_priority`. Disabled providers are
 skipped; enabled providers are tried in order.
 
+A new configuration selects `codex` with `gpt-5.6-luna` and `low` reasoning.
+This gives the desktop and native setup a useful subscription-backed default
+without hiding the choice: the protected setup screen shows both dropdowns and
+lets the operator switch provider, model, or reasoning before saving. Existing
+complete configurations are preserved. Older incomplete Codex configurations
+with a blank model are repaired to this default during migration.
+
 | Provider | Authentication | Notes |
 | --- | --- | --- |
 | `codex` | Local `codex login` | Generation only; pair it with a separate embedding provider for RAG. |
@@ -104,7 +111,7 @@ skipped; enabled providers are tried in order.
 | `litellm` | `ONEDAY_LITELLM_API_KEY` | Any compatible OpenAI `/v1` endpoint; default local URL is `http://127.0.0.1:4000/v1`. |
 | `openrouter` | `ONEDAY_OPENROUTER_API_KEY` | Set the model slug and enable the provider explicitly. |
 
-Model names are deliberately user-configurable. `ai.generation.utility_model`,
+Model names remain user-configurable. `ai.generation.utility_model`,
 `repair_model`, and `repair_fallback_models` control validation and repair calls
 separately from the main narrator.
 

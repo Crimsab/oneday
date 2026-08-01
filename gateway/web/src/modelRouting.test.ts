@@ -33,6 +33,26 @@ describe("model routing helpers", () => {
     });
   });
 
+  it("repairs an incomplete Codex selection with the supported Luna low default", () => {
+    const incomplete: ModelSettings = {
+      ...settings,
+      provider_priority: ["litellm", "codex", "openrouter", "claude-code"],
+      providers: settings.providers.map((provider) => provider.id === "codex"
+        ? { ...provider, enabled: true, model: "", reasoning: "off" }
+        : provider),
+      active: { ...settings.active, utility_model: "" },
+    };
+
+    const draft = draftFromModelSettings(incomplete);
+    expect(draft.providers.codex).toMatchObject({
+      enabled: true,
+      model: "gpt-5.6-luna",
+      reasoning: "low",
+    });
+    expect(draft.utilityModel).toBe("gpt-5.6-luna");
+    expect(modelRoutingIssues(incomplete, draft)).toEqual([]);
+  });
+
   it("promotes providers while preserving a complete priority chain", () => {
     expect(
       promoteProvider(

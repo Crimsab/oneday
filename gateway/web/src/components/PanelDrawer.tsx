@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronDown, ImageOff, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, CircleAlert, ImageOff, Search, SlidersHorizontal, X } from "lucide-react";
 import {
   commandDescriptorsToSlashCommands,
   commandDescriptors as resolveCommandDescriptors,
@@ -8,11 +8,14 @@ import {
 import { compactText, displayTimestamp } from "../format";
 import {
   draftFromModelSettings,
+  DEFAULT_CODEX_MODEL,
   hasModelRoutingChanges,
+  modelRoutingIssueGroups,
   modelRoutingIssues,
   promoteProvider,
   updateFromDraft,
   type ModelRoutingDraft,
+  type ModelSetupSection,
 } from "../modelRouting";
 import { ModuleContent } from "./Inspector";
 import type {
@@ -22,6 +25,7 @@ import type {
   ModelSettings,
   ModelDiscovery,
   ModelSettingsUpdate,
+  SetupReadinessReport,
   ModuleTab,
   OverlayKind,
   SaveView,
@@ -84,6 +88,8 @@ interface PanelDrawerProps {
   modelSettings: ModelSettings | null;
   modelError: string;
   modelBusy: boolean;
+  setupReadiness: SetupReadinessReport | null;
+  setupReadinessState: "loading" | "ready" | "error";
   initialSettingsSection?: SettingsSectionId;
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
@@ -103,6 +109,7 @@ interface PanelDrawerProps {
   onPreferencesChange: (preferences: AppPreferences) => void;
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
+  onSetupReadinessReload: () => Promise<void> | void;
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
   onVisualAssetsGenerate: (
     payload: GenerateVisualAssetsRequest,
@@ -153,6 +160,8 @@ export function PanelDrawer({
   modelSettings,
   modelError,
   modelBusy,
+  setupReadiness,
+  setupReadinessState,
   initialSettingsSection,
   visualProfile,
   visualAssets,
@@ -172,6 +181,7 @@ export function PanelDrawer({
   onPreferencesChange,
   onModelSettingsSave,
   onModelSettingsReload,
+  onSetupReadinessReload,
   onVisualProfileSave,
   onVisualAssetsGenerate,
   onVisualAssetsReload,
@@ -214,6 +224,8 @@ export function PanelDrawer({
             modelSettings={modelSettings}
             modelError={modelError}
             modelBusy={modelBusy}
+            setupReadiness={setupReadiness}
+            setupReadinessState={setupReadinessState}
             initialSettingsSection={initialSettingsSection}
             visualProfile={visualProfile}
             visualAssets={visualAssets}
@@ -226,6 +238,7 @@ export function PanelDrawer({
             onPreferencesChange={onPreferencesChange}
             onModelSettingsSave={onModelSettingsSave}
             onModelSettingsReload={onModelSettingsReload}
+            onSetupReadinessReload={onSetupReadinessReload}
             onVisualProfileSave={onVisualProfileSave}
             onVisualAssetsGenerate={onVisualAssetsGenerate}
             onVisualAssetsReload={onVisualAssetsReload}
@@ -310,6 +323,8 @@ function OptionsContent({
   modelSettings,
   modelError,
   modelBusy,
+  setupReadiness,
+  setupReadinessState,
   initialSettingsSection,
   visualProfile,
   visualAssets,
@@ -322,6 +337,7 @@ function OptionsContent({
   onPreferencesChange,
   onModelSettingsSave,
   onModelSettingsReload,
+  onSetupReadinessReload,
   onVisualProfileSave,
   onVisualAssetsGenerate,
   onVisualAssetsReload,
@@ -338,6 +354,8 @@ function OptionsContent({
   modelSettings: ModelSettings | null;
   modelError: string;
   modelBusy: boolean;
+  setupReadiness: SetupReadinessReport | null;
+  setupReadinessState: "loading" | "ready" | "error";
   initialSettingsSection?: SettingsSectionId;
   visualProfile: VisualProfile | null;
   visualAssets: VisualAsset[];
@@ -350,6 +368,7 @@ function OptionsContent({
   onPreferencesChange: (preferences: AppPreferences) => void;
   onModelSettingsSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onModelSettingsReload: () => Promise<void> | void;
+  onSetupReadinessReload: () => Promise<void> | void;
   onVisualProfileSave: (payload: VisualProfileUpdate) => Promise<void>;
   onVisualAssetsGenerate: (
     payload: GenerateVisualAssetsRequest,
@@ -415,7 +434,7 @@ function OptionsContent({
       id: "operator",
       content: <div className="operator-settings-stack">
         <p className="operator-security-note" data-setting-id="operator-configuration">{t("settings_ui:operator.security")}</p>
-        <div data-setting-id="provider-order"><ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} onSave={onModelSettingsSave} onReload={onModelSettingsReload} /></div>
+        <div data-setting-id="provider-order"><ModelRoutingSettings modelSettings={modelSettings} modelError={modelError} busy={modelBusy} setupReadiness={setupReadiness} setupReadinessState={setupReadinessState} onSave={onModelSettingsSave} onReload={onModelSettingsReload} onSetupReadinessReload={onSetupReadinessReload} /></div>
         <AdvancedSettings scope="operator" preferences={preferences} snapshot={snapshot} modelSettings={modelSettings} busy={modelBusy} onChange={onPreferencesChange} onReloadConfiguration={onModelSettingsReload} />
       </div>,
     },
@@ -1158,23 +1177,29 @@ function assetLabel(assets: VisualAsset[], assetId: string): string {
   return `${asset.kind}: ${asset.subject}`;
 }
 
-const aiSections = ["connections", "models", "routing", "images", "diagnostics"] as const;
-type AiSection = (typeof aiSections)[number];
+const aiSections: ModelSetupSection[] = ["connections", "models", "images", "diagnostics"];
+type AiSection = ModelSetupSection;
 
 function ModelRoutingSettings({
   modelSettings,
   modelError,
   busy,
+  setupReadiness,
+  setupReadinessState,
   onSave,
   onReload,
+  onSetupReadinessReload,
 }: {
   modelSettings: ModelSettings | null;
   modelError: string;
   busy: boolean;
+  setupReadiness: SetupReadinessReport | null;
+  setupReadinessState: "loading" | "ready" | "error";
   onSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onReload: () => Promise<void> | void;
+  onSetupReadinessReload: () => Promise<void> | void;
 }) {
-  const { t } = useTranslation(["drawer", "provider_setup"]);
+  const { t } = useTranslation(["drawer", "provider_setup", "installation"]);
   const [draft, setDraft] = useState<ModelRoutingDraft | null>(() =>
     modelSettings ? draftFromModelSettings(modelSettings) : null,
   );
@@ -1232,7 +1257,8 @@ function ModelRoutingSettings({
   const providerIds =
     modelSettings?.providers.map((provider) => provider.id) ?? [];
   const activeProvider =
-    draft?.providerPriority[0] ?? modelSettings?.active.provider ?? "";
+    draft?.providerPriority.find((id) => draft.providers[id]?.enabled) ??
+    modelSettings?.active.provider ?? "";
 
   const updateDraft = (
     updater: (value: ModelRoutingDraft) => ModelRoutingDraft,
@@ -1294,10 +1320,12 @@ function ModelRoutingSettings({
     );
   }
 
-  const issues = modelRoutingIssues(modelSettings, draft, { providerConfigs, bridgeToken, clearBridgeToken });
+  const pendingProviderConfiguration = { providerConfigs, bridgeToken, clearBridgeToken };
+  const issueGroups = modelRoutingIssueGroups(modelSettings, draft, pendingProviderConfiguration);
+  const issues = modelRoutingIssues(modelSettings, draft, pendingProviderConfiguration);
   const dirty = hasModelRoutingChanges(modelSettings, draft);
   const providerConfigDirty = dirtyProviderIds.size > 0 || Boolean(bridgeToken || clearBridgeToken);
-  const selectedImageProviderId = modelSettings.image_generation.provider.toLowerCase();
+  const selectedImageProviderId = draft.imageGeneration.provider.toLowerCase();
   const selectedImageProvider = modelSettings.image_providers.find(
     (provider) => provider.id === selectedImageProviderId,
   );
@@ -1310,7 +1338,7 @@ function ModelRoutingSettings({
   const selectedImageProviderReady = codexImageProvider
     ? Boolean(
         selectedImageProvider?.configured ||
-          modelSettings.image_generation.imagegen_bridge_url.trim(),
+          draft.imageGeneration.imagegenBridgeUrl.trim(),
       )
     : Boolean(
         selectedImageProvider?.configured ||
@@ -1329,97 +1357,79 @@ function ModelRoutingSettings({
   const allDiscoveredModels = Object.values(discoveredModels).flat();
   const providerModels = (providerId: string, models: string[]) =>
     [...new Set([...models, ...(discoveredModels[providerId] ?? [])])];
+  const requiredSections: ModelSetupSection[] = [
+    "connections",
+    "models",
+    ...(draft.imageGeneration.autoGenerate ? ["images" as const] : []),
+  ];
+  const firstIncompleteSection = requiredSections.find((section) => issueGroups[section].length > 0);
+  const completedRequiredSteps = requiredSections.filter((section) => issueGroups[section].length === 0).length;
+  const setupReady = !firstIncompleteSection;
+  const activeProviderSetting = modelSettings.providers.find((provider) => provider.id === activeProvider);
+  const activeProviderDraft = activeProvider ? draft.providers[activeProvider] : undefined;
+  const narrativeReadiness = setupReadiness?.probes.find((probe) => probe.name === "narrative");
+  const openSetupSection = (section: ModelSetupSection) => {
+    setActiveAiSection(section);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`model-tab-${section}`)?.focus();
+    });
+  };
 
   return (
     <div className="model-routing">
       <div className="model-routing-head">
-        <span>{t("models.title")}</span>
-        <strong>{t("models.shared", { revision })}</strong>
+        <div>
+          <span>{t("setupGuide.title")}</span>
+          <small>{t("setupGuide.progress", { done: completedRequiredSteps, total: requiredSections.length })}</small>
+        </div>
+        <strong className={setupReady ? "ready" : "needs-attention"}>
+          {setupReady ? t("setupGuide.ready") : t("setupGuide.needsAttention")}
+        </strong>
       </div>
-      <div className="model-active-strip">
+      <section className={`setup-next-action ${setupReady ? "ready" : "blocked"}`} aria-live="polite">
+        <span className="setup-next-icon" aria-hidden="true">
+          {setupReady ? <Check size={18} /> : <CircleAlert size={18} />}
+        </span>
         <div>
-          <span>{t("models.effective")}</span>
-          <strong>{modelSettings.active.provider || t("models.none")}</strong>
+          <strong>{setupReady ? t("setupGuide.readyTitle") : t("setupGuide.nextTitle")}</strong>
+          <p>
+            {setupReady
+              ? t("setupGuide.readyDescription", {
+                  provider: activeProviderSetting?.label ?? t("models.none"),
+                  model: activeProviderDraft?.model || t("models.noModel"),
+                })
+              : issueGroups[firstIncompleteSection!][0]}
+          </p>
         </div>
-        <div>
-          <span>{t("models.narrator")}</span>
-          <strong>
-            {modelSettings.active.narrative_model || t("models.providerDefault")}
-          </strong>
-        </div>
-        <div>
-          <span>{t("models.path")}</span>
-          <strong title={modelSettings.config_path}>
-            {modelSettings.config_path}
-          </strong>
-        </div>
-      </div>
-      <div className="imagegen-status-strip">
-        <div
-          className={modelSettings.image_generation.available ? "ready" : "blocked"}
-        >
-          <span>{t("models.imageGeneration")}</span>
-          <strong>{modelSettings.image_generation.available ? t("imageSettings.configured") : t("imageSettings.notConfigured")}</strong>
-        </div>
-        <div>
-          <span>{t("models.provider")}</span>
-          <strong>{modelSettings.image_generation.provider || t("models.notSet")}</strong>
-        </div>
-        <div>
-          <span>
-            {codexImageProvider
-              ? t("imageSettings.bridgeConnection")
-              : t("models.credential")}
-          </span>
-          <strong>
-            {selectedImageProviderReady
-              ? t("imageSettings.configured")
-              : t("imageSettings.notConfigured")}
-          </strong>
-        </div>
-      </div>
-      <p className="model-note">
-        {t("models.note")}
-      </p>
+        {firstIncompleteSection && (
+          <button type="button" onClick={() => openSetupSection(firstIncompleteSection)}>
+            {t("setupGuide.openStep", { step: aiSections.indexOf(firstIncompleteSection) + 1 })}
+            <ArrowRight size={15} aria-hidden="true" />
+          </button>
+        )}
+      </section>
       <div className="operator-console-body">
         <div className="model-section-nav" role="tablist" aria-label={t("models.title")} aria-orientation={aiNavHorizontal ? "horizontal" : "vertical"}>
-          {aiSections.map((section) => <button id={`model-tab-${section}`} data-ai-section={section} key={section} type="button" role="tab" aria-selected={activeAiSection === section} aria-controls={`model-section-${section}`} tabIndex={activeAiSection === section ? 0 : -1} className={activeAiSection === section ? "active" : ""} onClick={() => setActiveAiSection(section)} onKeyDown={(event) => moveAiTab(event, section)}><span>{t(`modelSections.${section}`)}</span><small>{t(`modelSectionDescriptions.${section}`)}</small></button>)}
+          {aiSections.map((section, index) => {
+            const incomplete = issueGroups[section].length > 0;
+            const optional = section === "images" && !draft.imageGeneration.autoGenerate;
+            const review = section === "diagnostics";
+            return <button id={`model-tab-${section}`} data-ai-section={section} key={section} type="button" role="tab" aria-selected={activeAiSection === section} aria-controls={`model-section-${section}`} tabIndex={activeAiSection === section ? 0 : -1} className={`${activeAiSection === section ? "active" : ""} ${incomplete ? "incomplete" : "complete"}`} onClick={() => setActiveAiSection(section)} onKeyDown={(event) => moveAiTab(event, section)}>
+              <span className="setup-step-number" aria-hidden="true">{incomplete ? "!" : index + 1}</span>
+              <span className="setup-step-copy"><strong>{t(`modelSections.${section}`)}</strong><small>{t(`modelSectionDescriptions.${section}`)}</small></span>
+              <span className="setup-step-state">{incomplete ? t("setupGuide.missing") : optional ? t("setupGuide.optional") : review ? t("setupGuide.review") : t("setupGuide.complete")}</span>
+            </button>;
+          })}
         </div>
         <div className="operator-console-panel">
           <header className="operator-panel-heading">
             <h4>{t(`modelSections.${activeAiSection}`)}</h4>
             <p>{t(`modelSectionDescriptions.${activeAiSection}`)}</p>
           </header>
-      {activeAiSection === "routing" && <div className="settings-grid" id="model-section-routing" role="tabpanel" aria-labelledby="model-tab-routing">
-        <label>
-          <span>{t("models.priority")}</span>
-          <CustomSelect
-            value={activeProvider}
-            ariaLabel={t("models.priority")}
-            onChange={(nextProvider) =>
-              updateDraft((value) => ({
-                ...value,
-                providerPriority: promoteProvider(
-                  value.providerPriority,
-                  providerIds,
-                  nextProvider,
-                ),
-                providers: {
-                  ...value.providers,
-                  [nextProvider]: {
-                    ...value.providers[nextProvider],
-                    enabled: true,
-                  },
-                },
-              }))
-            }
-            options={modelSettings.providers.map((provider) => ({ value: provider.id, label: provider.label }))}
-          />
-        </label>
-      </div>}
-      {activeAiSection === "models" && <div className="settings-grid" id="model-section-models" role="tabpanel" aria-labelledby="model-tab-models">
-        <label>
+      {activeAiSection === "models" && <div className="setup-models" id="model-section-models" role="tabpanel" aria-labelledby="model-tab-models">
+        <label className="setup-model-primary">
           <span>{t("models.utility")}</span>
+          <small>{t("setupGuide.utilityHelp")}</small>
           <ModelInput
             value={draft.utilityModel}
             options={providerModels(activeProvider, modelSettings.utility_models)}
@@ -1428,29 +1438,35 @@ function ModelRoutingSettings({
             }
           />
         </label>
-        <label>
-          <span>{t("models.repair")}</span>
-          <ModelInput
-            value={draft.repairModel}
-            options={providerModels(activeProvider, modelSettings.repair_models)}
-            onChange={(value) =>
-              updateDraft((draft) => ({ ...draft, repairModel: value }))
-            }
-          />
-        </label>
-        <label>
-          <span>{t("models.repairFallbacks")}</span>
-          <input
-            value={draft.repairFallbackModels}
-            onChange={(event) =>
-              updateDraft((draft) => ({
-                ...draft,
-                repairFallbackModels: event.target.value,
-              }))
-            }
-            placeholder={t("models.fallbackPlaceholder")}
-          />
-        </label>
+        <details className="setup-advanced">
+          <summary>{t("setupGuide.advancedModels")}</summary>
+          <p>{t("setupGuide.advancedModelsHelp")}</p>
+          <div className="settings-grid">
+            <label>
+              <span>{t("models.repair")}</span>
+              <ModelInput
+                value={draft.repairModel}
+                options={providerModels(activeProvider, modelSettings.repair_models)}
+                onChange={(value) =>
+                  updateDraft((draft) => ({ ...draft, repairModel: value }))
+                }
+              />
+            </label>
+            <label>
+              <span>{t("models.repairFallbacks")}</span>
+              <input
+                value={draft.repairFallbackModels}
+                onChange={(event) =>
+                  updateDraft((draft) => ({
+                    ...draft,
+                    repairFallbackModels: event.target.value,
+                  }))
+                }
+                placeholder={t("models.fallbackPlaceholder")}
+              />
+            </label>
+          </div>
+        </details>
       </div>}
       {activeAiSection === "images" && <div className="settings-grid" id="model-section-images" role="tabpanel" aria-labelledby="model-tab-images">
         <ImageProviderEditor catalog={modelSettings.image_providers} draft={draft.imageGeneration} providerConfigs={providerConfigs} bridgeToken={bridgeToken} clearBridgeToken={clearBridgeToken} discoveredModels={discoveredModels} onImageChange={updateImageGeneration} onProviderConfig={(id, patch) => { setDirtyProviderIds((current) => new Set(current).add(id)); setProviderConfigs((current) => ({ ...current, [id]: { ...current[id], ...patch } })); }} onBridgeToken={setBridgeToken} onClearBridgeToken={setClearBridgeToken} />
@@ -1517,36 +1533,131 @@ function ModelRoutingSettings({
       </div>
       }
       {activeAiSection === "connections" && <section id="model-section-connections" role="tabpanel" aria-labelledby="model-tab-connections">
+      <div className="setup-primary-provider">
+        <label>
+          <span>{t("setupGuide.primaryProvider")}</span>
+          <small>{t("setupGuide.primaryProviderHelp")}</small>
+          <CustomSelect
+            value={activeProvider}
+            ariaLabel={t("setupGuide.primaryProvider")}
+            onChange={(nextProvider) =>
+              updateDraft((value) => {
+                const provider = value.providers[nextProvider];
+                const model = nextProvider === "codex" && !provider?.model.trim()
+                  ? DEFAULT_CODEX_MODEL
+                  : provider?.model ?? "";
+                return {
+                  ...value,
+                  providerPriority: promoteProvider(value.providerPriority, providerIds, nextProvider),
+                  utilityModel: value.utilityModel.trim() || model,
+                  providers: {
+                    ...value.providers,
+                    [nextProvider]: {
+                      ...provider,
+                      enabled: true,
+                      model,
+                      reasoning: nextProvider === "codex" && (!provider?.reasoning || provider.reasoning === "off") ? "low" : provider?.reasoning ?? "",
+                    },
+                  },
+                };
+              })
+            }
+            options={modelSettings.providers.map((provider) => ({ value: provider.id, label: provider.label }))}
+          />
+        </label>
+      </div>
       <div className="provider-editor-grid">
         {modelSettings.providers.map((provider) => {
           const providerDraft = draft.providers[provider.id];
+          const enabled = providerDraft?.enabled ?? provider.enabled;
+          const needsKey = enabled && provider.credential_type === "api_key" && !provider.api_key_configured && !providerDraft?.apiKey;
+          const codexModels = [
+            DEFAULT_CODEX_MODEL,
+            "gpt-5.6-terra",
+            "gpt-5.6-sol",
+            "gpt-5.5",
+            ...providerModels(provider.id, modelSettings.narrative_models),
+          ];
           return (
             <div
-              className={`provider-card ${providerDraft?.enabled ? "enabled" : ""}`}
+              className={`provider-card ${enabled ? "enabled" : "collapsed"}`}
               key={provider.id}
             >
-              <div className="provider-card-status">
-                <span>{provider.credential_type === "api_key" ? t("provider_setup:apiConnection") : t("provider_setup:subscriptionConnection")}</span>
-                <strong className={provider.credential_type === "api_key" && !provider.api_key_configured && !providerDraft?.apiKey ? "missing" : "ready"}>
-                  {provider.credential_type === "api_key"
-                    ? provider.api_key_configured || providerDraft?.apiKey
-                      ? t("models.keySet")
-                      : t("models.keyMissing")
-                    : t("provider_setup:localSignIn")}
-                </strong>
+              <div className="provider-card-heading">
+                <div>
+                  <strong>{provider.label}</strong>
+                  <span>{provider.credential_type === "api_key" ? t("provider_setup:apiConnection") : t("provider_setup:subscriptionConnection")}</span>
+                </div>
+                <label className="toggle-row">
+                  <span className={needsKey ? "missing" : enabled && provider.credential_type === "api_key" ? "ready" : enabled ? "method" : "off"}>
+                    {needsKey
+                      ? t("models.keyMissing")
+                      : enabled
+                        ? provider.credential_type === "api_key"
+                          ? t("models.keySet")
+                          : t("provider_setup:localSignIn")
+                        : t("setupGuide.disabled")}
+                  </span>
+                  <input
+                    type="checkbox"
+                    aria-label={t("setupGuide.enableProvider", { provider: provider.label })}
+                    checked={enabled}
+                    onChange={(event) =>
+                      updateProvider(provider.id, {
+                        enabled: event.target.checked,
+                        ...(provider.id === "codex" && event.target.checked && !providerDraft?.model.trim()
+                          ? { model: DEFAULT_CODEX_MODEL, reasoning: "low" }
+                          : {}),
+                      })
+                    }
+                  />
+                </label>
               </div>
-              <label className="toggle-row">
-                <span>{provider.label}</span>
-                <input
-                  type="checkbox"
-                  checked={providerDraft?.enabled ?? provider.enabled}
-                  onChange={(event) =>
-                    updateProvider(provider.id, {
-                      enabled: event.target.checked,
-                    })
-                  }
-                />
-              </label>
+              {!enabled && <p className="provider-collapsed-help">{t("setupGuide.providerDisabledHelp")}</p>}
+              {enabled && <div className="provider-card-fields">
+              {provider.credential_type === "subscription" && (
+                <p className="provider-auth-help">{provider.id === "codex" ? t("setupGuide.codexAuthHelp") : t("setupGuide.claudeAuthHelp")}</p>
+              )}
+              {provider.supports_model && (
+                <label>
+                  <span>{t("models.model")}</span>
+                  <small>{provider.id === "codex" ? t("setupGuide.codexModelHelp") : t("setupGuide.modelHelp")}</small>
+                  {provider.id === "codex" ? (
+                    <CustomSelect
+                      value={providerDraft?.model || DEFAULT_CODEX_MODEL}
+                      ariaLabel={t("models.model")}
+                      onChange={(model) => updateDraft((value) => ({
+                        ...value,
+                        utilityModel: activeProvider === provider.id && (!value.utilityModel.trim() || value.utilityModel === providerDraft?.model) ? model : value.utilityModel,
+                        providers: { ...value.providers, [provider.id]: { ...value.providers[provider.id], model } },
+                      }))}
+                      options={[...new Set(codexModels)].map((model) => ({ value: model, label: model }))}
+                    />
+                  ) : (
+                    <ModelInput
+                      value={providerDraft?.model ?? ""}
+                      options={providerModels(provider.id, modelSettings.narrative_models)}
+                      onChange={(model) => updateDraft((value) => ({
+                        ...value,
+                        utilityModel: activeProvider === provider.id && (!value.utilityModel.trim() || value.utilityModel === providerDraft?.model) ? model : value.utilityModel,
+                        providers: { ...value.providers, [provider.id]: { ...value.providers[provider.id], model } },
+                      }))}
+                    />
+                  )}
+                </label>
+              )}
+              {provider.supports_reasoning && (
+                <label>
+                  <span>{t("models.reasoning")}</span>
+                  <small>{t("setupGuide.reasoningHelp")}</small>
+                  <CustomSelect
+                    value={providerDraft?.reasoning || "low"}
+                    ariaLabel={t("models.reasoningFor", { provider: provider.label })}
+                    onChange={(reasoning) => updateProvider(provider.id, { reasoning })}
+                    options={["low", "medium", "high", "xhigh", "max"].map((level) => ({ value: level, label: t(`setupGuide.reasoningLevels.${level}`) }))}
+                  />
+                </label>
+              )}
               {provider.supports_base_url && (
                 <label>
                   <span>{t("provider_setup:providerBaseUrl")}</span>
@@ -1583,56 +1694,44 @@ function ModelRoutingSettings({
                   )}
                 </div>
               )}
-              {provider.supports_model && (
-                <label>
-                  <span>{t("models.model")}</span>
-                  <ModelInput
-                    value={providerDraft?.model ?? ""}
-                    options={providerModels(provider.id, modelSettings.narrative_models)}
-                    onChange={(value) =>
-                      updateProvider(provider.id, { model: value })
-                    }
-                  />
-                </label>
-              )}
-              {provider.supports_reasoning && (
-                <label>
-                  <span>{t("models.reasoning")}</span>
-                  <CustomSelect
-                    value={providerDraft?.reasoning ?? "off"}
-                    ariaLabel={t("models.reasoningFor", { provider: provider.label })}
-                    onChange={(reasoning) =>
-                      updateProvider(provider.id, {
-                        reasoning,
-                      })
-                    }
-                    options={[
-                      "off",
-                      "none",
-                      "minimal",
-                      "low",
-                      "medium",
-                      "high",
-                      "xhigh",
-                    ].map((level) => ({ value: level, label: level }))}
-                  />
-                </label>
-              )}
+              </div>}
             </div>
           );
         })}
       </div>
       </section>}
       {activeAiSection === "diagnostics" && <section id="model-section-diagnostics" role="tabpanel" aria-labelledby="model-tab-diagnostics">
+      <div className={`setup-runtime-check ${narrativeReadiness?.status ?? setupReadinessState}`} aria-live="polite">
+        <div>
+          <strong>{t("setupGuide.runtimeCheck")}</strong>
+          <span>
+            {dirty || providerConfigDirty
+              ? t("setupGuide.runtimeSaveFirst")
+              : setupReadinessState === "loading"
+                ? t("setupGuide.runtimeChecking")
+                : setupReadinessState === "error"
+                  ? t("setupGuide.runtimeUnavailable")
+                  : narrativeReadiness
+                    ? t(`installation:codes.${narrativeReadiness.code}`, { defaultValue: narrativeReadiness.summary })
+                    : t("setupGuide.runtimeNotChecked")}
+          </span>
+        </div>
+        <button type="button" onClick={() => void onSetupReadinessReload()} disabled={busy || setupReadinessState === "loading" || dirty || providerConfigDirty}>
+          {setupReadinessState === "loading" ? t("setupGuide.runtimeCheckingButton") : t("setupGuide.runtimeCheckButton")}
+        </button>
+      </div>
       <div className="model-facts">
+        <span>{t("setupGuide.currentNarrator", { provider: activeProviderSetting?.label ?? t("models.none"), model: activeProviderDraft?.model || t("models.noModel"), reasoning: activeProviderDraft?.reasoning || t("models.default") })}</span>
         <span>{t("models.providerChain", { chain: draft.providerPriority.join(" → ") })}</span>
         <span>
-          {t("models.images", { provider: draft.imageGeneration.provider || t("models.none"), model: draft.imageGeneration.model || t("models.noModel") })}
+          {t("setupGuide.imageStatus", { status: selectedImageProviderReady ? t("imageSettings.configured") : draft.imageGeneration.autoGenerate ? t("imageSettings.notConfigured") : t("setupGuide.disabled"), provider: draft.imageGeneration.provider || t("models.none") })}
         </span>
         <span>
           {t("models.embedding", { provider: draft.embeddingProvider, model: draft.embeddingModel || t("models.default") })}
         </span>
         <span>TTS: {modelSettings.tts_status}</span>
+        <span title={modelSettings.config_path}>{t("setupGuide.configFile", { path: modelSettings.config_path })}</span>
+        <span>{t("setupGuide.configRevision", { revision })}</span>
       </div>
       <div className="model-discovery" aria-live="polite">
         <div><strong>{t("modelDiscovery.title")}</strong><span>{(discovery?.sources ?? []).map((source) => `${source.id}: ${source.status} · ${displayTimestamp(source.checked_at)}`).join(" · ") || t("modelDiscovery.unavailable")}</span></div>
@@ -1640,15 +1739,14 @@ function ModelRoutingSettings({
         {discoveryError && <p className="model-error">{discoveryError}</p>}
       </div>
       </section>}
-        </div>
-      </div>
-      {issues.length > 0 && (
-        <div className="model-warning">
-          {issues.map((issue) => (
-            <span key={issue}>{issue}</span>
-          ))}
+      {issueGroups[activeAiSection].length > 0 && (
+        <div className="setup-section-issues" role="alert">
+          <strong>{t("setupGuide.fixThisStep")}</strong>
+          {issueGroups[activeAiSection].map((issue) => <span key={issue}>{issue}</span>)}
         </div>
       )}
+        </div>
+      </div>
       <div className="model-actions">
         <button
           type="button"
@@ -1673,7 +1771,7 @@ function ModelRoutingSettings({
       {saveError && <p className="model-error">{saveError}</p>}
       {saveMessage && <p className="model-success">{saveMessage}</p>}
       <p className="model-note">
-        {t("models.saveNote")}
+        {t("setupGuide.saveHelp")}
       </p>
     </div>
   );

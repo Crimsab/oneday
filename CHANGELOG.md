@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.0](https://github.com/Crimsab/oneday/releases/tag/v0.19.0) (2026-08-01)
+
+
+### Features
+
+* **setup:** add a guided provider setup with visible required steps and real readiness checks
+* **models:** default new and incomplete Codex OAuth setups to `gpt-5.6-luna` with low reasoning
+
+
+### Release line
+
+* Resume pre-1.0 versioning while the public installation and provider contracts are still evolving. Existing `1.x` releases remain available as historical artifacts.
+
 ## [1.18.0](https://github.com/Crimsab/oneday/compare/v1.17.2...v1.18.0) (2026-08-01)
 
 

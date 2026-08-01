@@ -1703,6 +1703,8 @@ function AuthenticatedApp() {
         modelSettings={modelSettings}
         modelError={modelSettingsError}
         modelBusy={modelSaving}
+        setupReadiness={setupReadiness}
+        setupReadinessState={setupReadinessState}
         initialSettingsSection={optionsInitialSection}
         visualProfile={visualAssets?.profile ?? null}
         visualAssets={visuals.assets}
@@ -1731,6 +1733,7 @@ function AuthenticatedApp() {
         onPreferencesChange={updatePreferences}
         onModelSettingsSave={(payload) => saveModelSettings(payload)}
         onModelSettingsReload={() => refreshModelSettings()}
+        onSetupReadinessReload={() => refreshSetupReadiness()}
         onVisualProfileSave={(payload) => saveVisualProfile(payload)}
         onVisualAssetsGenerate={(payload) => generateMissingVisualAssets(payload)}
         onVisualAssetsReload={() => refreshVisualAssets()}

@@ -22,8 +22,8 @@ func TestDefault(t *testing.T) {
 	if len(cfg.AI.ProviderPriority) != 4 {
 		t.Errorf("ProviderPriority length = %d, want 4", len(cfg.AI.ProviderPriority))
 	}
-	if cfg.AI.ProviderPriority[0] != "litellm" {
-		t.Errorf("ProviderPriority[0] = %q, want %q", cfg.AI.ProviderPriority[0], "litellm")
+	if cfg.AI.ProviderPriority[0] != "codex" {
+		t.Errorf("ProviderPriority[0] = %q, want %q", cfg.AI.ProviderPriority[0], "codex")
 	}
 	if cfg.AI.LiteLLM.BaseURL != "http://127.0.0.1:4000/v1" {
 		t.Errorf("LiteLLM.BaseURL = %q, want %q", cfg.AI.LiteLLM.BaseURL, "http://127.0.0.1:4000/v1")
@@ -40,14 +40,20 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.OpenRouter.Enabled {
 		t.Error("OpenRouter.Enabled = true, want false by default")
 	}
-	if cfg.AI.Codex.Enabled {
-		t.Error("Codex.Enabled = true, want false by default")
+	if !cfg.AI.Codex.Enabled {
+		t.Error("Codex.Enabled = false, want true by default")
+	}
+	if cfg.AI.Codex.Model != DefaultCodexModel {
+		t.Errorf("Codex.Model = %q, want %q", cfg.AI.Codex.Model, DefaultCodexModel)
+	}
+	if cfg.AI.Codex.Reasoning != DefaultCodexReasoning {
+		t.Errorf("Codex.Reasoning = %q, want %q", cfg.AI.Codex.Reasoning, DefaultCodexReasoning)
 	}
 	if cfg.AI.Generation.Temperature != 0.8 {
 		t.Errorf("Temperature = %f, want 0.8", cfg.AI.Generation.Temperature)
 	}
-	if cfg.AI.Generation.UtilityModel != "" {
-		t.Errorf("UtilityModel = %q, want empty default", cfg.AI.Generation.UtilityModel)
+	if cfg.AI.Generation.UtilityModel != DefaultCodexModel {
+		t.Errorf("UtilityModel = %q, want %q", cfg.AI.Generation.UtilityModel, DefaultCodexModel)
 	}
 	if cfg.AI.ASCIIArt.Enabled {
 		t.Error("ASCIIArt.Enabled = true, want false by default")
@@ -87,6 +93,25 @@ func TestDefault(t *testing.T) {
 	}
 	if cfg.Game.RewardBudget != "balanced" {
 		t.Errorf("RewardBudget = %q, want balanced", cfg.Game.RewardBudget)
+	}
+}
+
+func TestMigrateCompletesLegacyCodexSelection(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Codex.Enabled = true
+	cfg.AI.Codex.Model = ""
+	cfg.AI.Codex.Reasoning = "off"
+	cfg.AI.Generation.UtilityModel = ""
+	cfg.Migrate()
+
+	if cfg.AI.Codex.Model != DefaultCodexModel {
+		t.Fatalf("Codex.Model = %q, want %q", cfg.AI.Codex.Model, DefaultCodexModel)
+	}
+	if cfg.AI.Codex.Reasoning != DefaultCodexReasoning {
+		t.Fatalf("Codex.Reasoning = %q, want %q", cfg.AI.Codex.Reasoning, DefaultCodexReasoning)
+	}
+	if cfg.AI.Generation.UtilityModel != DefaultCodexModel {
+		t.Fatalf("UtilityModel = %q, want %q", cfg.AI.Generation.UtilityModel, DefaultCodexModel)
 	}
 }
 
@@ -135,8 +160,8 @@ func TestMigrateFillsLocalEmbeddingDefaults(t *testing.T) {
 	if cfg.AI.Embedding.Local.Type != "ollama" || cfg.AI.Embedding.Local.Model != "" || cfg.AI.Embedding.Local.Dimensions != 1024 {
 		t.Fatalf("local embedding defaults not migrated: %#v", cfg.AI.Embedding.Local)
 	}
-	if cfg.AI.Generation.UtilityModel != "" {
-		t.Fatalf("UtilityModel = %q", cfg.AI.Generation.UtilityModel)
+	if cfg.AI.Generation.UtilityModel != DefaultCodexModel {
+		t.Fatalf("UtilityModel = %q, want %q", cfg.AI.Generation.UtilityModel, DefaultCodexModel)
 	}
 	if cfg.Game.RewardBudget != "balanced" {
 		t.Fatalf("RewardBudget = %q, want balanced", cfg.Game.RewardBudget)
@@ -731,8 +756,8 @@ func TestEnabledProviders(t *testing.T) {
 	cfg := Default()
 	enabled := cfg.EnabledProviders()
 
-	if len(enabled) != 0 {
-		t.Fatalf("EnabledProviders length = %d, want 0", len(enabled))
+	if len(enabled) != 1 || enabled[0] != "codex" {
+		t.Fatalf("EnabledProviders = %#v, want [codex]", enabled)
 	}
 }
 

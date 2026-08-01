@@ -1,8 +1,10 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const now = "2026-07-11T12:00:00Z";
+const qaScreenshotDirectory = process.env.ONEDAY_QA_SCREENSHOT_DIR || "/tmp";
 const story = { id: "story-1", name: "The Glass Archive", description: "A branching test story", genre: "mystery", tone: "focused", language: "en", is_archived: false, updated_at: now };
 const installationReadiness = {
   probes: [
@@ -111,16 +113,16 @@ function modelSettingsFixture() {
     config_revision: "revision-1",
     provider_priority: ["codex", "claude-code", "litellm", "openrouter"],
     providers: [
-      { id: "codex", label: "Codex", enabled: true, model: "gpt-5.5", reasoning: "off", credential_type: "subscription", supports_model: true, supports_reasoning: true, supports_base_url: false, supports_api_key: false, api_key_configured: false },
+      { id: "codex", label: "Codex OAuth", enabled: true, model: "gpt-5.6-luna", reasoning: "low", credential_type: "subscription", supports_model: true, supports_reasoning: true, supports_base_url: false, supports_api_key: false, api_key_configured: false },
       { id: "claude-code", label: "Claude Code", enabled: false, reasoning: "", credential_type: "subscription", supports_model: false, supports_reasoning: false, supports_base_url: false, supports_api_key: false, api_key_configured: false },
       { id: "litellm", label: "LiteLLM", enabled: false, model: "", reasoning: "", base_url: "http://lite.example.test/v1", credential_type: "api_key", supports_model: true, supports_reasoning: false, supports_base_url: true, supports_api_key: true, api_key_configured: false },
       { id: "openrouter", label: "OpenRouter", enabled: false, model: "", reasoning: "", base_url: "https://openrouter.ai/api/v1", credential_type: "api_key", supports_model: true, supports_reasoning: false, supports_base_url: true, supports_api_key: true, api_key_configured: false },
     ],
-    narrative_models: ["gpt-5.5"],
-    utility_models: ["gpt-5.5"],
-    repair_models: ["gpt-5.5"],
+    narrative_models: ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol"],
+    utility_models: ["gpt-5.6-luna"],
+    repair_models: ["gpt-5.6-luna"],
     image_models: ["gpt-image-2", "gpt-image-1"],
-    ascii_models: ["gpt-5.5"],
+    ascii_models: ["gpt-5.6-luna"],
     embedding_providers: ["auto"],
     image_providers: [
       imageProvider("codex-oauth", "Codex OAuth", { default: true, configured: true, baseUrl: "http://imagegen-bridge:8787", models: ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"], modelValidation: "allowlist" }),
@@ -165,7 +167,7 @@ function modelSettingsFixture() {
       available: true,
       status: "configured",
     },
-    active: { provider: "codex", narrative_model: "gpt-5.5", utility_model: "gpt-5.5", repair_model: "gpt-5.5", repair_fallback_models: [], image_model: "gpt-image-2", ascii_model: "gpt-5.5", embedding_provider: "auto", embedding_model: "text-embedding-3-small", codex_reasoning: "off" },
+    active: { provider: "codex", narrative_model: "gpt-5.6-luna", utility_model: "gpt-5.6-luna", repair_model: "gpt-5.6-luna", repair_fallback_models: [], image_model: "gpt-image-2", ascii_model: "gpt-5.6-luna", embedding_provider: "auto", embedding_model: "text-embedding-3-small", codex_reasoning: "low" },
     tts_status: "disabled",
   };
 }
@@ -530,9 +532,9 @@ test("opens provider configuration directly from the desktop deep link", async (
   const dialog = page.getByRole("dialog", { name: "Options" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
-  await expect(dialog.getByRole("tab", { name: "Connections" })).toHaveAttribute("aria-selected", "true");
+  await expect(dialog.getByRole("tab", { name: "Provider" })).toHaveAttribute("aria-selected", "true");
   await expect(dialog.locator(".provider-editor-grid > .provider-card")).toHaveCount(4);
-  await expect(dialog.getByText("Codex", { exact: true })).toBeVisible();
+  await expect(dialog.locator(".provider-card").getByText("Codex OAuth", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Claude Code", { exact: true })).toBeVisible();
   await expect(dialog.getByText("LiteLLM", { exact: true })).toBeVisible();
   await expect(dialog.getByText("OpenRouter", { exact: true })).toBeVisible();
@@ -926,6 +928,21 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await dialog.getByRole("button", { name: "Operator configuration" }).click();
   await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
   await expect(dialog.getByText("Saved credentials are never returned to the browser; enter a replacement only when changing one.")).toBeVisible();
+  await expect(dialog.getByText("Guided setup")).toBeVisible();
+  await expect(dialog.getByText("Configuration ready")).toBeVisible();
+  await expect(dialog.getByRole("combobox", { name: "Primary provider" })).toContainText("Codex OAuth");
+  await expect(dialog.getByRole("combobox", { name: "Model", exact: true })).toContainText("gpt-5.6-luna");
+  await expect(dialog.getByRole("combobox", { name: "Reasoning for Codex OAuth" })).toContainText("Low");
+  await dialog.getByRole("tab", { name: /Final check/ }).click();
+  await expect(dialog.getByText("The narrative provider is ready.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Verify sign-in" })).toBeEnabled();
+  const operatorA11y = await new AxeBuilder({ page }).include(".model-routing").analyze();
+  expect(operatorA11y.violations).toEqual([]);
+  if (process.env.ONEDAY_QA_SCREENSHOTS) {
+    await dialog.locator(".model-routing").screenshot({
+      path: join(qaScreenshotDirectory, `oneday-operator-setup-${page.viewportSize()!.width <= 1240 ? "mobile" : "desktop"}.png`),
+    });
+  }
 
   const operatorTabs = dialog.getByRole("tablist", { name: "Model routing" });
   const initialViewport = page.viewportSize()!;
@@ -953,7 +970,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await imagesTab.click();
   await imagesTab.focus();
   await page.keyboard.press(initialViewport.width <= 1120 ? "ArrowRight" : "ArrowDown");
-  await expect(dialog.getByRole("tab", { name: "Diagnostics" })).toBeFocused();
+  await expect(dialog.getByRole("tab", { name: "Final check" })).toBeFocused();
   await page.keyboard.press(initialViewport.width <= 1120 ? "ArrowLeft" : "ArrowUp");
   await expect(imagesTab).toBeFocused();
   const providerChoices = dialog.getByRole("radiogroup", { name: "Image provider" });
@@ -973,7 +990,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
     await imageSettings.scrollIntoViewIfNeeded();
     await imageSettings.screenshot({
-      path: `/tmp/oneday-settings-final-${layout}-en-codex.png`,
+      path: join(qaScreenshotDirectory, `oneday-settings-final-${layout}-en-codex.png`),
     });
   }
 
@@ -990,7 +1007,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
     await compatibleConfig.scrollIntoViewIfNeeded();
     await imageSettings.screenshot({
-      path: `/tmp/oneday-settings-final-${layout}-en-dual-provider.png`,
+      path: join(qaScreenshotDirectory, `oneday-settings-final-${layout}-en-dual-provider.png`),
     });
   }
   await geminiConfig.getByLabel("API key").fill("test-gemini-secret");
@@ -1023,7 +1040,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
     await italianDialog.locator(".image-provider-settings").scrollIntoViewIfNeeded();
     await italianDialog.locator(".image-provider-settings").screenshot({
-      path: `/tmp/oneday-settings-final-${layout}-it-codex.png`,
+      path: join(qaScreenshotDirectory, `oneday-settings-final-${layout}-it-codex.png`),
     });
   }
 });

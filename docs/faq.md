@@ -6,6 +6,10 @@ Yes. Codex is the most complete subscription-backed path in OneDay because it
 can cover narrative generation and generated images without an OpenAI Platform
 API key. The exact setup depends on the runtime:
 
+New native and desktop-local configurations select `gpt-5.6-luna` with `low`
+reasoning automatically. Both values stay visible and editable in the guided
+operator setup; **Final check** performs a real provider readiness request.
+
 - **Terminal:** install the Codex CLI, run `codex login`, and choose
   **Codex OAuth** in `oneday setup`. OneDay calls `codex exec`; the Codex CLI
   reads and refreshes its own login.

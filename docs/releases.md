@@ -229,11 +229,16 @@ installed production clients.
 Use `Release-As: X.Y.Z` in a commit footer only when intentionally overriding the
 calculated version.
 
-Published versions are monotonic. Do not reset the public line from `1.x` to
-`0.x`: Tauri and standard SemVer clients correctly treat `0.x` as older than an
-installed `1.x` release and would not offer it as an update. A new compatibility
-era therefore uses the next appropriate `1.x` minor/major version or a distinct
-package identity and update channel.
+OneDay resumed a pre-1.0 line at `0.19.0` because its public installation and
+provider contracts are not yet stable. Historical `1.x` releases remain
+available and are not rewritten or deleted.
+
+This is intentionally a one-time SemVer discontinuity. Tauri and standard
+SemVer clients correctly treat `0.19.0` as older than `1.18.0`, so an existing
+`1.x` desktop installation cannot receive `0.19.0` through the updater. Install
+`0.19.0` once from GitHub Releases. Updates after that point are monotonic within
+the `0.x` line and use the normal signed `latest.json` flow. Story data stays in
+the application data directory; make a verified backup before reinstalling.
 
 ## Verification
 

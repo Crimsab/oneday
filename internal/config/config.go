@@ -8,6 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	DefaultCodexModel     = "gpt-5.6-luna"
+	DefaultCodexReasoning = "low"
+)
+
 // Config is the top-level configuration for OneDay.
 type Config struct {
 	ConfigVersion int        `yaml:"config_version"`
@@ -192,19 +197,19 @@ var validProviders = map[string]bool{
 	"openrouter":  true,
 }
 
-// Default returns a Config with structural defaults. Model identifiers are
-// intentionally empty here so user config, setup, or the browser settings panel
-// is the only source of provider-specific model choices.
+// Default returns a Config that can use an existing Codex subscription without
+// requiring users to know a model identifier. Other providers remain opt-in.
 func Default() Config {
 	return Config{
 		ConfigVersion: 3,
 		DataDir:       "./oneday_data",
 		AI: AIConfig{
-			ProviderPriority: []string{"litellm", "openrouter", "codex", "claude-code"},
+			ProviderPriority: []string{"codex", "claude-code", "litellm", "openrouter"},
 			Codex: CodexConfig{
-				Enabled:   false,
+				Enabled:   true,
 				Binary:    "codex",
-				Reasoning: "off",
+				Model:     DefaultCodexModel,
+				Reasoning: DefaultCodexReasoning,
 			},
 			ClaudeCode: ClaudeCodeConfig{
 				Enabled: false,
@@ -260,6 +265,7 @@ func Default() Config {
 				Local:          TTSEndpoint{BaseURL: "http://piper-tts:5000", Model: "piper", Voice: "", Version: "1"},
 			},
 			Generation: GenerationConfig{
+				UtilityModel:   DefaultCodexModel,
 				Temperature:    0.8,
 				MaxTokens:      2048,
 				TimeoutSeconds: 60,
@@ -324,6 +330,12 @@ func (c *Config) Migrate() {
 	if strings.TrimSpace(c.Game.RewardBudget) == "" {
 		c.Game.RewardBudget = "balanced"
 	}
+	if c.AI.Codex.Enabled && strings.TrimSpace(c.AI.Codex.Model) == "" {
+		c.AI.Codex.Model = DefaultCodexModel
+		if reasoning := strings.TrimSpace(c.AI.Codex.Reasoning); reasoning == "" || reasoning == "off" {
+			c.AI.Codex.Reasoning = DefaultCodexReasoning
+		}
+	}
 	if strings.TrimSpace(c.AI.Generation.UtilityModel) == "" {
 		c.AI.Generation.UtilityModel = c.firstEnabledProviderModel()
 	}
@@ -367,9 +379,9 @@ func (c *Config) Validate() error {
 		}
 	}
 	switch c.AI.Codex.Reasoning {
-	case "", "off", "none", "minimal", "low", "medium", "high", "xhigh":
+	case "", "off", "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra":
 	default:
-		return fmt.Errorf("ai.codex.reasoning must be one of: off, none, minimal, low, medium, high, xhigh")
+		return fmt.Errorf("ai.codex.reasoning must be one of: off, none, minimal, low, medium, high, xhigh, max, ultra")
 	}
 	if c.AI.Generation.MaxTokens <= 0 {
 		return fmt.Errorf("ai.generation.max_tokens must be positive")

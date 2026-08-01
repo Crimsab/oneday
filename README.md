@@ -5,7 +5,7 @@
 <p><strong>Any story. Yours to live.</strong></p>
 
 [![CI](https://github.com/Crimsab/oneday/actions/workflows/ci.yml/badge.svg)](https://github.com/Crimsab/oneday/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Crimsab/oneday?display_name=tag&sort=semver)](https://github.com/Crimsab/oneday/releases/latest)
+[![Release](https://img.shields.io/github/v/release/Crimsab/oneday?display_name=tag&sort=date)](https://github.com/Crimsab/oneday/releases/latest)
 [![Go](https://img.shields.io/github/go-mod/go-version/Crimsab/oneday)](go.mod)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docs/docker.md)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)

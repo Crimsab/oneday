@@ -760,7 +760,9 @@ func TestSetupPersistenceRollsBackEnvWhenConfigCommitFails(t *testing.T) {
 
 func TestSetupNoInputRequiresExistingNarrativeConfiguration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	data, err := config.Marshal(config.Default())
+	incomplete := config.Default()
+	incomplete.AI.Codex.Enabled = false
+	data, err := config.Marshal(incomplete)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -773,7 +775,6 @@ func TestSetupNoInputRequiresExistingNarrativeConfiguration(t *testing.T) {
 	}
 
 	cfg := config.Default()
-	cfg.AI.Codex.Enabled = true
 	cfg.AI.Codex.Model = "test-model"
 	cfg.AI.Generation.UtilityModel = "test-model"
 	data, err = config.Marshal(cfg)
