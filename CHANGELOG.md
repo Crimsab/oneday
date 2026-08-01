@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.18.0](https://github.com/Crimsab/oneday/compare/v1.17.2...v1.18.0) (2026-08-01)
+
+
+### Features
+
+* **desktop:** make standalone setup and providers reliable ([3b6676a](https://github.com/Crimsab/oneday/commit/3b6676ae7f0dc8747fc6bb92c738aa929c39353c))
+
 ## [1.17.2](https://github.com/Crimsab/oneday/compare/v1.17.1...v1.17.2) (2026-07-31)
 
 
