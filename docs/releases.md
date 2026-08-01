@@ -229,14 +229,15 @@ installed production clients.
 Use `Release-As: X.Y.Z` in a commit footer only when intentionally overriding the
 calculated version.
 
-OneDay resumed a pre-1.0 line at `0.19.0` because its public installation and
-provider contracts are not yet stable. Historical `1.x` releases remain
-available and are not rewritten or deleted.
+OneDay starts its public pre-stable release line at `0.1.0`. While the public
+installation and provider contracts are evolving, compatible fixes increment
+the patch version and compatible capabilities increment the minor version.
 
 This is intentionally a one-time SemVer discontinuity. Tauri and standard
-SemVer clients correctly treat `0.19.0` as older than `1.18.0`, so an existing
-`1.x` desktop installation cannot receive `0.19.0` through the updater. Install
-`0.19.0` once from GitHub Releases. Updates after that point are monotonic within
+SemVer clients correctly treat `0.1.0` as older than the retired experimental
+`1.x` builds, so an existing `1.x` desktop installation cannot receive `0.1.0`
+through the updater. Install `0.1.0` once from GitHub Releases. Updates after
+that point are monotonic within
 the `0.x` line and use the normal signed `latest.json` flow. Story data stays in
 the application data directory; make a verified backup before reinstalling.
 

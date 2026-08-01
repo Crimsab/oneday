@@ -16,7 +16,7 @@ async function mockDesktop(page: Page, options: { updateAvailable?: boolean } = 
         startedMinimized: false,
         updater: {
           enabled: true,
-          currentVersion: "0.18.0",
+          currentVersion: "0.0.0",
           channel: "Stable",
           reason: "Updates are verified with the OneDay release signing key before installation.",
         },
@@ -39,7 +39,7 @@ async function mockDesktop(page: Page, options: { updateAvailable?: boolean } = 
         message: "Claude Code is installed. Sign in before enabling it in OneDay Setup.",
       },
       check_update: updateAvailable
-        ? { available: true, version: "0.19.0", notes: "Simpler setup, provider parity, and safer updates.", publishedAt: "2026-08-01T00:00:00Z", message: "OneDay 0.19.0 is available. Review it before installing." }
+        ? { available: true, version: "0.1.0", notes: "Simpler setup, provider parity, and safer updates.", publishedAt: "2026-08-01T00:00:00Z", message: "OneDay 0.1.0 is available. Review it before installing." }
         : { available: false, version: null, notes: null, publishedAt: null, message: "OneDay is up to date." },
       "plugin:autostart|is_enabled": false,
       "plugin:notification|is_permission_granted": false,
