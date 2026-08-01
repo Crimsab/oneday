@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/Crimsab/oneday/compare/v0.1.0...v0.1.1) (2026-08-01)
+
+
+### Bug Fixes
+
+* **web:** clarify AI setup flow ([3bf9fdd](https://github.com/Crimsab/oneday/commit/3bf9fddcb3773f20d58f563f1da57addfddaf6e2))
+
 ## [0.1.0](https://github.com/Crimsab/oneday/releases/tag/v0.1.0) (2026-08-01)
 
 First public pre-stable release of OneDay.
