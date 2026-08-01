@@ -1,6 +1,6 @@
 export const settings_ui = {
   sidebar: { title: "Sezioni", count: "{{count}} aree", groups: { player: "Preferenze giocatore", operator: "Configurazione operatore" } },
-  operator: { title: "Configurazione operatore", description: "Configura l’installazione di OneDay: routing provider, modelli, endpoint, readiness e diagnostica di supporto. È distinta dalle preferenze del giocatore e dall’onboarding della storia.", security: "Quest’area protetta usa l’autenticazione e il flusso bootstrap già esistenti. Le credenziali salvate non vengono mai restituite al browser: inseriscine una nuova soltanto per sostituirla." },
+  operator: { title: "Configura l’AI", description: "Scegli il provider, il modello e le immagini, poi verifica che la connessione funzioni.", security: "Le credenziali salvate non vengono mai mostrate nel browser. Inserisci un nuovo valore solo quando vuoi sostituirle." },
   common: { cancel: "Annulla", apply: "Applica" },
   general: {
     interfaceTitle: "Interfaccia",

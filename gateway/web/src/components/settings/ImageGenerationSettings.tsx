@@ -1,3 +1,4 @@
+import { Check, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ImageGenerationDraft } from "../../modelRouting";
 import type { ImageProviderCatalogEntry } from "../../types";
@@ -28,7 +29,36 @@ export function ImageGenerationSettings(props: Props) {
       Boolean(item) &&
       all.findIndex((other) => other?.id === item?.id) === index,
   );
+  const featuredProviders = catalog.filter((item) => item.id === provider?.id || item.default);
+  const otherProviders = catalog.filter((item) => !featuredProviders.some((featured) => featured.id === item.id));
   const modelList = (item?: ImageProviderCatalogEntry) => [...new Set([...(item?.models ?? []), ...(props.discoveredModels?.[item?.id ?? ""] ?? [])])];
+  const providerChoice = (item: ImageProviderCatalogEntry) => {
+    const selected = item.id === provider?.id;
+    return (
+      <button
+        key={item.id}
+        type="button"
+        role="radio"
+        aria-checked={selected}
+        className={selected ? "active" : ""}
+        onClick={() => onImageChange({ provider: item.id, model: item.models[0] ?? draft.model })}
+      >
+        <span>
+          <strong>{item.display_name}</strong>
+          <small>
+            {selected
+              ? t("imageSettings.selected")
+              : item.configured
+                ? t("imageSettings.configured")
+                : item.default
+                  ? t("imageSettings.recommended")
+                  : t("imageSettings.notConfigured")}
+          </small>
+        </span>
+        {selected && <Check size={17} aria-hidden="true" />}
+      </button>
+    );
+  };
   return (
     <section
       className="image-provider-settings settings-span-full"
@@ -52,30 +82,21 @@ export function ImageGenerationSettings(props: Props) {
         role="radiogroup"
         aria-label={t("imageSettings.provider")}
       >
-        {catalog.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="radio"
-            aria-checked={item.id === provider?.id}
-            className={item.id === provider?.id ? "active" : ""}
-            onClick={() =>
-              onImageChange({
-                provider: item.id,
-                model: item.models[0] ?? draft.model,
-              })
-            }
-          >
-            <strong>{item.display_name}</strong>
-            <small>
-              {item.default
-                ? t("imageSettings.recommended")
-                : item.configured
-                  ? t("imageSettings.configured")
-                  : t("imageSettings.notConfigured")}
-            </small>
-          </button>
-        ))}
+        <div className="image-provider-featured">
+          {featuredProviders.map(providerChoice)}
+        </div>
+        {otherProviders.length > 0 && (
+          <details className="image-provider-more">
+            <summary>
+              {t("imageSettingsExtra.otherProviders")}
+              <span>{otherProviders.length}</span>
+              <ChevronDown size={16} aria-hidden="true" />
+            </summary>
+            <div className="image-provider-more-grid">
+              {otherProviders.map(providerChoice)}
+            </div>
+          </details>
+        )}
       </div>
       <p className="image-provider-copy">
         {provider?.id === "codex-oauth"

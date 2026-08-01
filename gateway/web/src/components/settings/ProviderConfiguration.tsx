@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ImageGenerationDraft } from "../../modelRouting";
 import type { ImageProviderCatalogEntry } from "../../types";
@@ -41,40 +42,49 @@ export function ProviderConfiguration({
       <div className="settings-grid">
         {codex ? (
           <>
-            <label>
-              <span>{t("imageSettings.bridgeUrl")}</span>
-              <input
-                type="url"
-                value={draft.imagegenBridgeUrl}
-                onChange={(event) =>
-                  onImageChange({ imagegenBridgeUrl: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              <span>{t("imageSettings.bridgeTokenOptional")}</span>
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={bridgeToken}
-                onChange={(event) => {
-                  onBridgeToken(event.target.value);
-                  if (event.target.value) onClearBridgeToken(false);
-                }}
-                placeholder={t("imageSettings.secretPlaceholder")}
-              />
-            </label>
-            <label className="toggle-row">
-              <span>{t("imageSettings.clearSecret")}</span>
-              <input
-                type="checkbox"
-                checked={clearBridgeToken}
-                onChange={(event) => {
-                  onClearBridgeToken(event.target.checked);
-                  if (event.target.checked) onBridgeToken("");
-                }}
-              />
-            </label>
+            <details className="provider-connection-details settings-span-full">
+              <summary>
+                <span>
+                  <strong>{t("imageSettingsExtra.connection")}</strong>
+                  <small>{t("imageSettingsExtra.connectionHelp")}</small>
+                </span>
+                <ChevronDown size={17} aria-hidden="true" />
+              </summary>
+              <div className="settings-grid">
+                <label>
+                  <span>{t("imageSettings.bridgeUrl")}</span>
+                  <input type="url" value={draft.imagegenBridgeUrl} onChange={(event) => onImageChange({ imagegenBridgeUrl: event.target.value })} />
+                </label>
+                <label>
+                  <span>{t("imageSettings.bridgeTokenOptional")}</span>
+                  <input
+                    type="password"
+                    autoComplete="new-password"
+                    value={bridgeToken}
+                    onChange={(event) => {
+                      onBridgeToken(event.target.value);
+                      if (event.target.value) onClearBridgeToken(false);
+                    }}
+                    placeholder={t("imageSettings.secretPlaceholder")}
+                  />
+                </label>
+                {provider.configured && (
+                  <div className={`saved-secret-action ${clearBridgeToken ? "pending" : ""}`}>
+                    <span>{clearBridgeToken ? t("imageSettings.clearSecretPending") : t("imageSettings.keyConfigured")}</span>
+                    <button
+                      type="button"
+                      aria-pressed={clearBridgeToken}
+                      onClick={() => {
+                        onClearBridgeToken(!clearBridgeToken);
+                        if (!clearBridgeToken) onBridgeToken("");
+                      }}
+                    >
+                      {clearBridgeToken ? t("imageSettings.keepSecret") : t("imageSettings.clearSecret")}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </details>
             <label>
               <span>{t("imageSettings.route")}</span>
               <select
@@ -84,15 +94,18 @@ export function ProviderConfiguration({
                 }
               >
                 <option value="codex-responses">
-                  codex-responses · {t("imageSettings.recommended")}
+                  {t("imageSettings.routeRecommended")} · codex-responses
                 </option>
                 <option value="codex-app-server">
-                  codex-app-server · {t("imageSettings.fallback")}
+                  {t("imageSettings.routeFallback")} · codex-app-server
                 </option>
               </select>
             </label>
-            <details className="settings-span-full">
-              <summary>{t("imageSettingsExtra.bridgeRouting")}</summary>
+            <details className="provider-connection-details settings-span-full">
+              <summary>
+                <span><strong>{t("imageSettingsExtra.bridgeRouting")}</strong></span>
+                <ChevronDown size={17} aria-hidden="true" />
+              </summary>
               <div className="settings-grid">
                 {draft.mapIconProvider === "codex-oauth" && (
                   <label>

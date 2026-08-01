@@ -518,7 +518,7 @@ test("reopens installation setup without losing the canonical route", async ({ p
   await page.getByRole("button", { name: "Configure providers and models" }).click();
   const dialog = page.getByRole("dialog", { name: "Options" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
+  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Configure AI", level: 3 })).toBeVisible();
   await dialog.getByRole("button", { name: "Close" }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/setup$/);
@@ -531,8 +531,8 @@ test("opens provider configuration directly from the desktop deep link", async (
 
   const dialog = page.getByRole("dialog", { name: "Options" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
-  await expect(dialog.getByRole("tab", { name: "Provider" })).toHaveAttribute("aria-selected", "true");
+  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Configure AI", level: 3 })).toBeVisible();
+  await expect(dialog.locator('[data-ai-section="connections"]')).toHaveAttribute("aria-selected", "true");
   await expect(dialog.locator(".provider-editor-grid > .provider-card")).toHaveCount(4);
   await expect(dialog.locator(".provider-card").getByText("Codex OAuth", { exact: true })).toBeVisible();
   await expect(dialog.getByText("Claude Code", { exact: true })).toBeVisible();
@@ -925,17 +925,17 @@ test("configures catalog-driven image providers without exposing saved secrets",
   await diagnosticsResult.focus();
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("checkbox", { name: "Show diagnostics in messages" })).toBeFocused();
-  await dialog.getByRole("button", { name: "Operator configuration" }).click();
-  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
-  await expect(dialog.getByText("Saved credentials are never returned to the browser; enter a replacement only when changing one.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Configure AI" }).click();
+  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Configure AI", level: 3 })).toBeVisible();
+  await expect(dialog.getByText("Saved credentials are never shown in the browser. Enter a new value only when you want to replace one.")).toBeVisible();
   await expect(dialog.getByText("Guided setup")).toBeVisible();
-  await expect(dialog.getByText("Configuration ready")).toBeVisible();
+  await expect(dialog.getByText("Configuration verified")).toBeVisible();
   await expect(dialog.getByRole("combobox", { name: "Primary provider" })).toContainText("Codex OAuth");
   await expect(dialog.getByRole("combobox", { name: "Model", exact: true })).toContainText("gpt-5.6-luna");
   await expect(dialog.getByRole("combobox", { name: "Reasoning for Codex OAuth" })).toContainText("Low");
-  await dialog.getByRole("tab", { name: /Final check/ }).click();
+  await dialog.getByRole("tab", { name: /^Verify/ }).click();
   await expect(dialog.getByText("The narrative provider is ready.")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Verify sign-in" })).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: "Configuration complete" })).toBeEnabled();
   const operatorA11y = await new AxeBuilder({ page }).include(".model-routing").analyze();
   expect(operatorA11y.violations).toEqual([]);
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
@@ -943,41 +943,54 @@ test("configures catalog-driven image providers without exposing saved secrets",
       path: join(qaScreenshotDirectory, `oneday-operator-setup-${page.viewportSize()!.width <= 1240 ? "mobile" : "desktop"}.png`),
     });
   }
+  const actionLayout = await dialog.locator(".model-routing").evaluate((element) => {
+    const body = element.querySelector<HTMLElement>(".operator-console-body")!.getBoundingClientRect();
+    const footer = element.querySelector<HTMLElement>(".setup-footer")!.getBoundingClientRect();
+    return { bodyBottom: body.bottom, footerTop: footer.top };
+  });
+  expect(actionLayout.footerTop).toBeGreaterThanOrEqual(actionLayout.bodyBottom - 1);
 
-  const operatorTabs = dialog.getByRole("tablist", { name: "Model routing" });
+  const operatorTabs = dialog.getByRole("tablist", { name: "AI configuration" });
   const initialViewport = page.viewportSize()!;
-  await expect(operatorTabs).toHaveAttribute("aria-orientation", initialViewport.width <= 1120 ? "horizontal" : "vertical");
+  await expect(operatorTabs).toHaveAttribute("aria-orientation", "horizontal");
   if (initialViewport.width > 1120) {
     await page.setViewportSize({ width: 1000, height: initialViewport.height });
     await expect(operatorTabs).toHaveAttribute("aria-orientation", "horizontal");
     const routingOverflow = await dialog.locator(".model-routing").evaluate((element) => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }));
     expect(routingOverflow.scrollWidth).toBeLessThanOrEqual(routingOverflow.clientWidth + 1);
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect.poll(() => dialog.getByRole("button", { name: "Operator configuration" }).evaluate((element) => {
+    await expect.poll(() => dialog.getByRole("button", { name: "Configure AI" }).evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       return bounds.left >= 0 && bounds.right <= window.innerWidth;
     })).toBe(true);
     await page.setViewportSize(initialViewport);
-    await expect(operatorTabs).toHaveAttribute("aria-orientation", "vertical");
+    await expect(operatorTabs).toHaveAttribute("aria-orientation", "horizontal");
   } else {
-    await expect.poll(() => dialog.getByRole("button", { name: "Operator configuration" }).evaluate((element) => {
+    await expect.poll(() => dialog.getByRole("button", { name: "Configure AI" }).evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       return bounds.left >= 0 && bounds.right <= window.innerWidth;
     })).toBe(true);
   }
 
+  await dialog.getByRole("tab", { name: /^Model/ }).click();
+  const controlModel = dialog.getByRole("combobox", { name: "Control model" });
+  await controlModel.click();
+  await expect(page.getByRole("option", { name: "gpt-5.6-luna" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "gpt-5.6-terra" })).toBeVisible();
+  await expect(page.getByRole("option", { name: "gpt-5.6-sol" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
   const imagesTab = dialog.getByRole("tab", { name: "Images" });
   await imagesTab.click();
   await imagesTab.focus();
-  await page.keyboard.press(initialViewport.width <= 1120 ? "ArrowRight" : "ArrowDown");
-  await expect(dialog.getByRole("tab", { name: "Final check" })).toBeFocused();
-  await page.keyboard.press(initialViewport.width <= 1120 ? "ArrowLeft" : "ArrowUp");
+  await page.keyboard.press("ArrowRight");
+  await expect(dialog.getByRole("tab", { name: /^Verify/ })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
   await expect(imagesTab).toBeFocused();
   const providerChoices = dialog.getByRole("radiogroup", { name: "Image provider" });
   await expect(providerChoices.getByRole("radio").first()).toContainText("Codex OAuth");
   await expect(providerChoices.getByRole("radio").first()).toHaveAttribute("aria-checked", "true");
   await expect(dialog.getByText("Uses your Codex subscription through imagegen-bridge. No OPENAI_API_KEY is required.")).toBeVisible();
-  await expect(dialog.getByLabel("Bridge token (optional)")).toHaveAttribute("type", "password");
   await expect(dialog.getByText("bridge auth not configured")).toHaveCount(0);
   const imageSettings = dialog.locator(".image-provider-settings");
   const imageOverflow = await imageSettings.evaluate((element) => ({
@@ -993,7 +1006,10 @@ test("configures catalog-driven image providers without exposing saved secrets",
       path: join(qaScreenshotDirectory, `oneday-settings-final-${layout}-en-codex.png`),
     });
   }
+  await dialog.getByText("Bridge connection", { exact: true }).click();
+  await expect(dialog.getByLabel("Bridge token (optional)")).toHaveAttribute("type", "password");
 
+  await providerChoices.locator(".image-provider-more > summary").click();
   await providerChoices.getByRole("radio", { name: /Google Gemini/ }).click();
   await expect(dialog.getByText("Connect Google Gemini directly through OneDay’s dedicated adapter.")).toBeVisible();
   const geminiConfig = dialog.getByRole("group", { name: "Image provider: Google Gemini" });
@@ -1017,7 +1033,7 @@ test("configures catalog-driven image providers without exposing saved secrets",
   const saveRequest = page.waitForRequest(
     (request) => request.url().endsWith("/api/config/models") && request.method() === "PUT",
   );
-  await dialog.getByRole("button", { name: "Save model routing" }).click();
+  await dialog.getByRole("button", { name: "Save and continue" }).click();
   const payload = await (await saveRequest).postDataJSON();
   expect(payload.image_generation.provider_configs).toEqual([
     expect.objectContaining({ id: "openai-compatible", base_url: "https://compatible.example.test/v1", api_key: "test-compatible-secret", models: ["custom-map-model"] }),
@@ -1033,9 +1049,10 @@ test("configures catalog-driven image providers without exposing saved secrets",
   const italianDialog = page.getByRole("dialog", { name: "Opzioni" });
   await expect(italianDialog.locator(".settings-scope-label")).toHaveText("Preferenze giocatore");
   await expect(italianDialog.locator('input[type="password"]')).toHaveCount(0);
-  await italianDialog.getByRole("button", { name: "Configurazione operatore" }).click();
+  await italianDialog.getByRole("button", { name: "Configura l’AI" }).click();
   await italianDialog.getByRole("tab", { name: "Immagini" }).click();
   await expect(italianDialog.getByText("Usa l’abbonamento Codex tramite imagegen-bridge. Non richiede OPENAI_API_KEY.")).toBeVisible();
+  await italianDialog.getByText("Connessione al bridge", { exact: true }).click();
   await expect(italianDialog.getByLabel("Token del bridge (facoltativo)")).toHaveAttribute("type", "password");
   if (process.env.ONEDAY_QA_SCREENSHOTS) {
     await italianDialog.locator(".image-provider-settings").scrollIntoViewIfNeeded();
@@ -1587,7 +1604,7 @@ test("personalizes scrollbar and fonts across reading, interface, and portals", 
     return [preferences.interfaceFontSource, preferences.readingFontSource];
   })).toEqual(["bundled", "bundled"]);
 
-  await page.getByRole("button", { name: /Operator configuration/ }).click();
+  await page.getByRole("button", { name: /Configure AI/ }).click();
   await expect(page.getByText("Support bundle", { exact: true })).toBeVisible();
   await page.getByText("Recent technical log", { exact: true }).click();
   await expect(page.locator(".support-log-list")).toBeVisible();

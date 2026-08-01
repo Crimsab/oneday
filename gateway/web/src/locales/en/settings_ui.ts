@@ -1,6 +1,6 @@
 export const settings_ui = {
   sidebar: { title: "Sections", count: "{{count}} areas", groups: { player: "Player preferences", operator: "Operator configuration" } },
-  operator: { title: "Operator configuration", description: "Configure the OneDay installation: provider routing, models, endpoints, readiness, and support diagnostics. This is separate from player preferences and story onboarding.", security: "This protected area uses the existing gateway authentication and bootstrap flow. Saved credentials are never returned to the browser; enter a replacement only when changing one." },
+  operator: { title: "Configure AI", description: "Choose the provider, model, and image settings, then verify that the connection works.", security: "Saved credentials are never shown in the browser. Enter a new value only when you want to replace one." },
   common: { cancel: "Cancel", apply: "Apply" },
   general: {
     interfaceTitle: "Interface",
