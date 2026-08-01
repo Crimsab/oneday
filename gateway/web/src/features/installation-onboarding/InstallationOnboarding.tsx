@@ -8,7 +8,7 @@ type SetupProbeName = "narrative" | "embeddings" | "image" | "tts" | "gateway" |
 interface SetupItem { name: SetupProbeName; state: SetupState; required: boolean; code: string; summary: string; action: string; }
 
 const canonicalProbeOrder: SetupProbeName[] = ["narrative", "embeddings", "image", "tts", "gateway", "storage", "backup"];
-const essentialProbeNames = new Set<SetupProbeName>(["narrative", "storage", "gateway"]);
+const essentialProbeNames = new Set<SetupProbeName>(["narrative", "storage"]);
 
 export function installationSetupItems(readiness: SetupReadinessReport): SetupItem[] {
   const probeFor = (name: SetupProbeName): SetupReadinessProbe | undefined => readiness.probes.find((probe) => probe.name === name);
@@ -52,18 +52,17 @@ export function InstallationOnboarding({
       </header>
 
       <SetupGroup title={t("groups.essential.title")} description={t("groups.essential.description")} items={essentials} essential t={t} />
-      <SetupGroup title={t("groups.optional.title")} description={t("groups.optional.description")} items={optional} t={t} />
+      <SetupGroup title={t("groups.optional.title")} description={t("groups.optional.description")} items={optional} collapsible t={t} />
 
-      <section className="setup-console-guidance" aria-labelledby="setup-console-guidance-title">
-        <h2 id="setup-console-guidance-title">{t("guidance.title")}</h2>
-        <p>{t("guidance.web")}</p>
-        <p>{t("guidance.cliBefore")} <code>oneday setup --reconfigure</code> {t("guidance.cliBetween")} <code>oneday doctor</code>{t("guidance.cliAfter")}</p>
-      </section>
+      <details className="setup-console-guidance">
+        <summary>{t("guidance.title")}</summary>
+        <div><p>{t("guidance.web")}</p><p>{t("guidance.cliBefore")} <code>oneday setup --reconfigure</code> {t("guidance.cliBetween")} <code>oneday doctor</code>{t("guidance.cliAfter")}</p></div>
+      </details>
 
       {hasEssentialFailure && <p className="installation-onboarding-blocked" role="status" aria-live="polite">{t("requiredBlocked")}</p>}
       <footer className="installation-onboarding-actions">
         <button type="button" onClick={onRetry}>{t("recovery.retry")}</button>
-        <button type="button" onClick={onConfigure}>{t("configure")}</button>
+        <button type="button" className={hasEssentialFailure ? "primary-action" : undefined} onClick={onConfigure}>{t("configure")}</button>
         <button type="button" className="primary-action" onClick={onStartStory} disabled={!reopened && hasEssentialFailure}>
           {t(reopened ? "reopened.complete" : "startStory")}
         </button>
@@ -73,15 +72,23 @@ export function InstallationOnboarding({
   );
 }
 
-function SetupGroup({ title, description, items, essential = false, t }: { title: string; description: string; items: SetupItem[]; essential?: boolean; t: (key: string, options?: Record<string, unknown>) => string }) {
-  return <section className="setup-console-group" aria-label={title}>
-    <header><h2>{title}</h2><p>{description}</p></header>
-    <ul>
+function SetupRows({ items, essential, t }: { items: SetupItem[]; essential: boolean; t: (key: string, options?: Record<string, unknown>) => string }) {
+  return <ul>
       {items.map((item) => <li key={item.name} className={`setup-console-row ${item.state}`}>
         <div className="setup-console-row-copy"><strong>{t(`items.${item.name}.title`)}</strong><span>{item.code ? t(`codes.${item.code}`, { defaultValue: item.summary || t("summaryUnavailable") }) : item.summary || t("summaryUnavailable")}</span>{item.action && <details><summary>{t("recovery.details")}</summary><p>{t(`recovery.actions.${item.action}`, { defaultValue: t("recovery.unknown") })}</p></details>}</div>
         <span className="setup-console-row-state" aria-label={`${t(`items.${item.name}.title`)}: ${t(`states.${essential ? "essential" : "optional"}.${item.state}`)}`}>{t(`states.${essential ? "essential" : "optional"}.${item.state}`)}</span>
       </li>)}
-    </ul>
+    </ul>;
+}
+
+function SetupGroup({ title, description, items, essential = false, collapsible = false, t }: { title: string; description: string; items: SetupItem[]; essential?: boolean; collapsible?: boolean; t: (key: string, options?: Record<string, unknown>) => string }) {
+  if (collapsible) return <details className="setup-console-group setup-console-optional">
+    <summary><span><strong>{title}</strong><small>{description}</small></span><span>{items.length}</span></summary>
+    <SetupRows items={items} essential={essential} t={t} />
+  </details>;
+  return <section className="setup-console-group" aria-label={title}>
+    <header><h2>{title}</h2><p>{description}</p></header>
+    <SetupRows items={items} essential={essential} t={t} />
   </section>;
 }
 

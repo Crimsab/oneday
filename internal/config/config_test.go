@@ -417,6 +417,20 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	}
 }
 
+func TestBuildModelRoutingSettingsSerializesEmptyFallbacksAsArray(t *testing.T) {
+	settings := BuildModelRoutingSettings("/tmp/config.yaml", Config{}, "revision-empty")
+	raw, err := json.Marshal(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"repair_fallback_models":null`) {
+		t.Fatalf("empty repair fallback models must serialize as an array: %s", raw)
+	}
+	if !strings.Contains(string(raw), `"repair_fallback_models":[]`) {
+		t.Fatalf("empty repair fallback models array missing from settings: %s", raw)
+	}
+}
+
 func TestUpdateModelRoutingSettingsRequiresFreshRevision(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -478,7 +492,7 @@ ai:
     model: test-codex-model
     reasoning: off
 `)
-	_, err := patchModelRoutingYAML(raw, Default())
+	_, err := patchModelRoutingYAML(raw, Default(), ModelRoutingUpdate{})
 	if err == nil || !strings.Contains(err.Error(), "ai.generation must be a mapping") {
 		t.Fatalf("patchModelRoutingYAML error = %v, want wrong-type path error", err)
 	}
@@ -526,6 +540,7 @@ ai:
 	}
 
 	nextModel := "test-litellm-model-updated"
+	liteLLMKey := "write-only-test-litellm-key"
 	imageProvider := "openclaw-bridge"
 	imageModel := "test-image-model"
 	openClawURL := "http://openclaw-imagegen:8099/generate"
@@ -538,7 +553,7 @@ ai:
 	next, err := UpdateModelRoutingSettings(path, ModelRoutingUpdate{
 		BaseRevision: settings.ConfigRevision,
 		Providers: []ModelProviderUpdate{
-			{ID: "litellm", Model: &nextModel},
+			{ID: "litellm", Model: &nextModel, APIKey: &liteLLMKey},
 		},
 		ImageGeneration: &ImageGenerationUpdate{
 			Provider:          &imageProvider,
@@ -565,6 +580,12 @@ ai:
 	if bytes.Contains(nextJSON, []byte(openAIKey)) {
 		t.Fatalf("updated settings echoed write-only provider API key")
 	}
+	if bytes.Contains(nextJSON, []byte(liteLLMKey)) {
+		t.Fatalf("updated settings echoed write-only narrative API key")
+	}
+	if !next.Providers[1].APIKeyConfigured {
+		t.Fatal("updated LiteLLM provider did not report its write-only key as configured")
+	}
 	out, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -575,6 +596,7 @@ ai:
 		"unknown_top: keep-me",
 		"${LITELLM_BASE_URL}",
 		"default_model: test-litellm-model-updated",
+		"api_key: write-only-test-litellm-key",
 		"provider: openclaw-bridge",
 		"model: test-image-model",
 		"openclaw_bridge_url: http://openclaw-imagegen:8099/generate",

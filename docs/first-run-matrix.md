@@ -61,11 +61,13 @@ complete matrix with `make first-run-matrix`.
 | Provider matrix | Text-only rejection, compatible-local capability probes, local bridge transport, remote HTTPS bearer transport, direct adapters, authentication, capability failures, and retry-safe failure states run against local Axum/HTTP fakes. |
 | Profile and recovery isolation | Profile tests keep standalone/remote state separate. The previous-release SQL fixture is copied before upgrade and the test proves the source DB bytes stay unchanged; the backup/restore fixture verifies source immutability through a failed recovery migration and refuses a non-empty target. |
 
-The desktop package itself is deliberately not claimed as an end-to-end proof by
-this matrix. It does not build or launch a signed AppImage, deb, Windows
-installer, macOS app, or DMG. Package behavior remains covered by the separate
-platform packaging workflow; this matrix runs the existing Tauri and desktop UI
-tests and makes that boundary explicit.
+The desktop slice now includes a real Chromium pass over the launcher with its
+Tauri bridge mocked at the command boundary. It proves provider parity, explicit
+update consent, responsive reflow, keyboard focus, hover states, target sizing,
+and Axe accessibility without using credentials. It still does not build or
+launch a signed AppImage, deb, Windows installer, macOS app, or DMG. Native
+package behavior remains covered by the separate platform packaging workflow;
+this matrix keeps that boundary explicit.
 
 After matrix changes, also run the proportional repository gates:
 

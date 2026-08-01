@@ -1976,10 +1976,25 @@
         "reasoning": {
           "type": "string"
         },
+        "base_url": {
+          "type": "string"
+        },
+        "api_key_configured": {
+          "type": "boolean"
+        },
+        "credential_type": {
+          "type": "string"
+        },
         "supports_model": {
           "type": "boolean"
         },
         "supports_reasoning": {
+          "type": "boolean"
+        },
+        "supports_base_url": {
+          "type": "boolean"
+        },
+        "supports_api_key": {
           "type": "boolean"
         }
       },
@@ -1989,8 +2004,12 @@
         "id",
         "label",
         "enabled",
+        "api_key_configured",
+        "credential_type",
         "supports_model",
-        "supports_reasoning"
+        "supports_reasoning",
+        "supports_base_url",
+        "supports_api_key"
       ]
     },
     "ModelProviderUpdate": {
@@ -2006,6 +2025,15 @@
         },
         "reasoning": {
           "type": "string"
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "api_key": {
+          "type": "string"
+        },
+        "clear_api_key": {
+          "type": "boolean"
         }
       },
       "additionalProperties": false,

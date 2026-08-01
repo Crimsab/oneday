@@ -13,8 +13,8 @@
       {
         "label": "settings",
         "title": "OneDay Desktop",
-        "width": 700,
-        "height": 780,
+        "width": 860,
+        "height": 860,
         "minWidth": 420,
         "minHeight": 620,
         "visible": false,

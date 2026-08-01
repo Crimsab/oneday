@@ -77,7 +77,12 @@ pub struct ProcessContainment {
 unsafe impl Send for ProcessContainment {}
 
 #[cfg(windows)]
-pub fn configure(_command: &mut Command) {}
+pub fn configure(command: &mut Command) {
+    use std::os::windows::process::CommandExt;
+    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
+    command.creation_flags(CREATE_NO_WINDOW);
+}
 
 #[cfg(windows)]
 impl ProcessContainment {

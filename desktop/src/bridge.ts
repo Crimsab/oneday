@@ -11,7 +11,7 @@ export interface DesktopState {
   serverUrl: string | null;
   lifecycle: DesktopLifecycle;
   startedMinimized: boolean;
-  updater: { enabled: boolean; reason: string };
+  updater: UpdaterStatus;
 }
 
 export type DesktopProfile =
@@ -44,6 +44,30 @@ export interface CodexStatus {
   message: string;
 }
 
+export interface ClaudeStatus {
+  available: boolean;
+  version: string | null;
+  authenticated: boolean;
+  installSupported: boolean;
+  installMethod: string | null;
+  message: string;
+}
+
+export interface UpdaterStatus {
+  enabled: boolean;
+  currentVersion: string;
+  channel: string;
+  reason: string;
+}
+
+export interface UpdateCheck {
+  available: boolean;
+  version: string | null;
+  notes: string | null;
+  publishedAt: string | null;
+  message: string;
+}
+
 export const desktopBridge = {
   state: () => invoke<DesktopState>("desktop_state"),
   connect: (serverUrl: string) => invoke<void>("connect_server", { serverUrl }),
@@ -56,14 +80,16 @@ export const desktopBridge = {
   importPackage: () => invoke<TransferResult>("choose_and_import_story"),
   exportPackage: (storyId: string, kind: "archive" | "world") =>
     invoke<TransferResult>("choose_and_export_story", { storyId, kind }),
-  updater: () => invoke<{ enabled: boolean; reason: string }>("updater_status"),
-  checkAndInstallUpdate: () =>
-    invoke<{ available: boolean; version: string | null; message: string }>(
-      "check_and_install_update",
-    ),
+  updater: () => invoke<UpdaterStatus>("updater_status"),
+  checkUpdate: () => invoke<UpdateCheck>("check_update"),
+  installUpdate: () => invoke<void>("install_update"),
   codexStatus: () => invoke<CodexStatus>("codex_status"),
   installCodex: () => invoke<CodexStatus>("install_codex_component"),
   loginCodex: () => invoke<CodexStatus>("login_codex"),
+  claudeStatus: () => invoke<ClaudeStatus>("claude_status"),
+  installClaude: () => invoke<ClaudeStatus>("install_claude"),
+  loginClaude: () => invoke<ClaudeStatus>("login_claude"),
+  openClaudeInstallGuide: () => invoke<void>("open_claude_install_guide"),
   autostartEnabled: () => isEnabled(),
   setAutostart: async (enabled: boolean) => (enabled ? enable() : disable()),
   notificationsEnabled: () => isPermissionGranted(),

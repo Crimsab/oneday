@@ -1,3 +1,4 @@
+use crate::claude_component;
 use crate::codex_component;
 use crate::config;
 use crate::containment::{self, ProcessContainment};
@@ -22,7 +23,38 @@ pub struct LocalProcess {
     containment: ProcessContainment,
     logs: Vec<thread::JoinHandle<()>>,
     pub endpoint: Url,
-    _secret: LaunchSecret,
+    pub browser_url: Url,
+    _credentials: LaunchCredentials,
+}
+
+struct LaunchCredentials {
+    bearer: LaunchSecret,
+    bootstrap: LaunchSecret,
+}
+
+impl LaunchCredentials {
+    fn generate() -> Result<Self, String> {
+        Ok(Self {
+            bearer: LaunchSecret::generate()?,
+            bootstrap: LaunchSecret::generate()?,
+        })
+    }
+
+    fn browser_url(&self, endpoint: &Url) -> Result<Url, String> {
+        let mut url = endpoint
+            .join("api/auth/bootstrap")
+            .map_err(|error| format!("Could not create the local browser session URL: {error}"))?;
+        url.query_pairs_mut()
+            .append_pair("token", &self.bootstrap.environment_value());
+        Ok(url)
+    }
+
+    fn redaction_values(&self) -> Vec<String> {
+        vec![
+            self.bearer.environment_value(),
+            self.bootstrap.environment_value(),
+        ]
+    }
 }
 
 #[derive(Debug)]
@@ -33,6 +65,7 @@ struct LaunchPlan {
     engine_bin: PathBuf,
     static_dir: PathBuf,
     codex: Option<codex_component::CodexRuntime>,
+    claude: Option<claude_component::ClaudeRuntime>,
 }
 
 impl LaunchPlan {
@@ -40,6 +73,7 @@ impl LaunchPlan {
         profile_dir: PathBuf,
         resource_dir: PathBuf,
         codex: Option<codex_component::CodexRuntime>,
+        claude: Option<claude_component::ClaudeRuntime>,
     ) -> Result<Self, String> {
         let listener = TcpListener::bind("127.0.0.1:0")
             .map_err(|error| format!("Could not reserve a loopback port: {error}"))?;
@@ -61,6 +95,7 @@ impl LaunchPlan {
             engine_bin,
             static_dir,
             codex,
+            claude,
         };
         plan.validate()?;
         Ok(plan)
@@ -80,25 +115,45 @@ impl LaunchPlan {
         Ok(())
     }
 
-    fn command(&self, secret: &LaunchSecret) -> Result<Command, String> {
+    fn command(&self, credentials: &LaunchCredentials) -> Result<Command, String> {
         let config_path = config::create_initial_standalone_config(&self.profile_dir)?;
         let mut command = Command::new(&self.gateway_bin);
         command
             .args(self.arguments(&config_path)?)
             // The launch token is intentionally an environment value, never a
             // command-line argument or persisted setting.
-            .env("ONEDAY_GATEWAY_AUTH_TOKEN", secret.environment_value())
+            .env(
+                "ONEDAY_GATEWAY_AUTH_TOKEN",
+                credentials.bearer.environment_value(),
+            )
+            .env(
+                "ONEDAY_GATEWAY_BOOTSTRAP_TOKEN",
+                credentials.bootstrap.environment_value(),
+            )
             .env("ONEDAY_GATEWAY_URL", self.endpoint.as_str())
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .current_dir(&self.profile_dir);
         if let Some(codex) = &self.codex {
-            command.env("PATH", codex_component::prepend_path(&codex.binary_dir)?);
             if let Some(home) = &codex.home {
                 command.env("CODEX_HOME", home);
                 command.env_remove("OPENAI_API_KEY");
             }
+        }
+        let component_paths = [
+            self.codex
+                .as_ref()
+                .map(|runtime| runtime.binary_dir.as_path()),
+            self.claude
+                .as_ref()
+                .map(|runtime| runtime.binary_dir.as_path()),
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+        if !component_paths.is_empty() {
+            command.env("PATH", codex_component::prepend_paths(&component_paths)?);
         }
         containment::configure(&mut command);
         Ok(command)
@@ -136,11 +191,16 @@ pub fn start(app: &AppHandle, profile_id: &str) -> Result<LocalProcess, String> 
         .path()
         .resource_dir()
         .map_err(|error| format!("Could not locate bundled standalone components: {error}"))?;
-    let secret = LaunchSecret::generate()?;
-    let plan = LaunchPlan::create(profile_dir, resource_dir, codex_component::runtime(app)?)?;
+    let credentials = LaunchCredentials::generate()?;
+    let plan = LaunchPlan::create(
+        profile_dir,
+        resource_dir,
+        codex_component::runtime(app)?,
+        claude_component::runtime(),
+    )?;
     let log_path = prepare_log_path(&plan.profile_dir)?;
     let mut child = plan
-        .command(&secret)?
+        .command(&credentials)?
         .spawn()
         .map_err(|error| format!("Could not start the local OneDay gateway: {error}"))?;
     let containment = match ProcessContainment::attach(&child) {
@@ -151,13 +211,15 @@ pub fn start(app: &AppHandle, profile_id: &str) -> Result<LocalProcess, String> 
             return Err(error);
         }
     };
-    let logs = capture_logs(&mut child, log_path, secret.environment_value());
+    let browser_url = credentials.browser_url(&plan.endpoint)?;
+    let logs = capture_logs(&mut child, log_path, credentials.redaction_values());
     Ok(LocalProcess {
         child,
         containment,
         logs,
         endpoint: plan.endpoint,
-        _secret: secret,
+        browser_url,
+        _credentials: credentials,
     })
 }
 
@@ -206,7 +268,7 @@ fn prepare_log_path(profile_dir: &Path) -> Result<PathBuf, String> {
 fn capture_logs(
     child: &mut Child,
     log_path: PathBuf,
-    secret: String,
+    secrets: Vec<String>,
 ) -> Vec<thread::JoinHandle<()>> {
     let mut drains = Vec::new();
     let write_lock = Arc::new(Mutex::new(()));
@@ -214,12 +276,12 @@ fn capture_logs(
         drains.push(capture_stream(
             stdout,
             log_path.clone(),
-            secret.clone(),
+            secrets.clone(),
             Arc::clone(&write_lock),
         ));
     }
     if let Some(stderr) = child.stderr.take() {
-        drains.push(capture_stream(stderr, log_path, secret, write_lock));
+        drains.push(capture_stream(stderr, log_path, secrets, write_lock));
     }
     drains
 }
@@ -227,7 +289,7 @@ fn capture_logs(
 fn capture_stream<R>(
     mut stream: R,
     log_path: PathBuf,
-    secret: String,
+    secrets: Vec<String>,
     write_lock: Arc<Mutex<()>>,
 ) -> thread::JoinHandle<()>
 where
@@ -235,7 +297,7 @@ where
 {
     thread::spawn(move || {
         let mut buffer = [0_u8; 4096];
-        let mut redactor = SecretRedactor::new(secret);
+        let mut redactor = SecretRedactor::new(secrets);
         loop {
             let read = match stream.read(&mut buffer) {
                 Ok(0) | Err(_) => break,
@@ -280,14 +342,22 @@ fn append_bounded_log(path: &Path, bytes: &[u8]) {
 /// Keeping a small suffix pending trades a few bytes of diagnostic latency for
 /// making the token impossible to write verbatim to the diagnostic file.
 struct SecretRedactor {
-    secret: Vec<u8>,
+    secrets: Vec<Vec<u8>>,
+    longest: usize,
     pending: Vec<u8>,
 }
 
 impl SecretRedactor {
-    fn new(secret: String) -> Self {
+    fn new(secrets: Vec<String>) -> Self {
+        let secrets = secrets
+            .into_iter()
+            .map(String::into_bytes)
+            .filter(|secret| !secret.is_empty())
+            .collect::<Vec<_>>();
+        let longest = secrets.iter().map(Vec::len).max().unwrap_or(0);
         Self {
-            secret: secret.into_bytes(),
+            secrets,
+            longest,
             pending: Vec::new(),
         }
     }
@@ -302,14 +372,14 @@ impl SecretRedactor {
     }
 
     fn drain_ready(&mut self, final_chunk: bool) -> Vec<u8> {
-        if self.secret.is_empty() {
+        if self.secrets.is_empty() {
             return std::mem::take(&mut self.pending);
         }
 
         let retained = if final_chunk {
             0
         } else {
-            self.secret.len().saturating_sub(1)
+            self.longest.saturating_sub(1)
         };
         if self.pending.len() <= retained {
             return Vec::new();
@@ -317,9 +387,13 @@ impl SecretRedactor {
 
         let mut safe_until = self.pending.len() - retained;
         if !final_chunk {
-            let search_start = safe_until.saturating_sub(self.secret.len().saturating_sub(1));
+            let search_start = safe_until.saturating_sub(self.longest.saturating_sub(1));
             for start in search_start..safe_until {
-                if self.pending[start..].starts_with(&self.secret) {
+                if self
+                    .secrets
+                    .iter()
+                    .any(|secret| self.pending[start..].starts_with(secret))
+                {
                     safe_until = start;
                     break;
                 }
@@ -332,9 +406,14 @@ impl SecretRedactor {
         let mut redacted = Vec::with_capacity(safe_until);
         let mut offset = 0;
         while offset < safe_until {
-            if self.pending[offset..safe_until].starts_with(&self.secret) {
+            if let Some(secret) = self
+                .secrets
+                .iter()
+                .filter(|secret| self.pending[offset..safe_until].starts_with(secret))
+                .max_by_key(|secret| secret.len())
+            {
                 redacted.extend_from_slice(b"[redacted]");
-                offset += self.secret.len();
+                offset += secret.len();
             } else {
                 redacted.push(self.pending[offset]);
                 offset += 1;
@@ -424,8 +503,8 @@ mod tests {
     fn launch_plan_uses_loopback_and_never_places_the_secret_in_arguments() {
         let workspace = tempfile::tempdir().expect("isolated workspace");
         let root = workspace.path().join("runtime");
-        let secret = LaunchSecret::generate().expect("secret");
-        let plan = LaunchPlan::create(root.clone(), root.join("resources"), None);
+        let credentials = LaunchCredentials::generate().expect("credentials");
+        let plan = LaunchPlan::create(root.clone(), root.join("resources"), None, None);
         assert!(
             plan.is_err(),
             "missing sidecars should fail safely before launch"
@@ -438,7 +517,8 @@ mod tests {
         fs::write(&gateway, "").expect("gateway");
         fs::write(&engine, "").expect("engine");
         fs::write(&static_index, "").expect("index");
-        let plan = LaunchPlan::create(root.clone(), root.join("resources"), None).expect("plan");
+        let plan =
+            LaunchPlan::create(root.clone(), root.join("resources"), None, None).expect("plan");
         assert_eq!(plan.endpoint.scheme(), "http");
         assert_eq!(plan.endpoint.host_str(), Some("127.0.0.1"));
         let arguments = plan
@@ -446,14 +526,41 @@ mod tests {
             .expect("arguments");
         assert!(!arguments
             .iter()
-            .any(|argument| argument == &secret.environment_value()));
-        let command = plan.command(&secret).expect("standalone command");
+            .any(|argument| argument == &credentials.bearer.environment_value()));
+        assert!(!arguments
+            .iter()
+            .any(|argument| argument == &credentials.bootstrap.environment_value()));
+        let command = plan.command(&credentials).expect("standalone command");
         let gateway_url = command
             .get_envs()
             .find(|(name, _)| *name == "ONEDAY_GATEWAY_URL")
             .and_then(|(_, value)| value)
             .expect("gateway readiness URL");
         assert_eq!(gateway_url, plan.endpoint.as_str());
+        let bootstrap = command
+            .get_envs()
+            .find(|(name, _)| *name == "ONEDAY_GATEWAY_BOOTSTRAP_TOKEN")
+            .and_then(|(_, value)| value)
+            .expect("browser bootstrap token");
+        assert_eq!(
+            bootstrap,
+            std::ffi::OsStr::new(&credentials.bootstrap.environment_value())
+        );
+        assert_ne!(
+            credentials.bearer.environment_value(),
+            credentials.bootstrap.environment_value()
+        );
+        let browser_url = credentials
+            .browser_url(&plan.endpoint)
+            .expect("browser URL");
+        assert_eq!(browser_url.path(), "/api/auth/bootstrap");
+        assert_eq!(
+            browser_url
+                .query_pairs()
+                .find(|(name, _)| name == "token")
+                .map(|(_, value)| value.into_owned()),
+            Some(credentials.bootstrap.environment_value())
+        );
     }
 
     #[test]
@@ -474,13 +581,15 @@ mod tests {
     fn diagnostics_are_bounded_and_redact_the_launch_secret() {
         let temporary = tempfile::tempdir().expect("profile root");
         let log_path = prepare_log_path(temporary.path()).expect("log path");
-        let mut redactor = SecretRedactor::new("top-secret".into());
+        let mut redactor = SecretRedactor::new(vec!["top-secret".into(), "other-secret".into()]);
         append_bounded_log(&log_path, &redactor.push(b"token=top-"));
+        append_bounded_log(&log_path, &redactor.push(b"secret other-"));
         append_bounded_log(&log_path, &redactor.push(b"secret\n"));
         append_bounded_log(&log_path, &redactor.finish());
         let redacted = fs::read_to_string(&log_path).expect("redacted log contents");
         assert!(redacted.contains("[redacted]"));
         assert!(!redacted.contains("top-secret"));
+        assert!(!redacted.contains("other-secret"));
         append_bounded_log(&log_path, &vec![b'x'; MAX_LOG_BYTES as usize]);
         let contents = fs::read_to_string(log_path).expect("log contents");
         assert!(!contents.contains("top-secret"));

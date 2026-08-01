@@ -15,9 +15,10 @@ configuration. A profile switch is only a connection switch. Use explicit
 server import/export and a backup when moving data between stores.
 
 Use the browser PWA when an installable browser experience is enough. Use this
-desktop client when tray behavior, native notifications, autostart, or native
-file dialogs are useful. Package update support is not assumed: it is disabled
-in ordinary builds and requires a separately operated signed update feed.
+desktop client when a bundled local gateway, tray behavior, native
+notifications, autostart, or native file dialogs are useful. Public release
+builds use the signed OneDay update feed. Source and pull-request builds keep
+the updater disabled.
 
 ## First-run readiness
 
@@ -33,7 +34,8 @@ bundle contains matching engine and gateway sidecars and a bundled web build,
 then starts the gateway on a fresh loopback port. The local profile still needs
 a working narrative provider before it can create narrative turns.
 
-The desktop settings provide an optional Codex subscription path:
+The desktop settings show all four narrative connection types. Codex uses this
+subscription path:
 
 1. OneDay checks for an existing Codex executable on this device.
 2. If none is found, **Install Codex** downloads the pinned official OpenAI
@@ -42,13 +44,21 @@ The desktop settings provide an optional Codex subscription path:
    directory. No download starts before that click.
 3. **Sign in** starts `codex login`. The managed component uses a private
    `CODEX_HOME`; OneDay does not parse the OAuth credential.
-4. Open the local OneDay Setup page and select Codex and a model. The desktop
-   restarts its gateway after sign-in so the managed executable is available.
+4. Open **Configure models** and select Codex and a model. The desktop restarts
+   its gateway after sign-in so the managed executable is available.
 
-You can instead configure Claude Code, LiteLLM, OpenRouter, or another supported
-endpoint in OneDay Setup. Those choices do not download Codex. Images and speech
-can remain disabled: text-only media mode is supported and media failures do
-not block canonical text turns.
+Claude Code has a parallel native path. OneDay detects `claude`, checks
+`claude auth status`, and opens `claude auth login` when sign-in is needed. If
+it is missing, Windows can install the official `Anthropic.ClaudeCode` WinGet
+package and macOS can use the official Homebrew cask. On Linux, or when that
+package manager is absent, OneDay opens Anthropic's official guide. OneDay does
+not read or copy Claude credentials.
+
+OpenRouter and LiteLLM-compatible endpoints appear beside those subscription
+providers and open the same protected model configuration. Their API keys are
+write-only after saving. Choosing Claude, OpenRouter, or LiteLLM never downloads
+Codex. Images and speech can remain disabled: text-only media mode is supported
+and media failures do not block canonical text turns.
 
 Standalone is not a promise of fully offline AI. It keeps data and the gateway
 local, but a configured remote narrative provider still needs network access.
@@ -158,20 +168,26 @@ notarization still require protected maintainer credentials.
 
 ## Signed updater
 
-Updater artifacts and the updater runtime are disabled in ordinary builds. A
-release operator must first create a Tauri signing key outside the repository,
-publish an HTTPS update feed, and build with both values present:
+Official public release builds check the stable HTTPS feed shown below. The
+settings window reports the installed version, performs a non-installing check,
+shows the available version and notes, and requires an explicit **Install and
+restart** action. Tauri verifies the downloaded updater artifact with the
+embedded public key before OneDay stops the local gateway. A verification or
+download failure therefore leaves both the running application and story data
+unchanged.
+
+Updater artifacts and the updater runtime remain disabled in ordinary source
+and pull-request builds. A release operator builds with both values present:
 
 ```text
-ONEDAY_UPDATER_ENDPOINT=https://releases.example.com/oneday/{{target}}/{{arch}}/{{current_version}}
+ONEDAY_UPDATER_ENDPOINT=https://github.com/Crimsab/oneday/releases/latest/download/latest.json
 ONEDAY_UPDATER_PUBKEY=<public minisign key>
 ```
 
-The private signing key must only be supplied to the release job through its
-secret store. It must never be committed. A signed release configuration must
-also enable updater artifacts in a private Tauri configuration overlay; the
-checked-in default keeps `createUpdaterArtifacts` false so a normal build cannot
-pretend to publish usable updates.
+The private signing key is supplied only to the release job through its secret
+store and is never committed. The signed release overlay enables updater
+artifacts; the checked-in default keeps `createUpdaterArtifacts` false so a
+normal build cannot pretend to publish usable updates.
 
 ## Scope and limitations
 

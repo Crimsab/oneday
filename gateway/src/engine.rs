@@ -1195,6 +1195,8 @@ fn gateway_command(state: &AppState, command: &str) -> Command {
     }
     #[cfg(unix)]
     child.process_group(0);
+    #[cfg(windows)]
+    child.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
     child
 }
 

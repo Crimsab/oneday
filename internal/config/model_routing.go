@@ -45,8 +45,13 @@ type ModelProviderSetting struct {
 	Enabled           bool   `json:"enabled"`
 	Model             string `json:"model,omitempty"`
 	Reasoning         string `json:"reasoning,omitempty"`
+	BaseURL           string `json:"base_url,omitempty"`
+	APIKeyConfigured  bool   `json:"api_key_configured"`
+	CredentialType    string `json:"credential_type"`
 	SupportsModel     bool   `json:"supports_model"`
 	SupportsReasoning bool   `json:"supports_reasoning"`
+	SupportsBaseURL   bool   `json:"supports_base_url"`
+	SupportsAPIKey    bool   `json:"supports_api_key"`
 }
 
 type ModelRoutingActive struct {
@@ -114,10 +119,13 @@ type ImageGenerationSetting struct {
 }
 
 type ModelProviderUpdate struct {
-	ID        string  `json:"id"`
-	Enabled   *bool   `json:"enabled,omitempty"`
-	Model     *string `json:"model,omitempty"`
-	Reasoning *string `json:"reasoning,omitempty"`
+	ID          string  `json:"id"`
+	Enabled     *bool   `json:"enabled,omitempty"`
+	Model       *string `json:"model,omitempty"`
+	Reasoning   *string `json:"reasoning,omitempty"`
+	BaseURL     *string `json:"base_url,omitempty"`
+	APIKey      *string `json:"api_key,omitempty"`
+	ClearAPIKey bool    `json:"clear_api_key,omitempty"`
 }
 
 type ModelRoutingUpdate struct {
@@ -221,7 +229,7 @@ func UpdateModelRoutingSettings(path string, update ModelRoutingUpdate) (ModelRo
 			return ModelRoutingError{Code: ModelRoutingErrorValidation, Err: err}
 		}
 
-		nextRaw, err := patchModelRoutingYAML(raw, cfg)
+		nextRaw, err := patchModelRoutingYAML(raw, cfg, update)
 		if err != nil {
 			return ModelRoutingError{Code: ModelRoutingErrorWrite, Err: err}
 		}
@@ -273,28 +281,40 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 				Enabled:           cfg.AI.Codex.Enabled,
 				Model:             cfg.AI.Codex.Model,
 				Reasoning:         cfg.AI.Codex.Reasoning,
+				CredentialType:    "subscription",
 				SupportsModel:     true,
 				SupportsReasoning: true,
 			},
 			{
-				ID:            "litellm",
-				Label:         "LiteLLM",
-				Enabled:       cfg.AI.LiteLLM.Enabled,
-				Model:         cfg.AI.LiteLLM.DefaultModel,
-				SupportsModel: true,
+				ID:               "litellm",
+				Label:            "LiteLLM",
+				Enabled:          cfg.AI.LiteLLM.Enabled,
+				Model:            cfg.AI.LiteLLM.DefaultModel,
+				BaseURL:          cfg.AI.LiteLLM.BaseURL,
+				APIKeyConfigured: strings.TrimSpace(cfg.AI.LiteLLM.APIKey) != "",
+				CredentialType:   "api_key",
+				SupportsModel:    true,
+				SupportsBaseURL:  true,
+				SupportsAPIKey:   true,
 			},
 			{
-				ID:            "openrouter",
-				Label:         "OpenRouter",
-				Enabled:       cfg.AI.OpenRouter.Enabled,
-				Model:         cfg.AI.OpenRouter.DefaultModel,
-				SupportsModel: true,
+				ID:               "openrouter",
+				Label:            "OpenRouter",
+				Enabled:          cfg.AI.OpenRouter.Enabled,
+				Model:            cfg.AI.OpenRouter.DefaultModel,
+				BaseURL:          cfg.AI.OpenRouter.BaseURL,
+				APIKeyConfigured: strings.TrimSpace(cfg.AI.OpenRouter.APIKey) != "",
+				CredentialType:   "api_key",
+				SupportsModel:    true,
+				SupportsBaseURL:  true,
+				SupportsAPIKey:   true,
 			},
 			{
-				ID:            "claude-code",
-				Label:         "Claude Code",
-				Enabled:       cfg.AI.ClaudeCode.Enabled,
-				SupportsModel: false,
+				ID:             "claude-code",
+				Label:          "Claude Code",
+				Enabled:        cfg.AI.ClaudeCode.Enabled,
+				CredentialType: "subscription",
+				SupportsModel:  false,
 			},
 		},
 		NarrativeModels:    uniqueNonEmpty(providerModel(cfg, "codex"), providerModel(cfg, "litellm"), providerModel(cfg, "openrouter"), activeNarrative),
@@ -310,7 +330,7 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 			NarrativeModel:       activeNarrative,
 			UtilityModel:         cfg.AI.Generation.UtilityModel,
 			RepairModel:          firstNonEmpty(cfg.AI.Generation.RepairModel, firstString(repairModels)),
-			RepairFallbackModels: append([]string(nil), cfg.AI.Generation.RepairFallbackModels...),
+			RepairFallbackModels: append([]string{}, cfg.AI.Generation.RepairFallbackModels...),
 			ImageModel:           cfg.AI.ImageGeneration.Model,
 			ASCIIModel:           cfg.AI.ASCIIArt.Model,
 			EmbeddingProvider:    firstNonEmpty(cfg.AI.Embedding.Provider, "auto"),
@@ -421,18 +441,48 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 				cfg.AI.Codex.Reasoning = cleanString(*provider.Reasoning)
 			}
 		case "litellm":
+			if provider.APIKey != nil && provider.ClearAPIKey {
+				return fmt.Errorf("providers[%s].api_key and clear_api_key are mutually exclusive", id)
+			}
 			if provider.Enabled != nil {
 				cfg.AI.LiteLLM.Enabled = *provider.Enabled
 			}
 			if provider.Model != nil {
 				cfg.AI.LiteLLM.DefaultModel = cleanString(*provider.Model)
 			}
+			if provider.BaseURL != nil {
+				cfg.AI.LiteLLM.BaseURL = cleanString(*provider.BaseURL)
+				if err := validateProviderBaseURL(id, cfg.AI.LiteLLM.BaseURL); err != nil {
+					return err
+				}
+			}
+			if provider.APIKey != nil {
+				cfg.AI.LiteLLM.APIKey = cleanString(*provider.APIKey)
+			}
+			if provider.ClearAPIKey {
+				cfg.AI.LiteLLM.APIKey = ""
+			}
 		case "openrouter":
+			if provider.APIKey != nil && provider.ClearAPIKey {
+				return fmt.Errorf("providers[%s].api_key and clear_api_key are mutually exclusive", id)
+			}
 			if provider.Enabled != nil {
 				cfg.AI.OpenRouter.Enabled = *provider.Enabled
 			}
 			if provider.Model != nil {
 				cfg.AI.OpenRouter.DefaultModel = cleanString(*provider.Model)
+			}
+			if provider.BaseURL != nil {
+				cfg.AI.OpenRouter.BaseURL = cleanString(*provider.BaseURL)
+				if err := validateProviderBaseURL(id, cfg.AI.OpenRouter.BaseURL); err != nil {
+					return err
+				}
+			}
+			if provider.APIKey != nil {
+				cfg.AI.OpenRouter.APIKey = cleanString(*provider.APIKey)
+			}
+			if provider.ClearAPIKey {
+				cfg.AI.OpenRouter.APIKey = ""
 			}
 		case "claude-code":
 			if provider.Enabled != nil {
@@ -440,6 +490,9 @@ func ApplyModelRoutingUpdate(cfg *Config, update ModelRoutingUpdate) error {
 			}
 		default:
 			return fmt.Errorf("unknown provider %q", provider.ID)
+		}
+		if id != "litellm" && id != "openrouter" && (provider.BaseURL != nil || provider.APIKey != nil || provider.ClearAPIKey) {
+			return fmt.Errorf("provider %q does not accept endpoint or API-key settings", id)
 		}
 	}
 	if update.UtilityModel != nil {
@@ -666,7 +719,7 @@ func configFromEditBytes(path string, raw []byte) (Config, error) {
 	return cfg, nil
 }
 
-func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
+func patchModelRoutingYAML(raw []byte, cfg Config, update ModelRoutingUpdate) ([]byte, error) {
 	var doc yaml.Node
 	if len(raw) == 0 {
 		raw = []byte("config_version: 2\n")
@@ -687,8 +740,10 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 		func() error { return setString(root, cfg.AI.Codex.Model, "ai", "codex", "model") },
 		func() error { return setString(root, cfg.AI.Codex.Reasoning, "ai", "codex", "reasoning") },
 		func() error { return setBool(root, cfg.AI.LiteLLM.Enabled, "ai", "litellm", "enabled") },
+		func() error { return setString(root, cfg.AI.LiteLLM.BaseURL, "ai", "litellm", "base_url") },
 		func() error { return setString(root, cfg.AI.LiteLLM.DefaultModel, "ai", "litellm", "default_model") },
 		func() error { return setBool(root, cfg.AI.OpenRouter.Enabled, "ai", "openrouter", "enabled") },
+		func() error { return setString(root, cfg.AI.OpenRouter.BaseURL, "ai", "openrouter", "base_url") },
 		func() error {
 			return setString(root, cfg.AI.OpenRouter.DefaultModel, "ai", "openrouter", "default_model")
 		},
@@ -792,6 +847,22 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 			return nil, err
 		}
 	}
+	for _, provider := range update.Providers {
+		switch strings.TrimSpace(provider.ID) {
+		case "litellm":
+			if provider.APIKey != nil || provider.ClearAPIKey {
+				if err := setString(root, cfg.AI.LiteLLM.APIKey, "ai", "litellm", "api_key"); err != nil {
+					return nil, err
+				}
+			}
+		case "openrouter":
+			if provider.APIKey != nil || provider.ClearAPIKey {
+				if err := setString(root, cfg.AI.OpenRouter.APIKey, "ai", "openrouter", "api_key"); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
 	for id, provider := range cfg.AI.ImageGeneration.Providers {
 		if !isDirectImageProvider(id) {
 			continue
@@ -832,6 +903,14 @@ func patchModelRoutingYAML(raw []byte, cfg Config) ([]byte, error) {
 		return nil, fmt.Errorf("closing YAML encoder: %w", err)
 	}
 	return []byte(out.String()), nil
+}
+
+func validateProviderBaseURL(provider, value string) error {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("providers[%s].base_url must be an HTTP or HTTPS URL", provider)
+	}
+	return nil
 }
 
 func documentRoot(doc *yaml.Node) (*yaml.Node, error) {

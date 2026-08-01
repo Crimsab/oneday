@@ -39,8 +39,8 @@ describe("InstallationOnboarding", () => {
       { name: "backup", state: "skipped", required: false, code: "BACKUP_NO_DATABASE", summary: "no database exists yet to back up", action: "" },
     ]);
     const html = renderToStaticMarkup(<InstallationOnboarding readiness={readiness()} onConfigure={() => undefined} onStartStory={() => undefined} onRetry={() => undefined} />);
-    expect(html).toContain("Essential services");
-    expect(html).toContain("Optional services");
+    expect(html).toContain("Ready to create stories");
+    expect(html).toContain("Optional enhancements");
     expect(html).toContain("Story narrator");
     expect(html).toContain("Browser gateway");
     expect(html).toContain("Database backup");
@@ -53,8 +53,8 @@ describe("InstallationOnboarding", () => {
 
     expect(html).toContain("Existing shared configuration is preserved");
     expect(html).toContain("Story setup begins only after this installation is ready");
-    expect(html).toContain("These capabilities can be enabled later");
-    expect(html).toContain("How configuration works");
+    expect(html).toContain("can be configured later");
+    expect(html).toContain("Advanced: command-line setup");
     expect(html).toContain("oneday setup --reconfigure");
     expect(html).toContain("oneday doctor");
     expect(html).not.toContain('disabled=""');
@@ -71,13 +71,13 @@ describe("InstallationOnboarding", () => {
     await setInterfaceLocale("it");
     const html = renderToStaticMarkup(<InstallationOnboarding readiness={readiness({ probes: [{ name: "narrative", code: "NARRATIVE_NOT_CONFIGURED", status: "failed", required: true, summary: "no narrative provider is enabled", action: "configure" }, { name: "image", code: "IMAGE_UNREACHABLE", status: "warning", required: false, summary: "image bridge is unavailable", action: "check_connection" }, { name: "tts", code: "TTS_DISABLED", status: "skipped", required: false, summary: "text-to-speech is disabled", action: "" }, { name: "storage", code: "STORAGE_READY", status: "ready", required: true, summary: "data directory is available", action: "" }] })} onConfigure={() => undefined} onStartStory={() => undefined} onRetry={() => undefined} />);
 
-    expect(html).toContain("Servizi essenziali");
+    expect(html).toContain("Pronto per creare storie");
     expect(html).toContain("Scegli e attiva un provider narrativo.");
     expect(html).toContain("Il servizio immagini non è raggiungibile.");
     expect(html).toContain("Il text-to-speech è disattivato.");
     expect(html).not.toContain("no narrative provider is enabled");
-    expect(html).toContain("Facoltativo · attenzione");
-    expect(html).toContain("Facoltativo · disattivato");
+    expect(html).toContain("Da controllare");
+    expect(html).toContain("Disattivato");
   });
 
   it("uses reassurance and a return action when setup is reopened", () => {

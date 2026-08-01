@@ -109,8 +109,13 @@ function modelSettingsFixture() {
   return {
     config_path: "/test/config.yaml",
     config_revision: "revision-1",
-    provider_priority: ["codex"],
-    providers: [{ id: "codex", label: "Codex", enabled: true, model: "gpt-5.5", reasoning: "off", supports_model: true, supports_reasoning: true }],
+    provider_priority: ["codex", "claude-code", "litellm", "openrouter"],
+    providers: [
+      { id: "codex", label: "Codex", enabled: true, model: "gpt-5.5", reasoning: "off", credential_type: "subscription", supports_model: true, supports_reasoning: true, supports_base_url: false, supports_api_key: false, api_key_configured: false },
+      { id: "claude-code", label: "Claude Code", enabled: false, reasoning: "", credential_type: "subscription", supports_model: false, supports_reasoning: false, supports_base_url: false, supports_api_key: false, api_key_configured: false },
+      { id: "litellm", label: "LiteLLM", enabled: false, model: "", reasoning: "", base_url: "http://lite.example.test/v1", credential_type: "api_key", supports_model: true, supports_reasoning: false, supports_base_url: true, supports_api_key: true, api_key_configured: false },
+      { id: "openrouter", label: "OpenRouter", enabled: false, model: "", reasoning: "", base_url: "https://openrouter.ai/api/v1", credential_type: "api_key", supports_model: true, supports_reasoning: false, supports_base_url: true, supports_api_key: true, api_key_configured: false },
+    ],
     narrative_models: ["gpt-5.5"],
     utility_models: ["gpt-5.5"],
     repair_models: ["gpt-5.5"],
@@ -508,7 +513,7 @@ test("reopens installation setup without losing the canonical route", async ({ p
   await expect(page.getByText("This check does not change existing worlds or their data.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Return to stories" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Reconfigure shared setup" }).click();
+  await page.getByRole("button", { name: "Configure providers and models" }).click();
   const dialog = page.getByRole("dialog", { name: "Options" });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
@@ -516,6 +521,29 @@ test("reopens installation setup without losing the canonical route", async ({ p
   await expect(dialog).toHaveCount(0);
   await expect(page).toHaveURL(/\/setup$/);
   await expect(page.getByRole("heading", { name: "Review this OneDay installation" })).toBeVisible();
+});
+
+test("opens provider configuration directly from the desktop deep link", async ({ page }, testInfo) => {
+  await mockGateway(page);
+  await page.goto("/?overlay=options&section=operator");
+
+  const dialog = page.getByRole("dialog", { name: "Options" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator(".settings-content").getByRole("heading", { name: "Operator configuration", level: 3 })).toBeVisible();
+  await expect(dialog.getByRole("tab", { name: "Connections" })).toHaveAttribute("aria-selected", "true");
+  await expect(dialog.locator(".provider-editor-grid > .provider-card")).toHaveCount(4);
+  await expect(dialog.getByText("Codex", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Claude Code", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("LiteLLM", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("OpenRouter", { exact: true })).toBeVisible();
+  await expect(page.locator(".installation-onboarding")).toHaveCount(0);
+
+  const results = await new AxeBuilder({ page }).include(".overlay-panel").analyze();
+  expect(results.violations).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("provider-configuration.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const overflow = await dialog.evaluate((element) => ({ width: element.scrollWidth, viewport: element.clientWidth }));
+  expect(overflow.width).toBeLessThanOrEqual(overflow.viewport + 1);
 });
 
 test("keeps installation readiness loading and recovery states operable", async ({ page }, testInfo) => {
@@ -531,10 +559,17 @@ test("keeps installation readiness loading and recovery states operable", async 
   await expect(page.getByRole("heading", { name: "Installation readiness could not be checked" })).toBeVisible();
   await page.getByRole("button", { name: "Retry readiness check" }).click();
   await expect(page.getByRole("heading", { name: "Set up this OneDay installation" })).toBeVisible();
-  await expect(page.getByText("Optional · attention")).toBeVisible();
+  await page.getByText("Optional enhancements").click();
+  await expect(page.getByText("Needs attention")).toBeVisible();
   const retry = page.getByRole("button", { name: "Retry readiness checks" });
-  const configure = page.getByRole("button", { name: "Reconfigure shared setup" });
+  const configure = page.getByRole("button", { name: "Configure providers and models" });
   const start = page.getByRole("button", { name: "Start story setup" });
+  const targetHeights = await page.locator(".installation-onboarding button:visible, .installation-onboarding summary:visible").evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().height)));
+  expect(Math.min(...targetHeights)).toBeGreaterThanOrEqual(32);
+  const beforeHover = await configure.evaluate((element) => getComputedStyle(element).backgroundColor);
+  await configure.hover();
+  const afterHover = await configure.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(afterHover).not.toBe(beforeHover);
   await retry.focus();
   await page.keyboard.press("Tab");
   await expect(configure).toBeFocused();

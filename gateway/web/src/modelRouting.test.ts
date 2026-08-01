@@ -59,6 +59,7 @@ describe("model routing helpers", () => {
     );
     draft.providers.litellm.enabled = true;
     draft.providers.litellm.model = "test-litellm-model-updated";
+    draft.providers.litellm.apiKey = "write-only-litellm-key";
     draft.utilityModel = "test-utility-model";
     draft.repairFallbackModels = "test-fallback-one, test-fallback-two";
     draft.imageGeneration.autoGenerate = true;
@@ -82,9 +83,20 @@ describe("model routing helpers", () => {
           id: "litellm",
           enabled: true,
           model: "test-litellm-model-updated",
+          base_url: "http://127.0.0.1:4000/v1",
+          api_key: "write-only-litellm-key",
         }),
       ]),
     });
+  });
+
+  it("requires a write-only credential for an enabled API provider", () => {
+    const draft = draftFromModelSettings(settings);
+    draft.providers.codex.enabled = false;
+    draft.providers.litellm.enabled = true;
+    expect(modelRoutingIssues(settings, draft)).toContain("LiteLLM needs an API key.");
+    draft.providers.litellm.apiKey = "new-key";
+    expect(modelRoutingIssues(settings, draft)).not.toContain("LiteLLM needs an API key.");
   });
 
   it("detects dirty and invalid drafts before save", () => {
@@ -254,31 +266,49 @@ const settings: ModelSettings = {
       enabled: true,
       model: "test-codex-model",
       reasoning: "off",
+      api_key_configured: false,
+      credential_type: "subscription",
       supports_model: true,
       supports_reasoning: true,
+      supports_base_url: false,
+      supports_api_key: false,
     },
     {
       id: "litellm",
       label: "LiteLLM",
       enabled: false,
       model: "test-litellm-model",
+      base_url: "http://127.0.0.1:4000/v1",
+      api_key_configured: false,
+      credential_type: "api_key",
       supports_model: true,
       supports_reasoning: false,
+      supports_base_url: true,
+      supports_api_key: true,
     },
     {
       id: "openrouter",
       label: "OpenRouter",
       enabled: false,
       model: "test-openrouter-model",
+      base_url: "https://openrouter.ai/api/v1",
+      api_key_configured: false,
+      credential_type: "api_key",
       supports_model: true,
       supports_reasoning: false,
+      supports_base_url: true,
+      supports_api_key: true,
     },
     {
       id: "claude-code",
       label: "Claude Code",
       enabled: false,
+      api_key_configured: false,
+      credential_type: "subscription",
       supports_model: false,
       supports_reasoning: false,
+      supports_base_url: false,
+      supports_api_key: false,
     },
   ],
   narrative_models: ["test-codex-model", "test-openrouter-model"],

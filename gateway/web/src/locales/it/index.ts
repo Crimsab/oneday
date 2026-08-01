@@ -33,4 +33,5 @@ import { portability } from "./portability";
 import { installation } from "./installation";
 import { history } from "./history";
 import { authentication } from "./authentication";
-export const it = { authentication, installation, portability, batch_translation, common, options, chrome, story, branches, audio, audio_tools, onboarding, wizard, flow, inspector, inspector_extra, commands, composer, events, server, format, format_extra, map, controls, drawer, library, notifications, api_errors, surfaces, diagnostics, settings_search, settings_ui, turn_progress, model_issues, command_fallback, command_ui, image_editing, history } as const;
+import { provider_setup } from "./provider_setup";
+export const it = { provider_setup, authentication, installation, portability, batch_translation, common, options, chrome, story, branches, audio, audio_tools, onboarding, wizard, flow, inspector, inspector_extra, commands, composer, events, server, format, format_extra, map, controls, drawer, library, notifications, api_errors, surfaces, diagnostics, settings_search, settings_ui, turn_progress, model_issues, command_fallback, command_ui, image_editing, history } as const;

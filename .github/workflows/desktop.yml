@@ -152,6 +152,13 @@ jobs:
           cargo fmt --manifest-path desktop/src-tauri/Cargo.toml -- --check
           cargo test --locked --manifest-path desktop/src-tauri/Cargo.toml
 
+      - name: Test launcher accessibility and first-run UX
+        if: runner.os == 'Linux'
+        working-directory: desktop
+        run: |
+          bunx playwright install --with-deps chromium
+          bun run test:e2e
+
       - name: Build unsigned desktop package
         working-directory: desktop
         shell: bash

@@ -236,7 +236,7 @@ run_web() {
   prepare_web_workspace
   run_web_tool vitest run src/features/installation-onboarding/InstallationOnboarding.test.tsx src/features/portability/templateCode.test.ts
   require_playwright_matches 'submits once|keeps installation readiness|reviews a story preset'
-  run_web_tool playwright test --output "$workspace/playwright-results" e2e/oneday.e2e.ts --grep 'submits once|keeps installation readiness|reviews a story preset'
+  run_web_tool playwright test --workers=1 --output "$workspace/playwright-results" e2e/oneday.e2e.ts --grep 'submits once|keeps installation readiness|reviews a story preset'
 }
 
 run_desktop() {
@@ -248,6 +248,7 @@ run_desktop() {
   run_cargo_tests "$workspace/desktop/src-tauri/Cargo.toml" standalone::tests
   run_cargo_tests "$workspace/desktop/src-tauri/Cargo.toml" portability::tests
   run_isolated bash -c 'cd "$1" && bun run test' -- "$workspace/desktop"
+  run_isolated bash -c 'cd "$1" && bun x --no-install playwright test' -- "$workspace/desktop"
 }
 
 run_portability() {

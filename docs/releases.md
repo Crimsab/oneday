@@ -35,11 +35,11 @@ runner, hostname, filesystem, cache, or credential dependency. Intermediate
 workflow artifacts expire after one day; unsigned pull-request desktop packages
 expire after two days. GitHub Release assets are the durable deliverables.
 
-The first live end-to-end run of the desktop jobs and updater feed must occur after
-the repository is public. Static validation can prove workflow syntax, scripts,
-locked inputs, and unsigned native packaging, but it cannot prove public Sigstore
-attestation, GitHub Release URL behavior, or the repository's external signing
-configuration. That public-run smoke is explicitly **pending**.
+The first public end-to-end desktop publication completed with `v1.17.2`. Its
+release contains all four updater targets, their Tauri signatures,
+`latest.json`, native installers, checksums, and attestations. Static validation
+still cannot replace an N-to-N+1 install on each operating system, so changes to
+the updater or installer must also follow the manual procedure below.
 
 ## Coordinated versions
 
@@ -228,6 +228,12 @@ installed production clients.
 
 Use `Release-As: X.Y.Z` in a commit footer only when intentionally overriding the
 calculated version.
+
+Published versions are monotonic. Do not reset the public line from `1.x` to
+`0.x`: Tauri and standard SemVer clients correctly treat `0.x` as older than an
+installed `1.x` release and would not offer it as an update. A new compatibility
+era therefore uses the next appropriate `1.x` minor/major version or a distinct
+package identity and update channel.
 
 ## Verification
 

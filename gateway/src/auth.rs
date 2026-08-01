@@ -726,6 +726,11 @@ pub fn redacted_request_target(uri: &Uri) -> String {
 }
 
 pub fn redact_model_settings(settings: &mut protocol::ModelRoutingSettings) {
+    for provider in &mut settings.providers {
+        if let Some(base_url) = provider.base_url.as_mut() {
+            *base_url = redact_url(base_url);
+        }
+    }
     settings.image_generation.base_url = redact_url(&settings.image_generation.base_url);
     settings.image_generation.openclaw_bridge_url =
         redact_url(&settings.image_generation.openclaw_bridge_url);
@@ -740,6 +745,33 @@ pub fn validate_model_settings_update(
     current: &protocol::ModelRoutingSettings,
     update: &mut protocol::ModelRoutingUpdate,
 ) -> Result<(), PublicError> {
+    for provider_update in &mut update.providers {
+        let Some(provider) = current.providers.iter().find(|provider| {
+            provider
+                .id
+                .trim()
+                .eq_ignore_ascii_case(provider_update.id.trim())
+        }) else {
+            continue;
+        };
+        let current_base_url = provider.base_url.as_deref().unwrap_or_default();
+        suppress_redacted_echo(current_base_url, &mut provider_update.base_url);
+        let environment_names: &[&str] = match provider.id.as_str() {
+            "litellm" => &["ONEDAY_LITELLM_API_KEY"],
+            "openrouter" => &["ONEDAY_OPENROUTER_API_KEY"],
+            _ => &[],
+        };
+        if endpoint_change_reuses_secret(
+            current_base_url,
+            provider.api_key_configured || environment_credential_is_set(environment_names),
+            provider_update.base_url.as_deref(),
+            provider_update.api_key.is_some(),
+            provider_update.clear_api_key.unwrap_or(false),
+        ) {
+            return Err(credential_reentry_error());
+        }
+    }
+
     let Some(image_update) = update.image_generation.as_mut() else {
         return Ok(());
     };

@@ -91,8 +91,9 @@ The `CI` workflow uses one consolidated job and runs:
 - a complete gateway Docker image build.
 
 The separate desktop packaging workflow additionally builds native packages on
-Linux, Windows, macOS Apple Silicon, and macOS Intel runners. Its first public
-run remains the proof for hosted macOS toolchains and downloadable artifacts.
+Linux, Windows, macOS Apple Silicon, and macOS Intel runners. Public release
+`v1.17.2` proved the hosted packaging and signed-feed path; native N-to-N+1
+installation remains a platform test whenever updater behavior changes.
 
 ## Release verification
 

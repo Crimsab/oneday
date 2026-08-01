@@ -1107,7 +1107,7 @@ summary:focus-visible {
 
 .settings-sidebar nav button:hover { background: #11171b; }
 
-.settings-sidebar nav button.active { border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line-soft)); background: color-mix(in srgb, var(--accent) 7%, #141a1e); padding: 6px 8px; color: color-mix(in srgb, var(--accent) 76%, var(--text)); }
+.settings-sidebar nav button.active { border: 1px solid var(--line); background: color-mix(in srgb, var(--accent) 7%, #141a1e); padding: 6px 8px; color: color-mix(in srgb, var(--accent) 76%, var(--text)); }
 
 .settings-sidebar nav button.active .settings-nav-icon { border-color: color-mix(in srgb, var(--accent) 24%, var(--line-soft)); background: color-mix(in srgb, var(--accent) 5%, transparent); color: var(--accent); }
 
@@ -1145,6 +1145,8 @@ summary:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.settings-sidebar nav button.active .settings-nav-copy small { color: var(--muted); }
 
 .settings-main { grid-template-rows: 58px minmax(0, 1fr); }
 .settings-toolbar { border-color: var(--line-soft); background: #0d1215; padding: 10px 16px; }
@@ -1307,6 +1309,8 @@ summary:focus-visible {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
+
+.operator-settings-stack .model-section-nav button.active small { color: var(--muted); }
 
 .operator-console-panel { min-width: 0; background: #101619; }
 .operator-panel-heading { border-bottom: 1px solid var(--line-soft); padding: 15px 18px 13px; }
@@ -1777,6 +1781,53 @@ summary:focus-visible {
   .operator-settings-stack .provider-card .toggle-row { min-height: 30px; }
   .operator-settings-stack .model-actions { display: grid; grid-template-columns: 1fr 1fr; }
   .operator-settings-stack .model-actions .primary-action { grid-column: 1 / -1; }
+}
+
+/* Provider setup is a set of complete connections, not a spreadsheet row. */
+.operator-settings-stack .provider-editor-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr));
+  gap: 12px;
+  border-top: 0;
+}
+
+.operator-settings-stack .provider-card,
+.operator-settings-stack .provider-card:last-child,
+.operator-settings-stack .provider-card.enabled {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: #10171b;
+  padding: 15px;
+}
+
+.operator-settings-stack .provider-card.enabled {
+  background: color-mix(in srgb, var(--accent) 4%, #10171b);
+}
+
+.operator-settings-stack .provider-card .toggle-row {
+  min-height: 34px;
+}
+
+.operator-settings-stack .provider-card :is(input:not([type="checkbox"]), .custom-select-trigger) {
+  width: 100%;
+  min-height: 42px;
+}
+
+.operator-settings-stack .provider-card-status {
+  min-height: 28px;
+  padding-bottom: 9px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.operator-settings-stack .provider-card-status strong {
+  font-size: 0.6875rem;
+}
+
+.operator-settings-stack .provider-clear-secret {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 @media (prefers-reduced-motion: reduce) {

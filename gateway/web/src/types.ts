@@ -86,8 +86,13 @@ export interface ModelProviderSetting {
   enabled: boolean;
   model?: string;
   reasoning?: string;
+  base_url?: string;
+  api_key_configured: boolean;
+  credential_type: string;
   supports_model: boolean;
   supports_reasoning: boolean;
+  supports_base_url: boolean;
+  supports_api_key: boolean;
 }
 
 export interface ModelRoutingActive {
@@ -257,6 +262,9 @@ export interface ModelProviderUpdate {
   enabled?: boolean;
   model?: string;
   reasoning?: string;
+  base_url?: string;
+  api_key?: string;
+  clear_api_key?: boolean;
 }
 
 export interface ModelSettingsUpdate {

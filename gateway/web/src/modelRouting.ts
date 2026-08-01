@@ -11,6 +11,9 @@ export interface ModelProviderDraft {
   enabled: boolean;
   model: string;
   reasoning: string;
+  baseUrl: string;
+  apiKey: string;
+  clearApiKey: boolean;
 }
 
 export interface ModelRoutingDraft {
@@ -70,6 +73,9 @@ export function draftFromModelSettings(
           enabled: provider.enabled,
           model: provider.model ?? "",
           reasoning: provider.reasoning ?? "",
+          baseUrl: provider.base_url ?? "",
+          apiKey: "",
+          clearApiKey: false,
         },
       ]),
     ),
@@ -138,6 +144,15 @@ export function modelRoutingIssues(
     const value = draft.providers[provider.id];
     if (provider.supports_model && !value?.model.trim()) {
       issues.push(i18n.t("model_issues:modelName", { provider: provider.label }));
+    }
+    if (provider.supports_base_url && !value?.baseUrl.trim()) {
+      issues.push(i18n.t("model_issues:providerBaseUrl", { provider: provider.label }));
+    }
+    if (
+      provider.supports_api_key &&
+      (value?.clearApiKey || (!provider.api_key_configured && !value?.apiKey.trim()))
+    ) {
+      issues.push(i18n.t("model_issues:providerApiKey", { provider: provider.label }));
     }
   }
   if (!draft.utilityModel.trim()) {
@@ -303,6 +318,15 @@ function providerUpdate(
       : {}),
     ...(provider.supports_reasoning
       ? { reasoning: (draft?.reasoning ?? provider.reasoning ?? "").trim() }
+      : {}),
+    ...(provider.supports_base_url
+      ? { base_url: (draft?.baseUrl ?? provider.base_url ?? "").trim() }
+      : {}),
+    ...(provider.supports_api_key && draft?.apiKey.trim()
+      ? { api_key: draft.apiKey.trim() }
+      : {}),
+    ...(provider.supports_api_key && draft?.clearApiKey
+      ? { clear_api_key: true }
       : {}),
   };
 }

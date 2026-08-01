@@ -195,10 +195,17 @@ async fn main() -> anyhow::Result<()> {
 }
 
 fn run_schema_preflight(paths: &config::ResolvedPaths) -> anyhow::Result<()> {
-    let output = Command::new(&paths.oneday_bin)
+    let mut command = Command::new(&paths.oneday_bin);
+    command
         .arg("gateway-schema-preflight")
         .env("ONEDAY_CONFIG", &paths.config_path)
-        .current_dir(&paths.oneday_root)
+        .current_dir(&paths.oneday_root);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+    }
+    let output = command
         .output()
         .with_context(|| format!("starting {}", paths.oneday_bin.display()))?;
     if !output.status.success() {

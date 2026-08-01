@@ -7,17 +7,38 @@ pub fn same_origin(allowed: &Url, candidate: &Url) -> bool {
         && allowed.port_or_known_default() == candidate.port_or_known_default()
 }
 
+fn navigation_origin(url: &Url) -> Url {
+    let mut origin = url.clone();
+    origin.set_path("/");
+    origin.set_query(None);
+    origin.set_fragment(None);
+    origin
+}
+
 pub fn open(app: &AppHandle, server_url: &Url) -> Result<(), String> {
+    let allowed = navigation_origin(server_url);
     if let Some(window) = app.get_webview_window("main") {
+        let current = window
+            .url()
+            .map_err(|error| format!("Could not inspect the OneDay window: {error}"))?;
+        if same_origin(&allowed, &current) {
+            window
+                .navigate(server_url.clone())
+                .map_err(|error| format!("Could not navigate to the OneDay server: {error}"))?;
+            window.show().map_err(|error| error.to_string())?;
+            window.unminimize().map_err(|error| error.to_string())?;
+            window.set_focus().map_err(|error| error.to_string())?;
+            return Ok(());
+        }
+
+        // A standalone restart normally selects a fresh loopback port. The
+        // existing webview's navigation guard intentionally rejects that new
+        // origin, so replace the webview instead of leaving it on a dead port.
         window
-            .navigate(server_url.clone())
-            .map_err(|error| format!("Could not navigate to the OneDay server: {error}"))?;
-        window.show().map_err(|error| error.to_string())?;
-        window.set_focus().map_err(|error| error.to_string())?;
-        return Ok(());
+            .destroy()
+            .map_err(|error| format!("Could not replace the previous OneDay window: {error}"))?;
     }
 
-    let allowed = server_url.clone();
     WebviewWindowBuilder::new(app, "main", WebviewUrl::External(server_url.clone()))
         .title("OneDay")
         .inner_size(1440.0, 900.0)
@@ -64,5 +85,13 @@ mod tests {
             &allowed,
             &Url::parse("http://oneday.example.com/").unwrap()
         ));
+    }
+
+    #[test]
+    fn navigation_origin_drops_paths_queries_and_credentials() {
+        let origin = navigation_origin(
+            &Url::parse("http://127.0.0.1:48788/api/auth/bootstrap?token=secret").unwrap(),
+        );
+        assert_eq!(origin.as_str(), "http://127.0.0.1:48788/");
     }
 }

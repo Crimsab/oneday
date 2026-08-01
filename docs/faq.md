@@ -46,6 +46,13 @@ Yes, for narrative generation through an installed and authenticated
 **Claude Code** CLI. OneDay calls `claude -p`, so Claude Code remains responsible
 for login and subscription access.
 
+Desktop standalone detects an existing Claude Code installation. If it is
+missing, **Install Claude** uses the official WinGet package on Windows or the
+official Homebrew cask on macOS when that package manager is available. Other
+systems open Anthropic's installation guide. **Sign in** runs
+`claude auth login`; OneDay checks readiness with `claude auth status` and never
+parses the resulting credential.
+
 Enable **Claude Code** in the operator model connections and move it to the
 front of the provider priority, or configure `ai.claude_code` in
 `config.yaml`. Run `oneday doctor` before creating a story.
@@ -62,11 +69,12 @@ Not from an arbitrary host installation. In a terminal or native-gateway
 installation, OneDay launches the selected local CLI and the CLI reads its own
 authenticated state. OneDay does not parse or duplicate that state.
 
-Desktop standalone has an explicit managed option. It detects a system Codex
-first. If you click **Install Codex**, it downloads a pinned official binary and
-uses a private `CODEX_HOME`; if you then click **Sign in**, Codex owns the OAuth
-flow and credential storage. Nothing is copied from another home directory,
-and remote desktop mode never receives this local credential.
+Desktop standalone has explicit provider actions. It detects system Codex and
+Claude Code installations first. **Install Codex** downloads a pinned official
+binary and uses a private `CODEX_HOME`; **Install Claude** delegates to the
+official system package when supported. Each CLI owns its login flow and
+credential storage. Nothing is copied from another home directory, and remote
+desktop mode never receives either local credential.
 
 The Docker Codex image profile is the one deliberate exception: its helper
 copies only Codex `auth.json` into an isolated volume used by

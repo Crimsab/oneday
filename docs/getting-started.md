@@ -99,8 +99,9 @@ docker compose -f compose.yaml -f compose.build.yaml run --rm oneday-tools docke
 curl -fsS http://localhost:8788/api/health
 ```
 
-After a stable container image is available, you can omit the build overlay and
-use the shorter released-image commands in the [Docker guide](docker.md).
+For normal installation, use the shorter released-image commands in the
+[Docker guide](docker.md). Keep the build overlay only when testing a local
+source checkout.
 
 Open `http://localhost:8788`. The first start creates and migrates the SQLite
 database automatically in the `oneday_data` named volume. After signing in,
@@ -149,14 +150,13 @@ device** for standalone mode. Remote mode requires a root server origin such as
 path prefixes, and ordinary HTTP. Standalone mode runs a fresh loopback gateway
 for that desktop profile and opens its bundled web UI.
 
-Before relying on standalone mode, confirm the desktop package actually
-contains its matching gateway, engine, and web UI. To use a Codex subscription,
-open the desktop settings: OneDay reuses a detected Codex CLI or offers a
-verified managed install, then starts the Codex browser login. The download is
-optional and does not occur until you select it. After sign-in, open local
-OneDay Setup and choose Codex and a model. To use Claude Code, LiteLLM,
-OpenRouter, or another supported endpoint, configure that provider instead;
-Codex is not downloaded. For profile locations, backups, and shutdown details,
+The released standalone package contains its matching gateway, engine, and web
+UI. Its settings show Codex, Claude Code, OpenRouter, and LiteLLM-compatible
+connections. OneDay reuses an existing Codex CLI or offers a verified managed
+install, detects Claude Code and offers the supported system install path, and
+opens each CLI's own login. Open **Configure models** after sign-in. API
+providers use the same protected screen. Nothing is downloaded merely because
+you selected local mode. For profile locations, backups, and shutdown details,
 read [Desktop](desktop.md).
 
 To build the current checkout instead of pulling a release image, use:

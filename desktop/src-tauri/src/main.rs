@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod claude_component;
 mod codex_component;
 mod config;
 mod containment;
@@ -158,10 +159,10 @@ fn show_provider_setup(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(
         .map_err(|_| "Desktop connection state is unavailable.".to_string())?
         .clone()
         .ok_or_else(|| "Start the local OneDay gateway first.".to_string())?;
-    let setup = server
-        .join("setup")
-        .map_err(|error| format!("Could not build the OneDay Setup URL: {error}"))?;
-    remote::open(&app, &setup)
+    let configuration = server
+        .join("?overlay=options&section=operator")
+        .map_err(|error| format!("Could not build the provider configuration URL: {error}"))?;
+    remote::open(&app, &configuration)
 }
 
 async fn start_local(
@@ -213,7 +214,8 @@ async fn start_local(
         return Err(latest_error);
     };
     let endpoint = process.endpoint.clone();
-    if let Err(error) = remote::open(app, &endpoint) {
+    let browser_url = process.browser_url.clone();
+    if let Err(error) = remote::open(app, &browser_url) {
         let _ = standalone::stop(process);
         write_lifecycle(
             state,
@@ -440,10 +442,15 @@ fn main() {
             portability::choose_and_import_story,
             portability::choose_and_export_story,
             updater::updater_status,
-            updater::check_and_install_update,
+            updater::check_update,
+            updater::install_update,
             codex_component::codex_status,
             codex_component::install_codex_component,
             codex_component::login_codex,
+            claude_component::claude_status,
+            claude_component::install_claude,
+            claude_component::login_claude,
+            claude_component::open_claude_install_guide,
         ])
         .setup(move |app| {
             let standalone_id =
@@ -458,11 +465,6 @@ fn main() {
                         *app.state::<AppRuntime>().server_url.lock().map_err(|_| {
                             std::io::Error::other("desktop connection state is unavailable")
                         })? = Some(server.clone());
-                        *app.state::<AppRuntime>().lifecycle.lock().map_err(|_| {
-                            std::io::Error::other("desktop lifecycle state is unavailable")
-                        })? = Lifecycle::Ready {
-                            endpoint: server.to_string(),
-                        };
                     }
                     *app.state::<AppRuntime>().profile.lock().map_err(|_| {
                         std::io::Error::other("desktop profile state is unavailable")

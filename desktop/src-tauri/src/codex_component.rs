@@ -153,6 +153,8 @@ fn configure_command(app: &AppHandle, installation: &Installation) -> Result<Com
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    #[cfg(windows)]
+    command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
     Ok(command)
 }
 
@@ -164,6 +166,7 @@ async fn command_output(
 ) -> Result<std::process::Output, String> {
     let mut command = configure_command(app, installation)?;
     command.args(arguments);
+    command.kill_on_drop(true);
     tokio::time::timeout(timeout, command.output())
         .await
         .map_err(|_| "Codex did not finish before the safety timeout.".to_string())?
@@ -322,8 +325,11 @@ pub fn runtime(app: &AppHandle) -> Result<Option<CodexRuntime>, String> {
     }))
 }
 
-pub fn prepend_path(directory: &Path) -> Result<OsString, String> {
-    let mut paths = vec![directory.to_path_buf()];
+pub fn prepend_paths(directories: &[&Path]) -> Result<OsString, String> {
+    let mut paths = directories
+        .iter()
+        .map(|path| path.to_path_buf())
+        .collect::<Vec<_>>();
     if let Some(current) = std::env::var_os("PATH") {
         paths.extend(std::env::split_paths(&current));
     }
@@ -518,7 +524,7 @@ mod tests {
 
     #[test]
     fn prepends_component_without_dropping_the_existing_path() {
-        let joined = prepend_path(Path::new("/component/bin")).expect("joined PATH");
+        let joined = prepend_paths(&[Path::new("/component/bin")]).expect("joined PATH");
         let paths = std::env::split_paths(&joined).collect::<Vec<_>>();
         assert_eq!(paths.first(), Some(&PathBuf::from("/component/bin")));
     }

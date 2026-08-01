@@ -128,6 +128,13 @@ function initialOverlayFromLocation(): OverlayKind {
   return deepLinkOverlays.has(overlay) ? overlay : null;
 }
 
+function initialSettingsSectionFromLocation(): SettingsSectionId {
+  if (typeof window === "undefined") return "appearance";
+  return new URLSearchParams(window.location.search).get("section") === "operator"
+    ? "operator"
+    : "appearance";
+}
+
 type AuthenticationState =
   | { kind: "checking"; bootstrapAvailable: false }
   | { kind: "authenticated"; bootstrapAvailable: boolean }
@@ -212,7 +219,7 @@ function AuthenticatedApp() {
   const [modelSettings, setModelSettings] = useState<ModelSettings | null>(null);
   const [modelSettingsError, setModelSettingsError] = useState("");
   const [modelSaving, setModelSaving] = useState(false);
-  const [optionsInitialSection, setOptionsInitialSection] = useState<SettingsSectionId>("appearance");
+  const [optionsInitialSection, setOptionsInitialSection] = useState<SettingsSectionId>(() => initialSettingsSectionFromLocation());
   const [setupReadiness, setSetupReadiness] = useState<SetupReadinessReport | null>(null);
   const [setupReadinessState, setSetupReadinessState] = useState<"loading" | "ready" | "error">("loading");
   const [visualAssets, setVisualAssets] = useState<VisualAssetsResponse | null>(null);

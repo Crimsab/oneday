@@ -104,15 +104,18 @@ On the first launch, choose one profile:
 - **Run on this device** creates an isolated local profile. It does not
   synchronize stories with a server.
 
-In local mode, the desktop can reuse an existing Codex CLI or install a pinned,
-SHA-256-verified official Codex component after you explicitly choose it. The
-app then opens the Codex sign-in flow. If you select another provider, Codex is
-not downloaded or started.
+In local mode, the desktop shows every narrative path instead of assuming
+Codex. It can reuse an existing Codex CLI, install a pinned and
+SHA-256-verified official Codex component on demand, detect Claude Code, or
+install Claude Code through WinGet on Windows or Homebrew on macOS. OpenRouter
+and LiteLLM-compatible endpoints are configured in the same protected model
+screen. Nothing is downloaded until you choose an install action.
 
-The CI builds unsigned Windows, Linux, Apple Silicon macOS, and Intel macOS
-packages. A public release can omit desktop packages until updater signing and
-the release workflow are enabled. If no matching package exists, use Docker.
-Read the [desktop guide](docs/desktop.md) before you choose a profile.
+Public releases include Windows, Linux, Apple Silicon macOS, and Intel macOS
+packages plus a signed update feed. The desktop checks that feed automatically,
+but it downloads and installs an update only after you select **Install and
+restart**. Source and pull-request builds keep the updater disabled. Read the
+[desktop guide](docs/desktop.md) before you choose a profile.
 
 ### Terminal from source
 
@@ -238,9 +241,12 @@ runtime. Use LiteLLM/OpenRouter for the standard container narrative path.
 ### Can I use my Claude subscription?
 
 Yes, for narrative generation when Claude Code is installed and authenticated
-on the machine running OneDay. Enable **Claude Code** in the provider
-connections and priority. Claude Code does not provide OneDay images or
-embeddings, and the standard Docker image does not contain the Claude CLI.
+on the machine running OneDay. Desktop standalone detects it and offers a
+WinGet install on Windows or a Homebrew install on macOS when available; Linux
+links to Anthropic's current installation guide. Sign-in stays inside Claude
+Code. Then enable **Claude Code** in the provider connections and priority.
+Claude Code does not provide OneDay images or embeddings, and the standard
+Docker image does not contain the Claude CLI.
 
 ### Do Codex and Claude work with long-term memory?
 
@@ -321,10 +327,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 OneDay is under active development. Back up persistent story data before an
 upgrade and review the [changelog](CHANGELOG.md) for migration-sensitive changes.
 
-Release automation manages release metadata and publication when a release is
-made. Verify the publisher, version, signature information where supplied, and
-the contents of a specific artifact before trusting it; this README does not
-guarantee that a particular package or updater feed is available.
+Release automation manages release metadata and publication. The current
+public release page is the source of truth for packages, checksums, signatures,
+and the updater feed. Verify the publisher and the artifact for your platform
+before installing it.
 
 ## Community and security
 

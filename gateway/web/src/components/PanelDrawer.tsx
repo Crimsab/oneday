@@ -1174,7 +1174,7 @@ function ModelRoutingSettings({
   onSave: (payload: ModelSettingsUpdate) => Promise<void>;
   onReload: () => Promise<void> | void;
 }) {
-  const { t } = useTranslation("drawer");
+  const { t } = useTranslation(["drawer", "provider_setup"]);
   const [draft, setDraft] = useState<ModelRoutingDraft | null>(() =>
     modelSettings ? draftFromModelSettings(modelSettings) : null,
   );
@@ -1525,6 +1525,16 @@ function ModelRoutingSettings({
               className={`provider-card ${providerDraft?.enabled ? "enabled" : ""}`}
               key={provider.id}
             >
+              <div className="provider-card-status">
+                <span>{provider.credential_type === "api_key" ? t("provider_setup:apiConnection") : t("provider_setup:subscriptionConnection")}</span>
+                <strong className={provider.credential_type === "api_key" && !provider.api_key_configured && !providerDraft?.apiKey ? "missing" : "ready"}>
+                  {provider.credential_type === "api_key"
+                    ? provider.api_key_configured || providerDraft?.apiKey
+                      ? t("models.keySet")
+                      : t("models.keyMissing")
+                    : t("provider_setup:localSignIn")}
+                </strong>
+              </div>
               <label className="toggle-row">
                 <span>{provider.label}</span>
                 <input
@@ -1537,6 +1547,42 @@ function ModelRoutingSettings({
                   }
                 />
               </label>
+              {provider.supports_base_url && (
+                <label>
+                  <span>{t("provider_setup:providerBaseUrl")}</span>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    value={providerDraft?.baseUrl ?? ""}
+                    onChange={(event) => updateProvider(provider.id, { baseUrl: event.target.value })}
+                    placeholder={provider.id === "openrouter" ? "https://openrouter.ai/api/v1" : "http://127.0.0.1:4000/v1"}
+                  />
+                </label>
+              )}
+              {provider.supports_api_key && (
+                <div className="provider-secret-fields">
+                  <label>
+                    <span>{t("provider_setup:apiKey")}</span>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={providerDraft?.apiKey ?? ""}
+                      onChange={(event) => updateProvider(provider.id, { apiKey: event.target.value, clearApiKey: false })}
+                      placeholder={t("provider_setup:secretPlaceholder")}
+                    />
+                  </label>
+                  {provider.api_key_configured && (
+                    <label className="toggle-row provider-clear-secret">
+                      <span>{t("provider_setup:clearApiKey")}</span>
+                      <input
+                        type="checkbox"
+                        checked={providerDraft?.clearApiKey ?? false}
+                        onChange={(event) => updateProvider(provider.id, { clearApiKey: event.target.checked, apiKey: "" })}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
               {provider.supports_model && (
                 <label>
                   <span>{t("models.model")}</span>
