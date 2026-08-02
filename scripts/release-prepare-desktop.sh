@@ -149,7 +149,8 @@ else
   echo "a SHA-256 utility is required to verify the imagegen bridge" >&2
   exit 1
 fi
-if [[ "${actual_bridge_sha256}" != "${bridge_sha256,,}" ]]; then
+expected_bridge_sha256="$(printf '%s' "${bridge_sha256}" | tr '[:upper:]' '[:lower:]')"
+if [[ "${actual_bridge_sha256}" != "${expected_bridge_sha256}" ]]; then
   echo "imagegen bridge download SHA-256 does not match the pinned manifest" >&2
   exit 1
 fi
