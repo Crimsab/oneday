@@ -56,15 +56,14 @@ jq -e '
 ' "${manifest}" >/dev/null
 
 ONEDAY_UPDATER_ENDPOINT="https://github.com/Crimsab/oneday/releases/latest/download/latest.json" \
-ONEDAY_UPDATER_PUBKEY="untrusted comment: test updater key
-RWQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" \
+ONEDAY_UPDATER_PUBKEY="dW50cnVzdGVkIGNvbW1lbnQ6IHRlc3QgdXBkYXRlciBrZXkKUldRQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQQo=" \
   "${repo_root}/scripts/release-prepare-updater-config.sh" \
   "${repo_root}/desktop/src-tauri/tauri.release.conf.json" \
   "${fixture}/tauri.signed.conf.json"
 jq -e '
   .bundle.createUpdaterArtifacts == true and
   .plugins.updater.endpoints == ["https://github.com/Crimsab/oneday/releases/latest/download/latest.json"] and
-  (.plugins.updater.pubkey | startswith("untrusted comment:")) and
+  (.plugins.updater.pubkey | test("^[A-Za-z0-9+/=]+$")) and
   .plugins.updater.windows.installMode == "passive"
 ' "${fixture}/tauri.signed.conf.json" >/dev/null
 

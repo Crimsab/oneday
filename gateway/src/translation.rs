@@ -79,6 +79,24 @@ pub struct CompleteBrowserItemRequest {
     pub translated_text: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct TranslateTextRequest {
+    pub text: String,
+    #[serde(default)]
+    pub source_language: String,
+    pub target_language: String,
+    pub provider: String,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default = "default_style")]
+    pub style: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct TranslateTextResponse {
+    pub translated_text: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct GlossaryEntry {
     pub id: String,
@@ -104,6 +122,73 @@ pub struct GlossaryEntryRequest {
 
 fn default_glossary_mode() -> String {
     "translate".into()
+}
+
+pub async fn translate_text(
+    state: Arc<AppState>,
+    story_id: &str,
+    request: TranslateTextRequest,
+) -> anyhow::Result<TranslateTextResponse> {
+    if request.text.trim().is_empty() {
+        return Err(PublicError::bad_request(
+            "empty_translation",
+            "Translation text cannot be empty.",
+        )
+        .into());
+    }
+    if request.target_language.trim().is_empty() {
+        return Err(PublicError::bad_request(
+            "missing_target_language",
+            "A target language is required.",
+        )
+        .into());
+    }
+    if request.provider.trim().is_empty() {
+        return Err(PublicError::bad_request(
+            "missing_translation_provider",
+            "Choose an AI provider explicitly.",
+        )
+        .into());
+    }
+    if !matches!(request.style.as_str(), "faithful" | "natural" | "literary") {
+        return Err(PublicError::bad_request(
+            "invalid_translation_style",
+            "Translation style is invalid.",
+        )
+        .into());
+    }
+
+    let (_, story_language) = story_scope(&state.pool, story_id).await?;
+    let source = if request.source_language.trim().is_empty() {
+        story_language
+    } else {
+        request.source_language.trim().to_string()
+    };
+    let target = request.target_language.trim().to_string();
+    if source.eq_ignore_ascii_case(&target) {
+        return Ok(TranslateTextResponse {
+            translated_text: request.text,
+        });
+    }
+
+    let (protected, tokens) = protect_text(&request.text);
+    let glossary = glossary_map(&state.pool, story_id, &source, &target).await?;
+    let response = engine::translate(
+        state,
+        engine::TranslationRequest {
+            text: protected,
+            source_language: source,
+            target_language: target,
+            provider: request.provider.trim().to_string(),
+            model: request.model.trim().to_string(),
+            style: request.style,
+            glossary,
+        },
+    )
+    .await?;
+    Ok(TranslateTextResponse {
+        translated_text: restore_text(response.text.unwrap_or_default(), &tokens)?,
+    })
 }
 
 #[derive(Clone)]

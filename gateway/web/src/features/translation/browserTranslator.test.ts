@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { clearTranslationCache, primaryLanguage, supportsBrowserTranslation, translateInBrowser } from "./browserTranslator";
+import { browserTranslationAvailability, clearTranslationCache, primaryLanguage, supportsBrowserTranslation, translateInBrowser } from "./browserTranslator";
 
 describe("browser translator", () => {
   afterEach(() => { delete (globalThis as { Translator?: unknown }).Translator; clearTranslationCache(); });
@@ -7,6 +7,17 @@ describe("browser translator", () => {
   it("normalizes BCP-47 language tags", () => {
     expect(primaryLanguage("IT-it")).toBe("it");
     expect(primaryLanguage("pt_BR")).toBe("pt");
+    expect(primaryLanguage("lingua inventata")).toBe("");
+  });
+
+  it("checks availability for the requested pair before offering it", async () => {
+    (globalThis as { Translator?: unknown }).Translator = {
+      availability: async ({ targetLanguage }: { targetLanguage: string }) => targetLanguage === "it" ? "downloadable" : "unavailable",
+      create: async () => ({ translate: async () => "" }),
+    };
+    await expect(browserTranslationAvailability("en", "it")).resolves.toBe("downloadable");
+    await expect(browserTranslationAvailability("en", "ja")).resolves.toBe("unavailable");
+    await expect(browserTranslationAvailability("invalid language", "it")).resolves.toBe("unavailable");
   });
 
   it("stays hidden when the browser API is unavailable", () => {

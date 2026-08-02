@@ -103,3 +103,30 @@ func (m NarrativeModel) checkoutBranch(args []string) (NarrativeModel, tea.Cmd) 
 	m.historyBrowser = nil
 	return m.showHistory(nil)
 }
+
+func (m NarrativeModel) retryLatestDecision() (NarrativeModel, tea.Cmd) {
+	story := m.narrator.Story()
+	head, err := m.narrator.DB().GetActiveTimeline(story.ID)
+	if err != nil {
+		m.errMsg = m.loc.T("branches.retry_error", err)
+		return m, nil
+	}
+	decisionID := strings.TrimSpace(head.Commit.ParentCommitID)
+	if decisionID == "" {
+		m.errMsg = m.loc.T("branches.no_decision")
+		return m, nil
+	}
+	name := fmt.Sprintf("Turn %d alternative", head.Commit.CanonicalTurn)
+	if _, err := m.narrator.DB().ForkAndCheckoutStoryBranch(story.ID, decisionID, name, story.Revision); err != nil {
+		m.errMsg = m.loc.T("branches.retry_error", err)
+		return m, nil
+	}
+	if err := m.narrator.RefreshFromDB(); err != nil {
+		m.errMsg = m.loc.T("branches.refresh_error", err)
+		return m, nil
+	}
+	m.statusMsg = m.loc.T("branches.retry_ready", name)
+	m.statusExpiry = time.Now().Add(10 * time.Second)
+	m.historyBrowser = nil
+	return m.showHistory(nil)
+}

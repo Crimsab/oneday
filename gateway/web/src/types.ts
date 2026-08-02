@@ -1,5 +1,12 @@
 export type SyncState =
-  "Idle" | "Loading" | "Live" | "Sending" | "Saving" | "Paused" | "Reconnecting" | "Error";
+  | "Idle"
+  | "Loading"
+  | "Live"
+  | "Sending"
+  | "Saving"
+  | "Paused"
+  | "Reconnecting"
+  | "Error";
 
 export type ModuleTab =
   | "history"
@@ -24,6 +31,8 @@ export type FontStylePreference = "normal" | "italic";
 
 export interface AppPreferences {
   locale: "en" | "it";
+  /** BCP-47 language used when a new story does not name a language explicitly. */
+  defaultStoryLanguage: string;
   timeFormat: "system" | "12" | "24";
   density: DensityPreference;
   accent: string;
@@ -225,7 +234,8 @@ export interface ImageOperationCapability {
     kind: "raster";
     accepted_formats?: string[];
     soft_values?: "supported" | "thresholded" | "unsupported";
-    provider_semantics?: "transparent_is_edit" | "white_is_edit" | "model_specific";
+    provider_semantics?:
+      "transparent_is_edit" | "white_is_edit" | "model_specific";
     adherence?: "best_effort" | "region_constrained";
   };
   controls?: {
@@ -393,12 +403,12 @@ export interface WorldView {
   current_location: string;
   current_chapter: number;
   current_turn: number;
-	current_location_id: string;
-	spatial_regions?: JsonValue;
-	spatial_locations: JsonValue;
-	spatial_edges: JsonValue;
-	world_time: JsonValue;
-	weather: JsonValue;
+  current_location_id: string;
+  spatial_regions?: JsonValue;
+  spatial_locations: JsonValue;
+  spatial_edges: JsonValue;
+  world_time: JsonValue;
+  weather: JsonValue;
   known_locations: JsonValue;
   global_events: JsonValue;
   faction_standings: JsonValue;
@@ -431,8 +441,8 @@ export interface MessageView {
   message_type: string;
   metadata: JsonValue;
   created_at: string;
-	branch_id: string;
-	source_commit_id: string;
+  branch_id: string;
+  source_commit_id: string;
 }
 
 export type TTSMode = "off" | "narrator" | "dialogue" | "all";
@@ -542,12 +552,27 @@ export interface TTSCatalogResponse {
   voices: VoiceProfile[];
 }
 
-export interface TTSSettingsResponse { settings: StoryTTSSettings; }
-export interface VoiceAssignmentsResponse { assignments: VoiceAssignment[]; assignment?: VoiceAssignment; }
-export interface MessageAudioResponse { assets: AudioAsset[]; jobs: TTSJob[]; }
-export interface PronunciationsResponse { pronunciations: PronunciationEntry[]; pronunciation?: PronunciationEntry; }
-export interface AudioCleanupResponse { cleanup: AudioCleanupResult; }
-export interface AudioExportResponse { export: AudioManifest; }
+export interface TTSSettingsResponse {
+  settings: StoryTTSSettings;
+}
+export interface VoiceAssignmentsResponse {
+  assignments: VoiceAssignment[];
+  assignment?: VoiceAssignment;
+}
+export interface MessageAudioResponse {
+  assets: AudioAsset[];
+  jobs: TTSJob[];
+}
+export interface PronunciationsResponse {
+  pronunciations: PronunciationEntry[];
+  pronunciation?: PronunciationEntry;
+}
+export interface AudioCleanupResponse {
+  cleanup: AudioCleanupResult;
+}
+export interface AudioExportResponse {
+  export: AudioManifest;
+}
 
 export interface PendingTurnView {
   id: string;
@@ -612,18 +637,62 @@ export interface ChapterView {
   start_turn: number;
   end_turn?: number | null;
   created_at: string;
-	branch_id: string;
-	source_commit_id: string;
+  branch_id: string;
+  source_commit_id: string;
 }
 
-export interface TimelineBranchView { id:string; story_id:string; name:string; fork_commit_id?:string; head_commit_id:string; head_turn:number; created_at:string; updated_at:string }
-export interface TimelineCommitView { id:string; branch_id:string; parent_commit_id?:string; canonical_turn:number; kind:string; message?:string; created_at:string }
-export interface TimelineResponse { active_branch_id:string; revision:number; branches:TimelineBranchView[]; head?:TimelineCommitView; commits:TimelineCommitView[] }
-export interface TimelineEnvelope { action:"fork"|"fork_checkout"|"rename"|"checkout"; client_revision:number; branch_id?:string; from_commit_id?:string; name?:string }
-export interface TimelineMutationResponse { timeline:TimelineResponse; snapshot:StorySnapshot }
-export interface HistoryPage { items:MessageView[]; next_cursor?:number|null }
-export interface ChapterPage { items:ChapterView[]; next_cursor?:number|null }
-export interface StoryExport { format:"markdown"|"json"|"epub"|"replay"; filename:string; content:string; encoding?:"utf-8"|"base64"; content_type?:string }
+export interface TimelineBranchView {
+  id: string;
+  story_id: string;
+  name: string;
+  fork_commit_id?: string;
+  head_commit_id: string;
+  head_turn: number;
+  created_at: string;
+  updated_at: string;
+}
+export interface TimelineCommitView {
+  id: string;
+  branch_id: string;
+  parent_commit_id?: string;
+  canonical_turn: number;
+  kind: string;
+  message?: string;
+  created_at: string;
+}
+export interface TimelineResponse {
+  active_branch_id: string;
+  revision: number;
+  branches: TimelineBranchView[];
+  head?: TimelineCommitView;
+  commits: TimelineCommitView[];
+}
+export interface TimelineEnvelope {
+  action: "fork" | "fork_checkout" | "rename" | "checkout";
+  client_revision: number;
+  branch_id?: string;
+  from_commit_id?: string;
+  name?: string;
+}
+export interface TimelineMutationResponse {
+  timeline: TimelineResponse;
+  snapshot: StorySnapshot;
+}
+export interface HistoryPage {
+  items: MessageView[];
+  next_cursor?: number | null;
+}
+export interface ChapterPage {
+  items: ChapterView[];
+  next_cursor?: number | null;
+}
+export interface StoryExport {
+  format: "markdown" | "json" | "epub" | "replay";
+  filename: string;
+  content: string;
+  encoding?: "utf-8" | "base64";
+  content_type?: string;
+}
 
 export interface TelemetryUsage {
   input_tokens: number;
@@ -956,6 +1025,7 @@ export interface StoryWizardEnvelope {
   state?: JsonValue;
   input?: string;
   action?: string;
+  preferred_language?: string;
   world_style_prompt?: string;
   character_style_prompt?: string;
   negative_prompt?: string;
@@ -1012,7 +1082,7 @@ export type CommandBehavior =
   | "save_delete"
   | "insert_template"
   | "local_only"
-	| "timeline";
+  | "timeline";
 
 export interface CommandArgDescriptor {
   name: string;
@@ -1045,8 +1115,17 @@ export interface PlayerAction {
   choice_id?: number;
 }
 
-export type OutcomeDegree = "critical_success" | "full_success" | "success_with_cost" | "failure_with_progress" | "hard_failure" | "catastrophe";
-export interface ChallengeModifier { source: string; value: number }
+export type OutcomeDegree =
+  | "critical_success"
+  | "full_success"
+  | "success_with_cost"
+  | "failure_with_progress"
+  | "hard_failure"
+  | "catastrophe";
+export interface ChallengeModifier {
+  source: string;
+  value: number;
+}
 export interface OutcomeEnvelope {
   version: 1;
   degree: OutcomeDegree;
@@ -1062,12 +1141,49 @@ export interface OutcomeEnvelope {
   revealed_facts?: string[];
   follow_up_pressure?: number;
 }
-export interface ChallengeDefinition { id: string; kind: string; description?: string; difficulty: number }
-export interface ChallengeInstance { protocol_version: 1; id: string; story_id?: string; branch_id?: string; turn: number; definition: ChallengeDefinition; seed: number; policy: JsonObject; timing?: JsonObject }
-export interface ChallengeInput { actor_id?: string; intent: string; choice_id?: number; modifiers?: ChallengeModifier[]; payload?: JsonValue; elapsed_ms?: number }
-export interface ChallengeResolution { protocol_version: 1; instance_id: string; input: ChallengeInput; outcome: OutcomeEnvelope }
+export interface ChallengeDefinition {
+  id: string;
+  kind: string;
+  description?: string;
+  difficulty: number;
+}
+export interface ChallengeInstance {
+  protocol_version: 1;
+  id: string;
+  story_id?: string;
+  branch_id?: string;
+  turn: number;
+  definition: ChallengeDefinition;
+  seed: number;
+  policy: JsonObject;
+  timing?: JsonObject;
+}
+export interface ChallengeInput {
+  actor_id?: string;
+  intent: string;
+  choice_id?: number;
+  modifiers?: ChallengeModifier[];
+  payload?: JsonValue;
+  elapsed_ms?: number;
+}
+export interface ChallengeResolution {
+  protocol_version: 1;
+  instance_id: string;
+  input: ChallengeInput;
+  outcome: OutcomeEnvelope;
+}
 
-export type MiniGameKind = "rps" | "memory" | "quicktime" | "riddle" | "deduction" | "negotiation" | "pattern" | "bidding" | "courtroom" | "comedy";
+export type MiniGameKind =
+  | "rps"
+  | "memory"
+  | "quicktime"
+  | "riddle"
+  | "deduction"
+  | "negotiation"
+  | "pattern"
+  | "bidding"
+  | "courtroom"
+  | "comedy";
 export type MiniGamePhase = "ready" | "active" | "paused" | "resolved";
 export interface MiniGameDefinition {
   id: string;
@@ -1079,8 +1195,19 @@ export interface MiniGameDefinition {
   time_limit_ms?: number;
   rules?: Record<string, string>;
 }
-export interface MiniGameInput { action: "pause" | "resume" | "submit"; value?: string; values?: string[]; elapsed_ms?: number }
-export interface MiniGameResult { passed: boolean; total?: number; difficulty?: number; detail: string; outcome?: OutcomeEnvelope }
+export interface MiniGameInput {
+  action: "pause" | "resume" | "submit";
+  value?: string;
+  values?: string[];
+  elapsed_ms?: number;
+}
+export interface MiniGameResult {
+  passed: boolean;
+  total?: number;
+  difficulty?: number;
+  detail: string;
+  outcome?: OutcomeEnvelope;
+}
 export interface MiniGameInstance {
   protocol_version: number;
   id: string;
@@ -1089,9 +1216,17 @@ export interface MiniGameInstance {
   turn: number;
   seed: number;
   definition: MiniGameDefinition;
-  runtime: { phase: MiniGamePhase; revision: number; state?: JsonObject; history?: MiniGameInput[]; result?: MiniGameResult };
+  runtime: {
+    phase: MiniGamePhase;
+    revision: number;
+    state?: JsonObject;
+    history?: MiniGameInput[];
+    result?: MiniGameResult;
+  };
 }
-export interface MiniGameResponse { instance?: MiniGameInstance | null }
+export interface MiniGameResponse {
+  instance?: MiniGameInstance | null;
+}
 
 export interface ActionEnvelope {
   session_id: string;

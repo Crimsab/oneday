@@ -1,36 +1,202 @@
 export const installation = {
   label: "Configurazione dell’installazione",
   title: "Configura questa installazione di OneDay",
-  description: "Qui configuri i servizi condivisi dal browser e dal terminale. La creazione della storia inizia solo dopo che l’installazione è pronta.",
-  preserve: "La configurazione condivisa esistente viene mantenuta finché non scegli di salvare una modifica.",
+  description:
+    "Qui configuri i servizi condivisi dal browser e dal terminale. La creazione della storia inizia solo dopo che l’installazione è pronta.",
+  preserve:
+    "La configurazione condivisa esistente viene mantenuta finché non scegli di salvare una modifica.",
   summaryUnavailable: "Nessun risultato di verifica disponibile",
-  summary: { title: "Stato dell’installazione", description: "Queste sono le verifiche canoniche di questa installazione di OneDay. Un errore obbligatorio blocca la creazione della storia; i servizi facoltativi possono essere configurati più avanti." },
-  groups: { essential: { title: "Pronto per creare storie", description: "OneDay richiede un narratore e un archivio scrivibile. Correggi solo gli elementi che richiedono un intervento." }, optional: { title: "Funzioni facoltative", description: "Immagini, voci, embedding, monitoraggio del gateway e backup possono essere configurati più avanti." } },
-  guidance: { title: "Avanzate: configurazione da riga di comando", web: "Il browser e l'app desktop usano la stessa configurazione protetta. Nella maggior parte dei casi basta il pulsante qui sotto.", cliBefore: "Per una configurazione CLI locale, esegui", cliBetween: "poi verifica con", cliAfter: "." },
-  reopened: { label: "Verifica configurazione", title: "Rivedi questa installazione di OneDay", description: "Questo controllo non modifica i mondi esistenti né i loro dati. Controlla la disponibilità e torna alla raccolta storie quando hai finito.", complete: "Torna alle storie", preserve: "I mondi esistenti e la configurazione condivisa restano invariati finché non salvi esplicitamente una modifica." },
-  progress: { label: "Avanzamento configurazione obbligatoria", value: "{{ready}} di {{total}} verifiche obbligatorie pronte" },
-  items: { narrative: { title: "Narratore della storia" }, embeddings: { title: "Embedding" }, image: { title: "Immagini" }, tts: { title: "Audio parlato" }, gateway: { title: "Gateway del browser" }, storage: { title: "Archivio delle storie" }, backup: { title: "Backup del database" } },
-  states: { required: { ready: "Obbligatorio · pronto", warning: "Obbligatorio · attenzione", failed: "Obbligatorio · bloccato", skipped: "Obbligatorio · ignorato", unknown: "Obbligatorio · sconosciuto" }, essential: { ready: "Pronto", warning: "Controllo consigliato", failed: "Intervento richiesto", skipped: "Intervento richiesto", unknown: "Non verificato" }, optional: { ready: "Pronto", warning: "Da controllare", failed: "Da configurare", skipped: "Disattivato", unknown: "Non verificato" } },
-  codes: {
-    NARRATIVE_NOT_CONFIGURED: "Scegli e attiva un provider narrativo.", NARRATIVE_MISSING_CREDENTIAL: "Il provider narrativo richiede la credenziale configurata.", NARRATIVE_UNREACHABLE: "Il provider narrativo non è raggiungibile.", NARRATIVE_TIMEOUT: "Il provider narrativo ha superato il tempo massimo.", NARRATIVE_INCOMPATIBLE: "Capacità o schema del provider narrativo non sono compatibili.", NARRATIVE_AMBIGUOUS_PAID_OUTCOME: "L’esito della richiesta narrativa a pagamento non è noto.", NARRATIVE_READY: "Il provider narrativo è pronto.",
-    EMBEDDINGS_DISABLED: "Gli embedding RAG sono disattivati.", EMBEDDINGS_NOT_CONFIGURED: "Scegli un provider di embedding per attivare il RAG.", EMBEDDINGS_MISSING_CREDENTIAL: "Il provider di embedding richiede la credenziale configurata.", EMBEDDINGS_UNREACHABLE: "Il provider di embedding non è raggiungibile.", EMBEDDINGS_TIMEOUT: "Il provider di embedding ha superato il tempo massimo.", EMBEDDINGS_INCOMPATIBLE: "Capacità o schema del provider di embedding non sono compatibili.", EMBEDDINGS_AMBIGUOUS_PAID_OUTCOME: "L’esito della richiesta di embedding a pagamento non è noto.", EMBEDDINGS_DIMENSION_MISMATCH: "Le dimensioni degli embedding non corrispondono al valore configurato.", EMBEDDINGS_READY: "Il provider di embedding è pronto.",
-    IMAGE_DISABLED: "La generazione di immagini è disattivata.", IMAGE_NOT_CONFIGURED: "Aggiungi un endpoint immagini per attivare l’arte generata.", IMAGE_MISSING_CREDENTIAL: "Il provider immagini richiede la credenziale configurata.", IMAGE_UNREACHABLE: "Il servizio immagini non è raggiungibile.", IMAGE_TIMEOUT: "Il servizio immagini ha superato il tempo massimo.", IMAGE_INCOMPATIBLE: "Capacità o schema del provider immagini non sono compatibili.", IMAGE_AMBIGUOUS_PAID_OUTCOME: "L’esito della richiesta immagini a pagamento non è noto.", IMAGE_READY: "La generazione di immagini è configurata.",
-    TTS_DISABLED: "Il text-to-speech è disattivato.", TTS_NOT_CONFIGURED: "Aggiungi un endpoint vocale e una credenziale per attivare l’audio parlato.", TTS_MISSING_CREDENTIAL: "Il provider vocale richiede la credenziale configurata.", TTS_UNREACHABLE: "Il servizio vocale locale non è raggiungibile.", TTS_TIMEOUT: "Il servizio vocale locale ha superato il tempo massimo.", TTS_INCOMPATIBLE: "Capacità o schema del provider vocale non sono compatibili.", TTS_AMBIGUOUS_PAID_OUTCOME: "L’esito della richiesta vocale a pagamento non è noto.", TTS_READY: "Il text-to-speech è configurato.",
-    GATEWAY_NOT_CONFIGURED: "La verifica del gateway non è configurata.", GATEWAY_UNREACHABLE: "Il gateway del browser non è raggiungibile.", GATEWAY_TIMEOUT: "Il gateway del browser ha superato il tempo massimo.", GATEWAY_READY: "Il gateway del browser è pronto.",
-    STORAGE_NOT_DIRECTORY: "Il percorso dati configurato non è una directory.", STORAGE_UNAVAILABLE: "Non è possibile ispezionare la directory dei dati.", STORAGE_PARENT_UNAVAILABLE: "La directory padre dei dati non è disponibile.", STORAGE_INITIALIZABLE: "La directory dei dati sarà creata al primo avvio.", STORAGE_READY: "La directory dei dati è disponibile.",
-    BACKUP_NO_DATABASE: "Non esiste ancora un database da salvare.", BACKUP_UNAVAILABLE: "Non è possibile ispezionare il database per la prontezza del backup.", BACKUP_NOT_FILE: "Il percorso del database non è un file regolare.", BACKUP_READY: "Il database è disponibile per un backup SQLite sicuro.",
+  summary: {
+    title: "Stato dell’installazione",
+    description:
+      "Queste sono le verifiche canoniche di questa installazione di OneDay. Un errore obbligatorio blocca la creazione della storia; i servizi facoltativi possono essere configurati più avanti.",
   },
-  images: { title: "Le immagini sono facoltative", description: "Puoi mantenere un’installazione solo testuale o configurare ora immagini di scena e mappe.", action: "Rivedi la configurazione immagini" },
-  voice: { title: "L’audio parlato è facoltativo", description: "Puoi giocare senza voci o configurare il text-to-speech per le storie future.", action: "Rivedi la configurazione audio" },
+  groups: {
+    essential: {
+      title: "Pronto per creare storie",
+      description:
+        "OneDay richiede un narratore e un archivio scrivibile. Correggi solo gli elementi che richiedono un intervento.",
+    },
+    optional: {
+      title: "Funzioni facoltative",
+      description:
+        "Immagini, voci, embedding, monitoraggio del gateway e backup possono essere configurati più avanti.",
+    },
+  },
+  storyLanguage: {
+    title: "Lingua delle nuove storie",
+    description:
+      "Viene rilevata dal dispositivo. Cambia i contenuti della storia, non l’interfaccia, e puoi modificarla per ogni nuova storia.",
+    label: "Lingua predefinita della storia",
+  },
+  guidance: {
+    title: "Avanzate: configurazione da riga di comando",
+    web: "Il browser e l'app desktop usano la stessa configurazione protetta. Nella maggior parte dei casi basta il pulsante qui sotto.",
+    cliBefore: "Per una configurazione CLI locale, esegui",
+    cliBetween: "poi verifica con",
+    cliAfter: ".",
+  },
+  reopened: {
+    label: "Verifica configurazione",
+    title: "Rivedi questa installazione di OneDay",
+    description:
+      "Questo controllo non modifica i mondi esistenti né i loro dati. Controlla la disponibilità e torna alla raccolta storie quando hai finito.",
+    complete: "Torna alle storie",
+    preserve:
+      "I mondi esistenti e la configurazione condivisa restano invariati finché non salvi esplicitamente una modifica.",
+  },
+  progress: {
+    label: "Avanzamento configurazione obbligatoria",
+    value: "{{ready}} di {{total}} verifiche obbligatorie pronte",
+  },
+  items: {
+    narrative: { title: "Narratore della storia" },
+    embeddings: { title: "Embedding" },
+    image: { title: "Immagini" },
+    tts: { title: "Audio parlato" },
+    gateway: { title: "Gateway del browser" },
+    storage: { title: "Archivio delle storie" },
+    backup: { title: "Backup del database" },
+  },
+  states: {
+    required: {
+      ready: "Obbligatorio · pronto",
+      warning: "Obbligatorio · attenzione",
+      failed: "Obbligatorio · bloccato",
+      skipped: "Obbligatorio · ignorato",
+      unknown: "Obbligatorio · sconosciuto",
+    },
+    essential: {
+      ready: "Pronto",
+      warning: "Controllo consigliato",
+      failed: "Intervento richiesto",
+      skipped: "Intervento richiesto",
+      unknown: "Non verificato",
+    },
+    optional: {
+      ready: "Pronto",
+      warning: "Da controllare",
+      failed: "Da configurare",
+      skipped: "Disattivato",
+      unknown: "Non verificato",
+    },
+  },
+  codes: {
+    NARRATIVE_NOT_CONFIGURED: "Scegli e attiva un provider narrativo.",
+    NARRATIVE_MISSING_CREDENTIAL:
+      "Il provider narrativo richiede la credenziale configurata.",
+    NARRATIVE_UNREACHABLE: "Il provider narrativo non è raggiungibile.",
+    NARRATIVE_TIMEOUT: "Il provider narrativo ha superato il tempo massimo.",
+    NARRATIVE_INCOMPATIBLE:
+      "Capacità o schema del provider narrativo non sono compatibili.",
+    NARRATIVE_AMBIGUOUS_PAID_OUTCOME:
+      "L’esito della richiesta narrativa a pagamento non è noto.",
+    NARRATIVE_READY: "Il provider narrativo è pronto.",
+    EMBEDDINGS_DISABLED: "Gli embedding RAG sono disattivati.",
+    EMBEDDINGS_NOT_CONFIGURED:
+      "Scegli un provider di embedding per attivare il RAG.",
+    EMBEDDINGS_MISSING_CREDENTIAL:
+      "Il provider di embedding richiede la credenziale configurata.",
+    EMBEDDINGS_UNREACHABLE: "Il provider di embedding non è raggiungibile.",
+    EMBEDDINGS_TIMEOUT:
+      "Il provider di embedding ha superato il tempo massimo.",
+    EMBEDDINGS_INCOMPATIBLE:
+      "Capacità o schema del provider di embedding non sono compatibili.",
+    EMBEDDINGS_AMBIGUOUS_PAID_OUTCOME:
+      "L’esito della richiesta di embedding a pagamento non è noto.",
+    EMBEDDINGS_DIMENSION_MISMATCH:
+      "Le dimensioni degli embedding non corrispondono al valore configurato.",
+    EMBEDDINGS_READY: "Il provider di embedding è pronto.",
+    IMAGE_DISABLED: "La generazione di immagini è disattivata.",
+    IMAGE_NOT_CONFIGURED:
+      "Aggiungi un endpoint immagini per attivare l’arte generata.",
+    IMAGE_MISSING_CREDENTIAL:
+      "Il provider immagini richiede la credenziale configurata.",
+    IMAGE_UNREACHABLE: "Il servizio immagini non è raggiungibile.",
+    IMAGE_TIMEOUT: "Il servizio immagini ha superato il tempo massimo.",
+    IMAGE_INCOMPATIBLE:
+      "Capacità o schema del provider immagini non sono compatibili.",
+    IMAGE_AMBIGUOUS_PAID_OUTCOME:
+      "L’esito della richiesta immagini a pagamento non è noto.",
+    IMAGE_READY: "La generazione di immagini è configurata.",
+    TTS_DISABLED: "Il text-to-speech è disattivato.",
+    TTS_NOT_CONFIGURED:
+      "Aggiungi un endpoint vocale e una credenziale per attivare l’audio parlato.",
+    TTS_MISSING_CREDENTIAL:
+      "Il provider vocale richiede la credenziale configurata.",
+    TTS_UNREACHABLE: "Il servizio vocale locale non è raggiungibile.",
+    TTS_TIMEOUT: "Il servizio vocale locale ha superato il tempo massimo.",
+    TTS_INCOMPATIBLE:
+      "Capacità o schema del provider vocale non sono compatibili.",
+    TTS_AMBIGUOUS_PAID_OUTCOME:
+      "L’esito della richiesta vocale a pagamento non è noto.",
+    TTS_READY: "Il text-to-speech è configurato.",
+    GATEWAY_NOT_CONFIGURED: "La verifica del gateway non è configurata.",
+    GATEWAY_UNREACHABLE: "Il gateway del browser non è raggiungibile.",
+    GATEWAY_TIMEOUT: "Il gateway del browser ha superato il tempo massimo.",
+    GATEWAY_READY: "Il gateway del browser è pronto.",
+    STORAGE_NOT_DIRECTORY: "Il percorso dati configurato non è una directory.",
+    STORAGE_UNAVAILABLE: "Non è possibile ispezionare la directory dei dati.",
+    STORAGE_PARENT_UNAVAILABLE:
+      "La directory padre dei dati non è disponibile.",
+    STORAGE_INITIALIZABLE: "La directory dei dati sarà creata al primo avvio.",
+    STORAGE_READY: "La directory dei dati è disponibile.",
+    BACKUP_NO_DATABASE: "Non esiste ancora un database da salvare.",
+    BACKUP_UNAVAILABLE:
+      "Non è possibile ispezionare il database per la prontezza del backup.",
+    BACKUP_NOT_FILE: "Il percorso del database non è un file regolare.",
+    BACKUP_READY: "Il database è disponibile per un backup SQLite sicuro.",
+  },
+  images: {
+    title: "Le immagini sono facoltative",
+    description:
+      "Puoi mantenere un’installazione solo testuale o configurare ora immagini di scena e mappe.",
+    action: "Rivedi la configurazione immagini",
+  },
+  voice: {
+    title: "L’audio parlato è facoltativo",
+    description:
+      "Puoi giocare senza voci o configurare il text-to-speech per le storie future.",
+    action: "Rivedi la configurazione audio",
+  },
   configure: "Configura provider e modelli",
   startStory: "Avvia la creazione della storia",
-  requiredBlocked: "Risolvi le verifiche obbligatorie prima di creare una storia.",
-  recovery: { details: "Dettagli di ripristino", retry: "Riprova i controlli", unknown: "Controlla il codice stabile con l’amministratore.", ownership: "Questa schermata mostra lo stato di configurazione e backup del server connesso. Un profilo desktop standalone è un archivio locale separato: esegui il backup dal profilo, non tramite una connessione remota.", actions: { configure: "Aggiorna la configurazione condivisa, quindi riprova.", check_credentials: "Verifica la credenziale configurata senza incollarla qui, quindi riprova.", check_connection: "Controlla la connessione al servizio configurato, quindi riprova.", retry_later: "Attendi che la richiesta al provider si stabilizzi, quindi riprova senza presumere l’esito.", check_capability: "Verifica la compatibilità di modello e capacità del provider, quindi riprova.", review_billing: "Controlla la cronologia del provider prima di riprovare per evitare un doppio addebito.", create_backup: "Crea e verifica un backup SQLite sicuro prima dell’aggiornamento.", restore_empty_target: "Ripristina solo in una destinazione vuota e arrestata e conserva l’originale invariato.", preserve_original: "Mantieni invariata la destinazione originale mentre indaghi il ripristino." } },
+  requiredBlocked:
+    "Risolvi le verifiche obbligatorie prima di creare una storia.",
+  recovery: {
+    details: "Dettagli di ripristino",
+    retry: "Riprova i controlli",
+    unknown: "Controlla il codice stabile con l’amministratore.",
+    ownership:
+      "Questa schermata mostra lo stato di configurazione e backup del server connesso. Un profilo desktop standalone è un archivio locale separato: esegui il backup dal profilo, non tramite una connessione remota.",
+    actions: {
+      configure: "Aggiorna la configurazione condivisa, quindi riprova.",
+      check_credentials:
+        "Verifica la credenziale configurata senza incollarla qui, quindi riprova.",
+      check_connection:
+        "Controlla la connessione al servizio configurato, quindi riprova.",
+      retry_later:
+        "Attendi che la richiesta al provider si stabilizzi, quindi riprova senza presumere l’esito.",
+      check_capability:
+        "Verifica la compatibilità di modello e capacità del provider, quindi riprova.",
+      review_billing:
+        "Controlla la cronologia del provider prima di riprovare per evitare un doppio addebito.",
+      create_backup:
+        "Crea e verifica un backup SQLite sicuro prima dell’aggiornamento.",
+      restore_empty_target:
+        "Ripristina solo in una destinazione vuota e arrestata e conserva l’originale invariato.",
+      preserve_original:
+        "Mantieni invariata la destinazione originale mentre indaghi il ripristino.",
+    },
+  },
   loading: {
     title: "Verifica della disponibilità dell’installazione",
-    description: "OneDay sta verificando i servizi condivisi necessari per avviare una storia.",
-    errorTitle: "Non è stato possibile verificare la disponibilità dell’installazione",
-    errorDescription: "Riprova la verifica di disponibilità prima di avviare la creazione della storia.",
+    description:
+      "OneDay sta verificando i servizi condivisi necessari per avviare una storia.",
+    errorTitle:
+      "Non è stato possibile verificare la disponibilità dell’installazione",
+    errorDescription:
+      "Riprova la verifica di disponibilità prima di avviare la creazione della storia.",
     retry: "Riprova la verifica",
   },
 } as const;

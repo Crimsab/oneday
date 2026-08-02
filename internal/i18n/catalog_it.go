@@ -219,6 +219,7 @@ var italianCatalog = map[string]Message{
 	"branches.rename_usage": {Text: "Uso: /branch-rename <nome>"}, "branches.rename_error": {Text: "Errore durante la rinomina: %v"}, "branches.renamed": {Text: "Ramo attivo rinominato in “%s”."},
 	"branches.checkout_usage": {Text: "Uso: /checkout <nome o id del ramo>"}, "branches.checkout_error": {Text: "Errore durante il cambio di ramo: %v"},
 	"branches.not_found": {Text: "Ramo non trovato: %s"}, "branches.refresh_error": {Text: "Errore durante l'aggiornamento: %v"}, "branches.checked_out": {Text: "Sei passato a “%s”; il ramo precedente è stato conservato."},
+	"branches.no_decision": {Text: "Non c’è ancora una scelta completata da riprovare."}, "branches.retry_error": {Text: "Impossibile ripristinare l’ultima scelta: %v"}, "branches.retry_ready": {Text: "Scelta ripristinata in “%s”; il percorso precedente è stato conservato."},
 
 	"status.active": {Text: "Attivi"}, "status.paused": {Text: "In pausa"}, "status.completed": {Text: "Completati"}, "status.other": {Text: "Altri"},
 	"project.navigation":   {Text: "↑↓ naviga · Invio apri · I indagini · F fronti · C codice · Esc chiudi"},
@@ -332,7 +333,7 @@ var italianCatalog = map[string]Message{
 	"cli.help.doctor": {Text: "  oneday doctor [--json]         Controlla configurazione e disponibilità dei provider"}, "cli.help.config_show": {Text: "  oneday config show --safe      Mostra la configurazione effettiva senza segreti"}, "cli.help.config_locale": {Text: "  oneday config locale en|it|auto Imposta la lingua dell'interfaccia"},
 	"cli.help.rag_benchmark": {Text: "  oneday rag benchmark           Prova la route di embedding attiva"}, "cli.help.rag_reindex": {Text: "  oneday rag reindex [--all]     Rigenera gli embedding delle storie"},
 	"cli.help.story_packs": {Text: "  oneday story-packs list        Trova e convalida i pacchetti storia"}, "cli.help.export": {Text: "  oneday export [opzioni]        Esporta i dati della storia"},
-	"cli.help.docker": {Text: "  oneday docker init|token       Prepara Docker in modo portabile o recupera il token di accesso"},
+	"cli.help.docker":  {Text: "  oneday docker init|token       Prepara Docker in modo portabile o recupera il token di accesso"},
 	"cli.help.version": {Text: "  oneday version                 Mostra le informazioni di build"}, "cli.help.help": {Text: "  oneday help                    Mostra questa guida"}, "cli.help.docs": {Text: "L'applicazione web è servita da oneday-gateway. Consulta docs/first-story.md e docs/getting-started.md per l'installazione nativa e Docker."},
 	"cli.story_packs_invalid_count": {One: "Trovato %d pacchetto storia non valido.", Other: "Trovati %d pacchetti storia non validi."},
 }
@@ -355,6 +356,7 @@ var italianCommandCatalog = map[string]string{
 	"fork.title": "Crea ramo", "fork.description": "Crea un'alternativa con nome dalla posizione attuale.",
 	"branch-rename.title": "Rinomina ramo", "branch-rename.description": "Rinomina il ramo attivo.",
 	"checkout.title": "Cambia ramo", "checkout.description": "Passa a un ramo senza eliminare quello attuale.",
+	"retry.title": "Prova un’altra scelta", "retry.description": "Ripristina l’ultima scelta su un nuovo ramo e conserva il percorso attuale.",
 	"talk.title": "Parla", "talk.description": "Parla con un PNG vicino indicando intento e messaggio.",
 	"btw.title": "A proposito", "btw.description": "Fai una domanda senza far avanzare il turno.",
 	"guide.title": "Guida", "guide.description": "Salva indicazioni per il futuro della storia.",

@@ -32,12 +32,27 @@ if [[ ! "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
 fi
 workspace="$(mktemp -d "${TMPDIR:-/tmp}/oneday-first-run-matrix.XXXXXX")"
 mkdir -p "$workspace"/{bun-cache,cache,cargo-home,cargo-target,desktop,gateway-web,go-cache,go-mod,go-tmp,home,playwright-browsers,playwright-results,rustup,tmp}
-go_mod_cache="${ONEDAY_MATRIX_GOMODCACHE:-$workspace/go-mod}"
+host_go_mod_cache="$(go env GOMODCACHE)"
+go_mod_cache="${ONEDAY_MATRIX_GOMODCACHE:-$host_go_mod_cache}"
+host_cargo_home="${CARGO_HOME:-${HOME}/.cargo}"
+# Registry and Git checkouts are immutable build inputs here. Link only those
+# caches—not Cargo credentials or configuration—so the matrix stays offline
+# and still works on a normal developer machine.
 cargo_registry_dir="${ONEDAY_MATRIX_CARGO_REGISTRY_DIR:-}"
 cargo_git_dir="${ONEDAY_MATRIX_CARGO_GIT_DIR:-}"
+if [[ -z "$cargo_registry_dir" && -d "$host_cargo_home/registry" ]]; then
+  cargo_registry_dir="$host_cargo_home/registry"
+fi
+if [[ -z "$cargo_git_dir" && -d "$host_cargo_home/git" ]]; then
+  cargo_git_dir="$host_cargo_home/git"
+fi
 cargo_target_dir="${ONEDAY_MATRIX_CARGO_TARGET_DIR:-$workspace/cargo-target}"
-rustup_home="${ONEDAY_MATRIX_RUSTUP_HOME:-$workspace/rustup}"
-playwright_browsers_path="${ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH:-$workspace/playwright-browsers}"
+# The test workspace must not inherit application state, but Rust itself still
+# needs an installed toolchain. Reuse the host's immutable toolchain by default
+# and keep Cargo output in the isolated workspace below.
+rustup_home="${ONEDAY_MATRIX_RUSTUP_HOME:-${RUSTUP_HOME:-${HOME}/.rustup}}"
+host_playwright_browsers_path="${PLAYWRIGHT_BROWSERS_PATH:-${HOME}/.cache/ms-playwright}"
+playwright_browsers_path="${ONEDAY_MATRIX_PLAYWRIGHT_BROWSERS_PATH:-$host_playwright_browsers_path}"
 bun_install_cache_dir="${ONEDAY_MATRIX_BUN_INSTALL_CACHE_DIR:-$workspace/bun-cache}"
 go_root="$(go env GOROOT)"
 
@@ -199,6 +214,12 @@ prepare_desktop_contract_resources() {
   mkdir -p "$desktop_root/src-tauri/binaries" "$desktop_root/gateway/web/dist"
   printf 'first-run matrix sidecar fixture\n' > "$desktop_root/src-tauri/binaries/oneday-v${version}-${target}${extension}"
   printf 'first-run matrix sidecar fixture\n' > "$desktop_root/src-tauri/binaries/oneday-gateway-v${version}-${target}${extension}"
+  # Tauri validates every explicitly bundled resource even when this matrix is
+  # compiling for another host. The real bridge artifact is release-managed;
+  # a harmless fixture is enough for Rust/UI contract tests.
+  printf 'first-run matrix sidecar fixture\n' > "$desktop_root/src-tauri/binaries/oneday-v${version}-x86_64-pc-windows-msvc.exe"
+  printf 'first-run matrix sidecar fixture\n' > "$desktop_root/src-tauri/binaries/oneday-gateway-v${version}-x86_64-pc-windows-msvc.exe"
+  printf 'first-run matrix bridge fixture\n' > "$desktop_root/src-tauri/binaries/imagegen-bridge-x86_64-pc-windows-msvc.exe"
   printf '<!doctype html><title>OneDay first-run fixture</title>\n' > "$desktop_root/gateway/web/dist/index.html"
 }
 

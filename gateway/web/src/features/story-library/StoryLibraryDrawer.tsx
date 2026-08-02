@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { Archive, ArchiveRestore, Check, FileDown, FileUp, Info, MoreHorizontal, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { DialogDrawerShell } from "../../components/dialog/DialogDrawerShell";
+import { CustomSelect } from "../../components/CustomSelect";
 import { compactText, displayTimestamp } from "../../format";
 import type { AppPreferences, StorySummary, StoryUpdatePayload } from "../../types";
 import { activeStoryCount } from "../navigation/railState";
@@ -130,7 +131,19 @@ export function StoryLibraryDrawer({
           <span className="sr-only">{t("chrome:filter")}</span>
           <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("chrome:filter")} />
         </label>
-        <label className="story-library-time-format"><span>{t("library:timeFormat")}</span><select value={timeFormat} onChange={(event) => onTimeFormatChange(event.target.value as AppPreferences["timeFormat"])}><option value="system">{t("library:timeFormats.system")}</option><option value="12">{t("library:timeFormats.12")}</option><option value="24">{t("library:timeFormats.24")}</option></select></label>
+        <label className="story-library-time-format">
+          <span>{t("library:timeFormat")}</span>
+          <CustomSelect
+            value={timeFormat}
+            ariaLabel={t("library:timeFormat")}
+            onChange={(value) => onTimeFormatChange(value as AppPreferences["timeFormat"])}
+            options={[
+              { value: "system", label: t("library:timeFormats.system") },
+              { value: "12", label: t("library:timeFormats.12") },
+              { value: "24", label: t("library:timeFormats.24") },
+            ]}
+          />
+        </label>
       </div>
       <div className={`story-library-content ${detailStoryId ? "has-detail" : ""}`}>
         {visibleStories.length === 0 ? (

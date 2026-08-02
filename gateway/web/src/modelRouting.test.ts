@@ -53,6 +53,61 @@ describe("model routing helpers", () => {
     expect(modelRoutingIssues(incomplete, draft)).toEqual([]);
   });
 
+  it("fills empty image model fields from the selected provider catalog", () => {
+    const incomplete = withImageProviders([
+      imageProvider("codex-oauth", { models: ["gpt-image-2", "gpt-image-1"] }),
+    ]);
+    incomplete.image_generation.model = "";
+    incomplete.image_generation.map_icon_model = "";
+
+    const draft = draftFromModelSettings(incomplete);
+    expect(draft.imageGeneration.model).toBe("gpt-image-2");
+    expect(draft.imageGeneration.mapIconModel).toBe("gpt-image-2");
+  });
+
+  it("inherits the narrative model for ASCII art when no override is saved", () => {
+    const incomplete: ModelSettings = {
+      ...settings,
+      active: { ...settings.active, ascii_model: "" },
+    };
+
+    const draft = draftFromModelSettings(incomplete);
+    expect(draft.asciiModel).toBe("test-codex-model");
+  });
+
+  it("repairs empty image output defaults for older configurations", () => {
+    const incomplete: ModelSettings = {
+      ...settings,
+      image_generation: {
+        ...settings.image_generation,
+        default_size: "",
+        location_size: "",
+        character_size: "",
+        output_format: "",
+      },
+    };
+
+    const draft = draftFromModelSettings(incomplete);
+    expect(draft.imageGeneration).toMatchObject({
+      defaultSize: "1024x1024",
+      locationSize: "1536x1024",
+      characterSize: "1024x1024",
+      outputFormat: "png",
+    });
+  });
+
+  it("keeps a saved custom image model when the provider catalog does not know it yet", () => {
+    const incomplete = withImageProviders([
+      imageProvider("replicate", { models: ["black-forest-labs/flux-schnell"] }),
+    ]);
+    incomplete.image_generation.model = "owner/custom-scene-model";
+    incomplete.image_generation.map_icon_model = "owner/custom-map-model";
+
+    const draft = draftFromModelSettings(incomplete);
+    expect(draft.imageGeneration.model).toBe("owner/custom-scene-model");
+    expect(draft.imageGeneration.mapIconModel).toBe("owner/custom-map-model");
+  });
+
   it("promotes providers while preserving a complete priority chain", () => {
     expect(
       promoteProvider(
@@ -150,7 +205,7 @@ describe("model routing helpers", () => {
 
     draft.imageGeneration.imagegenBridgeUrl = "";
     expect(modelRoutingIssues(bridgeSettings, draft)).toContain(
-      "imagegen-bridge needs its native API URL.",
+      "Image provider: imagegen-bridge needs its native API URL.",
     );
   });
 
@@ -175,7 +230,10 @@ describe("model routing helpers", () => {
 
   it("accepts a fresh Gemini setup with a pending write-only key", () => {
     const providerSettings = withImageProviders([
-      imageProvider("gemini", { base_url: "https://generativelanguage.googleapis.com" }),
+      imageProvider("gemini", {
+        display_name: "Google Gemini",
+        base_url: "https://generativelanguage.googleapis.com",
+      }),
     ]);
     const draft = draftFromModelSettings(providerSettings);
     draft.imageGeneration.autoGenerate = true;
@@ -188,6 +246,49 @@ describe("model routing helpers", () => {
       modelRoutingIssues(providerSettings, draft, {
         providerConfigs: {
           gemini: { baseUrl: "", apiKey: "pending-secret", clearApiKey: false },
+        },
+        bridgeToken: "",
+        clearBridgeToken: false,
+      }),
+    ).toEqual([]);
+  });
+
+  it("validates both image pipelines and names the provider role in errors", () => {
+    const providerSettings = withImageProviders([
+      imageProvider("gemini", {
+        display_name: "Google Gemini",
+        base_url: "https://generativelanguage.googleapis.com",
+      }),
+      imageProvider("openai-compatible", { base_url: "" }),
+    ]);
+    const draft = draftFromModelSettings(providerSettings);
+    draft.imageGeneration.autoGenerate = true;
+    draft.imageGeneration.provider = "gemini";
+    // The map pipeline is deliberately separate, so its missing connection
+    // must be named as a map-icon issue rather than attributed to Gemini.
+    draft.imageGeneration.mapIconProvider = "openai-compatible";
+    draft.imageGeneration.model = "gemini-3.1-flash-image";
+    draft.imageGeneration.mapIconModel = "custom-map-model";
+
+    expect(modelRoutingIssues(providerSettings, draft)).toContain(
+      "Google Gemini · Image provider needs an API key.",
+    );
+    expect(modelRoutingIssues(providerSettings, draft)).toContain(
+      "openai-compatible · Map icon provider needs a valid service URL.",
+    );
+    expect(modelRoutingIssues(providerSettings, draft)).toContain(
+      "openai-compatible · Map icon provider needs an API key.",
+    );
+
+    expect(
+      modelRoutingIssues(providerSettings, draft, {
+        providerConfigs: {
+          gemini: { baseUrl: "", apiKey: "pending-gemini-secret", clearApiKey: false },
+          "openai-compatible": {
+            baseUrl: "https://compatible.example.test/v1",
+            apiKey: "pending-compatible-secret",
+            clearApiKey: false,
+          },
         },
         bridgeToken: "",
         clearBridgeToken: false,

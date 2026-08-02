@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { pwaManifest, pwaWorkbox } from "./pwa.config";
 
+const gatewayTarget = process.env.VITE_GATEWAY_URL?.trim() || "http://127.0.0.1:8788";
+
 export default defineConfig({
   plugins: [
     react(),
@@ -13,6 +15,12 @@ export default defineConfig({
       workbox: pwaWorkbox,
     }),
   ],
+  server: {
+    proxy: {
+      "/api": { target: gatewayTarget, changeOrigin: true },
+      "/generated/assets": { target: gatewayTarget, changeOrigin: true },
+    },
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

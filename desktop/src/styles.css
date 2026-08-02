@@ -143,6 +143,64 @@ input[type="url"], select {
   background: #090f12;
 }
 .hint { margin: 9px 0 0; font-size: .8rem; }
+.diagnostic {
+  overflow: clip;
+  margin-top: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: #0a1114;
+}
+.diagnostic > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+  padding: 9px 11px;
+  color: #e6ecee;
+  font-size: .8rem;
+  font-weight: 700;
+}
+.diagnostic > summary::-webkit-details-marker { display: none; }
+.diagnostic > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-right: 2px solid #bdc8cc;
+  border-bottom: 2px solid #bdc8cc;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 120ms ease;
+}
+.diagnostic[open] > summary::after { transform: rotate(225deg) translate(-2px, -2px); }
+.diagnostic-body { display: grid; gap: 10px; border-top: 1px solid var(--border-subtle); padding: 11px; }
+.diagnostic-body p { margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.45; }
+.shell-badge {
+  margin-left: auto;
+  border-radius: 999px;
+  background: #263137;
+  padding: 4px 7px;
+  color: #cbd4d8;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: .66rem;
+  font-weight: 650;
+}
+.diagnostic pre {
+  max-width: 100%;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid #334149;
+  border-radius: 8px;
+  background: #05090b;
+  padding: 11px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diagnostic code { color: #dbe5e8; font: 600 .75rem/1.55 "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
+.diagnostic-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.diagnostic-actions output { color: var(--success); font-size: .76rem; }
 .local-actions, .provider-actions, .update-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .local-actions { margin: 2px 0 8px; }
 .message { min-height: 1.35rem; margin: 10px 0 0; color: #decf9f; font-size: .84rem; line-height: 1.45; }
@@ -152,10 +210,12 @@ input[type="url"], select {
 .heading-action { flex: 0 0 auto; }
 .provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .provider-card { min-width: 0; padding: 17px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--surface-soft); }
+.recommended-provider { background: #141d21; }
 .provider-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.provider-title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .provider-kind { color: #9facb2; font-size: .67rem; font-weight: 760; letter-spacing: .075em; text-transform: uppercase; }
 .provider-card > p { min-height: 2.7em; margin: 11px 0 13px; font-size: .82rem; }
-.provider-actions button { min-height: 40px; padding-inline: 13px; font-size: .82rem; }
+.provider-actions button { min-height: 44px; padding-inline: 13px; font-size: .82rem; }
 .api-provider { display: flex; flex-direction: column; }
 .provider-footnote { margin: 13px 0 0; font-size: .78rem; }
 
@@ -180,8 +240,17 @@ input[type="url"], select {
   list-style: none;
 }
 .utility-panel summary::-webkit-details-marker { display: none; }
-.utility-panel summary::after { content: "+"; color: #d8c47f; font-size: 1.5rem; font-weight: 400; }
-.utility-panel[open] summary::after { content: "−"; }
+.utility-panel summary::after {
+  content: "";
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-right: 2px solid #d8c47f;
+  border-bottom: 2px solid #d8c47f;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 120ms ease;
+}
+.utility-panel[open] summary::after { transform: rotate(225deg) translate(-2px, -2px); }
 .utility-panel summary span { display: grid; gap: 2px; }
 .utility-panel summary small { font-size: .78rem; }
 .details-body { padding: 0 20px 20px; border-top: 1px solid var(--border-subtle); }
@@ -190,6 +259,59 @@ input[type="url"], select {
 .toggle span { display: grid; gap: 2px; }
 .toggle small { font-size: .8rem; }
 .export-row { display: grid; grid-template-columns: minmax(140px, 1fr) auto auto; gap: 8px; margin-top: 12px; }
+.desktop-select { min-width: 0; }
+.desktop-select-trigger {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  justify-content: space-between;
+  border-color: var(--border);
+  background: #090f12;
+  padding-inline: 13px;
+  color: #edf1f3;
+  font-weight: 540;
+  text-align: left;
+}
+.desktop-select-trigger:hover:not(:disabled) { background: #141d21; }
+.desktop-select-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.desktop-select-trigger::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-right: 2px solid #bdc8cc;
+  border-bottom: 2px solid #bdc8cc;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 120ms ease;
+}
+.desktop-select.open .desktop-select-trigger::after { transform: rotate(225deg) translate(-2px, -2px); }
+.desktop-select-menu {
+  position: fixed;
+  z-index: 1000;
+  max-height: min(280px, calc(100vh - 24px));
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #11191d;
+  padding: 5px;
+  box-shadow: 0 16px 36px rgb(0 0 0 / 44%);
+}
+.desktop-select-menu > button {
+  width: 100%;
+  min-height: 40px;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding-inline: 10px 30px;
+  color: #dce4e7;
+  font-weight: 540;
+  text-align: left;
+}
+.desktop-select-menu > button:hover,
+.desktop-select-menu > button.active { background: #253138; }
+.desktop-select-menu > button[aria-selected="true"] { position: relative; color: #f1d785; }
+.desktop-select-menu > button[aria-selected="true"]::after { content: "✓"; position: absolute; right: 10px; color: var(--accent); }
 .text-button { min-height: 40px; padding: 0 8px; border: 0; color: #e2ce8a; background: transparent; }
 
 @media (max-width: 680px) {
@@ -214,7 +336,7 @@ input[type="url"], select {
 }
 
 @media (forced-colors: active) {
-  button, input, select, .panel, .provider-card, .status { border: 1px solid CanvasText; }
+  button, input, select, .panel, .provider-card, .status, .desktop-select-menu { border: 1px solid CanvasText; }
   button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline-color: Highlight; }
   .profile-choice.selected::after { color: HighlightText; background: Highlight; }
 }

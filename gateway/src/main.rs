@@ -131,7 +131,7 @@ async fn main() -> anyhow::Result<()> {
         pool,
         paths,
         turn_events,
-        visual_workers: Arc::new(Semaphore::new(4)),
+        visual_workers: Arc::new(Semaphore::new(assets::visual_generation_concurrency())),
         observability: observability.status(),
     });
     asset_upload::cleanup_stale_upload_parts(&state.paths.visual_asset_dir)

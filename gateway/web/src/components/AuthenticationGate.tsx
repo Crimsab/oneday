@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
+import { ChevronDown } from "lucide-react";
 import { ApiRequestError, bootstrapBrowserSession } from "../api";
 
 interface AuthenticationGateProps {
@@ -81,7 +82,7 @@ export function AuthenticationGate({
               </button>
             </form>
             <details className="authentication-recovery">
-              <summary>{t("recoveryTitle")}</summary>
+              <summary><span>{t("recoveryTitle")}</span><ChevronDown size={15} aria-hidden="true" /></summary>
               <p>{t("recoveryDocker")}</p>
               <code>docker compose run --rm oneday-tools docker token</code>
               <p>{t("recoveryOther")}</p>

@@ -1,6 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { cardsFromValue, historyReaderActions, isLongInspectorRow, isPlayerHiddenField, meterRows, moduleTitle, npcDiscoverySummary, npcRelationSummary, sanitizePlayerVisibleValue } from "./Inspector";
-import type { JsonValue, MessageView, RecordView, StorySnapshot } from "../types";
+import {
+  cardsFromValue,
+  historyReaderActions,
+  isLongInspectorRow,
+  isPlayerHiddenField,
+  meterRows,
+  moduleTitle,
+  npcDiscoverySummary,
+  npcRelationSummary,
+  sanitizePlayerVisibleValue,
+} from "./Inspector";
+import type {
+  JsonValue,
+  MessageView,
+  RecordView,
+  StorySnapshot,
+  TimelineResponse,
+} from "../types";
 
 describe("moduleTitle", () => {
   it("returns the visible label for module tabs", () => {
@@ -14,7 +30,10 @@ describe("historyReaderActions", () => {
   it("wires only canonical actions and requires a source commit to fork", () => {
     const forks: Array<[string, number]> = [];
     const modules: string[] = [];
-    const actions = historyReaderActions((commit, turn) => forks.push([commit, turn]), (tab) => modules.push(tab));
+    const actions = historyReaderActions(
+      (commit, turn) => forks.push([commit, turn]),
+      (tab) => modules.push(tab),
+    );
     const message = { source_commit_id: "commit-4", turn: 4 } as MessageView;
     actions?.onFork?.(message);
     actions?.onOpenMap?.(message);
@@ -25,11 +44,45 @@ describe("historyReaderActions", () => {
     expect(actions).not.toHaveProperty("onJump");
     expect(actions).not.toHaveProperty("onOpenAsset");
   });
+
+  it("restores the decision parent when timeline metadata is available", () => {
+    const forks: Array<[string, number]> = [];
+    const timeline = {
+      active_branch_id: "branch-main",
+      revision: 4,
+      branches: [],
+      commits: [
+        {
+          id: "commit-4",
+          branch_id: "branch-main",
+          parent_commit_id: "commit-3",
+          canonical_turn: 4,
+          kind: "turn",
+          created_at: "2026-01-01",
+        },
+      ],
+    } as TimelineResponse;
+    const actions = historyReaderActions(
+      (commit, turn) => forks.push([commit, turn]),
+      undefined,
+      timeline,
+    );
+    actions?.onFork?.({
+      source_commit_id: "commit-4",
+      turn: 4,
+    } as MessageView);
+    expect(forks).toEqual([["commit-3", 3]]);
+  });
 });
 
 describe("cardsFromValue", () => {
   it("renders arrays as cards", () => {
-    expect(cardsFromValue([{ name: "Ledger", type: "clue", detail: "wet ink" }], "Item")).toEqual([
+    expect(
+      cardsFromValue(
+        [{ name: "Ledger", type: "clue", detail: "wet ink" }],
+        "Item",
+      ),
+    ).toEqual([
       {
         title: "Ledger",
         rows: [
@@ -41,7 +94,9 @@ describe("cardsFromValue", () => {
   });
 
   it("renders primitive objects as a single detail card", () => {
-    expect(cardsFromValue({ status: "active", timer_turns: 3 }, "Hook")).toEqual([
+    expect(
+      cardsFromValue({ status: "active", timer_turns: 3 }, "Hook"),
+    ).toEqual([
       {
         title: "Hook",
         rows: [
@@ -53,7 +108,9 @@ describe("cardsFromValue", () => {
   });
 
   it("renders nested objects as separate cards", () => {
-    expect(cardsFromValue({ lead_a: { title: "Harbor", status: "active" } }, "Lead")).toEqual([
+    expect(
+      cardsFromValue({ lead_a: { title: "Harbor", status: "active" } }, "Lead"),
+    ).toEqual([
       {
         title: "Lead A",
         rows: [["Status", "active"]],
@@ -64,20 +121,43 @@ describe("cardsFromValue", () => {
   it("handles empty and primitive values", () => {
     expect(cardsFromValue(undefined, "Empty")).toEqual([]);
     expect(cardsFromValue({}, "Empty")).toEqual([]);
-    expect(cardsFromValue("plain", "Value")).toEqual([{ title: "Value", rows: [["Value", "plain"]] }]);
+    expect(cardsFromValue("plain", "Value")).toEqual([
+      { title: "Value", rows: [["Value", "plain"]] },
+    ]);
   });
 
   it("filters player-hidden fields from cards and raw state", () => {
     expect(isPlayerHiddenField("Private Thoughts")).toBe(true);
     expect(isPlayerHiddenField("notes_on_protagonist")).toBe(true);
     expect(isPlayerHiddenField("Appearance")).toBe(false);
-    expect(cardsFromValue([{ name: "Maren", private_thoughts: "betray them", appearance: "orange jacket" }], "Character")).toEqual([
+    expect(
+      cardsFromValue(
+        [
+          {
+            name: "Maren",
+            private_thoughts: "betray them",
+            appearance: "orange jacket",
+          },
+        ],
+        "Character",
+      ),
+    ).toEqual([
       {
         title: "Maren",
         rows: [["Appearance", "orange jacket"]],
       },
     ]);
-    expect(sanitizePlayerVisibleValue({ npcs: [{ name: "Maren", desires: ["hidden"], nested: { nemesis_json: { status: "active" } } }] })).toEqual({
+    expect(
+      sanitizePlayerVisibleValue({
+        npcs: [
+          {
+            name: "Maren",
+            desires: ["hidden"],
+            nested: { nemesis_json: { status: "active" } },
+          },
+        ],
+      }),
+    ).toEqual({
       npcs: [{ name: "Maren", nested: {} }],
     });
   });
@@ -86,15 +166,29 @@ describe("cardsFromValue", () => {
 describe("isLongInspectorRow", () => {
   it("promotes prose-heavy inspector values to a full-width row", () => {
     expect(isLongInspectorRow("Text", "Short but narrative text")).toBe(true);
-    expect(isLongInspectorRow("Details", "Station concourse, shared tables, overlapping announcements.")).toBe(true);
-    expect(isLongInspectorRow("Location", "Stazione Centrale - atrio principale")).toBe(false);
+    expect(
+      isLongInspectorRow(
+        "Details",
+        "Station concourse, shared tables, overlapping announcements.",
+      ),
+    ).toBe(true);
+    expect(
+      isLongInspectorRow("Location", "Stazione Centrale - atrio principale"),
+    ).toBe(false);
     expect(isLongInspectorRow("Flag", "true")).toBe(false);
   });
 });
 
 describe("meterRows", () => {
   it("supports vitals and scalar 0-100 stats", () => {
-    const rows = meterRows(snapshotWithStats({ vitals: { hp: { current: 15, max: 30 } }, focus: 82, currency: 10, deaths: 0 }));
+    const rows = meterRows(
+      snapshotWithStats({
+        vitals: { hp: { current: 15, max: 30 } },
+        focus: 82,
+        currency: 10,
+        deaths: 0,
+      }),
+    );
     expect(rows).toEqual([
       { label: "Hp", value: 50, text: "15/30" },
       { label: "Focus", value: 82, text: "82/100" },
@@ -104,32 +198,41 @@ describe("meterRows", () => {
 
 describe("npcRelationSummary", () => {
   it("uses explicit relationship labels without hardcoding NPC names", () => {
-    expect(npcRelationSummary(npcRecord({ relationship: { status: "trusted ally" }, disposition: 92 }))).toMatchObject({
+    expect(
+      npcRelationSummary(
+        npcRecord({
+          relationship: { status: "trusted ally" },
+          disposition: 92,
+        }),
+      ),
+    ).toMatchObject({
       label: "Trusted Ally",
       score: 92,
       tone: "ally",
-	  filledSegments: 10,
+      filledSegments: 10,
     });
   });
 
   it("falls back to score thresholds when no label exists", () => {
-	expect(npcRelationSummary(npcRecord({ disposition: -22 }))).toMatchObject({
-	  label: "Unfriendly",
-	  score: -22,
-	  tone: "wary",
-	  filledSegments: 4,
-	});
-	expect(npcRelationSummary(npcRecord({ disposition: 22 }))).toMatchObject({
-	  label: "Friendly",
-      score: 22,
-	  tone: "friendly",
-	  filledSegments: 6,
+    expect(npcRelationSummary(npcRecord({ disposition: -22 }))).toMatchObject({
+      label: "Unfriendly",
+      score: -22,
+      tone: "wary",
+      filledSegments: 4,
     });
-    expect(npcRelationSummary(npcRecord({ relationship: { trust: 54 } }))).toMatchObject({
-	  label: "Allied",
+    expect(npcRelationSummary(npcRecord({ disposition: 22 }))).toMatchObject({
+      label: "Friendly",
+      score: 22,
+      tone: "friendly",
+      filledSegments: 6,
+    });
+    expect(
+      npcRelationSummary(npcRecord({ relationship: { trust: 54 } })),
+    ).toMatchObject({
+      label: "Allied",
       score: 54,
-	  tone: "ally",
-	  filledSegments: 8,
+      tone: "ally",
+      filledSegments: 8,
     });
   });
 });
@@ -195,18 +298,27 @@ function snapshotWithStats(stats: JsonValue): StorySnapshot {
       visual_job_updated_at: "",
       active_visual_job_count: 0,
     },
-    story: { id: "story", name: "Story", description: "", genre: "", tone: "", language: "en", is_archived: false, updated_at: "now" },
+    story: {
+      id: "story",
+      name: "Story",
+      description: "",
+      genre: "",
+      tone: "",
+      language: "en",
+      is_archived: false,
+      updated_at: "now",
+    },
     character: { id: "character", name: "Hero", fields: { stats } },
     world: {
       id: "world",
       current_location: "Dock",
       current_chapter: 1,
       current_turn: 1,
-	  current_location_id: "location-dock",
-	  spatial_locations: [],
-	  spatial_edges: [],
-	  world_time: { day: 1, minute_of_day: 0, display_text: "Day 1, 00:00" },
-	  weather: { tracked: false, label: "Not tracked" },
+      current_location_id: "location-dock",
+      spatial_locations: [],
+      spatial_edges: [],
+      world_time: { day: 1, minute_of_day: 0, display_text: "Day 1, 00:00" },
+      weather: { tracked: false, label: "Not tracked" },
       known_locations: {},
       global_events: {},
       faction_standings: {},
@@ -220,9 +332,21 @@ function snapshotWithStats(stats: JsonValue): StorySnapshot {
       scene_contract: {},
       updated_at: "now",
     },
-    active_session: { id: "session", story_id: "story", started_at: "now", ended_at: null, summary: "" },
+    active_session: {
+      id: "session",
+      story_id: "story",
+      started_at: "now",
+      ended_at: null,
+      summary: "",
+    },
     choices: [],
     messages: [],
-    panels: { chapters: [], achievements: [], npcs: [], sessions: [], saves: [] },
+    panels: {
+      chapters: [],
+      achievements: [],
+      npcs: [],
+      sessions: [],
+      saves: [],
+    },
   };
 }

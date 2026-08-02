@@ -97,17 +97,18 @@ release tag, never deletion or silent replacement of the published binary.
 
 ## Signed desktop updater
 
-Normal and pull-request builds keep `createUpdaterArtifacts` disabled. Release
-builds overlay `desktop/src-tauri/tauri.release.conf.json`, which enables Tauri v2
-updater artifacts. The application embeds only:
+Normal and pull-request builds keep `createUpdaterArtifacts` disabled. They can
+still check the public release feed and install an update whose signature
+verifies. Release builds overlay `desktop/src-tauri/tauri.release.conf.json`,
+which enables Tauri v2 updater artifacts. The application embeds:
 
 ```text
 https://github.com/Crimsab/oneday/releases/latest/download/latest.json
 ```
 
-and the configured public updater key. The private updater key is read only by
-the native release jobs. It is never stored in the repository, artifacts, logs,
-or `latest.json`.
+and the configured base64-encoded public updater key. The private updater key
+is read only by the native release jobs. It is never stored in the repository,
+artifacts, logs, or `latest.json`.
 
 Signed desktop publication is gated by the repository variable
 `ONEDAY_DESKTOP_RELEASES_ENABLED=true`. The release environment must already

@@ -1,8 +1,9 @@
-import { ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ImageGenerationDraft } from "../../modelRouting";
 import type { ImageProviderCatalogEntry } from "../../types";
 import type { ProviderConfigDraft } from "./imageGenerationDraft";
+import { CustomSelect } from "../CustomSelect";
+import { SettingsDisclosure } from "./SettingsDisclosure";
 
 interface Props {
   provider: ImageProviderCatalogEntry;
@@ -42,14 +43,11 @@ export function ProviderConfiguration({
       <div className="settings-grid">
         {codex ? (
           <>
-            <details className="provider-connection-details settings-span-full">
-              <summary>
-                <span>
-                  <strong>{t("imageSettingsExtra.connection")}</strong>
-                  <small>{t("imageSettingsExtra.connectionHelp")}</small>
-                </span>
-                <ChevronDown size={17} aria-hidden="true" />
-              </summary>
+            <SettingsDisclosure
+              className="provider-connection-details settings-span-full"
+              title={t("imageSettingsExtra.connection")}
+              description={t("imageSettingsExtra.connectionHelp")}
+            >
               <div className="settings-grid">
                 <label>
                   <span>{t("imageSettings.bridgeUrl")}</span>
@@ -70,7 +68,10 @@ export function ProviderConfiguration({
                 </label>
                 {provider.configured && (
                   <div className={`saved-secret-action ${clearBridgeToken ? "pending" : ""}`}>
-                    <span>{clearBridgeToken ? t("imageSettings.clearSecretPending") : t("imageSettings.keyConfigured")}</span>
+                    <span>
+                      <strong>{clearBridgeToken ? t("imageSettings.clearSecretPending") : t("imageSettings.keyConfigured")}</strong>
+                      <small>{t("imageSettings.savedSecretHelp")}</small>
+                    </span>
                     <button
                       type="button"
                       aria-pressed={clearBridgeToken}
@@ -79,48 +80,42 @@ export function ProviderConfiguration({
                         if (!clearBridgeToken) onBridgeToken("");
                       }}
                     >
-                      {clearBridgeToken ? t("imageSettings.keepSecret") : t("imageSettings.clearSecret")}
+                      {clearBridgeToken ? t("imageSettings.keepSecret") : t("imageSettings.clearSecretShort")}
                     </button>
                   </div>
                 )}
               </div>
-            </details>
+            </SettingsDisclosure>
             <label>
               <span>{t("imageSettings.route")}</span>
-              <select
+              <CustomSelect
                 value={draft.imagegenBridgeProvider}
-                onChange={(event) =>
-                  onImageChange({ imagegenBridgeProvider: event.target.value })
-                }
-              >
-                <option value="codex-responses">
-                  {t("imageSettings.routeRecommended")} · codex-responses
-                </option>
-                <option value="codex-app-server">
-                  {t("imageSettings.routeFallback")} · codex-app-server
-                </option>
-              </select>
+                ariaLabel={t("imageSettings.route")}
+                onChange={(imagegenBridgeProvider) => onImageChange({ imagegenBridgeProvider })}
+                options={[
+                  { value: "codex-responses", label: `${t("imageSettings.routeRecommended")} · codex-responses` },
+                  { value: "codex-app-server", label: `${t("imageSettings.routeFallback")} · codex-app-server` },
+                ]}
+              />
             </label>
-            <details className="provider-connection-details settings-span-full">
-              <summary>
-                <span><strong>{t("imageSettingsExtra.bridgeRouting")}</strong></span>
-                <ChevronDown size={17} aria-hidden="true" />
-              </summary>
+            <SettingsDisclosure
+              className="provider-connection-details settings-span-full"
+              title={t("imageSettingsExtra.bridgeRouting")}
+              description={t("imageSettingsExtra.bridgeRoutingHelp")}
+            >
               <div className="settings-grid">
                 {draft.mapIconProvider === "codex-oauth" && (
                   <label>
                     <span>{t("imageAdvanced.mapRoute")}</span>
-                    <select
+                    <CustomSelect
                       value={draft.imagegenBridgeMapIconProvider}
-                      onChange={(event) =>
-                        onImageChange({
-                          imagegenBridgeMapIconProvider: event.target.value,
-                        })
-                      }
-                    >
-                      <option value="codex-responses">codex-responses</option>
-                      <option value="codex-app-server">codex-app-server</option>
-                    </select>
+                      ariaLabel={t("imageAdvanced.mapRoute")}
+                      onChange={(imagegenBridgeMapIconProvider) => onImageChange({ imagegenBridgeMapIconProvider })}
+                      options={[
+                        { value: "codex-responses", label: "codex-responses" },
+                        { value: "codex-app-server", label: "codex-app-server" },
+                      ]}
+                    />
                   </label>
                 )}
                 <label>
@@ -137,39 +132,31 @@ export function ProviderConfiguration({
                 </label>
                 <label>
                   <span>{t("models.fallbackPolicy")}</span>
-                  <select
+                  <CustomSelect
                     value={draft.imagegenBridgeFallbackPolicy}
-                    onChange={(event) =>
-                      onImageChange({
-                        imagegenBridgeFallbackPolicy: event.target.value,
-                      })
-                    }
-                  >
-                    <option value="on_unavailable">
-                      {t("models.onUnavailable")}
-                    </option>
-                    <option value="on_error">{t("models.onError")}</option>
-                  </select>
+                    ariaLabel={t("models.fallbackPolicy")}
+                    onChange={(imagegenBridgeFallbackPolicy) => onImageChange({ imagegenBridgeFallbackPolicy })}
+                    options={[
+                      { value: "on_unavailable", label: t("models.onUnavailable") },
+                      { value: "on_error", label: t("models.onError") },
+                    ]}
+                  />
                 </label>
                 <label>
                   <span>{t("models.compatibility")}</span>
-                  <select
+                  <CustomSelect
                     value={draft.imagegenBridgeCompatibility}
-                    onChange={(event) =>
-                      onImageChange({
-                        imagegenBridgeCompatibility: event.target.value,
-                      })
-                    }
-                  >
-                    <option value="strict">{t("models.strict")}</option>
-                    <option value="normalize">{t("models.normalize")}</option>
-                    <option value="best_effort">
-                      {t("models.bestEffort")}
-                    </option>
-                  </select>
+                    ariaLabel={t("models.compatibility")}
+                    onChange={(imagegenBridgeCompatibility) => onImageChange({ imagegenBridgeCompatibility })}
+                    options={[
+                      { value: "strict", label: t("models.strict") },
+                      { value: "normalize", label: t("models.normalize") },
+                      { value: "best_effort", label: t("models.bestEffort") },
+                    ]}
+                  />
                 </label>
               </div>
-            </details>
+            </SettingsDisclosure>
           </>
         ) : (
           <>

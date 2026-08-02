@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import { LibraryBig, PanelLeftClose, PanelLeftOpen, Users } from "lucide-react";
+import { ChevronDown, LibraryBig, PanelLeftClose, PanelLeftOpen, Users } from "lucide-react";
 import { moduleSpecs } from "../commands";
 import { asArray, compactText, displayTimestamp, entryLabel } from "../format";
 import type { ModuleTab, StorySnapshot, TimelineResponse } from "../types";
@@ -114,20 +114,20 @@ export function LeftRail({
         <details className="rail-block notes-block">
           <summary className="rail-title split">
             <span>{t("notes")}</span>
-            <Users size={15} />
+            <span className="rail-summary-end"><Users size={15} /><ChevronDown className="disclosure-chevron" size={14} /></span>
           </summary>
           <div className="notes-content">
             {chapters.length > 0 && (
               <div className="chapter-trail">
                 {chapters.map((chapter) => (
-                  <button type="button" key={chapter.id} title={chapter.summary || chapter.title}>
+                  <div className="chapter-summary" key={chapter.id} title={chapter.summary || chapter.title}>
                     <strong>{t("library:chapter", { number: chapter.chapter_number })}</strong>
                     <span>{chapter.title || t("library:untitled")}</span>
                     <small>
                       {t("library:turn", { turn: chapter.start_turn })}
                       {chapter.end_turn ? `-${chapter.end_turn}` : "+"}
                     </small>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}

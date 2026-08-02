@@ -12,6 +12,7 @@ export interface DesktopState {
   lifecycle: DesktopLifecycle;
   startedMinimized: boolean;
   updater: UpdaterStatus;
+  startupWarning: string | null;
 }
 
 export type DesktopProfile =
@@ -37,11 +38,18 @@ export interface TransferResult {
 
 export interface CodexStatus {
   available: boolean;
-  source: "missing" | "managed" | "system";
+  state: "missing" | "app_only" | "legacy_cli" | "unusable" | "signed_out" | "ready";
+  source: "missing" | "global" | "managed" | "system";
   version: string | null;
   authenticated: boolean;
+  desktopAppDetected: boolean;
+  legacyCliDetected: boolean;
   managedVersion: string;
   message: string;
+  launcher: string | null;
+  diagnosticShell: "powershell" | "terminal";
+  diagnosticCommand: string;
+  installScope: "global" | "managed";
 }
 
 export interface ClaudeStatus {

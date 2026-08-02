@@ -332,7 +332,7 @@ func BuildModelRoutingSettings(path string, cfg Config, revision string) ModelRo
 			RepairModel:          firstNonEmpty(cfg.AI.Generation.RepairModel, firstString(repairModels)),
 			RepairFallbackModels: append([]string{}, cfg.AI.Generation.RepairFallbackModels...),
 			ImageModel:           cfg.AI.ImageGeneration.Model,
-			ASCIIModel:           cfg.AI.ASCIIArt.Model,
+			ASCIIModel:           firstNonEmpty(cfg.AI.ASCIIArt.Model, activeNarrative),
 			EmbeddingProvider:    firstNonEmpty(cfg.AI.Embedding.Provider, "auto"),
 			EmbeddingModel:       cfg.AI.Embedding.Model,
 			CodexReasoning:       firstNonEmpty(cfg.AI.Codex.Reasoning, "off"),
@@ -350,6 +350,7 @@ func ttsStatus(cfg TTSConfig) string {
 
 func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetting {
 	available, status := imageGenerationAvailability(cfg)
+	bridgeURL, bridgeToken := imagegenBridgeRuntimeCredentials(cfg)
 	// The Rust gateway contract expects an array even when no fallbacks are configured.
 	fallbacks := append([]string{}, cfg.ImagegenBridgeFallbacks...)
 	return ImageGenerationSetting{
@@ -360,8 +361,8 @@ func buildImageGenerationSetting(cfg ImageGenerationConfig) ImageGenerationSetti
 		Model:                         cfg.Model,
 		MapIconModel:                  cfg.MapIconModel,
 		OpenClawBridgeURL:             cfg.OpenClawBridgeURL,
-		ImagegenBridgeURL:             cfg.ImagegenBridgeURL,
-		ImagegenBridgeTokenConfigured: strings.TrimSpace(cfg.ImagegenBridgeToken) != "",
+		ImagegenBridgeURL:             bridgeURL,
+		ImagegenBridgeTokenConfigured: bridgeToken != "",
 		ImagegenBridgeProvider:        cfg.ImagegenBridgeProvider,
 		ImagegenBridgeMapIconProvider: cfg.ImagegenBridgeMapIconProvider,
 		ImagegenBridgeFallbacks:       fallbacks,

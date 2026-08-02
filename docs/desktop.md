@@ -17,8 +17,8 @@ server import/export and a backup when moving data between stores.
 Use the browser PWA when an installable browser experience is enough. Use this
 desktop client when a bundled local gateway, tray behavior, native
 notifications, autostart, or native file dialogs are useful. Public release
-builds use the signed OneDay update feed. Source and pull-request builds keep
-the updater disabled.
+builds publish signed OneDay updates. Every desktop build can check that public
+feed; it installs only a package that verifies with the embedded public key.
 
 ## First-run readiness
 
@@ -37,15 +37,37 @@ a working narrative provider before it can create narrative turns.
 The desktop settings show all four narrative connection types. Codex uses this
 subscription path:
 
-1. OneDay checks for an existing Codex executable on this device.
+1. OneDay checks the official `codex` CLI, the Codex/ChatGPT desktop app, and
+   the obsolete `codex-cli` command separately. The desktop app can contain its
+   own agent runtime without publishing a `codex` command to `PATH`; finding the
+   app therefore does not falsely mark the CLI as ready.
 2. If none is found, **Install Codex** downloads the pinned official OpenAI
    release for the current platform, verifies its size and SHA-256 digest, and
-   extracts only the expected executable into the app's private component
-   directory. No download starts before that click.
-3. **Sign in** starts `codex login`. The managed component uses a private
-   `CODEX_HOME`; OneDay does not parse the OAuth credential.
+   extracts only the expected executable. On Windows it installs the CLI in
+   `%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`, adds that directory to the user
+   `PATH`, and broadcasts the environment change. No download starts before
+   that click. Linux and macOS retain the app-scoped component fallback.
+3. **Sign in** starts `codex login`. A Windows global installation uses the
+   normal `%USERPROFILE%\.codex` home shared by the Codex app and terminal.
+   OneDay does not parse or copy the OAuth credential.
 4. Open **Configure models** and select Codex and a model. The desktop restarts
-   its gateway after sign-in so the managed executable is available.
+   its gateway after sign-in so the executable is available.
+
+Windows previews that already contain the older private OneDay component show
+**Make global**. Migrating installs the verified executable in the normal
+per-user CLI location; the private copy remains only as a fallback and no
+credential is copied from its isolated home.
+
+Codex is visibly marked **Recommended** because it is the most complete
+subscription-backed OneDay path: the same sign-in can support narrative turns
+and the local image bridge. The other providers remain first-class options and
+are never installed or enabled implicitly.
+
+When Codex is available, a standalone profile also starts its included
+`imagegen-bridge` on a new loopback port with a fresh, in-memory bearer token.
+The default Codex image model is `gpt-image-2`. It does not reuse a saved remote
+bridge address. If the included component cannot start, OneDay disables that
+image path for the local profile instead of reporting it as usable.
 
 Claude Code has a parallel native path. OneDay detects `claude`, checks
 `claude auth status`, and opens `claude auth login` when sign-in is needed. If
@@ -82,10 +104,13 @@ root contains its own `config.yaml`, `data/` directory, and bounded local
 diagnostic log. Remote mode writes only `desktop.json`; its story data remains
 on the remote server.
 
-When installed, managed Codex lives under the same per-user application data
-root in `components/codex/`. Its OAuth home is separate from a system Codex
-installation. Treat that directory as private and include it in a device backup
-only if the backup storage is appropriate for credentials.
+On Windows, a Codex CLI installed by OneDay lives under
+`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin` and uses the normal
+`%USERPROFILE%\.codex` home. On Linux and macOS, a managed fallback lives under
+the OneDay application data root in `components/codex/`; its OAuth home is
+separate from a system Codex installation. Treat either Codex home as private
+and include it in a device backup only if the backup storage is appropriate for
+credentials.
 
 To back up standalone data, stop its local gateway from the settings window or
 quit the desktop app, then copy the whole `data/` directory (or the entire
@@ -126,6 +151,15 @@ before sharing.
 
 ## User behavior
 
+- On Windows, release installers include the Microsoft Edge WebView2 Evergreen
+  bootstrapper. Portable QA builds use the WebView2 Runtime already supplied
+  by current Windows installations and intentionally contain only OneDay.
+- A startup failure is never intentionally silent. Windows shows a native error
+  dialog and writes a bounded diagnostic log to
+  `%LOCALAPPDATA%\dev.oneday.desktop\logs\desktop-bootstrap.log`.
+- An invalid `desktop.json` is renamed to a timestamped
+  `desktop.invalid-*.json` and ignored. This resets only desktop connection
+  settings; standalone story data and remote server data are not changed.
 - Closing either window hides it; **Quit** in the tray menu exits the process.
 - Autostart is opt-in and starts OneDay minimized in the tray.
 - Notification permission is requested only after the user enables it.
@@ -139,6 +173,42 @@ before sharing.
   controls.
 
 ## Build locally
+
+For a fast UI and setup test, use the development command first:
+
+```bash
+cd desktop
+bun install --frozen-lockfile
+bun run dev:desktop
+```
+
+Vite reloads TypeScript, HTML, and CSS changes in the running desktop window.
+Rust changes rebuild the debug backend and restart the window. This development
+mode intentionally omits the packaged engine, gateway, and image bridge, so it
+is for the desktop UI, provider setup, and remote-server flow. It reports a
+clear incomplete-package error if you try to start a standalone profile.
+
+To create a quick native executable without an installer, run:
+
+```bash
+cd desktop
+bun run build:debug-ui
+```
+
+On Windows this writes `src-tauri/target/debug/oneday-desktop.exe`. It has the
+same UI/setup-only scope as development mode. Use the normal package build for
+the complete standalone runtime.
+
+Use a native release build only when you need to test the complete installer or
+the bundled standalone runtime. That build compiles optimized Rust code and
+packages the sidecars, so it is necessarily slower than development reloads.
+
+Build the desktop executable through `tauri build`, including when a custom
+Cargo runner is used for cross-compilation. Do not publish the result of a
+direct `cargo build` or `cargo xwin build`: those commands do not select
+Tauri's production launcher and can leave the executable pointed at the Vite
+`devUrl`. Release workflows verify that the generated binary actually embeds
+the hashed files from `desktop/dist` before uploading an installer.
 
 Install WebKitGTK 4.1, AppIndicator, librsvg, and the other platform packages
 listed by Tauri for the Linux distribution. Then run:
@@ -168,26 +238,26 @@ notarization still require protected maintainer credentials.
 
 ## Signed updater
 
-Official public release builds check the stable HTTPS feed shown below. The
-settings window reports the installed version, performs a non-installing check,
-shows the available version and notes, and requires an explicit **Install and
-restart** action. Tauri verifies the downloaded updater artifact with the
-embedded public key before OneDay stops the local gateway. A verification or
-download failure therefore leaves both the running application and story data
-unchanged.
+The settings window reports the installed version, checks the stable HTTPS
+feed, shows the available version and notes, and requires an explicit
+**Install and restart** action. The current build does not need to be code
+signed to check the feed. Tauri verifies the downloaded updater artifact with
+the embedded public key before OneDay stops the local gateway. A verification
+or download failure therefore leaves both the running application and story
+data unchanged.
 
-Updater artifacts and the updater runtime remain disabled in ordinary source
-and pull-request builds. A release operator builds with both values present:
+The official endpoint and public updater key are embedded in the application.
+A release operator can override them for a staging feed or planned key rotation:
 
 ```text
 ONEDAY_UPDATER_ENDPOINT=https://github.com/Crimsab/oneday/releases/latest/download/latest.json
-ONEDAY_UPDATER_PUBKEY=<public minisign key>
+ONEDAY_UPDATER_PUBKEY=<base64-encoded public Minisign key>
 ```
 
 The private signing key is supplied only to the release job through its secret
-store and is never committed. The signed release overlay enables updater
-artifacts; the checked-in default keeps `createUpdaterArtifacts` false so a
-normal build cannot pretend to publish usable updates.
+store and is never committed. The checked-in default keeps
+`createUpdaterArtifacts` false: ordinary builds can check and install a
+verified public update, but they never create or publish updater artifacts.
 
 ## Scope and limitations
 

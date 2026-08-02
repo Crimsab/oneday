@@ -199,6 +199,8 @@ rag:
 
 # Game settings
 game:
+  # BCP-47 language used as the starting default for new stories.
+  default_story_language: en
   # Autosave every N turns
   autosave_every: 5
   # Enable typewriter effect for AI responses

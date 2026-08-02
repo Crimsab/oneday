@@ -20,6 +20,9 @@ fn bridge_model_drops_only_openai_namespace() {
 #[test]
 fn validates_bridge_local_and_remote_transport_rules() {
     assert!(validate_bridge_endpoint("http://127.0.0.1:8787", "").is_ok());
+    assert!(validate_bridge_endpoint("http://imagegen-bridge:8787", "token").is_ok());
+    assert!(validate_bridge_endpoint("http://host.docker.internal:8787", "token").is_ok());
+    assert!(validate_bridge_endpoint("http://imagegen-bridge:8787", "").is_err());
     assert!(validate_bridge_endpoint("https://bridge.example.test", "token").is_ok());
     assert!(validate_bridge_endpoint("http://bridge.example.test", "token").is_err());
     assert!(validate_bridge_endpoint("https://bridge.example.test", "").is_err());

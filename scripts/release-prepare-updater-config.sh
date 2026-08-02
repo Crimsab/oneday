@@ -13,7 +13,10 @@ pubkey="${ONEDAY_UPDATER_PUBKEY:-}"
 
 [[ -f "${input}" ]] || { echo "missing Tauri release config: ${input}" >&2; exit 1; }
 [[ "${endpoint}" == https://* ]] || { echo "the updater endpoint must use HTTPS" >&2; exit 1; }
-[[ ${#pubkey} -ge 40 ]] || { echo "the updater public key is missing or invalid" >&2; exit 1; }
+[[ "${pubkey}" =~ ^[A-Za-z0-9+/=]+$ && ${#pubkey} -ge 40 ]] || {
+  echo "the updater public key must be the canonical base64-encoded Minisign public key" >&2
+  exit 1
+}
 
 output_dir="$(dirname "${output}")"
 mkdir -p "${output_dir}"

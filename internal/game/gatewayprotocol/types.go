@@ -134,10 +134,11 @@ type StoryCreateRequest struct {
 	Start               bool   `json:"start"`
 }
 type StoryWizardRequest struct {
-	State  *engine.StoryCreatorState `json:"state,omitempty"`
-	Input  string                    `json:"input,omitempty"`
-	Action string                    `json:"action,omitempty"`
-	Start  bool                      `json:"start"`
+	State             *engine.StoryCreatorState `json:"state,omitempty"`
+	Input             string                    `json:"input,omitempty"`
+	Action            string                    `json:"action,omitempty"`
+	PreferredLanguage string                    `json:"preferred_language,omitempty"`
+	Start             bool                      `json:"start"`
 }
 type StoryEnhanceRequest struct {
 	Stage   string                    `json:"stage,omitempty"`

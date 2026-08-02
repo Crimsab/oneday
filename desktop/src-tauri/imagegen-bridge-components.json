@@ -1,0 +1,34 @@
+{
+  "version": "0.3.0",
+  "releaseTag": "v0.3.0",
+  "targets": {
+    "x86_64-pc-windows-msvc": {
+      "url": "https://github.com/Crimsab/imagegen-bridge/releases/download/v0.3.0/imagegen-bridge-v0.3.0-windows-x86_64.zip",
+      "sha256": "77b42ccaa9712fbb7401161ed2fd9a371fd87fc5ffd7d56c101157f8d52db794",
+      "size": 7868008,
+      "archive": "zip",
+      "entry": "imagegen-bridge.exe"
+    },
+    "aarch64-apple-darwin": {
+      "url": "https://github.com/Crimsab/imagegen-bridge/releases/download/v0.3.0/imagegen-bridge-v0.3.0-macos-aarch64.tar.gz",
+      "sha256": "0ddf813c578f907303b594ca3ce1fd74fdb1891205e46573d6e3c102edaf7f21",
+      "size": 6977351,
+      "archive": "tar.gz",
+      "entry": "imagegen-bridge"
+    },
+    "x86_64-apple-darwin": {
+      "url": "https://github.com/Crimsab/imagegen-bridge/releases/download/v0.3.0/imagegen-bridge-v0.3.0-macos-x86_64.tar.gz",
+      "sha256": "90e25a88d78fe5cd48c2bf27d5fc6cf7e94045b987aa38337c8ce12614d5fe0c",
+      "size": 7521771,
+      "archive": "tar.gz",
+      "entry": "imagegen-bridge"
+    },
+    "x86_64-unknown-linux-gnu": {
+      "url": "https://github.com/Crimsab/imagegen-bridge/releases/download/v0.3.0/imagegen-bridge-v0.3.0-linux-x86_64.tar.gz",
+      "sha256": "6d2fb7a48af431c9103fafed1b3016e97df8d16b63d5a05e5d38f9cb45ba5baa",
+      "size": 7696513,
+      "archive": "tar.gz",
+      "entry": "imagegen-bridge"
+    }
+  }
+}

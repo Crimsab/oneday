@@ -152,9 +152,10 @@ for that desktop profile and opens its bundled web UI.
 
 The released standalone package contains its matching gateway, engine, and web
 UI. Its settings show Codex, Claude Code, OpenRouter, and LiteLLM-compatible
-connections. OneDay reuses an existing Codex CLI or offers a verified managed
-install, detects Claude Code and offers the supported system install path, and
-opens each CLI's own login. Open **Configure models** after sign-in. API
+connections. OneDay reuses an existing Codex CLI or offers a verified install;
+on Windows it uses the normal per-user CLI directory and registers it in the
+user `PATH`. It also detects Claude Code, offers the supported system install
+path, and opens each CLI's own login. Open **Configure models** after sign-in. API
 providers use the same protected screen. Nothing is downloaded merely because
 you selected local mode. For profile locations, backups, and shutdown details,
 read [Desktop](desktop.md).

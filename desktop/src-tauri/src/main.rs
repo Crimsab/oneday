@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod bootstrap;
 mod claude_component;
 mod codex_component;
 mod config;
@@ -32,6 +33,8 @@ pub struct AppRuntime {
     client: reqwest::Client,
     started_minimized: bool,
     quitting: AtomicBool,
+    startup_warning: Mutex<Option<String>>,
+    local_operation: tokio::sync::Mutex<()>,
 }
 
 #[derive(Serialize)]
@@ -42,6 +45,7 @@ struct DesktopStateView {
     lifecycle: Lifecycle,
     started_minimized: bool,
     updater: updater::UpdaterStatus,
+    startup_warning: Option<String>,
 }
 
 fn read_lifecycle(state: &AppRuntime) -> Result<Lifecycle, String> {
@@ -60,8 +64,51 @@ fn write_lifecycle(state: &AppRuntime, lifecycle: Lifecycle) -> Result<(), Strin
     Ok(())
 }
 
+fn unexpected_local_exit(status: impl std::fmt::Display, log_path: &std::path::Path) -> String {
+    format!(
+        "The local OneDay service stopped unexpectedly ({status}). Choose Open OneDay to restart it. Diagnostics: {}",
+        log_path.display()
+    )
+}
+
+fn refresh_local_lifecycle(state: &AppRuntime) -> Result<(), String> {
+    if !matches!(read_lifecycle(state)?, Lifecycle::Ready { .. }) {
+        return Ok(());
+    }
+    let stopped = {
+        let mut local = state
+            .local
+            .lock()
+            .map_err(|_| "Desktop lifecycle state is unavailable.".to_string())?;
+        match local.as_mut() {
+            Some(process) => process
+                .exit_status()?
+                .map(|status| (status, process.gateway_log_path().to_path_buf())),
+            None => None,
+        }
+    };
+    if let Some((status, log_path)) = stopped {
+        bootstrap::record(format!(
+            "local gateway exited unexpectedly: status={status}; log={}",
+            log_path.display()
+        ));
+        *state
+            .server_url
+            .lock()
+            .map_err(|_| "Desktop connection state is unavailable.".to_string())? = None;
+        write_lifecycle(
+            state,
+            Lifecycle::Failed {
+                message: unexpected_local_exit(status, &log_path),
+            },
+        )?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 fn desktop_state(state: State<'_, AppRuntime>) -> Result<DesktopStateView, String> {
+    refresh_local_lifecycle(&state)?;
     Ok(DesktopStateView {
         profile: state
             .profile
@@ -77,6 +124,11 @@ fn desktop_state(state: State<'_, AppRuntime>) -> Result<DesktopStateView, Strin
         lifecycle: read_lifecycle(&state)?,
         started_minimized: state.started_minimized,
         updater: updater::status(),
+        startup_warning: state
+            .startup_warning
+            .lock()
+            .map_err(|_| "Desktop startup state is unavailable.".to_string())?
+            .clone(),
     })
 }
 
@@ -133,6 +185,11 @@ fn stop_local(state: &AppRuntime) -> Result<(), String> {
     let Some(process) = process else {
         return Ok(());
     };
+    bootstrap::record(format!(
+        "stopping local gateway: pid={}; endpoint={}",
+        process.pid(),
+        process.endpoint
+    ));
     write_lifecycle(state, Lifecycle::Draining)?;
     let result = standalone::stop(process);
     *state
@@ -152,13 +209,23 @@ fn stop_local(state: &AppRuntime) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn show_provider_setup(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+async fn show_provider_setup(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+    let profile = state
+        .profile
+        .lock()
+        .map_err(|_| "Desktop profile state is unavailable.".to_string())?
+        .clone()
+        .ok_or_else(|| "Choose where OneDay should run first.".to_string())?;
+    if let Profile::Standalone { profile_id } = profile {
+        start_local(&app, &state, &profile_id, false).await?;
+    }
     let server = state
         .server_url
         .lock()
         .map_err(|_| "Desktop connection state is unavailable.".to_string())?
         .clone()
         .ok_or_else(|| "Start the local OneDay gateway first.".to_string())?;
+    probe_server(&state.client, &server).await?;
     let configuration = server
         .join("?overlay=options&section=operator")
         .map_err(|error| format!("Could not build the provider configuration URL: {error}"))?;
@@ -171,26 +238,90 @@ async fn start_local(
     profile_id: &str,
     show_window: bool,
 ) -> Result<(), String> {
-    let has_local_process = state
-        .local
-        .lock()
-        .map_err(|_| "Desktop lifecycle state is unavailable.".to_string())?
-        .is_some();
-    if has_local_process && matches!(read_lifecycle(state)?, Lifecycle::Ready { .. }) {
-        return Ok(());
+    let _operation = state.local_operation.lock().await;
+    start_local_locked(app, state, profile_id, show_window).await
+}
+
+async fn start_local_locked(
+    app: &AppHandle,
+    state: &AppRuntime,
+    profile_id: &str,
+    show_window: bool,
+) -> Result<(), String> {
+    bootstrap::record(format!(
+        "local gateway start requested: profile={profile_id}; show_window={show_window}"
+    ));
+    let reusable_endpoint = if matches!(read_lifecycle(state)?, Lifecycle::Ready { .. }) {
+        let mut local = state
+            .local
+            .lock()
+            .map_err(|_| "Desktop lifecycle state is unavailable.".to_string())?;
+        match local.as_mut() {
+            Some(process) => match process.exit_status()? {
+                None => Some(process.endpoint.clone()),
+                Some(_) => None,
+            },
+            None => None,
+        }
+    } else {
+        None
+    };
+    if let Some(endpoint) = reusable_endpoint {
+        if probe_server(&state.client, &endpoint).await.is_ok()
+            && (!show_window || remote::show(app).is_ok())
+        {
+            bootstrap::record(format!(
+                "reusing healthy local gateway: endpoint={endpoint}"
+            ));
+            return Ok(());
+        }
     }
     stop_local(state)?;
     write_lifecycle(state, Lifecycle::Starting)?;
     let mut latest_error = "The local OneDay gateway did not start.".to_string();
     let mut ready_process = None;
     for attempt in 0..standalone::MAX_START_ATTEMPTS {
-        match standalone::start(app, profile_id) {
-            Ok(process) => {
+        match standalone::start(app, profile_id).await {
+            Ok(mut process) => {
                 let endpoint = process.endpoint.clone();
+                bootstrap::record(format!(
+                    "spawned local gateway: attempt={}; pid={}; endpoint={}",
+                    attempt + 1,
+                    process.pid(),
+                    endpoint
+                ));
                 match wait_for_server(&state.client, &endpoint, Duration::from_secs(12)).await {
                     Ok(()) => {
-                        ready_process = Some(process);
-                        break;
+                        // A process can briefly answer its first health check and
+                        // then stop while completing initialization. Do not expose
+                        // that dead endpoint to the webview.
+                        tokio::time::sleep(Duration::from_millis(300)).await;
+                        match process.exit_status() {
+                            Ok(Some(status)) => {
+                                latest_error =
+                                    unexpected_local_exit(status, process.gateway_log_path());
+                                let _ = standalone::stop(process);
+                            }
+                            Ok(None) => match probe_server(&state.client, &endpoint).await {
+                                Ok(()) => {
+                                    bootstrap::record(format!(
+                                        "local gateway passed readiness: pid={}; endpoint={}",
+                                        process.pid(),
+                                        endpoint
+                                    ));
+                                    ready_process = Some(process);
+                                    break;
+                                }
+                                Err(error) => {
+                                    latest_error = error;
+                                    let _ = standalone::stop(process);
+                                }
+                            },
+                            Err(error) => {
+                                latest_error = error;
+                                let _ = standalone::stop(process);
+                            }
+                        }
                     }
                     Err(error) => {
                         latest_error = error;
@@ -239,6 +370,7 @@ async fn start_local(
         .local
         .lock()
         .map_err(|_| "Desktop lifecycle state is unavailable.".to_string())? = Some(process);
+    bootstrap::record(format!("local gateway committed: endpoint={endpoint}"));
     write_lifecycle(
         state,
         Lifecycle::Ready {
@@ -255,6 +387,7 @@ async fn connect_server(
 ) -> Result<(), String> {
     let server = config::validate_server_url(&server_url)?;
     probe_server(&state.client, &server).await?;
+    let _operation = state.local_operation.lock().await;
     stop_local(&state)?;
     config::save(
         &app,
@@ -287,6 +420,7 @@ async fn connect_server(
 
 #[tauri::command]
 async fn start_standalone(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+    let _operation = state.local_operation.lock().await;
     let existing = state
         .profile
         .lock()
@@ -314,11 +448,12 @@ async fn start_standalone(app: AppHandle, state: State<'_, AppRuntime>) -> Resul
                 profile_id: profile_id.clone(),
             });
     }
-    start_local(&app, &state, &profile_id, true).await
+    start_local_locked(&app, &state, &profile_id, true).await
 }
 
 #[tauri::command]
 async fn restart_standalone(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+    let _operation = state.local_operation.lock().await;
     let profile_id = match state
         .profile
         .lock()
@@ -329,27 +464,61 @@ async fn restart_standalone(app: AppHandle, state: State<'_, AppRuntime>) -> Res
         _ => return Err("Choose standalone mode before restarting the local gateway.".into()),
     };
     stop_local(&state)?;
-    start_local(&app, &state, &profile_id, true).await
+    start_local_locked(&app, &state, &profile_id, true).await
 }
 
 #[tauri::command]
-fn stop_standalone(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+async fn stop_standalone(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+    let _operation = state.local_operation.lock().await;
     stop_local(&state)?;
     remote::close(&app);
     Ok(())
 }
 
-#[tauri::command]
-fn show_story_window(app: AppHandle) -> Result<(), String> {
-    remote::show(&app)
+async fn show_story_window_inner(app: &AppHandle, state: &AppRuntime) -> Result<(), String> {
+    let profile = state
+        .profile
+        .lock()
+        .map_err(|_| "Desktop profile state is unavailable.".to_string())?
+        .clone()
+        .ok_or_else(|| "Choose where OneDay should run first.".to_string())?;
+    match profile {
+        Profile::Standalone { profile_id } => start_local(app, state, &profile_id, true).await,
+        Profile::Remote { server_url } => {
+            let server = config::validate_server_url(&server_url)?;
+            probe_server(&state.client, &server).await?;
+            remote::open(app, &server)
+        }
+    }
 }
 
-fn show_settings(app: &AppHandle) {
+#[tauri::command]
+async fn show_story_window(app: AppHandle, state: State<'_, AppRuntime>) -> Result<(), String> {
+    show_story_window_inner(&app, &state).await
+}
+
+fn show_settings(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        window.show().map_err(|error| error.to_string())?;
+        window.unminimize().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+        return Ok(());
     }
+    Err("The OneDay setup window was not created.".into())
+}
+
+fn show_story_from_tray(app: &AppHandle) {
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = {
+            let state = handle.state::<AppRuntime>();
+            show_story_window_inner(&handle, &state).await
+        };
+        if let Err(error) = result {
+            bootstrap::record(format!("could not open story window from tray: {error}"));
+            let _ = show_settings(&handle);
+        }
+    });
 }
 
 fn create_tray(app: &AppHandle) -> tauri::Result<()> {
@@ -362,12 +531,10 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "show" => {
-                if remote::show(app).is_err() {
-                    show_settings(app);
-                }
+            "show" => show_story_from_tray(app),
+            "settings" => {
+                let _ = show_settings(app);
             }
-            "settings" => show_settings(app),
             "quit" => {
                 app.state::<AppRuntime>()
                     .quitting
@@ -386,10 +553,7 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
                     ..
                 }
             ) {
-                let app = tray.app_handle();
-                if remote::show(app).is_err() {
-                    show_settings(app);
-                }
+                show_story_from_tray(tray.app_handle());
             }
         });
     if let Some(icon) = app.default_window_icon() {
@@ -399,7 +563,7 @@ fn create_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-fn main() {
+fn run() -> Result<(), String> {
     let started_minimized = std::env::args().any(|argument| argument == "--minimized");
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(6))
@@ -407,8 +571,14 @@ fn main() {
         .redirect(Policy::none())
         .user_agent(concat!("OneDay-Desktop/", env!("CARGO_PKG_VERSION")))
         .build()
-        .expect("desktop HTTP client");
+        .map_err(|error| format!("Could not create the desktop HTTP client: {error}"))?;
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            bootstrap::record("a second desktop launch was redirected to the running instance");
+            if remote::show(app).is_err() {
+                let _ = show_settings(app);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(
@@ -418,7 +588,7 @@ fn main() {
     let builder = match updater::plugin() {
         Ok(Some(plugin)) => builder.plugin(plugin),
         Ok(None) => builder,
-        Err(error) => panic!("invalid signed updater configuration: {error}"),
+        Err(error) => return Err(format!("Invalid signed updater configuration: {error}")),
     };
     let app = builder
         .manage(AppRuntime {
@@ -429,6 +599,8 @@ fn main() {
             client,
             started_minimized,
             quitting: AtomicBool::new(false),
+            startup_warning: Mutex::new(None),
+            local_operation: tokio::sync::Mutex::new(()),
         })
         .invoke_handler(tauri::generate_handler![
             desktop_state,
@@ -453,8 +625,31 @@ fn main() {
             claude_component::open_claude_install_guide,
         ])
         .setup(move |app| {
+            let settings = match config::load(app.handle()) {
+                Ok(settings) => settings,
+                Err(error) => {
+                    bootstrap::record(format!("desktop settings recovery: {error}"));
+                    if let Err(quarantine_error) =
+                        config::quarantine_invalid_settings(app.handle())
+                    {
+                        bootstrap::record(format!(
+                            "could not quarantine desktop settings: {quarantine_error}"
+                        ));
+                    }
+                    *app.state::<AppRuntime>()
+                        .startup_warning
+                        .lock()
+                        .map_err(|_| {
+                            std::io::Error::other("desktop startup state is unavailable")
+                        })? = Some(
+                        "OneDay ignored invalid desktop connection settings. Story data was not changed."
+                            .into(),
+                    );
+                    None
+                }
+            };
             let standalone_id =
-                if let Some(settings) = config::load(app.handle())? {
+                if let Some(settings) = settings {
                     let profile = settings.profile;
                     let standalone_id = match &profile {
                         Profile::Standalone { profile_id } => Some(profile_id.clone()),
@@ -473,8 +668,13 @@ fn main() {
                 } else {
                     None
                 };
-            create_tray(app.handle())?;
+            if let Err(error) = create_tray(app.handle()) {
+                bootstrap::record(format!("system tray unavailable: {error}"));
+            }
             if started_minimized {
+                if let Some(window) = app.get_webview_window("settings") {
+                    let _ = window.hide();
+                }
                 if let Some(profile_id) = standalone_id {
                     let handle = app.handle().clone();
                     tauri::async_runtime::spawn(async move {
@@ -484,8 +684,9 @@ fn main() {
                 }
             }
             if !started_minimized {
-                show_settings(app.handle());
+                show_settings(app.handle()).map_err(std::io::Error::other)?;
             }
+            bootstrap::record("OneDay desktop setup completed");
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -500,7 +701,7 @@ fn main() {
             }
         })
         .build(tauri::generate_context!())
-        .expect("build OneDay desktop application");
+        .map_err(|error| format!("Could not build the OneDay desktop application: {error}"))?;
 
     app.run(|app, event| {
         if let RunEvent::ExitRequested { api, .. } = event {
@@ -509,6 +710,19 @@ fn main() {
             }
         }
     });
+    Ok(())
+}
+
+fn main() {
+    bootstrap::install_panic_hook();
+    bootstrap::record(format!(
+        "OneDay desktop {} starting",
+        env!("CARGO_PKG_VERSION")
+    ));
+    if let Err(error) = run() {
+        bootstrap::fatal(&error);
+        std::process::exit(1);
+    }
 }
 
 #[cfg(test)]
@@ -547,5 +761,14 @@ mod tests {
                 .expect("delayed gateway becomes ready");
             responder.join().expect("responder");
         });
+    }
+
+    #[test]
+    fn unexpected_gateway_exit_points_to_recovery_and_diagnostics() {
+        let message =
+            unexpected_local_exit("exit code 7", std::path::Path::new("C:/OneDay/gateway.log"));
+        assert!(message.contains("Choose Open OneDay to restart it"));
+        assert!(message.contains("exit code 7"));
+        assert!(message.contains("gateway.log"));
     }
 }

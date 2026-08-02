@@ -762,12 +762,41 @@ pub async fn history_page(
     limit: i64,
     search: &str,
 ) -> anyhow::Result<HistoryPage> {
+    history_page_scoped(pool, story_id, cursor, limit, search, "current", "").await
+}
+
+pub async fn history_page_scoped(
+    pool: &SqlitePool,
+    story_id: &str,
+    cursor: Option<i64>,
+    limit: i64,
+    search: &str,
+    scope: &str,
+    branch_id: &str,
+) -> anyhow::Result<HistoryPage> {
     let limit = limit.clamp(1, 100);
     let cursor = cursor.unwrap_or(i64::MAX);
     let search = search.trim();
-    let rows = if search.is_empty() {
+    let branch = branch_id.trim();
+    let all_branches = scope.eq_ignore_ascii_case("all");
+    let named_branch = !all_branches && !branch.is_empty();
+    let rows = if search.is_empty() && all_branches {
+        sqlx::query(r#"SELECT id,session_id,story_id,turn,role,content,message_type,metadata_json,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chat_messages WHERE story_id=? AND id<? ORDER BY id DESC LIMIT ?"#)
+            .bind(story_id).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else if search.is_empty() && named_branch {
+        sqlx::query(r#"SELECT id,session_id,story_id,turn,role,content,message_type,metadata_json,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chat_messages WHERE story_id=? AND branch_id=? AND id<? ORDER BY id DESC LIMIT ?"#)
+            .bind(story_id).bind(branch).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else if search.is_empty() {
         sqlx::query(r#"SELECT id,session_id,story_id,turn,role,content,message_type,metadata_json,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chat_messages WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND id<? ORDER BY id DESC LIMIT ?"#)
             .bind(story_id).bind(story_id).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else if all_branches {
+        let pattern = format!("%{search}%");
+        sqlx::query(r#"SELECT m.id,m.session_id,m.story_id,m.turn,m.role,m.content,m.message_type,m.metadata_json,CAST(m.created_at AS TEXT) AS created_at,m.branch_id,m.source_commit_id FROM chat_messages m JOIN chat_messages_fts ON chat_messages_fts.rowid=m.id WHERE m.story_id=? AND m.id<? AND chat_messages_fts.content LIKE ? ORDER BY m.id DESC LIMIT ?"#)
+            .bind(story_id).bind(cursor).bind(pattern).bind(limit + 1).fetch_all(pool).await?
+    } else if named_branch {
+        let pattern = format!("%{search}%");
+        sqlx::query(r#"SELECT m.id,m.session_id,m.story_id,m.turn,m.role,m.content,m.message_type,m.metadata_json,CAST(m.created_at AS TEXT) AS created_at,m.branch_id,m.source_commit_id FROM chat_messages m JOIN chat_messages_fts ON chat_messages_fts.rowid=m.id WHERE m.story_id=? AND m.branch_id=? AND m.id<? AND chat_messages_fts.content LIKE ? ORDER BY m.id DESC LIMIT ?"#)
+            .bind(story_id).bind(branch).bind(cursor).bind(pattern).bind(limit + 1).fetch_all(pool).await?
     } else {
         let pattern = format!("%{search}%");
         sqlx::query(r#"SELECT m.id,m.session_id,m.story_id,m.turn,m.role,m.content,m.message_type,m.metadata_json,CAST(m.created_at AS TEXT) AS created_at,m.branch_id,m.source_commit_id FROM chat_messages m JOIN chat_messages_fts ON chat_messages_fts.rowid=m.id WHERE m.story_id=? AND m.branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND m.id<? AND chat_messages_fts.content LIKE ? ORDER BY m.id DESC LIMIT ?"#)
@@ -795,12 +824,41 @@ pub async fn chapter_page(
     limit: i64,
     search: &str,
 ) -> anyhow::Result<ChapterPage> {
+    chapter_page_scoped(pool, story_id, cursor, limit, search, "current", "").await
+}
+
+pub async fn chapter_page_scoped(
+    pool: &SqlitePool,
+    story_id: &str,
+    cursor: Option<i64>,
+    limit: i64,
+    search: &str,
+    scope: &str,
+    branch_id: &str,
+) -> anyhow::Result<ChapterPage> {
     let limit = limit.clamp(1, 100);
     let cursor = cursor.unwrap_or(i64::MAX);
     let search = search.trim();
-    let rows = if search.is_empty() {
+    let branch = branch_id.trim();
+    let all_branches = scope.eq_ignore_ascii_case("all");
+    let named_branch = !all_branches && !branch.is_empty();
+    let rows = if search.is_empty() && all_branches {
+        sqlx::query(r#"SELECT id,chapter_number,title,summary,start_turn,end_turn,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chapters WHERE story_id=? AND id<? ORDER BY id DESC LIMIT ?"#)
+            .bind(story_id).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else if search.is_empty() && named_branch {
+        sqlx::query(r#"SELECT id,chapter_number,title,summary,start_turn,end_turn,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chapters WHERE story_id=? AND branch_id=? AND chapter_number<? ORDER BY chapter_number DESC LIMIT ?"#)
+            .bind(story_id).bind(branch).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else if search.is_empty() {
         sqlx::query(r#"SELECT id,chapter_number,title,summary,start_turn,end_turn,CAST(created_at AS TEXT) AS created_at,branch_id,source_commit_id FROM chapters WHERE story_id=? AND branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND chapter_number<? ORDER BY chapter_number DESC LIMIT ?"#)
             .bind(story_id).bind(story_id).bind(cursor).bind(limit + 1).fetch_all(pool).await?
+    } else if all_branches {
+        let pattern = format!("%{search}%");
+        sqlx::query(r#"SELECT c.id,c.chapter_number,c.title,c.summary,c.start_turn,c.end_turn,CAST(c.created_at AS TEXT) AS created_at,c.branch_id,c.source_commit_id FROM chapters c JOIN chapters_fts ON chapters_fts.rowid=c.id WHERE c.story_id=? AND c.id<? AND (chapters_fts.title LIKE ? OR chapters_fts.summary LIKE ?) ORDER BY c.id DESC LIMIT ?"#)
+            .bind(story_id).bind(cursor).bind(&pattern).bind(&pattern).bind(limit + 1).fetch_all(pool).await?
+    } else if named_branch {
+        let pattern = format!("%{search}%");
+        sqlx::query(r#"SELECT c.id,c.chapter_number,c.title,c.summary,c.start_turn,c.end_turn,CAST(c.created_at AS TEXT) AS created_at,c.branch_id,c.source_commit_id FROM chapters c JOIN chapters_fts ON chapters_fts.rowid=c.id WHERE c.story_id=? AND c.branch_id=? AND c.chapter_number<? AND (chapters_fts.title LIKE ? OR chapters_fts.summary LIKE ?) ORDER BY c.chapter_number DESC LIMIT ?"#)
+            .bind(story_id).bind(branch).bind(cursor).bind(&pattern).bind(&pattern).bind(limit + 1).fetch_all(pool).await?
     } else {
         let pattern = format!("%{search}%");
         sqlx::query(r#"SELECT c.id,c.chapter_number,c.title,c.summary,c.start_turn,c.end_turn,CAST(c.created_at AS TEXT) AS created_at,c.branch_id,c.source_commit_id FROM chapters c JOIN chapters_fts ON chapters_fts.rowid=c.id WHERE c.story_id=? AND c.branch_id=(SELECT active_branch_id FROM stories WHERE id=?) AND c.chapter_number<? AND (chapters_fts.title LIKE ? OR chapters_fts.summary LIKE ?) ORDER BY c.chapter_number DESC LIMIT ?"#)
@@ -822,7 +880,13 @@ pub async fn chapter_page(
         });
     }
     let next_cursor = if has_more {
-        items.last().map(|item| item.chapter_number)
+        items.last().map(|item| {
+            if all_branches {
+                item.id
+            } else {
+                item.chapter_number
+            }
+        })
     } else {
         None
     };
@@ -2250,6 +2314,21 @@ mod tests {
             .items
             .iter()
             .all(|item| item.branch_id == "branch-main"));
+
+        let all_branches = history_page_scoped(&pool, "story-1", None, 40, "", "all", "")
+            .await
+            .expect("all-branch history");
+        assert_eq!(all_branches.items.len(), 4);
+        assert!(all_branches
+            .items
+            .iter()
+            .any(|item| item.branch_id == "branch-alt"));
+
+        let alternate = history_page_scoped(&pool, "story-1", None, 40, "", "branch", "branch-alt")
+            .await
+            .expect("named-branch history");
+        assert_eq!(alternate.items.len(), 1);
+        assert_eq!(alternate.items[0].content, "alternate secret");
 
         let search = history_page(&pool, "story-1", None, 40, "needle")
             .await

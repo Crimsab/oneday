@@ -1,5 +1,4 @@
 import type {
-  ImageGenerationSetting,
   ImageGenerationUpdate,
   ModelProviderSetting,
   ModelSettings,
@@ -9,6 +8,10 @@ import i18n from "./i18n";
 
 export const DEFAULT_CODEX_MODEL = "gpt-5.6-luna";
 export const DEFAULT_CODEX_REASONING = "low";
+export const DEFAULT_IMAGE_SIZE = "1024x1024";
+export const DEFAULT_LOCATION_IMAGE_SIZE = "1536x1024";
+export const DEFAULT_CHARACTER_IMAGE_SIZE = "1024x1024";
+export const DEFAULT_IMAGE_FORMAT = "png";
 
 export type ModelSetupSection = "connections" | "models" | "images" | "diagnostics";
 
@@ -96,15 +99,16 @@ export function draftFromModelSettings(
   );
   const activeProvider = priority.find((id) => providers[id]?.enabled);
   const activeModel = activeProvider ? providers[activeProvider]?.model.trim() : "";
+  const narrativeModel = activeModel || settings.active.narrative_model.trim();
   return {
     providerPriority: priority,
     providers,
-    utilityModel: settings.active.utility_model || activeModel,
+    utilityModel: settings.active.utility_model || narrativeModel,
     repairModel: settings.active.repair_model,
     repairFallbackModels: settings.active.repair_fallback_models.join(", "),
-    imageGeneration: imageGenerationDraft(settings.image_generation),
-    asciiModel: settings.active.ascii_model,
-    embeddingProvider: settings.active.embedding_provider,
+    imageGeneration: imageGenerationDraft(settings),
+    asciiModel: settings.active.ascii_model.trim() || narrativeModel,
+    embeddingProvider: settings.active.embedding_provider || "auto",
     embeddingModel: settings.active.embedding_model,
   };
 }
@@ -204,59 +208,101 @@ export function modelRoutingIssueGroups(
     if (draft.imageGeneration.timeoutSeconds <= 0) {
       groups.images.push(i18n.t("model_issues:timeout"));
     }
-    if (
-      isOpenClawImageProvider(draft.imageGeneration.provider) &&
-      !draft.imageGeneration.openClawBridgeUrl.trim()
-    ) {
-      groups.images.push(i18n.t("model_issues:openClawUrl"));
-    }
-    for (const id of new Set([draft.imageGeneration.provider, draft.imageGeneration.mapIconProvider])) {
-      if (isImagegenBridgeProvider(id)) {
-        if (!draft.imageGeneration.imagegenBridgeUrl.trim()) groups.images.push(i18n.t("model_issues:nativeUrl"));
-        continue;
-      }
-      const catalog = settings.image_providers.find((provider) => provider.id === id);
-      if (!catalog || isOpenClawImageProvider(id)) continue;
-      const config = pending?.providerConfigs[id];
-      if (!(config?.baseUrl.trim() || catalog.base_url.trim())) groups.images.push(i18n.t("model_issues:baseUrl"));
-      const keyReady = !config?.clearApiKey && (catalog.api_key_configured || Boolean(config?.apiKey.trim()));
-      if (!keyReady) groups.images.push(i18n.t("model_issues:apiKey"));
-    }
+    groups.images.push(
+      ...selectedImageProviderIssues(settings, draft, pending),
+    );
   }
   return groups;
 }
 
-function imageGenerationDraft(
-  settings: ImageGenerationSetting,
-): ImageGenerationDraft {
+function selectedImageProviderIssues(
+  settings: ModelSettings,
+  draft: ModelRoutingDraft,
+  pending?: PendingProviderConfiguration,
+): string[] {
+  const issues: string[] = [];
+  const selections = [
+    {
+      id: draft.imageGeneration.provider.trim(),
+      role: i18n.t("drawer:imageSettings.provider"),
+    },
+    {
+      id: draft.imageGeneration.mapIconProvider.trim(),
+      role: i18n.t("drawer:imageSettings.mapProvider"),
+    },
+  ].filter(
+    (selection, index, all) =>
+      Boolean(selection.id) &&
+      all.findIndex((candidate) => candidate.id === selection.id) === index,
+  );
+
+  for (const selection of selections) {
+    if (isOpenClawImageProvider(selection.id)) {
+      if (!draft.imageGeneration.openClawBridgeUrl.trim()) {
+        issues.push(`${selection.role}: ${i18n.t("model_issues:openClawUrl")}`);
+      }
+      continue;
+    }
+    if (isImagegenBridgeProvider(selection.id)) {
+      if (!draft.imageGeneration.imagegenBridgeUrl.trim()) {
+        issues.push(`${selection.role}: ${i18n.t("model_issues:nativeUrl")}`);
+      }
+      continue;
+    }
+
+    const catalog = settings.image_providers.find(
+      (provider) => provider.id === selection.id,
+    );
+    if (!catalog) continue;
+    const config = pending?.providerConfigs[selection.id];
+    const provider = `${catalog.display_name || selection.id} · ${selection.role}`;
+    if (!(config?.baseUrl.trim() || catalog.base_url.trim())) {
+      issues.push(i18n.t("model_issues:providerBaseUrl", { provider }));
+    }
+    const keyReady = !config?.clearApiKey && (
+      catalog.api_key_configured || Boolean(config?.apiKey.trim())
+    );
+    if (!keyReady) {
+      issues.push(i18n.t("model_issues:providerApiKey", { provider }));
+    }
+  }
+  return issues;
+}
+
+function imageGenerationDraft(settings: ModelSettings): ImageGenerationDraft {
+  const imageSettings = settings.image_generation;
+  const preferredModel = (providerId: string, saved: string) => {
+    if (saved.trim()) return saved;
+    return settings.image_providers.find((provider) => provider.id === providerId)?.models[0] ?? "";
+  };
   return {
-    provider: settings.provider,
-    mapIconProvider: settings.map_icon_provider,
-    baseUrl: settings.base_url,
-    model: settings.model,
-    mapIconModel: settings.map_icon_model,
-    openClawBridgeUrl: settings.openclaw_bridge_url,
-    imagegenBridgeUrl: settings.imagegen_bridge_url,
-    imagegenBridgeProvider: settings.imagegen_bridge_provider,
-    imagegenBridgeMapIconProvider: settings.imagegen_bridge_map_icon_provider,
-    imagegenBridgeFallbacks: settings.imagegen_bridge_fallbacks.join(", "),
-    imagegenBridgeFallbackPolicy: settings.imagegen_bridge_fallback_policy,
-    imagegenBridgeCompatibility: settings.imagegen_bridge_compatibility,
-    defaultSize: settings.default_size,
-    locationSize: settings.location_size,
-    characterSize: settings.character_size,
-    defaultResolution: settings.default_resolution,
-    locationResolution: settings.location_resolution,
-    characterResolution: settings.character_resolution,
-    defaultAspectRatio: settings.default_aspect_ratio,
-    locationAspectRatio: settings.location_aspect_ratio,
-    characterAspectRatio: settings.character_aspect_ratio,
-    quality: settings.quality,
-    outputFormat: settings.output_format,
-    background: settings.background,
-    timeoutSeconds: settings.timeout_seconds || 360,
-    autoGenerate: settings.auto_generate,
-    appendNegativePrompt: settings.append_negative_prompt,
+    provider: imageSettings.provider,
+    mapIconProvider: imageSettings.map_icon_provider,
+    baseUrl: imageSettings.base_url,
+    model: preferredModel(imageSettings.provider, imageSettings.model),
+    mapIconModel: preferredModel(imageSettings.map_icon_provider, imageSettings.map_icon_model),
+    openClawBridgeUrl: imageSettings.openclaw_bridge_url,
+    imagegenBridgeUrl: imageSettings.imagegen_bridge_url,
+    imagegenBridgeProvider: imageSettings.imagegen_bridge_provider,
+    imagegenBridgeMapIconProvider: imageSettings.imagegen_bridge_map_icon_provider,
+    imagegenBridgeFallbacks: imageSettings.imagegen_bridge_fallbacks.join(", "),
+    imagegenBridgeFallbackPolicy: imageSettings.imagegen_bridge_fallback_policy,
+    imagegenBridgeCompatibility: imageSettings.imagegen_bridge_compatibility,
+    defaultSize: imageSettings.default_size.trim() || DEFAULT_IMAGE_SIZE,
+    locationSize: imageSettings.location_size.trim() || DEFAULT_LOCATION_IMAGE_SIZE,
+    characterSize: imageSettings.character_size.trim() || DEFAULT_CHARACTER_IMAGE_SIZE,
+    defaultResolution: imageSettings.default_resolution,
+    locationResolution: imageSettings.location_resolution,
+    characterResolution: imageSettings.character_resolution,
+    defaultAspectRatio: imageSettings.default_aspect_ratio,
+    locationAspectRatio: imageSettings.location_aspect_ratio,
+    characterAspectRatio: imageSettings.character_aspect_ratio,
+    quality: imageSettings.quality,
+    outputFormat: imageSettings.output_format.trim() || DEFAULT_IMAGE_FORMAT,
+    background: imageSettings.background,
+    timeoutSeconds: imageSettings.timeout_seconds || 360,
+    autoGenerate: imageSettings.auto_generate,
+    appendNegativePrompt: imageSettings.append_negative_prompt,
   };
 }
 

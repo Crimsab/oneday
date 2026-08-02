@@ -329,9 +329,13 @@ pub(super) fn validate_bridge_endpoint(url: &str, token: &str) -> Result<(), Str
         .ok_or_else(|| "imagegen-bridge URL must include a host".to_string())?;
     match parsed.scheme() {
         "http" if is_loopback_host(host) => Ok(()),
+        "http" if is_private_docker_bridge_host(host) && !token.trim().is_empty() => Ok(()),
         "https" if !token.trim().is_empty() => Ok(()),
         "https" => Err("remote imagegen-bridge requires a bearer token".to_string()),
-        "http" => Err("remote imagegen-bridge requires HTTPS and a bearer token".to_string()),
+        "http" => Err(
+            "remote imagegen-bridge requires HTTPS, or a bearer-protected private Docker endpoint"
+                .to_string(),
+        ),
         _ => Err("imagegen-bridge URL must be an HTTP or HTTPS URL".to_string()),
     }
 }
@@ -341,6 +345,11 @@ fn is_loopback_host(host: &str) -> bool {
         || host
             .parse::<std::net::IpAddr>()
             .is_ok_and(|ip| ip.is_loopback())
+}
+
+fn is_private_docker_bridge_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("imagegen-bridge")
+        || host.eq_ignore_ascii_case("host.docker.internal")
 }
 
 pub(super) fn provider_config(config: &AdapterConfig, provider: &str) -> ProviderConfig {

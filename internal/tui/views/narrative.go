@@ -964,6 +964,8 @@ func (m NarrativeModel) handleCommand(cmd *engine.Command) (NarrativeModel, tea.
 		return m.renameActiveBranch(cmd.Args)
 	case "checkout":
 		return m.checkoutBranch(cmd.Args)
+	case "retry":
+		return m.retryLatestDecision()
 	case "hooks":
 		return m.showHooks()
 	case "map":

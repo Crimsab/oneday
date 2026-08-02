@@ -106,15 +106,25 @@ On the first launch, choose one profile:
 
 In local mode, the desktop shows every narrative path instead of assuming
 Codex. It can reuse an existing Codex CLI, install a pinned and
-SHA-256-verified official Codex component on demand, detect Claude Code, or
-install Claude Code through WinGet on Windows or Homebrew on macOS. OpenRouter
-and LiteLLM-compatible endpoints are configured in the same protected model
-screen. Nothing is downloaded until you choose an install action.
+SHA-256-verified official Codex CLI on demand, detect Claude Code, or install
+Claude Code through WinGet on Windows or Homebrew on macOS. On Windows the
+Codex action installs to the standard per-user location and registers it in the
+user `PATH`; the desktop app, terminal, and OneDay then share the normal Codex
+home. OneDay detects the Codex/ChatGPT app, the current `codex` CLI, and a
+legacy `codex-cli` separately, and marks Codex as the recommended complete
+subscription path. OpenRouter and LiteLLM-compatible endpoints are configured in the same
+protected model screen. Nothing is downloaded until you choose an install
+action.
+
+The Windows installer handles Microsoft Edge WebView2 automatically. Portable
+QA archives include its official bootstrapper beside `oneday-desktop.exe`, so
+a missing Runtime produces an install prompt instead of a silent exit.
 
 Public releases include Windows, Linux, Apple Silicon macOS, and Intel macOS
 packages plus a signed update feed. The desktop checks that feed automatically,
 but it downloads and installs an update only after you select **Install and
-restart**. Source and pull-request builds keep the updater disabled. Read the
+restart**. Any desktop build can check the public feed; it installs only an
+update that verifies with the embedded public key. Read the
 [desktop guide](docs/desktop.md) before you choose a profile.
 
 ### Terminal from source
@@ -225,7 +235,10 @@ storage, and secret-handling reference.
 
 Yes. In the terminal client, run `codex login` and choose **Codex OAuth** during
 setup. In desktop standalone mode, OneDay detects an existing Codex CLI or can
-install a verified private component on demand, then opens the Codex login.
+install the verified CLI on demand, then opens the Codex login. On Windows this
+is a normal per-user CLI installation under
+`%LOCALAPPDATA%\Programs\OpenAI\Codex\bin`; OneDay adds it to the user `PATH`
+without requiring Node.js or administrator rights.
 A browser served by a native gateway also works when that gateway process can
 reach the authenticated CLI; the browser never reads the credential itself.
 

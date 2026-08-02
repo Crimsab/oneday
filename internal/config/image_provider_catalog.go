@@ -137,16 +137,16 @@ var imageProviderDefinitions = []imageProviderDefinition{
 		}, Sizes: []string{"1024x1024", "1024x1536", "1536x1024"}, Qualities: []string{"auto", "low", "medium", "high"}, OutputFormats: []string{"png", "jpeg", "webp"}, SupportsTransparency: true},
 	},
 	{
-		id: ImageProviderOpenAICompatible, displayName: "OpenAI-compatible / LiteLLM", authType: "api_key",
+		id: ImageProviderOpenAICompatible, displayName: "OpenAI-compatible", authType: "api_key",
 		modelValidation: "configured", capabilities: ImageProviderCapabilities{Operations: []ImageOperationCapability{generationCapability("/images/generations", "api_key", nil)}, Sizes: []string{"provider-defined"}, AspectRatios: []string{"provider-defined"}, Qualities: []string{"provider-defined"}, OutputFormats: []string{"png", "jpeg", "webp"}, SupportsTransparency: true},
 	},
 	{
 		id: ImageProviderGemini, displayName: "Google Gemini", authType: "api_key",
-		models: []string{"gemini-3.1-flash-image", "gemini-3-pro-image"}, modelValidation: "allowlist_or_gemini_image_model",
+		models: []string{"gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image"}, modelValidation: "allowlist_or_gemini_image_model",
 		capabilities: ImageProviderCapabilities{Operations: []ImageOperationCapability{
-			generationCapability("v1beta/interactions", "api_key", []string{"gemini-3.1-flash-image", "gemini-3-pro-image"}),
-			operationCapability("edit", "v1beta/interactions", "api_key", []string{"gemini-3.1-flash-image", "gemini-3-pro-image"}, sourceOne(), nil, true, "available", "static_verified"),
-			operationCapability("inpaint", "v1beta/interactions", "api_key", []string{"gemini-3.1-flash-image", "gemini-3-pro-image"}, sourceOne(), rasterMask("best_effort", "model_specific"), false, "unavailable", "static_verified"),
+			generationCapability("v1beta/interactions", "api_key", []string{"gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image"}),
+			operationCapability("edit", "v1beta/interactions", "api_key", []string{"gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image"}, sourceOne(), nil, true, "available", "static_verified"),
+			operationCapability("inpaint", "v1beta/interactions", "api_key", []string{"gemini-3.1-flash-image", "gemini-3.1-flash-lite-image", "gemini-3-pro-image"}, sourceOne(), rasterMask("best_effort", "model_specific"), false, "unavailable", "static_verified"),
 		}, AspectRatios: []string{"1:1", "3:2", "2:3", "4:3", "3:4", "16:9", "9:16"}, OutputFormats: []string{"png", "jpeg"}},
 	},
 	{
@@ -169,7 +169,7 @@ var imageProviderDefinitions = []imageProviderDefinition{
 	},
 	{
 		id: ImageProviderAzureOpenAI, displayName: "Azure OpenAI Images", authType: "api_key",
-		models: []string{"gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"}, modelValidation: "deployment_name",
+		modelValidation: "deployment_name",
 		capabilities: ImageProviderCapabilities{Operations: []ImageOperationCapability{
 			generationCapability("/openai/v1/images/generations", "api_key", []string{"gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"}),
 			operationCapability("edit", "/images/edits", "api_key", []string{"gpt-image-2", "gpt-image-1.5", "gpt-image-1", "gpt-image-1-mini"}, sourceOne(), nil, true, "requires_configuration", "static_verified"),
@@ -236,7 +236,8 @@ func defaultImageProviderBaseURL(provider string) string {
 func imageProviderConfigured(cfg ImageGenerationConfig, provider string) (bool, string) {
 	provider = canonicalImageProviderID(provider)
 	if provider == ImageProviderCodexOAuth {
-		if strings.TrimSpace(cfg.ImagegenBridgeURL) == "" {
+		bridgeURL, _ := imagegenBridgeRuntimeCredentials(cfg)
+		if bridgeURL == "" {
 			return false, "missing imagegen-bridge URL"
 		}
 		return true, "Codex OAuth via imagegen-bridge"
@@ -275,7 +276,11 @@ func buildImageProviderCatalog(cfg ImageGenerationConfig) []ImageProviderCatalog
 		configured, status := imageProviderConfigured(cfg, definition.id)
 		direct := imageProviderConfig(cfg, definition.id)
 		models := append([]string(nil), definition.models...)
-		models = uniqueNonEmpty(append(models, imageProviderConfig(cfg, definition.id).Models...)...)
+		// A saved custom ID must remain selectable even when it is not part of a
+		// provider's static catalog. This is especially important for Azure
+		// deployment names and explicitly configured compatible endpoints.
+		models = uniqueNonEmpty(append(models, direct.Models...)...)
+		models = uniqueNonEmpty(append(models, selectedImageProviderModels(cfg, definition.id)...)...)
 		entries = append(entries, ImageProviderCatalogEntry{
 			ID: definition.id, DisplayName: definition.displayName, AuthType: definition.authType,
 			Default: definition.id == ImageProviderCodexOAuth, Configured: configured,
@@ -286,6 +291,18 @@ func buildImageProviderCatalog(cfg ImageGenerationConfig) []ImageProviderCatalog
 		})
 	}
 	return entries
+}
+
+func selectedImageProviderModels(cfg ImageGenerationConfig, provider string) []string {
+	provider = canonicalImageProviderID(provider)
+	models := []string{}
+	if canonicalImageProviderID(cfg.Provider) == provider {
+		models = append(models, cfg.Model)
+	}
+	if canonicalImageProviderID(cfg.MapIconProvider) == provider {
+		models = append(models, cfg.MapIconModel)
+	}
+	return cleanStringSlice(models)
 }
 
 func normalizedImageProviderCapabilities(capabilities ImageProviderCapabilities) ImageProviderCapabilities {

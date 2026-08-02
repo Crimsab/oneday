@@ -103,6 +103,10 @@ pub fn router(state: Arc<AppState>, auth_state: Arc<auth::AuthState>) -> Router 
             put(update_translation_glossary).delete(delete_translation_glossary),
         )
         .route(
+            "/api/stories/:story_id/translations/text",
+            post(translate_text),
+        )
+        .route(
             "/api/stories/:story_id/messages/:message_id/diagnostics",
             get(message_diagnostics),
         )
@@ -795,6 +799,10 @@ struct PageQuery {
     language: String,
     #[serde(default)]
     mode: String,
+    #[serde(default)]
+    scope: String,
+    #[serde(default)]
+    branch_id: String,
 }
 
 async fn history(
@@ -803,12 +811,14 @@ async fn history(
     Query(query): Query<PageQuery>,
 ) -> Result<Json<db::HistoryPage>, ApiError> {
     Ok(Json(
-        db::history_page(
+        db::history_page_scoped(
             &state.pool,
             &story_id,
             query.cursor,
             query.limit.unwrap_or(40),
             &query.q,
+            &query.scope,
+            &query.branch_id,
         )
         .await?,
     ))
@@ -820,12 +830,14 @@ async fn chapters(
     Query(query): Query<PageQuery>,
 ) -> Result<Json<db::ChapterPage>, ApiError> {
     Ok(Json(
-        db::chapter_page(
+        db::chapter_page_scoped(
             &state.pool,
             &story_id,
             query.cursor,
             query.limit.unwrap_or(30),
             &query.q,
+            &query.scope,
+            &query.branch_id,
         )
         .await?,
     ))
@@ -1071,6 +1083,16 @@ async fn update_translation_glossary(
 ) -> Result<Json<translation::GlossaryEntry>, ApiError> {
     Ok(Json(
         translation::upsert_glossary(&state.pool, &story_id, Some(&entry_id), payload).await?,
+    ))
+}
+
+async fn translate_text(
+    State(state): State<Arc<AppState>>,
+    Path(story_id): Path<String>,
+    Json(payload): Json<translation::TranslateTextRequest>,
+) -> Result<Json<translation::TranslateTextResponse>, ApiError> {
+    Ok(Json(
+        translation::translate_text(state, &story_id, payload).await?,
     ))
 }
 
@@ -1736,6 +1758,7 @@ mod tests {
             state: None,
             input: String::new(),
             action: "create_story".to_string(),
+            preferred_language: "it".to_string(),
             world_style_prompt: "  physically grounded world  ".to_string(),
             character_style_prompt: " real human characters ".to_string(),
             negative_prompt: " plastic skin ".to_string(),

@@ -16,6 +16,7 @@ on:
       - "scripts/release-prepare-desktop.sh"
       - "scripts/release-desktop-artifacts.sh"
       - "scripts/release-prepare-updater-config.sh"
+      - "scripts/assert-tauri-production-ui.ts"
       - "scripts/release-metadata.sh"
       - ".github/workflows/desktop.yml"
   push:
@@ -32,6 +33,7 @@ on:
       - "scripts/release-prepare-desktop.sh"
       - "scripts/release-desktop-artifacts.sh"
       - "scripts/release-prepare-updater-config.sh"
+      - "scripts/assert-tauri-production-ui.ts"
       - "scripts/release-metadata.sh"
       - ".github/workflows/desktop.yml"
 
@@ -163,6 +165,13 @@ jobs:
         working-directory: desktop
         shell: bash
         run: bun run tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Verify desktop embeds the production launcher
+        shell: bash
+        run: |
+          binary="desktop/src-tauri/target/release/oneday-desktop"
+          [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
+          bun scripts/assert-tauri-production-ui.ts "$binary" desktop/dist
 
       - name: Upload short-lived installers
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

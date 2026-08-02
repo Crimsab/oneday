@@ -8,9 +8,11 @@ uses a fake in-process server, fixture, or mocked browser route; it never calls
 a configured provider or requires a real credential.
 
 The runner always creates a fresh `HOME` below its temporary workspace; it
-never inherits the caller's OAuth, provider, or application configuration. An
-offline parent runner may supply only non-sensitive pre-populated cache/toolchain
-directories through `ONEDAY_MATRIX_GOMODCACHE`,
+never inherits the caller's OAuth, provider, or application configuration. It
+automatically reuses the host's non-sensitive Go module cache, installed
+Playwright browsers, Cargo registry, Cargo Git checkouts, and Rust toolchain.
+An offline parent runner may override those cache/toolchain directories through
+`ONEDAY_MATRIX_GOMODCACHE`,
 `ONEDAY_MATRIX_CARGO_REGISTRY_DIR`, `ONEDAY_MATRIX_CARGO_GIT_DIR`, and
 `ONEDAY_MATRIX_RUSTUP_HOME`, plus an existing
 `ONEDAY_MATRIX_CARGO_TARGET_DIR` when compiled artifacts should be reused,
@@ -18,8 +20,8 @@ directories through `ONEDAY_MATRIX_GOMODCACHE`,
 for already-installed Playwright browsers, and
 `ONEDAY_MATRIX_BUN_INSTALL_CACHE_DIR` for Bun's package cache. The runner
 links or references those directories from an empty temporary tool home; it
-does not assume or impose read-only mounts, and it does not read the caller's
-`HOME`, `CARGO_HOME`, or Rustup configuration. It copies web and desktop
+does not assume or impose read-only mounts, and it does not load the caller's
+application configuration or credentials. It copies web and desktop
 sources from Git-tracked files only before the offline, lockfile-pinned Bun
 install. Untracked `.env` files, `node_modules`, build output and test
 artifacts therefore cannot enter the test workspace; the working tree never
@@ -34,8 +36,9 @@ artifacts.
 The matrix is intentionally bounded. Each command has a five-minute default
 limit (`ONEDAY_MATRIX_TIMEOUT_SECONDS` may lower or raise it), and all temporary
 state, default build caches, default Cargo targets, and Playwright output are
-removed when the runner exits. An explicitly supplied external Cargo target
-directory is reused and retained. Required toolchains and already-cached
+removed when the runner exits. Host dependency and browser caches are only
+read/reused; an explicitly supplied external Cargo target directory is reused
+and retained. Required toolchains and already-cached
 dependencies must be installed before running it; the matrix does not download
 them as a side effect.
 

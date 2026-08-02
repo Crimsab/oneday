@@ -1,4 +1,4 @@
-import { Copy, Download, FileArchive, FileText, PackageOpen } from "lucide-react";
+import { ChevronDown, Copy, Download, FileArchive, FileText, PackageOpen } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getStoryEpub, getStoryExport, getTelemetryExport } from "../../api";
@@ -96,7 +96,7 @@ export function StoryExportWorkspace({ storyId, includeTechnical = true, compact
         <div className="story-export-actions"><button type="button" disabled={busy} onClick={() => void exportWorld(false)}><Download size={15} />{t("portability:downloadTemplate")}</button><button type="button" disabled={busy} onClick={() => void exportWorld(true)}><Copy size={15} />{t("portability:copyCode")}</button></div>
       </section>
 
-      {includeTechnical && <details className="story-export-technical"><summary>{t("surfaces:history.technical")}</summary><div><button type="button" disabled={busy} onClick={() => void exportTechnical("replay")}>{t("surfaces:history.replay")}</button><button type="button" disabled={busy} onClick={() => void exportTechnical("telemetry")}>{t("surfaces:history.telemetry")}</button></div></details>}
+      {includeTechnical && <details className="story-export-technical"><summary><span>{t("surfaces:history.technical")}</span><ChevronDown size={15} aria-hidden="true" /></summary><div><button type="button" disabled={busy} onClick={() => void exportTechnical("replay")}>{t("surfaces:history.replay")}</button><button type="button" disabled={busy} onClick={() => void exportTechnical("telemetry")}>{t("surfaces:history.telemetry")}</button></div></details>}
       {notice && <p className="inline-notice" role="status">{notice}</p>}
       {error && <p className="inline-error" role="alert">{error}</p>}
     </div>

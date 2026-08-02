@@ -1,6 +1,7 @@
 import { ImagePlus, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CustomSelect } from "../../../components/CustomSelect";
 import { uploadNewVisualAsset } from "./uploadVisualAsset";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -39,7 +40,20 @@ export function NewVisualAssetUpload({ storyId, onUploaded }: { storyId: string;
     <header><strong>{t("visuals.upload.newAsset")}</strong><button type="button" onClick={() => setOpen(false)} aria-label={t("visuals.upload.cancel")}><X size={15} /></button></header>
     <div className="new-visual-asset-fields">
       <label><span>{t("visuals.upload.name")}</span><input value={name} maxLength={100} onChange={(event) => setName(event.target.value)} /></label>
-      <label><span>{t("visuals.upload.kind")}</span><select value={kind} onChange={(event) => setKind(event.target.value as typeof kind)}><option value="custom">{t("visuals.upload.kinds.custom")}</option><option value="world">{t("visuals.upload.kinds.world")}</option><option value="location">{t("visuals.upload.kinds.location")}</option><option value="character">{t("visuals.upload.kinds.character")}</option></select></label>
+      <label>
+        <span>{t("visuals.upload.kind")}</span>
+        <CustomSelect
+          value={kind}
+          ariaLabel={t("visuals.upload.kind")}
+          onChange={(value) => setKind(value as typeof kind)}
+          options={[
+            { value: "custom", label: t("visuals.upload.kinds.custom") },
+            { value: "world", label: t("visuals.upload.kinds.world") },
+            { value: "location", label: t("visuals.upload.kinds.location") },
+            { value: "character", label: t("visuals.upload.kinds.character") },
+          ]}
+        />
+      </label>
     </div>
     <button type="button" onClick={() => input.current?.click()}>{file ? file.name : t("visuals.upload.choose")}</button>
     <input ref={input} hidden type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => choose(event.target.files?.item(0) ?? null)} />

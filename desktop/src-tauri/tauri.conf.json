@@ -17,7 +17,7 @@
         "height": 860,
         "minWidth": 420,
         "minHeight": 620,
-        "visible": false,
+        "visible": true,
         "resizable": true,
         "center": true
       }
@@ -25,6 +25,14 @@
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'",
       "freezePrototype": true
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgzQzU4RUI4NjMyMTlGQ0YKUldUUG55Rmp1STdGZ3lqMExJZnBIVmtCQ3BzazhKWDVmWkhWeVFHalhDY1lJNHlrbkhQaFk3UHYK",
+      "endpoints": [
+        "https://github.com/Crimsab/oneday/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {
@@ -36,12 +44,12 @@
     "copyright": "Copyright OneDay contributors",
     "createUpdaterArtifacts": false,
     "resources": {
-      "../gateway/web/dist/": "gateway/web/dist/"
+      "../gateway/web/dist/": "gateway/web/dist/",
+      "binaries/oneday-v0.1.2-x86_64-pc-windows-msvc.exe": "binaries/oneday-v0.1.2-x86_64-pc-windows-msvc.exe",
+      "binaries/oneday-gateway-v0.1.2-x86_64-pc-windows-msvc.exe": "binaries/oneday-gateway-v0.1.2-x86_64-pc-windows-msvc.exe",
+      "binaries/imagegen-bridge-x86_64-pc-windows-msvc.exe": "binaries/imagegen-bridge-x86_64-pc-windows-msvc.exe"
     },
-    "externalBin": [
-      "binaries/oneday-v0.1.0",
-      "binaries/oneday-gateway-v0.1.0"
-    ],
+    "externalBin": [],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -50,11 +58,20 @@
       "icons/icon.icns"
     ],
     "linux": {
-      "appimage": { "bundleMediaFramework": false },
-      "deb": { "depends": [] }
+      "appimage": {
+        "bundleMediaFramework": false
+      },
+      "deb": {
+        "depends": []
+      }
     },
     "windows": {
-      "nsis": { "installMode": "currentUser" }
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      },
+      "nsis": {
+        "installMode": "currentUser"
+      }
     }
   }
 }

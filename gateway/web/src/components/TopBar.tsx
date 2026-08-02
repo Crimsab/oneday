@@ -1,6 +1,19 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { BookOpen, CircleHelp, Clock3, Hash, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, SlidersHorizontal, Wrench } from "lucide-react";
+import {
+  BookOpen,
+  CircleHelp,
+  Clock3,
+  FolderClock,
+  Hash,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Save,
+  SlidersHorizontal,
+  Wrench,
+} from "lucide-react";
 import { displayClock } from "../format";
 import type { OverlayKind, StorySnapshot, SyncState } from "../types";
 import type { ModelSettings } from "../types";
@@ -20,24 +33,91 @@ interface TopBarProps {
   modelSettings: ModelSettings | null;
   translationCenterOpen: boolean;
   onTranslationCenterOpenChange: (open: boolean) => void;
+  onQuickSave: () => void;
+  onQuickLoad: () => void;
+  saveBusy: boolean;
+  hasSaves: boolean;
 }
 
-export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, showInspector, onToggleLeftRail, onToggleInspector, onOpen, onOpenSetup, modelSettings, translationCenterOpen, onTranslationCenterOpenChange }: TopBarProps) {
+export function TopBar({
+  snapshot,
+  sync,
+  syncLabel,
+  syncTitle,
+  leftRailVisible,
+  showInspector,
+  onToggleLeftRail,
+  onToggleInspector,
+  onOpen,
+  onOpenSetup,
+  modelSettings,
+  translationCenterOpen,
+  onTranslationCenterOpenChange,
+  onQuickSave,
+  onQuickLoad,
+  saveBusy,
+  hasSaves,
+}: TopBarProps) {
   const { t } = useTranslation("chrome");
   const clock = displayClock(snapshot);
   return (
     <header className="top-bar">
       <div className="top-status" aria-label={t("status")}>
-        <StatusCell icon={<Hash size={14} />} label={t("turn")} value={snapshot ? String(snapshot.world.current_turn) : "-"} />
-        <StatusCell icon={<BookOpen size={14} />} label={t("story")} value={snapshot?.story.name || t("chooseStory")} strong />
-        <StatusCell icon={<Clock3 size={14} />} label={t("storyTime")} value={snapshot ? clock.time : "-"} />
+        <StatusCell
+          icon={<Hash size={14} />}
+          label={t("turn")}
+          value={snapshot ? String(snapshot.world.current_turn) : "-"}
+        />
+        <StatusCell
+          icon={<BookOpen size={14} />}
+          label={t("story")}
+          value={snapshot?.story.name || t("chooseStory")}
+          strong
+        />
+        <StatusCell
+          icon={<Clock3 size={14} />}
+          label={t("storyTime")}
+          value={snapshot ? clock.time : "-"}
+        />
         <div className={`status-cell sync-cell ${sync.toLowerCase()}`}>
           <i aria-hidden="true" />
           <strong title={syncTitle}>{syncLabel}</strong>
         </div>
       </div>
       <div className="top-actions">
-        {snapshot && <TranslationCenter storyId={snapshot.story.id} storyLanguage={snapshot.story.language} modelSettings={modelSettings} open={translationCenterOpen} onOpenChange={onTranslationCenterOpenChange} />}
+        {snapshot && (
+          <div className="top-save-actions" aria-label={t("saveTools")}>
+            <button
+              className="chrome-button"
+              type="button"
+              onClick={onQuickSave}
+              disabled={saveBusy}
+              title={`${t("quickSave")} (Ctrl+S)`}
+            >
+              <Save size={15} aria-hidden="true" />
+              <span>{t("quickSave")}</span>
+            </button>
+            <button
+              className="chrome-button"
+              type="button"
+              onClick={hasSaves ? onQuickLoad : () => onOpen("saves")}
+              disabled={saveBusy}
+              title={`${hasSaves ? t("quickLoad") : t("openSaves")} (Ctrl+Shift+L)`}
+            >
+              <FolderClock size={15} aria-hidden="true" />
+              <span>{hasSaves ? t("quickLoad") : t("openSaves")}</span>
+            </button>
+          </div>
+        )}
+        {snapshot && (
+          <TranslationCenter
+            storyId={snapshot.story.id}
+            storyLanguage={snapshot.story.language}
+            modelSettings={modelSettings}
+            open={translationCenterOpen}
+            onOpenChange={onTranslationCenterOpenChange}
+          />
+        )}
         <button
           className="square-button"
           type="button"
@@ -47,7 +127,11 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, 
           aria-expanded={leftRailVisible}
           aria-controls="story-navigation"
         >
-          {leftRailVisible ? <PanelLeftClose size={16} /> : <PanelLeftOpen size={16} />}
+          {leftRailVisible ? (
+            <PanelLeftClose size={16} />
+          ) : (
+            <PanelLeftOpen size={16} />
+          )}
           <span>{t("libraryLabel")}</span>
         </button>
         <button
@@ -59,14 +143,30 @@ export function TopBar({ snapshot, sync, syncLabel, syncTitle, leftRailVisible, 
           aria-expanded={showInspector}
           aria-controls="story-details"
         >
-          {showInspector ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}
+          {showInspector ? (
+            <PanelRightClose size={16} />
+          ) : (
+            <PanelRightOpen size={16} />
+          )}
           <span>{t("details")}</span>
         </button>
-        <button className="chrome-button" type="button" onClick={() => onOpen("options")} aria-label={t("options")} title={t("options")}>
+        <button
+          className="chrome-button"
+          type="button"
+          onClick={() => onOpen("options")}
+          aria-label={t("options")}
+          title={t("options")}
+        >
           <SlidersHorizontal size={15} />
           {t("options")}
         </button>
-        <button className="chrome-button" type="button" onClick={onOpenSetup} aria-label={t("setup")} title={t("setup")}>
+        <button
+          className="chrome-button"
+          type="button"
+          onClick={onOpenSetup}
+          aria-label={t("setup")}
+          title={t("setup")}
+        >
           <Wrench size={15} />
           {t("setup")}
         </button>
@@ -98,7 +198,11 @@ function StatusCell({
 }) {
   return (
     <div className="status-cell" aria-label={`${label}: ${value}`}>
-      {icon && <span className="status-icon" aria-hidden="true">{icon}</span>}
+      {icon && (
+        <span className="status-icon" aria-hidden="true">
+          {icon}
+        </span>
+      )}
       <span>{label}</span>
       <strong className={strong ? "status-strong" : undefined} title={value}>
         {value}

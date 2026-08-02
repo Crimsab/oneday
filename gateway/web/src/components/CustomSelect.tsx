@@ -25,6 +25,8 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const placementFrameRef = useRef<number | null>(null);
+  const typeaheadRef = useRef("");
+  const typeaheadTimerRef = useRef<number | null>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, options.findIndex((option) => option.value === value)));
   const [position, setPosition] = useState({ top: 0, left: 0, width: 180 });
@@ -40,11 +42,12 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
     const top = below >= Math.min(menuHeight, 260) || rect.top < menuHeight
       ? rect.bottom + 5
       : Math.max(8, rect.top - menuHeight - 5);
-    setPosition({
+    const next = {
       top,
       left: Math.min(Math.max(8, rect.left), Math.max(8, window.innerWidth - rect.width - 8)),
       width: rect.width,
-    });
+    };
+    setPosition((current) => current.top === next.top && current.left === next.left && current.width === next.width ? current : next);
   };
 
   const schedulePlacement = () => {
@@ -58,12 +61,16 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
   useLayoutEffect(() => {
     if (!open) return;
     placeMenu();
-    schedulePlacement();
     return () => {
       if (placementFrameRef.current !== null) window.cancelAnimationFrame(placementFrameRef.current);
       placementFrameRef.current = null;
     };
   }, [open, options.length]);
+
+  useEffect(() => {
+    if (!open) return;
+    document.getElementById(`${id}-option-${activeIndex}`)?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, id, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -83,6 +90,10 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
     };
   }, [open]);
 
+  useEffect(() => () => {
+    if (typeaheadTimerRef.current !== null) window.clearTimeout(typeaheadTimerRef.current);
+  }, []);
+
   useEffect(() => {
     const selectedIndex = options.findIndex((option) => option.value === value);
     if (selectedIndex >= 0) setActiveIndex(selectedIndex);
@@ -96,6 +107,22 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
       if (!options[next]?.disabled) break;
     }
     setActiveIndex(next);
+  };
+
+  const moveToEdge = (edge: "start" | "end") => {
+    const indexes = options.map((_, index) => index);
+    if (edge === "end") indexes.reverse();
+    const next = indexes.find((index) => !options[index]?.disabled);
+    if (next !== undefined) setActiveIndex(next);
+  };
+
+  const typeahead = (key: string) => {
+    typeaheadRef.current += key.toLocaleLowerCase();
+    if (typeaheadTimerRef.current !== null) window.clearTimeout(typeaheadTimerRef.current);
+    typeaheadTimerRef.current = window.setTimeout(() => { typeaheadRef.current = ""; }, 600);
+    const query = typeaheadRef.current;
+    const next = options.findIndex((option) => !option.disabled && option.label.toLocaleLowerCase().startsWith(query));
+    if (next >= 0) setActiveIndex(next);
   };
 
   const choose = (option: SelectOption) => {
@@ -123,9 +150,9 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
         aria-controls={`${id}-options`}
         aria-expanded={open}
         aria-haspopup="listbox"
-        disabled={disabled}
+        aria-activedescendant={open && options[activeIndex] ? `${id}-option-${activeIndex}` : undefined}
+        disabled={disabled || options.length === 0}
         onClick={() => {
-          if (!open) placeMenu();
           setOpen((current) => !current);
         }}
         onKeyDown={(event) => {
@@ -141,9 +168,21 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
             move(event.key === "ArrowDown" ? 1 : -1);
             return;
           }
+          if (event.key === "Home" || event.key === "End") {
+            event.preventDefault();
+            if (!open) setOpen(true);
+            moveToEdge(event.key === "Home" ? "start" : "end");
+            return;
+          }
           if ((event.key === "Enter" || event.key === " ") && open && options[activeIndex]) {
             event.preventDefault();
             choose(options[activeIndex]);
+            return;
+          }
+          if (event.key === "Tab" && open) setOpen(false);
+          if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && event.key !== " ") {
+            if (!open) setOpen(true);
+            typeahead(event.key);
           }
         }}
       >
@@ -162,6 +201,7 @@ export function CustomSelect({ value, options, onChange, disabled = false, ariaL
           {options.map((option, index) => (
             <button
               type="button"
+              id={`${id}-option-${index}`}
               role="option"
               aria-selected={option.value === value}
               className={index === activeIndex ? "active" : ""}

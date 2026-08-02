@@ -536,6 +536,7 @@ func runGatewayStoryWizard(ctx context.Context, cfg config.Config, db *storage.D
 			return writeGatewayStoryWizardError(out, gatewayCause(gatewayCodeInvalidRequest, err))
 		}
 	}
+	creator.SetPreferredLanguage(req.PreferredLanguage)
 
 	input := strings.TrimSpace(req.Input)
 	action := strings.TrimSpace(req.Action)

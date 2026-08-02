@@ -166,6 +166,8 @@ pub struct StoryWizardEnvelope {
     #[serde(default)]
     pub action: String,
     #[serde(default)]
+    pub preferred_language: String,
+    #[serde(default)]
     pub world_style_prompt: String,
     #[serde(default)]
     pub character_style_prompt: String,
@@ -834,6 +836,8 @@ pub async fn story_wizard(
         state: creator_state,
         input: (!envelope.input.is_empty()).then_some(envelope.input),
         action: (!envelope.action.is_empty()).then_some(envelope.action),
+        preferred_language: (!envelope.preferred_language.is_empty())
+            .then_some(envelope.preferred_language),
         start: envelope.start,
     };
     let (parsed, status_ok, stderr) =

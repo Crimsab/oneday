@@ -1,9 +1,17 @@
 use crate::{stop_local, AppRuntime};
+use base64::Engine;
 use serde::Serialize;
 use tauri::plugin::TauriPlugin;
 use tauri::{AppHandle, Manager, Runtime, Wry};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use url::Url;
+
+// The updater trust root is public by design. It lets every desktop build check
+// the official release feed; only the private signing key can create an update
+// that this key accepts.
+const DEFAULT_UPDATER_ENDPOINT: &str =
+    "https://github.com/Crimsab/oneday/releases/latest/download/latest.json";
+const DEFAULT_UPDATER_PUBKEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDgzQzU4RUI4NjMyMTlGQ0YKUldUUG55Rmp1STdGZ3lqMExJZnBIVmtCQ3BzazhKWDVmWkhWeVFHalhDY1lJNHlrbkhQaFk3UHYK";
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,22 +25,38 @@ pub struct UpdaterStatus {
 fn configuration() -> Result<(Url, String), String> {
     let endpoint = option_env!("ONEDAY_UPDATER_ENDPOINT")
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            "Signed updates are unavailable in this development build. Release builds check the stable OneDay feed."
-                .to_string()
-        })?;
+        .unwrap_or(DEFAULT_UPDATER_ENDPOINT);
     let pubkey = option_env!("ONEDAY_UPDATER_PUBKEY")
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            "Signed updates are unavailable in this development build. Release builds check the stable OneDay feed."
-                .to_string()
-        })?;
+        .unwrap_or(DEFAULT_UPDATER_PUBKEY);
     let endpoint =
-        Url::parse(endpoint).map_err(|_| "The signed update endpoint is invalid.".to_string())?;
+        Url::parse(endpoint).map_err(|_| "The OneDay update endpoint is invalid.".to_string())?;
     if endpoint.scheme() != "https" {
-        return Err("The signed update endpoint must use HTTPS.".into());
+        return Err("The OneDay update endpoint must use HTTPS.".into());
     }
+    validate_public_key(pubkey)?;
     Ok((endpoint, pubkey.to_owned()))
+}
+
+fn validate_public_key(value: &str) -> Result<(), String> {
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(value.trim())
+        .map_err(|_| "The OneDay updater public key is not valid base64.".to_string())?;
+    let decoded = std::str::from_utf8(&decoded)
+        .map_err(|_| "The OneDay updater public key is not valid UTF-8.".to_string())?;
+    let mut lines = decoded.lines().filter(|line| !line.trim().is_empty());
+    let comment = lines.next().unwrap_or_default();
+    let key = lines.next().unwrap_or_default();
+    if !comment.starts_with("untrusted comment: minisign public key:")
+        || key.len() != 56
+        || !key
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'+' || byte == b'/')
+        || lines.next().is_some()
+    {
+        return Err("The OneDay updater public key has an invalid Minisign format.".into());
+    }
+    Ok(())
 }
 
 pub fn status() -> UpdaterStatus {
@@ -41,13 +65,12 @@ pub fn status() -> UpdaterStatus {
             enabled: true,
             current_version: env!("CARGO_PKG_VERSION").into(),
             channel: "Stable".into(),
-            reason: "Updates are verified with the OneDay release signing key before installation."
-                .into(),
+            reason: "OneDay checks the official release feed. It verifies every downloaded update with the embedded public key before installation.".into(),
         },
         Err(reason) => UpdaterStatus {
             enabled: false,
             current_version: env!("CARGO_PKG_VERSION").into(),
-            channel: "Development".into(),
+            channel: "Manual updates".into(),
             reason,
         },
     }
@@ -146,13 +169,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn updater_is_disabled_without_signed_build_configuration() {
+    fn updater_uses_the_embedded_public_release_configuration() {
         let state = status();
         assert!(!state.current_version.is_empty());
+        assert!(
+            state.enabled,
+            "default public updater configuration is valid"
+        );
+        assert_eq!(state.channel, "Stable");
+        let (endpoint, public_key) = configuration().expect("valid updater configuration");
         if option_env!("ONEDAY_UPDATER_ENDPOINT").is_none() {
-            assert!(!state.enabled);
-            assert!(state.reason.contains("development build"));
+            assert_eq!(endpoint.as_str(), DEFAULT_UPDATER_ENDPOINT);
+        } else {
+            assert_eq!(endpoint.scheme(), "https");
         }
+        validate_public_key(&public_key).expect("valid updater public key");
+    }
+
+    #[test]
+    fn tauri_config_contains_a_deserializable_updater_object() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("valid Tauri config");
+        let raw = config
+            .pointer("/plugins/updater")
+            .cloned()
+            .expect("plugins.updater must be present");
+        assert!(raw.is_object(), "plugins.updater must never be null");
+
+        let plugin: tauri_plugin_updater::Config =
+            serde_json::from_value(raw).expect("updater config must deserialize at startup");
+        assert_eq!(plugin.pubkey, DEFAULT_UPDATER_PUBKEY);
+        assert_eq!(plugin.endpoints.len(), 1);
+        assert_eq!(plugin.endpoints[0].as_str(), DEFAULT_UPDATER_ENDPOINT);
     }
 
     #[test]

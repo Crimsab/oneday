@@ -48,40 +48,68 @@ type CreationAction struct {
 }
 
 const (
-	darkFantasyPreset = "Italian dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue."
-	cyberpunkPreset   = "Italian cyberpunk noir with sharp dialogue, neon decay, corporate power, and a slightly darkly comic edge."
-	horrorPreset      = "Italian horror mystery with oppressive atmosphere, slow dread, and clear, controlled prose."
-	cozyPreset        = "Italian cozy slice-of-life fantasy with gentle humor, warm relationships, and light, vivid prose."
+	darkFantasyPreset = "Dark fantasy with melancholy ruins, dangerous magic, elegant prose, and terse dialogue."
+	cyberpunkPreset   = "Cyberpunk noir with sharp dialogue, neon decay, corporate power, and a slightly darkly comic edge."
+	horrorPreset      = "Horror mystery with oppressive atmosphere, slow dread, and clear, controlled prose."
+	cozyPreset        = "Cozy slice-of-life fantasy with gentle humor, warm relationships, and light, vivid prose."
 )
 
 // StoryCreatorState is the serializable browser/terminal bridge state for the
 // guided story wizard. The browser sends it back on the next step so the
 // gateway can remain stateless between HTTP requests.
 type StoryCreatorState struct {
-	Stage            string           `json:"stage"`
-	InitialBrief     string           `json:"initial_brief,omitempty"`
-	CharacterName    string           `json:"character_name,omitempty"`
-	Definition       *StoryDefinition `json:"definition,omitempty"`
-	StoryID          string           `json:"story_id,omitempty"`
-	CharacterID      string           `json:"character_id,omitempty"`
-	TelemetryTraceID string           `json:"telemetry_trace_id,omitempty"`
+	Stage             string           `json:"stage"`
+	InitialBrief      string           `json:"initial_brief,omitempty"`
+	CharacterName     string           `json:"character_name,omitempty"`
+	PreferredLanguage string           `json:"preferred_language,omitempty"`
+	Definition        *StoryDefinition `json:"definition,omitempty"`
+	StoryID           string           `json:"story_id,omitempty"`
+	CharacterID       string           `json:"character_id,omitempty"`
+	TelemetryTraceID  string           `json:"telemetry_trace_id,omitempty"`
 }
 
 // StoryCreator manages the guided story creation wizard.
 type StoryCreator struct {
-	router           *ai.Router
-	db               *storage.DB
-	genCfg           config.GenerationConfig
-	stage            storyCreationStage
-	definition       *StoryDefinition
-	story            *storage.Story
-	character        *storage.Character
-	lastModel        string
-	lastLatency      int64
-	initialBrief     string
-	charName         string
-	telemetryTraceID string
-	loc              appi18n.Localizer
+	router            *ai.Router
+	db                *storage.DB
+	genCfg            config.GenerationConfig
+	stage             storyCreationStage
+	definition        *StoryDefinition
+	story             *storage.Story
+	character         *storage.Character
+	lastModel         string
+	lastLatency       int64
+	initialBrief      string
+	charName          string
+	preferredLanguage string
+	telemetryTraceID  string
+	loc               appi18n.Localizer
+}
+
+// SetPreferredLanguage selects the BCP-47 language used when a brief does not
+// explicitly ask for a different one. It is content language, not UI locale.
+func (sc *StoryCreator) SetPreferredLanguage(value string) {
+	sc.preferredLanguage = normalizePreferredLanguage(value)
+}
+
+func normalizePreferredLanguage(value string) string {
+	value = strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
+	if len(value) == 0 || len(value) > 35 {
+		return ""
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < '0' || char > '9') && char != '-' {
+			return ""
+		}
+	}
+	return value
+}
+
+func (sc *StoryCreator) presetBrief(description string) string {
+	if sc.preferredLanguage == "" {
+		return description
+	}
+	return fmt.Sprintf("Target story language (BCP-47): %s. %s", sc.preferredLanguage, description)
 }
 
 type storyDefinitionParseOptions struct {
@@ -176,10 +204,10 @@ func (sc *StoryCreator) Actions() []CreationAction {
 	switch sc.stage {
 	case stageBrief:
 		return []CreationAction{
-			{Key: "preset_dark_fantasy", Label: sc.loc.T("story.action_dark_fantasy"), Seed: darkFantasyPreset},
-			{Key: "preset_cyberpunk", Label: sc.loc.T("story.action_cyberpunk"), Seed: cyberpunkPreset},
-			{Key: "preset_horror", Label: sc.loc.T("story.action_horror"), Seed: horrorPreset},
-			{Key: "preset_cozy", Label: sc.loc.T("story.action_cozy"), Seed: cozyPreset},
+			{Key: "preset_dark_fantasy", Label: sc.loc.T("story.action_dark_fantasy"), Seed: sc.presetBrief(darkFantasyPreset)},
+			{Key: "preset_cyberpunk", Label: sc.loc.T("story.action_cyberpunk"), Seed: sc.presetBrief(cyberpunkPreset)},
+			{Key: "preset_horror", Label: sc.loc.T("story.action_horror"), Seed: sc.presetBrief(horrorPreset)},
+			{Key: "preset_cozy", Label: sc.loc.T("story.action_cozy"), Seed: sc.presetBrief(cozyPreset)},
 			{Key: "focus_input", Label: sc.loc.T("story.action_custom")},
 		}
 	case stageReviewWorld:
@@ -239,11 +267,12 @@ func (sc *StoryCreator) Definition() *StoryDefinition { return sc.definition }
 // ExportState returns the portable wizard state needed for the next gateway step.
 func (sc *StoryCreator) ExportState() StoryCreatorState {
 	state := StoryCreatorState{
-		Stage:            sc.StageKey(),
-		InitialBrief:     sc.initialBrief,
-		CharacterName:    sc.charName,
-		Definition:       sc.definition,
-		TelemetryTraceID: sc.telemetryTraceID,
+		Stage:             sc.StageKey(),
+		InitialBrief:      sc.initialBrief,
+		CharacterName:     sc.charName,
+		PreferredLanguage: sc.preferredLanguage,
+		Definition:        sc.definition,
+		TelemetryTraceID:  sc.telemetryTraceID,
 	}
 	if sc.story != nil {
 		state.StoryID = sc.story.ID
@@ -263,6 +292,7 @@ func (sc *StoryCreator) RestoreState(state StoryCreatorState) error {
 	sc.stage = stage
 	sc.initialBrief = strings.TrimSpace(state.InitialBrief)
 	sc.charName = strings.TrimSpace(state.CharacterName)
+	sc.preferredLanguage = normalizePreferredLanguage(state.PreferredLanguage)
 	sc.definition = state.Definition
 	if strings.TrimSpace(state.TelemetryTraceID) != "" {
 		sc.telemetryTraceID = strings.TrimSpace(state.TelemetryTraceID)
@@ -332,13 +362,13 @@ func (sc *StoryCreator) ExecuteAction(ctx context.Context, actionKey string) (st
 		sc.lastLatency = 0
 		return "Write your own brief in the input box. A single compact paragraph is enough.", nil
 	case "preset_dark_fantasy":
-		return sc.handleBrief(ctx, darkFantasyPreset)
+		return sc.handleBrief(ctx, sc.presetBrief(darkFantasyPreset))
 	case "preset_cyberpunk":
-		return sc.handleBrief(ctx, cyberpunkPreset)
+		return sc.handleBrief(ctx, sc.presetBrief(cyberpunkPreset))
 	case "preset_horror":
-		return sc.handleBrief(ctx, horrorPreset)
+		return sc.handleBrief(ctx, sc.presetBrief(horrorPreset))
 	case "preset_cozy":
-		return sc.handleBrief(ctx, cozyPreset)
+		return sc.handleBrief(ctx, sc.presetBrief(cozyPreset))
 	}
 
 	switch sc.stage {
@@ -579,6 +609,7 @@ func (sc *StoryCreator) requestStoryDefinition(ctx context.Context, msgs []ai.Me
 }
 
 func (sc *StoryCreator) requestStoryDefinitionWithOptions(ctx context.Context, msgs []ai.Message, opts storyDefinitionParseOptions) (*StoryDefinition, error) {
+	msgs = sc.withPreferredLanguageInstruction(msgs)
 	req := ai.Request{
 		Messages:       msgs,
 		Temperature:    sc.genCfg.Temperature,
@@ -616,10 +647,10 @@ func (sc *StoryCreator) requestStoryDefinitionWithOptions(ctx context.Context, m
 
 	for attempt := 0; attempt < len(repairFormats); attempt++ {
 		repairReq := ai.Request{
-			Messages: []ai.Message{
+			Messages: sc.withPreferredLanguageInstruction([]ai.Message{
 				{Role: ai.RoleSystem, Content: prompts.StoryRepairSystemPrompt()},
 				{Role: ai.RoleUser, Content: prompts.StoryRepairUserPrompt(resp.Content, lastErr.Error(), sc.initialBrief, previousDraftJSON)},
-			},
+			}),
 			Temperature:    0.2,
 			MaxTokens:      sc.genCfg.MaxTokens,
 			ResponseFormat: repairFormats[attempt],
@@ -635,6 +666,17 @@ func (sc *StoryCreator) requestStoryDefinitionWithOptions(ctx context.Context, m
 	}
 
 	return nil, fmt.Errorf("invalid story definition returned by AI: %w", lastErr)
+}
+
+func (sc *StoryCreator) withPreferredLanguageInstruction(messages []ai.Message) []ai.Message {
+	if sc.preferredLanguage == "" {
+		return messages
+	}
+	instruction := ai.Message{
+		Role:    ai.RoleSystem,
+		Content: fmt.Sprintf("Unless the user's brief explicitly requests another language, write every human-readable story field in BCP-47 language %s. Keep JSON keys unchanged.", sc.preferredLanguage),
+	}
+	return append([]ai.Message{instruction}, messages...)
 }
 
 func (sc *StoryCreator) telemetryContext(ctx context.Context, stage, parentRunID string) context.Context {

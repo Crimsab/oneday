@@ -45,7 +45,7 @@ describe("messageAlternativesForCommit", () => {
     expect(alternatives.currentIndex).toBe(-1);
   });
 
-  it("places rollback on the player prompt and branch versions on the narrator result", () => {
+  it("places rollback and branch versions beside the narrator result", () => {
     const timeline = abcTimeline();
     const messages = [
       message(10, "user", "commit-c"),
@@ -53,8 +53,7 @@ describe("messageAlternativesForCommit", () => {
     ];
 
     expect([...timelineControlPlacements(messages, timeline)]).toEqual([
-      [10, { restore: true, switcher: false }],
-      [11, { restore: false, switcher: true }],
+      [11, { restore: true, switcher: true }],
     ]);
   });
 
@@ -67,8 +66,7 @@ describe("messageAlternativesForCommit", () => {
     ];
 
     expect([...timelineControlPlacements(messages, timeline)]).toEqual([
-      [10, { restore: true, switcher: false }],
-      [12, { restore: false, switcher: true }],
+      [12, { restore: true, switcher: true }],
     ]);
   });
 
@@ -83,8 +81,7 @@ describe("messageAlternativesForCommit", () => {
     ];
 
     expect([...timelineControlPlacements(messages, timeline)]).toEqual([
-      [20, { restore: true, switcher: false }],
-      [21, { restore: false, switcher: true }],
+      [21, { restore: true, switcher: true }],
     ]);
   });
 

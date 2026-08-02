@@ -7,7 +7,7 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -17,19 +17,45 @@ use url::Url;
 pub const MAX_START_ATTEMPTS: usize = 2;
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(5);
 const MAX_LOG_BYTES: u64 = 256 * 1024;
+const GATEWAY_PORT_FILE: &str = "gateway-port";
 
 pub struct LocalProcess {
     child: Child,
     containment: ProcessContainment,
     logs: Vec<thread::JoinHandle<()>>,
+    imagegen_bridge: Option<ImagegenBridgeProcess>,
+    gateway_log_path: PathBuf,
     pub endpoint: Url,
     pub browser_url: Url,
     _credentials: LaunchCredentials,
 }
 
+impl LocalProcess {
+    pub fn pid(&self) -> u32 {
+        self.child.id()
+    }
+
+    pub fn exit_status(&mut self) -> Result<Option<ExitStatus>, String> {
+        self.child
+            .try_wait()
+            .map_err(|error| format!("Could not inspect the local OneDay gateway: {error}"))
+    }
+
+    pub fn gateway_log_path(&self) -> &Path {
+        &self.gateway_log_path
+    }
+}
+
+struct ImagegenBridgeProcess {
+    child: Child,
+    containment: ProcessContainment,
+    logs: Vec<thread::JoinHandle<()>>,
+}
+
 struct LaunchCredentials {
     bearer: LaunchSecret,
     bootstrap: LaunchSecret,
+    imagegen_bridge: LaunchSecret,
 }
 
 impl LaunchCredentials {
@@ -37,6 +63,7 @@ impl LaunchCredentials {
         Ok(Self {
             bearer: LaunchSecret::generate()?,
             bootstrap: LaunchSecret::generate()?,
+            imagegen_bridge: LaunchSecret::generate()?,
         })
     }
 
@@ -53,6 +80,7 @@ impl LaunchCredentials {
         vec![
             self.bearer.environment_value(),
             self.bootstrap.environment_value(),
+            self.imagegen_bridge.environment_value(),
         ]
     }
 }
@@ -63,6 +91,8 @@ struct LaunchPlan {
     profile_dir: PathBuf,
     gateway_bin: PathBuf,
     engine_bin: PathBuf,
+    imagegen_bridge_bin: Option<PathBuf>,
+    imagegen_bridge_endpoint: Option<Url>,
     static_dir: PathBuf,
     codex: Option<codex_component::CodexRuntime>,
     claude: Option<claude_component::ClaudeRuntime>,
@@ -75,24 +105,29 @@ impl LaunchPlan {
         codex: Option<codex_component::CodexRuntime>,
         claude: Option<claude_component::ClaudeRuntime>,
     ) -> Result<Self, String> {
-        let listener = TcpListener::bind("127.0.0.1:0")
-            .map_err(|error| format!("Could not reserve a loopback port: {error}"))?;
-        let address = listener
-            .local_addr()
-            .map_err(|error| format!("Could not inspect the loopback port: {error}"))?;
-        // The gateway only accepts an address rather than a pre-bound socket.
-        // Releasing this immediately keeps the endpoint dynamically assigned;
-        // startup retries if another local process wins the short race.
-        drop(listener);
-        let endpoint = Url::parse(&format!("http://127.0.0.1:{}/", address.port()))
-            .map_err(|error| format!("Could not create the local endpoint: {error}"))?;
-        let (gateway_bin, engine_bin) = bundled_bins(&resource_dir);
+        // Keep the standalone web origin stable across launches. Browser
+        // preferences are origin-scoped, so a fresh random port on every
+        // start made locale and UI settings appear to reset.
+        let endpoint = reserve_profile_loopback_endpoint(&profile_dir)?;
+        let (gateway_bin, engine_bin, bundled_imagegen_bridge) = bundled_bins(&resource_dir);
+        let imagegen_bridge_bin = developer_imagegen_bridge_binary().or_else(|| {
+            bundled_imagegen_bridge
+                .is_file()
+                .then_some(bundled_imagegen_bridge)
+        });
+        let imagegen_bridge_endpoint = if codex.is_some() && imagegen_bridge_bin.is_some() {
+            Some(reserve_loopback_endpoint()?)
+        } else {
+            None
+        };
         let static_dir = resource_dir.join("gateway/web/dist");
         let plan = Self {
             endpoint,
             profile_dir,
             gateway_bin,
             engine_bin,
+            imagegen_bridge_bin,
+            imagegen_bridge_endpoint,
             static_dir,
             codex,
             claude,
@@ -104,7 +139,7 @@ impl LaunchPlan {
     fn validate(&self) -> Result<(), String> {
         if !self.gateway_bin.is_file() || !self.engine_bin.is_file() {
             return Err(
-                "This standalone build is missing its version-matched OneDay sidecars.".into(),
+                "This portable build is incomplete: keep oneday-desktop.exe together with the binaries folder and extract the complete OneDay package before starting it.".into(),
             );
         }
         if !self.static_dir.join("index.html").is_file() {
@@ -115,7 +150,11 @@ impl LaunchPlan {
         Ok(())
     }
 
-    fn command(&self, credentials: &LaunchCredentials) -> Result<Command, String> {
+    fn command(
+        &self,
+        credentials: &LaunchCredentials,
+        imagegen_bridge_active: bool,
+    ) -> Result<Command, String> {
         let config_path = config::create_initial_standalone_config(&self.profile_dir)?;
         let mut command = Command::new(&self.gateway_bin);
         command
@@ -135,10 +174,79 @@ impl LaunchPlan {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .current_dir(&self.profile_dir);
+        if imagegen_bridge_active {
+            let endpoint = self.imagegen_bridge_endpoint.as_ref().ok_or_else(|| {
+                "The local image component was marked active without an endpoint.".to_string()
+            })?;
+            command
+                .env("ONEDAY_IMAGEGEN_BRIDGE_URL", endpoint.as_str())
+                .env(
+                    "ONEDAY_IMAGEGEN_BRIDGE_TOKEN",
+                    credentials.imagegen_bridge.environment_value(),
+                );
+        } else {
+            // An explicit blank value is intentional. It prevents a saved
+            // remote bridge URL or the historical localhost default from
+            // pretending that image generation is available in this local
+            // profile when its managed component is not running.
+            command
+                .env("ONEDAY_IMAGEGEN_BRIDGE_URL", "")
+                .env("ONEDAY_IMAGEGEN_BRIDGE_TOKEN", "");
+        }
+        self.configure_codex_environment(&mut command)?;
+        containment::configure(&mut command);
+        Ok(command)
+    }
+
+    fn imagegen_bridge_command(
+        &self,
+        credentials: &LaunchCredentials,
+    ) -> Result<Option<Command>, String> {
+        let (Some(binary), Some(endpoint), Some(_)) = (
+            self.imagegen_bridge_bin.as_ref(),
+            self.imagegen_bridge_endpoint.as_ref(),
+            self.codex.as_ref(),
+        ) else {
+            return Ok(None);
+        };
+        let config_path = config::create_imagegen_bridge_config(&self.profile_dir)?;
+        let address = endpoint
+            .socket_addrs(|| None)
+            .map_err(|error| {
+                format!("Could not resolve the local image component endpoint: {error}")
+            })?
+            .into_iter()
+            .next()
+            .ok_or_else(|| "Could not resolve the local image component endpoint.".to_string())?;
+        let mut command = Command::new(binary);
+        command
+            .arg("--config")
+            .arg(config_path)
+            .arg("serve")
+            .arg("--bind")
+            .arg(address.to_string())
+            .env(
+                "ONEDAY_IMAGEGEN_BRIDGE_TOKEN",
+                credentials.imagegen_bridge.environment_value(),
+            )
+            .env("IMAGEGEN_BRIDGE_NO_UPDATE_CHECK", "1")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .current_dir(&self.profile_dir);
+        self.configure_codex_environment(&mut command)?;
+        containment::configure(&mut command);
+        Ok(Some(command))
+    }
+
+    fn configure_codex_environment(&self, command: &mut Command) -> Result<(), String> {
         if let Some(codex) = &self.codex {
             if let Some(home) = &codex.home {
                 command.env("CODEX_HOME", home);
                 command.env_remove("OPENAI_API_KEY");
+            }
+            if let Some(pathext) = &codex.pathext {
+                command.env("PATHEXT", pathext);
             }
         }
         let component_paths = [
@@ -155,8 +263,7 @@ impl LaunchPlan {
         if !component_paths.is_empty() {
             command.env("PATH", codex_component::prepend_paths(&component_paths)?);
         }
-        containment::configure(&mut command);
-        Ok(command)
+        Ok(())
     }
 
     fn arguments(&self, config_path: &Path) -> Result<Vec<String>, String> {
@@ -185,7 +292,68 @@ impl LaunchPlan {
     }
 }
 
-pub fn start(app: &AppHandle, profile_id: &str) -> Result<LocalProcess, String> {
+fn reserve_loopback_endpoint() -> Result<Url, String> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|error| format!("Could not reserve a loopback port: {error}"))?;
+    let address = listener
+        .local_addr()
+        .map_err(|error| format!("Could not inspect the loopback port: {error}"))?;
+    // The gateway and image component accept an address rather than a
+    // pre-bound socket. Releasing this immediately keeps the endpoint dynamic;
+    // the caller retries startup if another local process wins the short race.
+    drop(listener);
+    Url::parse(&format!("http://127.0.0.1:{}/", address.port()))
+        .map_err(|error| format!("Could not create the local endpoint: {error}"))
+}
+
+fn reserve_profile_loopback_endpoint(profile_dir: &Path) -> Result<Url, String> {
+    fs::create_dir_all(profile_dir)
+        .map_err(|error| format!("Could not create the standalone profile directory: {error}"))?;
+    restrict_directory(profile_dir)?;
+    let port_path = profile_dir.join(GATEWAY_PORT_FILE);
+
+    if let Ok(saved) = fs::read_to_string(&port_path) {
+        if let Ok(port) = saved.trim().parse::<u16>() {
+            if port >= 1024 {
+                if let Ok(listener) = TcpListener::bind(("127.0.0.1", port)) {
+                    drop(listener);
+                    return Url::parse(&format!("http://127.0.0.1:{port}/"))
+                        .map_err(|error| format!("Could not restore the local endpoint: {error}"));
+                }
+            }
+        }
+    }
+
+    let endpoint = reserve_loopback_endpoint()?;
+    let port = endpoint
+        .port()
+        .ok_or_else(|| "Could not inspect the reserved loopback port.".to_string())?;
+    let mut temporary = tempfile::NamedTempFile::new_in(profile_dir)
+        .map_err(|error| format!("Could not stage the local endpoint: {error}"))?;
+    restrict_file(temporary.path())?;
+    temporary
+        .write_all(format!("{port}\n").as_bytes())
+        .and_then(|()| temporary.as_file().sync_all())
+        .map_err(|error| format!("Could not save the local endpoint: {error}"))?;
+    temporary
+        .persist(&port_path)
+        .map_err(|error| format!("Could not save the local endpoint: {}", error.error))?;
+    Ok(endpoint)
+}
+
+#[cfg(debug_assertions)]
+fn developer_imagegen_bridge_binary() -> Option<PathBuf> {
+    std::env::var_os("ONEDAY_IMAGEGEN_BRIDGE_BIN")
+        .map(PathBuf::from)
+        .filter(|path| path.is_file())
+}
+
+#[cfg(not(debug_assertions))]
+fn developer_imagegen_bridge_binary() -> Option<PathBuf> {
+    None
+}
+
+pub async fn start(app: &AppHandle, profile_id: &str) -> Result<LocalProcess, String> {
     let profile_dir = config::standalone_profile_dir(app, profile_id)?;
     let resource_dir = app
         .path()
@@ -198,11 +366,115 @@ pub fn start(app: &AppHandle, profile_id: &str) -> Result<LocalProcess, String> 
         codex_component::runtime(app)?,
         claude_component::runtime(),
     )?;
-    let log_path = prepare_log_path(&plan.profile_dir)?;
-    let mut child = plan
-        .command(&credentials)?
+    let secrets = credentials.redaction_values();
+    let mut imagegen_bridge = match start_imagegen_bridge(&plan, &credentials, &secrets).await {
+        Ok(process) => process,
+        Err(error) => {
+            record_imagegen_bridge_failure(&plan.profile_dir, &error);
+            None
+        }
+    };
+    let log_path = match prepare_log_path(&plan.profile_dir, "gateway") {
+        Ok(path) => path,
+        Err(error) => {
+            if let Some(bridge) = imagegen_bridge.take() {
+                let _ = stop_imagegen_bridge(bridge);
+            }
+            return Err(error);
+        }
+    };
+    let browser_url = match credentials.browser_url(&plan.endpoint) {
+        Ok(url) => url,
+        Err(error) => {
+            if let Some(bridge) = imagegen_bridge.take() {
+                let _ = stop_imagegen_bridge(bridge);
+            }
+            return Err(error);
+        }
+    };
+    let mut gateway_command = match plan.command(&credentials, imagegen_bridge.is_some()) {
+        Ok(command) => command,
+        Err(error) => {
+            if let Some(bridge) = imagegen_bridge.take() {
+                let _ = stop_imagegen_bridge(bridge);
+            }
+            return Err(error);
+        }
+    };
+    let mut child = match gateway_command.spawn() {
+        Ok(child) => child,
+        Err(error) => {
+            if let Some(bridge) = imagegen_bridge.take() {
+                let _ = stop_imagegen_bridge(bridge);
+            }
+            return Err(format!("Could not start the local OneDay gateway: {error}"));
+        }
+    };
+    let containment = match ProcessContainment::attach(&child) {
+        Ok(containment) => containment,
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            if let Some(bridge) = imagegen_bridge.take() {
+                let _ = stop_imagegen_bridge(bridge);
+            }
+            return Err(error);
+        }
+    };
+    let logs = capture_logs(&mut child, log_path.clone(), secrets);
+    Ok(LocalProcess {
+        child,
+        containment,
+        logs,
+        imagegen_bridge,
+        gateway_log_path: log_path,
+        endpoint: plan.endpoint,
+        browser_url,
+        _credentials: credentials,
+    })
+}
+
+fn record_imagegen_bridge_failure(profile_dir: &Path, error: &str) {
+    let Ok(log_path) = prepare_log_path(profile_dir, "imagegen-bridge") else {
+        return;
+    };
+    append_bounded_log(
+        &log_path,
+        format!("[OneDay] Local image component is unavailable: {error}\n").as_bytes(),
+    );
+}
+
+pub fn stop(mut process: LocalProcess) -> Result<(), String> {
+    let gateway = stop_managed_process(
+        &mut process.child,
+        &process.containment,
+        &mut process.logs,
+        "local OneDay gateway",
+    );
+    let bridge = match process.imagegen_bridge {
+        Some(bridge) => stop_imagegen_bridge(bridge),
+        None => Ok(()),
+    };
+    gateway.and(bridge)
+}
+
+async fn start_imagegen_bridge(
+    plan: &LaunchPlan,
+    credentials: &LaunchCredentials,
+    secrets: &[String],
+) -> Result<Option<ImagegenBridgeProcess>, String> {
+    let Some(mut command) = plan.imagegen_bridge_command(credentials)? else {
+        return Ok(None);
+    };
+    let endpoint = plan
+        .imagegen_bridge_endpoint
+        .as_ref()
+        .expect("image component command has an endpoint")
+        .clone();
+    let log_path = prepare_log_path(&plan.profile_dir, "imagegen-bridge")?;
+    let mut child = command
         .spawn()
-        .map_err(|error| format!("Could not start the local OneDay gateway: {error}"))?;
+        .map_err(|error| format!("Could not start the local image component: {error}"))?;
     let containment = match ProcessContainment::attach(&child) {
         Ok(containment) => containment,
         Err(error) => {
@@ -211,52 +483,105 @@ pub fn start(app: &AppHandle, profile_id: &str) -> Result<LocalProcess, String> 
             return Err(error);
         }
     };
-    let browser_url = credentials.browser_url(&plan.endpoint)?;
-    let logs = capture_logs(&mut child, log_path, credentials.redaction_values());
-    Ok(LocalProcess {
+    let logs = capture_logs(&mut child, log_path, secrets.to_vec());
+    let mut process = ImagegenBridgeProcess {
         child,
         containment,
         logs,
-        endpoint: plan.endpoint,
-        browser_url,
-        _credentials: credentials,
-    })
+    };
+    if let Err(error) = wait_for_imagegen_bridge(&mut process.child, &endpoint).await {
+        let _ = stop_managed_process(
+            &mut process.child,
+            &process.containment,
+            &mut process.logs,
+            "local image component",
+        );
+        return Err(error);
+    }
+    Ok(Some(process))
 }
 
-pub fn stop(mut process: LocalProcess) -> Result<(), String> {
-    process.containment.request_graceful_stop()?;
+async fn wait_for_imagegen_bridge(child: &mut Child, endpoint: &Url) -> Result<(), String> {
+    const RETRY_INTERVAL: Duration = Duration::from_millis(75);
+    const STARTUP_WAIT: Duration = Duration::from_secs(12);
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_millis(500))
+        .timeout(Duration::from_millis(750))
+        .build()
+        .map_err(|error| format!("Could not prepare the local image component check: {error}"))?;
+    let live = endpoint
+        .join("health/live")
+        .map_err(|error| format!("Could not create the local image component check: {error}"))?;
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|error| format!("Could not inspect the local image component: {error}"))?
+        {
+            return Err(format!(
+                "The local image component stopped during startup ({status}). Check its private diagnostics log."
+            ));
+        }
+        if let Ok(response) = client.get(live.clone()).send().await {
+            if response.status().is_success() {
+                return Ok(());
+            }
+        }
+        if started.elapsed() >= STARTUP_WAIT {
+            return Err(
+                "The local image component did not become ready. Check the private diagnostics log and restart OneDay."
+                    .into(),
+            );
+        }
+        tokio::time::sleep(RETRY_INTERVAL).await;
+    }
+}
+
+fn stop_imagegen_bridge(mut process: ImagegenBridgeProcess) -> Result<(), String> {
+    stop_managed_process(
+        &mut process.child,
+        &process.containment,
+        &mut process.logs,
+        "local image component",
+    )
+}
+
+fn stop_managed_process(
+    child: &mut Child,
+    containment: &ProcessContainment,
+    logs: &mut Vec<thread::JoinHandle<()>>,
+    label: &str,
+) -> Result<(), String> {
+    containment.request_graceful_stop()?;
     let deadline = Instant::now() + SHUTDOWN_WAIT;
     while Instant::now() < deadline {
-        if process
-            .child
+        if child
             .try_wait()
-            .map_err(|error| format!("Could not inspect local gateway shutdown: {error}"))?
+            .map_err(|error| format!("Could not inspect {label} shutdown: {error}"))?
             .is_some()
         {
-            // The gateway can exit before a descendant it started. The
-            // process group/job remains ours until this value is dropped, so
-            // clear any stragglers before returning a successful shutdown.
-            process.containment.force_stop()?;
-            join_logs(process.logs);
+            // A process can exit before a descendant it started. The process
+            // group/job remains ours, so clear any stragglers before returning.
+            containment.force_stop()?;
+            join_logs(std::mem::take(logs));
             return Ok(());
         }
         thread::sleep(Duration::from_millis(50));
     }
-    process.containment.force_stop()?;
-    process
-        .child
+    containment.force_stop()?;
+    child
         .wait()
-        .map_err(|error| format!("Could not confirm local gateway shutdown: {error}"))?;
-    join_logs(process.logs);
+        .map_err(|error| format!("Could not confirm {label} shutdown: {error}"))?;
+    join_logs(std::mem::take(logs));
     Ok(())
 }
 
-fn prepare_log_path(profile_dir: &Path) -> Result<PathBuf, String> {
+fn prepare_log_path(profile_dir: &Path, component: &str) -> Result<PathBuf, String> {
     let logs_dir = profile_dir.join("logs");
     fs::create_dir_all(&logs_dir)
         .map_err(|error| format!("Could not create standalone diagnostics directory: {error}"))?;
     restrict_directory(&logs_dir)?;
-    let log_path = logs_dir.join("gateway.log");
+    let log_path = logs_dir.join(format!("{component}.log"));
     if !log_path.exists() {
         let file = create_private_file(&log_path, true)?;
         drop(file);
@@ -483,7 +808,7 @@ fn restrict_directory(_path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn bundled_bins(resource_dir: &Path) -> (PathBuf, PathBuf) {
+fn bundled_bins(resource_dir: &Path) -> (PathBuf, PathBuf, PathBuf) {
     let extension = if cfg!(windows) { ".exe" } else { "" };
     let version = env!("CARGO_PKG_VERSION");
     let target = env!("ONEDAY_TARGET_TRIPLE");
@@ -492,6 +817,7 @@ fn bundled_bins(resource_dir: &Path) -> (PathBuf, PathBuf) {
             "binaries/oneday-gateway-v{version}-{target}{extension}"
         )),
         resource_dir.join(format!("binaries/oneday-v{version}-{target}{extension}")),
+        resource_dir.join(format!("binaries/imagegen-bridge-{target}{extension}")),
     )
 }
 
@@ -510,7 +836,7 @@ mod tests {
             "missing sidecars should fail safely before launch"
         );
 
-        let (gateway, engine) = bundled_bins(&root.join("resources"));
+        let (gateway, engine, _) = bundled_bins(&root.join("resources"));
         let static_index = root.join("resources/gateway/web/dist/index.html");
         fs::create_dir_all(gateway.parent().expect("gateway parent")).expect("bin dir");
         fs::create_dir_all(static_index.parent().expect("static parent")).expect("static dir");
@@ -530,7 +856,9 @@ mod tests {
         assert!(!arguments
             .iter()
             .any(|argument| argument == &credentials.bootstrap.environment_value()));
-        let command = plan.command(&credentials).expect("standalone command");
+        let command = plan
+            .command(&credentials, false)
+            .expect("standalone command");
         let gateway_url = command
             .get_envs()
             .find(|(name, _)| *name == "ONEDAY_GATEWAY_URL")
@@ -546,6 +874,12 @@ mod tests {
             bootstrap,
             std::ffi::OsStr::new(&credentials.bootstrap.environment_value())
         );
+        let image_bridge_url = command
+            .get_envs()
+            .find(|(name, _)| *name == "ONEDAY_IMAGEGEN_BRIDGE_URL")
+            .and_then(|(_, value)| value)
+            .expect("explicit image bridge disable");
+        assert_eq!(image_bridge_url, std::ffi::OsStr::new(""));
         assert_ne!(
             credentials.bearer.environment_value(),
             credentials.bootstrap.environment_value()
@@ -566,7 +900,7 @@ mod tests {
     #[test]
     fn bundled_sidecars_follow_the_desktop_package_version() {
         let root = Path::new("/resources");
-        let (gateway, engine) = bundled_bins(root);
+        let (gateway, engine, imagegen_bridge) = bundled_bins(root);
         let version = env!("CARGO_PKG_VERSION");
         let target = env!("ONEDAY_TARGET_TRIPLE");
         assert!(gateway
@@ -575,12 +909,29 @@ mod tests {
         assert!(engine
             .to_string_lossy()
             .contains(&format!("-v{version}-{target}")));
+        assert!(imagegen_bridge
+            .to_string_lossy()
+            .contains(&format!("imagegen-bridge-{target}")));
+    }
+
+    #[test]
+    fn standalone_profile_reuses_its_web_origin() {
+        let temporary = tempfile::tempdir().expect("profile root");
+        let first = reserve_profile_loopback_endpoint(temporary.path()).expect("first endpoint");
+        let second = reserve_profile_loopback_endpoint(temporary.path()).expect("second endpoint");
+        assert_eq!(first, second);
+        assert_eq!(
+            fs::read_to_string(temporary.path().join(GATEWAY_PORT_FILE))
+                .expect("saved port")
+                .trim(),
+            first.port().expect("port").to_string()
+        );
     }
 
     #[test]
     fn diagnostics_are_bounded_and_redact_the_launch_secret() {
         let temporary = tempfile::tempdir().expect("profile root");
-        let log_path = prepare_log_path(temporary.path()).expect("log path");
+        let log_path = prepare_log_path(temporary.path(), "gateway").expect("log path");
         let mut redactor = SecretRedactor::new(vec!["top-secret".into(), "other-secret".into()]);
         append_bounded_log(&log_path, &redactor.push(b"token=top-"));
         append_bounded_log(&log_path, &redactor.push(b"secret other-"));

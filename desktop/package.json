@@ -1,10 +1,12 @@
 {
   "name": "oneday-desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
+    "dev:desktop": "bun run tauri dev --config src-tauri/tauri.dev.conf.json",
+    "build:debug-ui": "bun run tauri build --debug --no-bundle --config src-tauri/tauri.dev.conf.json",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "test:e2e": "playwright test",

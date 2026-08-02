@@ -30,6 +30,20 @@ export function supportsBrowserTranslation(): boolean {
   return typeof globalThis !== "undefined" && Boolean((globalThis as BuiltInAiGlobal).Translator);
 }
 
+export async function browserTranslationAvailability(sourceLanguage: string, targetLanguage: string): Promise<TranslationAvailability> {
+  const source = primaryLanguage(sourceLanguage);
+  const target = primaryLanguage(targetLanguage);
+  if (!source || !target) return "unavailable";
+  if (source === target) return "available";
+  const factory = (globalThis as BuiltInAiGlobal).Translator;
+  if (!factory) return "unavailable";
+  try {
+    return await factory.availability({ sourceLanguage: source, targetLanguage: target });
+  } catch {
+    return "unavailable";
+  }
+}
+
 export async function translateInBrowser({
   text,
   sourceLanguage,
@@ -107,7 +121,13 @@ export function primaryLanguage(value: string): string {
     spanish: "es", spagnolo: "es", portuguese: "pt", portoghese: "pt",
     japanese: "ja", giapponese: "ja", korean: "ko", coreano: "ko", chinese: "zh", cinese: "zh",
   };
-  return aliases[normalized] || normalized.split("-")[0] || "";
+  const candidate = aliases[normalized] || normalized;
+  if (!candidate) return "";
+  try {
+    return Intl.getCanonicalLocales(candidate)[0]?.split("-")[0]?.toLowerCase() || "";
+  } catch {
+    return "";
+  }
 }
 
 export function clearTranslationCache(): void {

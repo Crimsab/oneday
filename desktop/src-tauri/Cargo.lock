@@ -2478,9 +2478,10 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "oneday-desktop"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "flate2",
  "getrandom 0.3.4",
  "libc",
@@ -2494,12 +2495,14 @@ dependencies = [
  "tauri-plugin-autostart",
  "tauri-plugin-dialog",
  "tauri-plugin-notification",
+ "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tempfile",
  "tokio",
  "tokio-util",
  "url",
  "windows-sys 0.59.0",
+ "winreg 0.55.0",
  "zip 2.4.2",
 ]
 
@@ -4086,6 +4089,22 @@ dependencies = [
  "thiserror 2.0.18",
  "time",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-single-instance"
+version = "2.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3214becf9ef5783c0ae99a3bb25adf5353a7a16ebf53e74b909e29205735c6c"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tauri",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "windows-sys 0.60.2",
+ "zbus",
 ]
 
 [[package]]

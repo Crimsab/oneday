@@ -135,7 +135,7 @@ export function timelineControlPlacements(
       if (!latestUser && message.role === "user") latestUser = message;
       if (!latestAssistant && message.role === "assistant") latestAssistant = message;
     }
-    if (canRestore) place(latestUser ?? latestAssistant, "restore");
+    if (canRestore) place(latestAssistant ?? latestUser, "restore");
     if (canSwitch) place(latestAssistant ?? latestUser, "switcher");
   }
   return placements;

@@ -140,7 +140,7 @@ func TestCommandDescriptorsCoverBrowserCriticalCommands(t *testing.T) {
 		byID[descriptor.ID] = descriptor
 	}
 
-	for _, id := range []string{"talk", "btw", "guide", "narrator", "advance", "timeskip", "save", "load", "delete-save"} {
+	for _, id := range []string{"talk", "btw", "guide", "narrator", "advance", "timeskip", "save", "load", "retry", "delete-save"} {
 		if _, ok := byID[id]; !ok {
 			t.Fatalf("missing command descriptor %q", id)
 		}

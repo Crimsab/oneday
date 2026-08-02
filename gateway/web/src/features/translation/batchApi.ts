@@ -19,7 +19,7 @@ async function batchList<T>(path: string): Promise<T[]> {
 }
 
 export const listTranslationJobs = (storyId: string) => batchList<TranslationJob>(`${root(storyId)}/jobs`);
-export const estimateTranslationJob = (storyId: string, request: TranslationJobRequest) => batchRequest<TranslationEstimate>(`${root(storyId)}/jobs/estimate`, { method: "POST", body: JSON.stringify(request) });
+export const estimateTranslationJob = (storyId: string, request: TranslationJobRequest, signal?: AbortSignal) => batchRequest<TranslationEstimate>(`${root(storyId)}/jobs/estimate`, { method: "POST", body: JSON.stringify(request), signal });
 export const createTranslationJob = (storyId: string, request: TranslationJobRequest) => batchRequest<TranslationJob>(`${root(storyId)}/jobs`, { method: "POST", body: JSON.stringify(request) });
 export const runTranslationJobAction = (storyId: string, jobId: string, action: "pause" | "resume" | "cancel" | "retry") => batchRequest<TranslationJob>(`${root(storyId)}/jobs/${encodeURIComponent(jobId)}/${action}`, { method: "POST" });
 export const deleteTranslationJob = (storyId: string, jobId: string, deleteTranslations: boolean) => batchRequest<void>(`${root(storyId)}/jobs/${encodeURIComponent(jobId)}?delete_translations=${deleteTranslations}`, { method: "DELETE" });
@@ -28,3 +28,4 @@ export const completeBrowserTranslationItem = (storyId: string, jobId: string, i
 export const listTranslationGlossary = (storyId: string) => batchList<TranslationGlossaryEntry>(`${root(storyId)}/glossary`);
 export const createTranslationGlossary = (storyId: string, entry: Omit<TranslationGlossaryEntry, "id">) => batchRequest<TranslationGlossaryEntry>(`${root(storyId)}/glossary`, { method: "POST", body: JSON.stringify(entry) });
 export const deleteTranslationGlossary = (storyId: string, entryId: string) => batchRequest<void>(`${root(storyId)}/glossary/${encodeURIComponent(entryId)}`, { method: "DELETE" });
+export const translateTextWithAi = (storyId: string, request: { text: string; source_language: string; target_language: string; provider: string; model: string; style?: "faithful" | "natural" | "literary" }) => batchRequest<{ translated_text: string }>(`${root(storyId)}/text`, { method: "POST", body: JSON.stringify(request) });

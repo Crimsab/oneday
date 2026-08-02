@@ -5,15 +5,31 @@ declare global {
   interface Window { __TAURI_INTERNALS__: Record<string, unknown>; __QA_COMMANDS__: string[]; }
 }
 
-async function mockDesktop(page: Page, options: { updateAvailable?: boolean } = {}) {
-  await page.addInitScript(({ updateAvailable }) => {
+async function mockDesktop(page: Page, options: { codexMissing?: boolean; codexAppOnly?: boolean; updateAvailable?: boolean } = {}) {
+  await page.addInitScript(({ codexMissing, codexAppOnly, updateAvailable }) => {
     window.__QA_COMMANDS__ = [];
+    const installedCodex = {
+      available: true,
+      state: "ready",
+      source: "global",
+      version: "codex-cli 0.146.0",
+      authenticated: true,
+      desktopAppDetected: true,
+      legacyCliDetected: false,
+      managedVersion: "0.146.0",
+      message: "Codex is installed globally for this Windows user and signed in.",
+      launcher: "native executable",
+      diagnosticShell: "powershell",
+      diagnosticCommand: "Get-Command codex,codex-cli -All -ErrorAction SilentlyContinue; codex --version; codex login status",
+      installScope: "global",
+    };
     const values: Record<string, unknown> = {
       desktop_state: {
         profile: { mode: "standalone", profileId: "qa-profile" },
         serverUrl: "http://127.0.0.1:38111/",
         lifecycle: { state: "ready", endpoint: "http://127.0.0.1:38111/" },
         startedMinimized: false,
+        startupWarning: null,
         updater: {
           enabled: true,
           currentVersion: "0.0.0",
@@ -22,14 +38,24 @@ async function mockDesktop(page: Page, options: { updateAvailable?: boolean } = 
         },
       },
       list_remote_stories: [{ id: "story-1", name: "The Ashen Harbor" }],
-      codex_status: {
-        available: true,
-        source: "system",
-        version: "codex-cli 0.146.0",
-        authenticated: true,
+      codex_status: codexMissing ? {
+        available: false,
+        state: codexAppOnly ? "app_only" : "missing",
+        source: "missing",
+        version: null,
+        authenticated: false,
+        desktopAppDetected: Boolean(codexAppOnly),
+        legacyCliDetected: false,
         managedVersion: "0.146.0",
-        message: "Codex is installed and signed in with a local subscription session.",
-      },
+        message: codexAppOnly
+          ? "The Codex app is installed, but Windows does not expose its internal agent as the codex command. Add the verified official CLI."
+          : "Neither the Codex app nor the official CLI was found. OneDay can install the verified CLI globally and add it to your user PATH.",
+        launcher: null,
+        diagnosticShell: "powershell",
+        diagnosticCommand: "Get-Command codex,codex-cli -All -ErrorAction SilentlyContinue; codex --version; codex login status",
+        installScope: "global",
+      } : installedCodex,
+      install_codex_component: installedCodex,
       claude_status: {
         available: true,
         version: "2.1.39",
@@ -54,7 +80,7 @@ async function mockDesktop(page: Page, options: { updateAvailable?: boolean } = 
       convertFileSrc: (value: string) => value,
       metadata: { currentWindow: { label: "settings" }, currentWebview: { label: "settings" } },
     };
-  }, { updateAvailable: Boolean(options.updateAvailable) });
+  }, { codexMissing: Boolean(options.codexMissing), codexAppOnly: Boolean(options.codexAppOnly), updateAvailable: Boolean(options.updateAvailable) });
 }
 
 test("shows every provider and a separate signed update workflow without accessibility violations", async ({ page }, testInfo) => {
@@ -64,7 +90,21 @@ test("shows every provider and a separate signed update workflow without accessi
   await expect(page.getByRole("heading", { name: "Codex" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Claude Code" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "OpenRouter" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "LiteLLM compatible" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "OpenAI-compatible" })).toBeVisible();
+  await expect(page.getByText("Codex diagnostics", { exact: true })).toBeVisible();
+  await expect(page.locator("#codex-diagnostic-command")).toBeHidden();
+  await page.getByText("Codex diagnostics", { exact: true }).click();
+  await expect(page.locator("#codex-diagnostic-command")).toContainText("Get-Command codex,codex-cli");
+  await expect(page.getByText("PowerShell", { exact: true })).toBeVisible();
+  await expect(page.locator("select")).toHaveCount(0);
+  await page.getByText("Story import and export", { exact: true }).click();
+  const storyPicker = page.getByRole("combobox", { name: "Story to export" });
+  await expect(storyPicker).toBeEnabled();
+  await storyPicker.click();
+  await expect(page.getByRole("option", { name: "The Ashen Harbor" })).toBeVisible();
+  await page.getByRole("option", { name: "The Ashen Harbor" }).click();
+  await expect(page.getByRole("button", { name: "Export complete ZIP…" })).toBeEnabled();
+  await page.getByText("Story import and export", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Install and restart" })).toBeVisible();
   await expect(page.getByText("Simpler setup, provider parity, and safer updates.")).toBeVisible();
 
@@ -109,4 +149,36 @@ test("checks automatically but installs only after an explicit click", async ({ 
   expect(await page.evaluate(() => window.__QA_COMMANDS__.includes("install_update"))).toBe(false);
   await page.getByRole("button", { name: "Install and restart" }).click();
   await expect.poll(() => page.evaluate(() => window.__QA_COMMANDS__.includes("install_update"))).toBe(true);
+});
+
+test("checks the local service before reopening the story window", async ({ page }) => {
+  await mockDesktop(page);
+  await page.goto("/");
+  await page.getByRole("button", { name: "Open OneDay" }).click();
+  await expect.poll(() => page.evaluate(() => window.__QA_COMMANDS__.includes("show_story_window"))).toBe(true);
+  await expect(page.getByText("OneDay is running privately on this device.")).toBeVisible();
+});
+
+test("explains and explicitly installs the verified Codex CLI globally", async ({ page }, testInfo) => {
+  await mockDesktop(page, { codexMissing: true });
+  await page.goto("/");
+  await expect(page.getByText(/install it globally for this Windows user/i)).toBeVisible();
+  const install = page.getByRole("button", { name: "Install recommended" });
+  await expect(install).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("desktop-codex-before-install.png"), fullPage: true });
+  await install.click();
+  await expect.poll(() => page.evaluate(() => window.__QA_COMMANDS__.includes("install_codex_component"))).toBe(true);
+  await expect(page.getByText(/global CLI/i)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("desktop-codex-after-install.png"), fullPage: true });
+});
+
+test("distinguishes the Codex app from the CLI and recommends the missing CLI", async ({ page }, testInfo) => {
+  await mockDesktop(page, { codexMissing: true, codexAppOnly: true });
+  await page.goto("/");
+  const codex = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Codex" }) });
+  await expect(codex.getByText("Recommended", { exact: true })).toBeVisible();
+  await expect(codex.getByText("App found", { exact: true })).toBeVisible();
+  await expect(codex.getByText(/Codex app detected · official CLI not available yet/i)).toBeVisible();
+  await expect(codex.getByRole("button", { name: "Add Codex CLI" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("desktop-codex-app-only.png"), fullPage: true });
 });

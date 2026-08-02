@@ -61,8 +61,8 @@ func TestDefault(t *testing.T) {
 	if cfg.AI.ASCIIArt.Model != "" {
 		t.Errorf("ASCIIArt.Model = %q, want empty default", cfg.AI.ASCIIArt.Model)
 	}
-	if cfg.AI.ImageGeneration.Model != "" {
-		t.Errorf("ImageGeneration.Model = %q, want empty default", cfg.AI.ImageGeneration.Model)
+	if cfg.AI.ImageGeneration.Model != "gpt-image-2" {
+		t.Errorf("ImageGeneration.Model = %q, want gpt-image-2", cfg.AI.ImageGeneration.Model)
 	}
 	if cfg.AI.ImageGeneration.Provider != "codex-oauth" {
 		t.Errorf("ImageGeneration.Provider = %q, want codex-oauth", cfg.AI.ImageGeneration.Provider)
@@ -94,6 +94,9 @@ func TestDefault(t *testing.T) {
 	if cfg.Game.RewardBudget != "balanced" {
 		t.Errorf("RewardBudget = %q, want balanced", cfg.Game.RewardBudget)
 	}
+	if cfg.Game.DefaultStoryLanguage != "en" {
+		t.Errorf("DefaultStoryLanguage = %q, want en", cfg.Game.DefaultStoryLanguage)
+	}
 }
 
 func TestMigrateCompletesLegacyCodexSelection(t *testing.T) {
@@ -102,6 +105,8 @@ func TestMigrateCompletesLegacyCodexSelection(t *testing.T) {
 	cfg.AI.Codex.Model = ""
 	cfg.AI.Codex.Reasoning = "off"
 	cfg.AI.Generation.UtilityModel = ""
+	cfg.AI.ImageGeneration.Model = ""
+	cfg.AI.ImageGeneration.MapIconModel = ""
 	cfg.Migrate()
 
 	if cfg.AI.Codex.Model != DefaultCodexModel {
@@ -112,6 +117,9 @@ func TestMigrateCompletesLegacyCodexSelection(t *testing.T) {
 	}
 	if cfg.AI.Generation.UtilityModel != DefaultCodexModel {
 		t.Fatalf("UtilityModel = %q, want %q", cfg.AI.Generation.UtilityModel, DefaultCodexModel)
+	}
+	if cfg.AI.ImageGeneration.Model != "gpt-image-2" || cfg.AI.ImageGeneration.MapIconModel != "gpt-image-2" {
+		t.Fatalf("Codex image models not migrated: %#v", cfg.AI.ImageGeneration)
 	}
 }
 
@@ -345,6 +353,23 @@ func TestValidateInvalidRewardBudget(t *testing.T) {
 	}
 }
 
+func TestStoryLanguageMigrationAndValidation(t *testing.T) {
+	cfg := Default()
+	cfg.Game.DefaultStoryLanguage = "pt_BR"
+	cfg.Migrate()
+	if cfg.Game.DefaultStoryLanguage != "pt-br" {
+		t.Fatalf("DefaultStoryLanguage = %q, want pt-br", cfg.Game.DefaultStoryLanguage)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate normalized story language: %v", err)
+	}
+
+	cfg.Game.DefaultStoryLanguage = "not a language"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("expected invalid default story language to fail validation")
+	}
+}
+
 func TestRepairModelCandidatesUsesUtilityOnlyWhenRepairMissing(t *testing.T) {
 	withRepair := GenerationConfig{
 		UtilityModel:         "test-utility-model",
@@ -391,6 +416,9 @@ func TestBuildModelRoutingSettings(t *testing.T) {
 	}
 	if settings.Active.NarrativeModel != "test-narrative-model" {
 		t.Fatalf("Active.NarrativeModel = %q", settings.Active.NarrativeModel)
+	}
+	if settings.Active.ASCIIModel != "test-narrative-model" {
+		t.Fatalf("Active.ASCIIModel = %q, want narrative fallback", settings.Active.ASCIIModel)
 	}
 	if len(settings.Providers) != 4 {
 		t.Fatalf("Providers length = %d, want 4", len(settings.Providers))
@@ -758,6 +786,30 @@ func TestEnabledProviders(t *testing.T) {
 
 	if len(enabled) != 1 || enabled[0] != "codex" {
 		t.Fatalf("EnabledProviders = %#v, want [codex]", enabled)
+	}
+}
+
+func TestValidateChecksSeparateMapImageProvider(t *testing.T) {
+	cfg := Default()
+	cfg.AI.ImageGeneration.AutoGenerate = true
+	cfg.AI.ImageGeneration.Provider = ImageProviderCodexOAuth
+	cfg.AI.ImageGeneration.MapIconProvider = ImageProviderGemini
+	cfg.AI.ImageGeneration.Model = "gpt-image-2"
+	cfg.AI.ImageGeneration.MapIconModel = "gemini-3.1-flash-image"
+	cfg.AI.ImageGeneration.ImagegenBridgeURL = "http://127.0.0.1:8787"
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), `provider "gemini" is not configured`) {
+		t.Fatalf("expected a Gemini map-provider credential error, got %v", err)
+	}
+	cfg.AI.ImageGeneration.Providers = map[string]ImageProviderConfig{
+		ImageProviderGemini: {
+			BaseURL: "https://generativelanguage.googleapis.com/v1beta",
+			APIKey:  "test-gemini-key",
+		},
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("separately configured map provider should validate: %v", err)
 	}
 }
 

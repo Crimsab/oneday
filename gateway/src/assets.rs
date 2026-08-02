@@ -712,6 +712,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
             asset_id TEXT NOT NULL REFERENCES visual_assets(id) ON DELETE CASCADE,
             story_id TEXT NOT NULL,branch_id TEXT NOT NULL,source_commit_id TEXT NOT NULL,
             prompt_override TEXT NOT NULL DEFAULT '',negative_prompt_override TEXT NOT NULL DEFAULT '',
+            prompt_is_custom INTEGER NOT NULL DEFAULT 0,
             continuity_context_json TEXT NOT NULL DEFAULT '{}',
             gate_state TEXT NOT NULL DEFAULT '',gate_reason_code TEXT NOT NULL DEFAULT '',gate_reason TEXT NOT NULL DEFAULT '',generation_eligible INTEGER,
             status_override TEXT NOT NULL DEFAULT '',error_override TEXT NOT NULL DEFAULT '',provider_override TEXT NOT NULL DEFAULT '',
@@ -730,6 +731,7 @@ pub async fn ensure_visual_asset_version_schema(pool: &SqlitePool) -> anyhow::Re
         ("error_override", "TEXT NOT NULL DEFAULT ''"),
         ("provider_override", "TEXT NOT NULL DEFAULT ''"),
         ("continuity_context_json", "TEXT NOT NULL DEFAULT '{}'"),
+        ("prompt_is_custom", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         ensure_text_column(pool, "visual_asset_branch_overrides", column, definition).await?;
     }
@@ -824,17 +826,18 @@ async fn normalize_location_asset_lineages(pool: &SqlitePool) -> anyhow::Result<
             sqlx::query(
                 r#"INSERT INTO visual_asset_branch_overrides (
                      asset_id,story_id,branch_id,source_commit_id,prompt_override,
-                     negative_prompt_override,gate_state,gate_reason_code,gate_reason,generation_eligible,
+                     negative_prompt_override,prompt_is_custom,gate_state,gate_reason_code,gate_reason,generation_eligible,
                      status_override,error_override,provider_override,created_at,updated_at
                    )
                    SELECT ?,story_id,branch_id,source_commit_id,prompt_override,
-                     negative_prompt_override,gate_state,gate_reason_code,gate_reason,generation_eligible,
+                     negative_prompt_override,prompt_is_custom,gate_state,gate_reason_code,gate_reason,generation_eligible,
                      status_override,error_override,provider_override,created_at,updated_at
                    FROM visual_asset_branch_overrides WHERE asset_id=? AND 1=1
                    ON CONFLICT(asset_id,branch_id) DO UPDATE SET
                      source_commit_id=excluded.source_commit_id,
                      prompt_override=excluded.prompt_override,
                      negative_prompt_override=excluded.negative_prompt_override,
+                     prompt_is_custom=excluded.prompt_is_custom,
                      gate_state=excluded.gate_state,gate_reason_code=excluded.gate_reason_code,gate_reason=excluded.gate_reason,
                      generation_eligible=excluded.generation_eligible,
                      status_override=excluded.status_override,error_override=excluded.error_override,
@@ -1014,6 +1017,16 @@ where
 
 async fn recover_unknown_visual_generation_outcomes(pool: &SqlitePool) -> anyhow::Result<u64> {
     let now = chrono::Utc::now().to_rfc3339();
+    let mut tx = pool.begin().await?;
+    let stale = sqlx::query(
+        r#"SELECT asset_id, story_id, branch_id, source_commit_id
+           FROM visual_generation_jobs
+           WHERE status = 'running' AND locked_until != '' AND locked_until <= ?"#,
+    )
+    .bind(&now)
+    .fetch_all(&mut *tx)
+    .await
+    .context("loading visual generation jobs with unknown outcomes")?;
     let result = sqlx::query(
         r#"UPDATE visual_generation_jobs
            SET status = 'failed',
@@ -1026,9 +1039,48 @@ async fn recover_unknown_visual_generation_outcomes(pool: &SqlitePool) -> anyhow
     .bind(&now)
     .bind(&now)
     .bind(&now)
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .context("recording unknown visual generation outcomes")?;
+    for row in stale {
+        let asset_id = row_string(&row, "asset_id");
+        let story_id = row_string(&row, "story_id");
+        let branch_id = row_string(&row, "branch_id");
+        let source_commit_id = row_string(&row, "source_commit_id");
+        let has_ready_image: i64 = sqlx::query_scalar(
+            r#"SELECT CASE WHEN EXISTS (
+                  SELECT 1 FROM visual_asset_selection_states s
+                  WHERE s.asset_id = ? AND s.branch_id = ? AND s.selected_version_id IS NOT NULL
+                ) OR EXISTS (
+                  SELECT 1 FROM visual_assets a WHERE a.id = ? AND a.url != ''
+                ) THEN 1 ELSE 0 END"#,
+        )
+        .bind(&asset_id)
+        .bind(&branch_id)
+        .bind(&asset_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        sqlx::query(
+            r#"INSERT INTO visual_asset_branch_overrides
+               (asset_id,story_id,branch_id,source_commit_id,status_override,error_override)
+               VALUES (?,?,?,?,?,?)
+               ON CONFLICT(asset_id,branch_id) DO UPDATE SET
+                 source_commit_id=excluded.source_commit_id,
+                 status_override=excluded.status_override,
+                 error_override=excluded.error_override,
+                 updated_at=CURRENT_TIMESTAMP"#,
+        )
+        .bind(&asset_id)
+        .bind(&story_id)
+        .bind(&branch_id)
+        .bind(&source_commit_id)
+        .bind(if has_ready_image > 0 { "ready" } else { "failed" })
+        .bind("PROVIDER_UNKNOWN_OUTCOME: generation stopped before the provider result was confirmed. Retry this asset when ready.")
+        .execute(&mut *tx)
+        .await
+        .with_context(|| format!("recovering visual asset {asset_id} after unknown outcome"))?;
+    }
+    tx.commit().await?;
     Ok(result.rows_affected())
 }
 
@@ -1070,11 +1122,12 @@ pub async fn update_asset_prompt(
     let (branch_id, source_commit_id) = active_timeline_lineage(pool, story_id).await?;
     sqlx::query(
         r#"INSERT INTO visual_asset_branch_overrides
-           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,status_override,error_override)
-           VALUES (?,?,?,?,?,?,'','')
+           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,prompt_is_custom,status_override,error_override)
+           VALUES (?,?,?,?,?,?,1,'','')
            ON CONFLICT(asset_id,branch_id) DO UPDATE SET
              source_commit_id=excluded.source_commit_id,prompt_override=excluded.prompt_override,
              negative_prompt_override=excluded.negative_prompt_override,
+             prompt_is_custom=1,
              status_override=CASE WHEN visual_asset_branch_overrides.status_override='failed' THEN 'pending' ELSE visual_asset_branch_overrides.status_override END,
              error_override=CASE WHEN visual_asset_branch_overrides.status_override='failed' THEN '' ELSE visual_asset_branch_overrides.error_override END,
              updated_at=CURRENT_TIMESTAMP"#,
@@ -1358,7 +1411,7 @@ pub async fn update_profile_with_defaults(
 
 pub fn spawn_auto_generation(state: Arc<AppState>, story_id: String) {
     if !image_generation_config(&state)
-        .map(|config| config.auto_generate && image_generation_available(&config))
+        .map(|config| config.auto_generate && any_image_generation_available(&config))
         .unwrap_or(false)
     {
         return;
@@ -1381,7 +1434,7 @@ const AUTOMATIC_VISUAL_CATCHUP_LIMIT: usize = 12;
 
 pub fn spawn_automatic_visual_catchup(state: Arc<AppState>) {
     if !image_generation_config(&state)
-        .map(|config| config.auto_generate && image_generation_available(&config))
+        .map(|config| config.auto_generate && any_image_generation_available(&config))
         .unwrap_or(false)
     {
         return;
@@ -1399,6 +1452,7 @@ pub fn spawn_automatic_visual_catchup(state: Arc<AppState>) {
 }
 
 async fn automatic_visual_catchup(state: Arc<AppState>, limit: usize) -> anyhow::Result<usize> {
+    let config = image_generation_config(&state)?;
     let mut remaining = limit.clamp(1, AUTOMATIC_VISUAL_CATCHUP_LIMIT);
     let mut queued = 0;
     for story in db::list_stories(&state.pool)
@@ -1410,7 +1464,8 @@ async fn automatic_visual_catchup(state: Arc<AppState>, limit: usize) -> anyhow:
             break;
         }
         let response = visual_assets(&state.pool, &story.id).await?;
-        let asset_ids = automatic_catchup_candidates(&response.assets, &response.jobs, remaining);
+        let asset_ids =
+            automatic_catchup_candidates(&response.assets, &response.jobs, &config, remaining);
         if asset_ids.is_empty() {
             continue;
         }
@@ -1435,6 +1490,7 @@ async fn automatic_visual_catchup(state: Arc<AppState>, limit: usize) -> anyhow:
 fn automatic_catchup_candidates(
     assets: &[VisualAsset],
     jobs: &[VisualGenerationJobView],
+    config: &ImageGenerationConfig,
     limit: usize,
 ) -> Vec<String> {
     let active_jobs = jobs
@@ -1449,6 +1505,7 @@ fn automatic_catchup_candidates(
                 && asset.status == "pending"
                 && asset.gate_state != "legacy"
                 && !active_jobs.contains(asset.id.as_str())
+                && image_generation_available_for_asset(config, asset)
         })
         .collect::<Vec<_>>();
     candidates.sort_by(|left, right| {
@@ -1481,16 +1538,23 @@ pub async fn generate_visual_assets(
 ) -> anyhow::Result<VisualAssetsResponse> {
     visual_assets(&state.pool, story_id).await?;
     let config = image_generation_config(&state)?;
-    if !image_generation_available(&config) {
+    let targets = generation_targets(&state.pool, story_id, &request).await?;
+    if targets.is_empty() {
+        return visual_assets(&state.pool, story_id).await;
+    }
+    let configured_targets = targets
+        .into_iter()
+        .filter(|asset| image_generation_available_for_asset(&config, asset))
+        .collect::<Vec<_>>();
+    if configured_targets.is_empty() {
         return Err(PublicError::bad_request(
             "image_generation_not_configured",
-            "image generation provider is not configured; choose a catalog provider and configure its server-side credentials (Codex OAuth uses imagegen-bridge)",
+            "the provider and model selected for these image assets are not configured; configure the matching illustration or map-icon route (Codex OAuth uses imagegen-bridge)",
         )
         .into());
     }
-
-    let targets = generation_targets(&state.pool, story_id, &request).await?;
-    let queued = enqueue_visual_generation_jobs(&state.pool, &targets, &request, &config).await?;
+    let queued =
+        enqueue_visual_generation_jobs(&state.pool, &configured_targets, &request, &config).await?;
     for queued_job in &queued {
         emit_visual_asset_event(
             &state,
@@ -1977,7 +2041,14 @@ async fn run_image_operation(state: Arc<AppState>, operation_id: &str) -> anyhow
     let Some(record) = claim_image_operation(&state.pool, operation_id).await? else {
         return Ok(());
     };
+    let request_permit = state
+        .visual_workers
+        .clone()
+        .acquire_owned()
+        .await
+        .context("waiting for an image provider request slot")?;
     let result = execute_image_operation(&state, &record).await;
+    drop(request_permit);
     match result {
         Ok((asset, generated, effective)) => {
             complete_image_operation(&state.pool, &record, &asset, &generated, &effective).await?;
@@ -2400,9 +2471,6 @@ pub fn spawn_visual_generation_worker(state: Arc<AppState>) {
     for worker in 0..concurrency {
         let state = state.clone();
         tokio::spawn(async move {
-            let Ok(_permit) = state.visual_workers.clone().try_acquire_owned() else {
-                return;
-            };
             if let Err(err) = run_visual_generation_worker(state).await {
                 tracing::warn!(worker, error = %err, "visual generation worker stopped");
             }
@@ -2410,7 +2478,7 @@ pub fn spawn_visual_generation_worker(state: Arc<AppState>) {
     }
 }
 
-fn visual_generation_concurrency() -> usize {
+pub(crate) fn visual_generation_concurrency() -> usize {
     parse_visual_generation_concurrency(
         std::env::var("ONEDAY_IMAGEGEN_CONCURRENCY").ok().as_deref(),
     )
@@ -2446,7 +2514,7 @@ pub fn spawn_visual_generation_maintenance(state: Arc<AppState>) {
 
 async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()> {
     let config = image_generation_config(&state)?;
-    if !image_generation_available(&config) {
+    if !any_image_generation_available(&config) {
         return Ok(());
     }
     let client = Client::builder()
@@ -2513,9 +2581,16 @@ async fn run_visual_generation_worker(state: Arc<AppState>) -> anyhow::Result<()
             oneday.image.provider = tracing::field::Empty,
             error.type = tracing::field::Empty,
         );
+        let request_permit = state
+            .visual_workers
+            .clone()
+            .acquire_owned()
+            .await
+            .context("waiting for an image provider request slot")?;
         let generation_result = generate_one_asset(&client, &state, &config, &job)
             .instrument(image_span.clone())
             .await;
+        drop(request_permit);
         match generation_result {
             Ok(generated) => {
                 let (_, response_model) = generated
@@ -3667,10 +3742,10 @@ fn image_generation_config(state: &AppState) -> anyhow::Result<ImageGenerationCo
         ])
         .or_else(|| image_config_string(image_generation, |config| &config.openclaw_bridge_url))
         .unwrap_or_else(|| "http://127.0.0.1:8099/generate".to_string()),
-        imagegen_bridge_url: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_URL"])
+        imagegen_bridge_url: bridge_env_override("ONEDAY_IMAGEGEN_BRIDGE_URL")
             .or_else(|| image_config_string(image_generation, |config| &config.imagegen_bridge_url))
             .unwrap_or_else(|| "http://127.0.0.1:8787".to_string()),
-        imagegen_bridge_token: first_env(&["ONEDAY_IMAGEGEN_BRIDGE_TOKEN"])
+        imagegen_bridge_token: bridge_env_override("ONEDAY_IMAGEGEN_BRIDGE_TOKEN")
             .or_else(|| {
                 image_config_string(image_generation, |config| &config.imagegen_bridge_token)
             })
@@ -3901,6 +3976,31 @@ fn image_generation_available(config: &ImageGenerationConfig) -> bool {
     crate::imagegen::is_available(&imagegen_adapter_config(config), &config.model)
 }
 
+fn map_icon_generation_available(config: &ImageGenerationConfig) -> bool {
+    crate::imagegen::validation_error(
+        &imagegen_adapter_config(config),
+        &config.map_icon_model,
+        true,
+    )
+    .is_none()
+}
+
+fn any_image_generation_available(config: &ImageGenerationConfig) -> bool {
+    image_generation_available(config) || map_icon_generation_available(config)
+}
+
+fn image_generation_available_for_asset(
+    config: &ImageGenerationConfig,
+    asset: &VisualAsset,
+) -> bool {
+    crate::imagegen::validation_error(
+        &imagegen_adapter_config(config),
+        &generation_model(config, asset),
+        asset.kind == "map_icon",
+    )
+    .is_none()
+}
+
 fn read_gateway_config(path: &Path) -> anyhow::Result<GatewayConfig> {
     let raw = std::fs::read_to_string(path)
         .with_context(|| format!("reading gateway image config {}", path.display()))?;
@@ -3980,6 +4080,18 @@ fn first_env(names: &[&str]) -> Option<String> {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
     })
+}
+
+// The desktop owns a local bridge for the lifetime of a standalone launch.
+// Unlike ordinary optional settings, an explicit empty value is meaningful: it
+// disables any legacy/default bridge endpoint for that child process instead of
+// silently falling back to 127.0.0.1:8787 or a value saved for another runtime.
+fn bridge_env_override(name: &str) -> Option<String> {
+    std::env::var(name).ok().map(clean_bridge_env_value)
+}
+
+fn clean_bridge_env_value(value: String) -> String {
+    value.trim().to_string()
 }
 
 fn non_empty(value: String) -> Option<String> {
@@ -4187,11 +4299,10 @@ async fn visual_specs(
         );
         let details = clean_or(&canonical_details, &fallback_details);
         let prompt = format!(
-            "{} Current location: {}. Details: {}. Composition: wide browser hero banner, deep perspective, safe area for overlay text at left. Palette: {}.",
-            profile.world_style_prompt,
-            location,
-            clean_or(&details, "derive visual detail from the story context"),
-            clean_or(&profile.palette, "dark warm noir")
+            "PURPOSE: cinematic location illustration for a story interface.\nSCENE: {location}. {details}.\nVISUAL DIRECTION: {style}.\nCOMPOSITION: wide 3:2 establishing view; one clear focal landmark; foreground, midground, and background must all describe the same place; preserve open space on the left for interface text without leaving it blank.\nLIGHT AND COLOR: {palette}.\nCONSTRAINTS: canonical details only; coherent geography and architecture; no text, labels, logos, UI, frames, collages, split views, or invented named landmarks.",
+            details = clean_or(&details, "derive concrete terrain, material, weather, and scale from the story context"),
+            style = profile.world_style_prompt,
+            palette = clean_or(&profile.palette, "dark warm noir")
         );
         let appearance_fingerprint = visual_fingerprint(&[
             "location",
@@ -4264,7 +4375,7 @@ async fn visual_specs(
             gate_reason_code: gate.reason_code.clone(),
             gate_reason: gate.reason.clone(),
             generation_eligible: gate.generation_eligible,
-            prompt: format!("{} Scene at {}. Details: {}. Composition: wide cinematic scene with clear foreground, midground, and background. Palette: {}.", profile.world_style_prompt, location, clean_or(&canonical_details, &fallback_details), clean_or(&profile.palette, "dark warm noir")),
+            prompt: format!("PURPOSE: narrative scene illustration for the current story beat.\nSCENE: {location}. {details}.\nVISUAL DIRECTION: {style}.\nCOMPOSITION: wide 3:2 cinematic frame; a specific foreground action or clue, readable midground subject, and environmental background; avoid an empty landscape or generic floor crop.\nLIGHT AND COLOR: {palette}.\nCONSTRAINTS: show only established people, objects, weather, and architecture; no text, labels, logos, UI, frames, or collage.", details = clean_or(&canonical_details, &fallback_details), style = profile.world_style_prompt, palette = clean_or(&profile.palette, "dark warm noir")),
             negative_prompt: profile.negative_prompt.clone(),
             turn: snapshot.world.current_turn,
             ..VisualSpec::default()
@@ -4343,12 +4454,12 @@ async fn visual_specs(
             String::new()
         } else {
             format!(
-                "{} Character: {}. Role: {}. Appearance: {}. Relationship context: {}. Composition: square bust-up portrait, readable at small card size, coherent lighting with the current scene.",
-                profile.character_style_prompt,
-                npc.name,
-                clean_or(role, "unknown"),
-                visual_details,
-                clean_or(&relationship, "unknown")
+                "PURPOSE: canonical character portrait for a story card.\nSUBJECT: {name}; role: {role}; appearance: {appearance}; relationship context: {relationship}.\nVISUAL DIRECTION: {style}.\nCOMPOSITION: square bust-up portrait; face and identity-defining silhouette readable at small size; coherent camera angle and lighting; uncluttered background.\nCONSTRAINTS: preserve identity, age, hairstyle, clothing, accessories, and established condition; one person only; no text, labels, logos, UI, frame, or collage.",
+                name = npc.name,
+                role = clean_or(role, "unknown"),
+                appearance = visual_details,
+                relationship = clean_or(&relationship, "unknown"),
+                style = profile.character_style_prompt,
             )
         };
         let appearance_fingerprint = visual_fingerprint(&[
@@ -4763,8 +4874,10 @@ fn known_map_specs(
             gate_reason: if eligible { "At least two direct player-known children are available in this map scope." } else { "Map art waits until at least two direct children are known in this scope." }.to_string(),
             generation_eligible: eligible,
             prompt: format!(
-                "{} Create an atmospheric illustrated cartographic background for the player-known {} scope '{}'. Direct known children: {}. Confirmed connections: {}. Use terrain, architecture, water and paths only as restrained visual context appropriate to this exact scale. Do not render labels, text, UI, pins, icons, borders, or invented named landmarks. Do not depict a whole city when the scope is an interior or sub-location. The interactive canonical overlay supplies all authoritative locations and routes. Palette: {}. Composition: wide landscape map, readable under a dark translucent overlay.",
-                profile.world_style_prompt, scope_kind, scope_name, clean_or(&place_summary, "no described child places"), clean_or(&edge_summary, "no confirmed route yet"), clean_or(&profile.palette, "restrained story palette")
+                "PURPOSE: decorative cartographic background beneath an interactive canonical map overlay.\nSCOPE: player-known {scope_kind} '{scope_name}'.\nKNOWN PLACES: {places}.\nCONFIRMED CONNECTIONS: {connections}.\nVISUAL DIRECTION: {style}.\nCOMPOSITION: wide landscape map texture at the exact stated scale; restrained terrain, architecture, water, and paths; balanced detail that remains readable beneath a dark translucent overlay.\nCONSTRAINTS: no labels, text, letters, UI, pins, icons, borders, compass text, or invented named landmarks; do not imply connections not listed; never depict a whole city for an interior or sub-location.",
+                places = clean_or(&place_summary, "no described child places"),
+                connections = clean_or(&edge_summary, "no confirmed route yet"),
+                style = profile.world_style_prompt,
             ),
             negative_prompt: format!("{}, text, labels, lettering, compass text, UI, location pins, invented named places, white background, watermark", profile.negative_prompt),
             turn,
@@ -4794,11 +4907,10 @@ fn known_map_specs(
                 .to_string(),
             generation_eligible: true,
             prompt: format!(
-                "{} Create one isolated cartographic symbol for the known location '{}'. Known details: {}. Centered single landmark emblem on a transparent background, with clean alpha transparency all the way to every canvas edge; no backdrop, paper, tile, square, disc, scene, or environmental fill. No text, no letters, no border. Use a strong silhouette, a consistent map icon set, and restrained edge detail readable at 40 pixels. Palette: {}.",
-                profile.world_style_prompt,
-                name,
-                clean_or(&description, "use only the location name as context"),
-                clean_or(&profile.palette, "restrained story palette")
+                "PURPOSE: one reusable cartographic location symbol.\nSUBJECT: '{name}'. Known details: {details}.\nVISUAL DIRECTION: a cohesive map-icon interpretation of {style}.\nCOMPOSITION: one centered landmark emblem or compact isometric terrain diorama; fully visible; occupy about 72–82% of the canvas; strong silhouette and restrained edge detail readable at 40 pixels. If the place is a featureless terrain, invent no building: turn its established terrain shape or material into a distinctive raised emblem instead of a flat floor crop.\nBACKGROUND: transparent alpha to every canvas edge.\nCONSTRAINTS: no backdrop, horizon, environmental scene, paper, tile, square, disc, plate, shadow rectangle, frame, text, letters, logo, watermark, multiple icons, or cropped edges.\nCOLOR: {palette}.",
+                details = clean_or(&description, "use only the location name as context"),
+                style = profile.world_style_prompt,
+                palette = clean_or(&profile.palette, "restrained story palette")
             ),
             negative_prompt: format!(
                 "{}, text, label, lettering, multiple icons, scenery background, white background, solid background, paper texture, square tile, circular plate, frame, watermark",
@@ -5242,7 +5354,7 @@ async fn upsert_asset_branch_override(
            ), ancestors(id) AS (
              SELECT head_commit_id FROM active
              UNION ALL SELECT c.parent_commit_id FROM turn_commits c JOIN ancestors a ON c.id=a.id WHERE c.parent_commit_id IS NOT NULL
-          ) SELECT o.prompt_override,o.negative_prompt_override FROM visual_asset_branch_overrides o CROSS JOIN active x
+          ) SELECT o.prompt_override,o.negative_prompt_override,o.prompt_is_custom FROM visual_asset_branch_overrides o CROSS JOIN active x
              WHERE o.asset_id=? AND o.source_commit_id IN (SELECT id FROM ancestors)
                AND o.branch_id!=x.branch_id
                AND (o.source_commit_id!=COALESCE(x.fork_commit_id,'') OR o.updated_at<=x.branch_created)
@@ -5252,23 +5364,36 @@ async fn upsert_asset_branch_override(
     .bind(asset_id)
     .fetch_optional(pool)
     .await?;
-    let prompt = inherited
+    let inherited_is_custom = inherited
         .as_ref()
-        .map(|row| row_string(row, "prompt_override"))
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| spec.prompt.clone());
-    let negative_prompt = inherited
-        .as_ref()
-        .map(|row| row_string(row, "negative_prompt_override"))
-        .unwrap_or_else(|| spec.negative_prompt.clone());
+        .and_then(|row| row.try_get::<i64, _>("prompt_is_custom").ok())
+        .unwrap_or_default()
+        != 0;
+    let prompt = if inherited_is_custom {
+        inherited
+            .as_ref()
+            .map(|row| row_string(row, "prompt_override"))
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| spec.prompt.clone())
+    } else {
+        spec.prompt.clone()
+    };
+    let negative_prompt = if inherited_is_custom {
+        inherited
+            .as_ref()
+            .map(|row| row_string(row, "negative_prompt_override"))
+            .unwrap_or_else(|| spec.negative_prompt.clone())
+    } else {
+        spec.negative_prompt.clone()
+    };
     sqlx::query(
         r#"INSERT INTO visual_asset_branch_overrides
-           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,continuity_context_json,gate_state,gate_reason_code,gate_reason,generation_eligible)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)
+           (asset_id,story_id,branch_id,source_commit_id,prompt_override,negative_prompt_override,prompt_is_custom,continuity_context_json,gate_state,gate_reason_code,gate_reason,generation_eligible)
+           VALUES (?,?,?,?,?,?,0,?,?,?,?,?)
            ON CONFLICT(asset_id,branch_id) DO UPDATE SET
              source_commit_id=excluded.source_commit_id,
-             prompt_override=CASE WHEN visual_asset_branch_overrides.prompt_override='' THEN excluded.prompt_override ELSE visual_asset_branch_overrides.prompt_override END,
-             negative_prompt_override=CASE WHEN visual_asset_branch_overrides.negative_prompt_override='' THEN excluded.negative_prompt_override ELSE visual_asset_branch_overrides.negative_prompt_override END,
+             prompt_override=CASE WHEN visual_asset_branch_overrides.prompt_is_custom=1 THEN visual_asset_branch_overrides.prompt_override ELSE excluded.prompt_override END,
+             negative_prompt_override=CASE WHEN visual_asset_branch_overrides.prompt_is_custom=1 THEN visual_asset_branch_overrides.negative_prompt_override ELSE excluded.negative_prompt_override END,
              continuity_context_json=excluded.continuity_context_json,
              gate_state=excluded.gate_state,gate_reason_code=excluded.gate_reason_code,gate_reason=excluded.gate_reason,
              generation_eligible=excluded.generation_eligible,updated_at=CURRENT_TIMESTAMP"#,
@@ -5670,6 +5795,15 @@ mod tests {
     use sqlx::sqlite::SqlitePoolOptions;
 
     #[test]
+    fn explicit_empty_bridge_override_stays_empty() {
+        assert_eq!(clean_bridge_env_value("  ".to_string()), "");
+        assert_eq!(
+            clean_bridge_env_value(" http://127.0.0.1:8787/ ".to_string()),
+            "http://127.0.0.1:8787/"
+        );
+    }
+
+    #[test]
     fn legacy_visual_gate_codes_depend_only_on_stable_state() {
         assert_eq!(
             legacy_visual_gate_reason_code("insufficient_observation"),
@@ -5831,7 +5965,7 @@ mod tests {
             .find(|spec| spec.kind == "map_background")
             .unwrap();
         assert!(background.generation_eligible);
-        assert!(background.prompt.contains("Do not render labels"));
+        assert!(background.prompt.contains("no labels"));
         let symbols = specs
             .iter()
             .filter(|spec| spec.kind == "map_icon")
@@ -5840,7 +5974,7 @@ mod tests {
         assert!(symbols
             .iter()
             .all(|spec| !spec.canonical_location_id.is_empty()
-                && spec.prompt.contains("transparent background")));
+                && spec.prompt.contains("transparent alpha")));
 
         let waiting = known_map_specs(
             &json!([]),
@@ -5922,6 +6056,11 @@ mod tests {
 
     #[test]
     fn automatic_catchup_is_bounded_prioritized_and_skips_legacy_rows() {
+        let config = ImageGenerationConfig {
+            provider: "openclaw-bridge".to_string(),
+            map_icon_provider: "openclaw-bridge".to_string(),
+            ..test_config()
+        };
         let asset = |id: &str, kind: &str, gate_state: &str, eligible: bool, status: &str, turn| {
             VisualAsset {
                 id: id.into(),
@@ -5979,13 +6118,43 @@ mod tests {
         ];
 
         assert_eq!(
-            automatic_catchup_candidates(&assets, &[], 2),
+            automatic_catchup_candidates(&assets, &[], &config, 2),
             vec!["map-layer", "map-symbol"]
         );
         assert_eq!(
-            automatic_catchup_candidates(&assets, &[], 3),
+            automatic_catchup_candidates(&assets, &[], &config, 3),
             vec!["map-layer", "map-symbol", "character-new"]
         );
+    }
+
+    #[test]
+    fn map_icon_route_remains_available_when_the_illustration_route_is_disabled() {
+        let config = ImageGenerationConfig {
+            provider: "text-only".to_string(),
+            model: String::new(),
+            map_icon_provider: "codex-oauth".to_string(),
+            map_icon_model: "gpt-image-2".to_string(),
+            imagegen_bridge_url: "http://imagegen-bridge:8787".to_string(),
+            imagegen_bridge_token: "bridge-token".to_string(),
+            ..test_config()
+        };
+        let illustration = VisualAsset {
+            kind: "location".to_string(),
+            ..VisualAsset::default()
+        };
+        let map_icon = VisualAsset {
+            kind: "map_icon".to_string(),
+            ..VisualAsset::default()
+        };
+
+        assert!(!image_generation_available(&config));
+        assert!(map_icon_generation_available(&config));
+        assert!(any_image_generation_available(&config));
+        assert!(!image_generation_available_for_asset(
+            &config,
+            &illustration
+        ));
+        assert!(image_generation_available_for_asset(&config, &map_icon));
     }
 
     async fn visual_job_pool() -> SqlitePool {
@@ -7643,6 +7812,14 @@ mod tests {
         assert_eq!(row.try_get::<i64, _>("attempts").unwrap(), 1);
         assert!(row_string(&row, "error").contains("PROVIDER_UNKNOWN_OUTCOME"));
         assert!(!row_string(&row, "finished_at").is_empty());
+        let asset = list_assets(&pool, "story")
+            .await
+            .expect("list recovered assets")
+            .into_iter()
+            .find(|asset| asset.id == "asset-location")
+            .expect("recovered asset");
+        assert_eq!(asset.status, "failed");
+        assert!(asset.error.contains("PROVIDER_UNKNOWN_OUTCOME"));
         assert!(claim_visual_generation_job(&pool, &config)
             .await
             .expect("claim after recovery")

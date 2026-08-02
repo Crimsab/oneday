@@ -1,5 +1,22 @@
-import { Archive, BarChart3, BookOpen, BriefcaseBusiness, Clock3, FileText, Flag, Hammer, MapPin, Search, Trophy } from "lucide-react";
-import type { CommandDescriptor, MetaCommand, ModuleTab, OverlayKind } from "./types";
+import {
+  Archive,
+  BarChart3,
+  BookOpen,
+  BriefcaseBusiness,
+  Clock3,
+  FileText,
+  Flag,
+  Hammer,
+  MapPin,
+  Search,
+  Trophy,
+} from "lucide-react";
+import type {
+  CommandDescriptor,
+  MetaCommand,
+  ModuleTab,
+  OverlayKind,
+} from "./types";
 import i18n from "./i18n";
 
 export interface CommandResult {
@@ -12,7 +29,10 @@ export interface CommandResult {
   saveName?: string;
   saveFilter?: string;
   saveDeleteFilter?: string;
-	timeline?: { action: "list" | "fork" | "rename" | "checkout"; value?: string };
+  timeline?: {
+    action: "list" | "fork" | "rename" | "checkout" | "retry";
+    value?: string;
+  };
 }
 
 export interface CommandContext {
@@ -55,24 +75,120 @@ export const moduleSpecs: Array<{
   command: string;
   Icon: typeof Clock3;
 }> = [
-  { tab: "history", label: "History", hotkey: "H", command: "/history", Icon: Clock3 },
+  {
+    tab: "history",
+    label: "History",
+    hotkey: "H",
+    command: "/history",
+    Icon: Clock3,
+  },
   { tab: "map", label: "Map", hotkey: "M", command: "/map", Icon: MapPin },
-  { tab: "inventory", label: "Inventory", hotkey: "I", command: "/inventory", Icon: Archive },
-  { tab: "craft", label: "Craft", hotkey: "R", command: "/craft", Icon: Hammer },
-  { tab: "stats", label: "Stats", hotkey: "S", command: "/stats", Icon: BarChart3 },
-  { tab: "codex", label: "Codex", hotkey: "C", command: "/codex", Icon: BookOpen },
-  { tab: "fronts", label: "Fronts", hotkey: "F", command: "/fronts", Icon: Flag },
-  { tab: "investigations", label: "Investigations", hotkey: "G", command: "/investigations", Icon: Search },
-  { tab: "projects", label: "Projects", hotkey: "P", command: "/projects", Icon: BriefcaseBusiness },
-  { tab: "achievements", label: "Achievements", hotkey: "A", command: "/achievements", Icon: Trophy },
-  { tab: "saves", label: "Saves", hotkey: "V", command: "/load", Icon: FileText },
+  {
+    tab: "inventory",
+    label: "Inventory",
+    hotkey: "I",
+    command: "/inventory",
+    Icon: Archive,
+  },
+  {
+    tab: "craft",
+    label: "Craft",
+    hotkey: "R",
+    command: "/craft",
+    Icon: Hammer,
+  },
+  {
+    tab: "stats",
+    label: "Stats",
+    hotkey: "S",
+    command: "/stats",
+    Icon: BarChart3,
+  },
+  {
+    tab: "codex",
+    label: "Codex",
+    hotkey: "C",
+    command: "/codex",
+    Icon: BookOpen,
+  },
+  {
+    tab: "fronts",
+    label: "Fronts",
+    hotkey: "F",
+    command: "/fronts",
+    Icon: Flag,
+  },
+  {
+    tab: "investigations",
+    label: "Investigations",
+    hotkey: "G",
+    command: "/investigations",
+    Icon: Search,
+  },
+  {
+    tab: "projects",
+    label: "Projects",
+    hotkey: "P",
+    command: "/projects",
+    Icon: BriefcaseBusiness,
+  },
+  {
+    tab: "achievements",
+    label: "Achievements",
+    hotkey: "A",
+    command: "/achievements",
+    Icon: Trophy,
+  },
+  {
+    tab: "saves",
+    label: "Saves",
+    hotkey: "V",
+    command: "/load",
+    Icon: FileText,
+  },
 ];
 
 export const fallbackCommandDescriptors: CommandDescriptor[] = [
-  descriptor("inventory", "inventory", "Inventory", "Open inventory and crafting context.", "state", "shared", "open_panel", ["i"]),
-  descriptor("stats", "stats", "Stats", "Open the character sheet.", "state", "shared", "open_panel", ["s"]),
-  descriptor("map", "map", "Map", "Open known locations and travel context.", "state", "shared", "open_panel", ["m"]),
-  descriptor("journal", "journal", "Journal", "Open chapter journal and story notes.", "state", "shared", "open_panel", ["j"]),
+  descriptor(
+    "inventory",
+    "inventory",
+    "Inventory",
+    "Open inventory and crafting context.",
+    "state",
+    "shared",
+    "open_panel",
+    ["i"],
+  ),
+  descriptor(
+    "stats",
+    "stats",
+    "Stats",
+    "Open the character sheet.",
+    "state",
+    "shared",
+    "open_panel",
+    ["s"],
+  ),
+  descriptor(
+    "map",
+    "map",
+    "Map",
+    "Open known locations and travel context.",
+    "state",
+    "shared",
+    "open_panel",
+    ["m"],
+  ),
+  descriptor(
+    "journal",
+    "journal",
+    "Journal",
+    "Open chapter journal and story notes.",
+    "state",
+    "shared",
+    "open_panel",
+    ["j"],
+  ),
   descriptor(
     "thoughts",
     "thoughts",
@@ -86,30 +202,268 @@ export const fallbackCommandDescriptors: CommandDescriptor[] = [
     "",
     "visible_private_thoughts",
   ),
-  descriptor("codex", "codex", "Codex", "Open the story codex.", "state", "shared", "open_panel"),
-  descriptor("characters", "characters", "Characters", "Open character records.", "state", "shared", "open_panel"),
-  descriptor("fronts", "hooks", "Fronts", "Open fronts, hooks, fallout, and pressure clocks.", "state", "shared", "open_panel", ["fronts", "front"]),
-  descriptor("investigations", "investigations", "Investigations", "Open the investigation workspace.", "state", "shared", "open_panel", ["investigation"]),
-  descriptor("projects", "projects", "Projects", "Open downtime projects and progress clocks.", "state", "shared", "open_panel", ["project"]),
-  descriptor("achievements", "achievements", "Achievements", "Show earned achievements.", "state", "shared", "open_panel", ["a"]),
-  descriptor("craft", "craft", "Craft", "Open the crafting station.", "play", "shared", "open_panel", ["crafting"]),
-  descriptor("history", "history", "History", "Open transcript and session history.", "state", "shared", "open_panel"),
-	descriptor("branches", "branches", "Branches", "List and navigate alternate story branches.", "state", "shared", "timeline", ["branch"]),
-	descriptor("fork", "fork", "Fork branch", "Fork the current story head into a named alternate.", "state", "shared", "timeline", [], true),
-	descriptor("branch-rename", "branch-rename", "Rename branch", "Rename the active story branch.", "state", "shared", "timeline", ["rename-branch"], true),
-	descriptor("checkout", "checkout", "Checkout branch", "Switch to a named branch without deleting the current one.", "state", "shared", "timeline", [], true),
-  descriptor("talk", "talk", "Talk", "Talk to a nearby NPC with an optional intent and message.", "talk", "shared", "submit_action", [], true, "nearby_npcs"),
-  descriptor("btw", "btw", "BTW", "Ask a contextual side question without advancing the turn.", "meta", "shared", "submit_meta", [], true),
-  descriptor("guide", "guide", "Guide", "Store soft future-facing story guidance.", "meta", "shared", "submit_meta", [], true),
-  descriptor("narrator", "narrator", "Narrator Control", "Direct narrator canon or correct world state.", "meta", "shared", "submit_meta", ["n"], true),
-  descriptor("advance", "advance", "Advance", "Push to the next meaningful beat without replaying filler.", "play", "shared", "submit_action", [], true),
-  descriptor("timeskip", "timeskip", "Time Skip", "Jump ahead to a later meaningful moment.", "play", "shared", "submit_action", [], true),
-  descriptor("downtime", "downtime", "Downtime", "Request a quieter scene around a focus.", "play", "shared", "submit_action", [], true),
-  descriptor("save", "save", "Save", "Create a manual save.", "save", "shared", "save_create", [], true),
-  descriptor("load", "load", "Load", "Open or filter saved snapshots.", "save", "shared", "save_load", ["saves"], true, "saves"),
-  descriptor("delete-save", "delete-save", "Delete Save", "Filter saves and delete one through confirmation.", "save", "browser_only", "save_delete", ["delete"], true, "saves"),
-  descriptor("help", "help", "Help", "Show available commands.", "system", "shared", "local_only"),
-  descriptor("quit", "quit", "Quit", "Save and leave the terminal session.", "system", "terminal_only", "local_only", ["q"]),
+  descriptor(
+    "codex",
+    "codex",
+    "Codex",
+    "Open the story codex.",
+    "state",
+    "shared",
+    "open_panel",
+  ),
+  descriptor(
+    "characters",
+    "characters",
+    "Characters",
+    "Open character records.",
+    "state",
+    "shared",
+    "open_panel",
+  ),
+  descriptor(
+    "fronts",
+    "hooks",
+    "Fronts",
+    "Open fronts, hooks, fallout, and pressure clocks.",
+    "state",
+    "shared",
+    "open_panel",
+    ["fronts", "front"],
+  ),
+  descriptor(
+    "investigations",
+    "investigations",
+    "Investigations",
+    "Open the investigation workspace.",
+    "state",
+    "shared",
+    "open_panel",
+    ["investigation"],
+  ),
+  descriptor(
+    "projects",
+    "projects",
+    "Projects",
+    "Open downtime projects and progress clocks.",
+    "state",
+    "shared",
+    "open_panel",
+    ["project"],
+  ),
+  descriptor(
+    "achievements",
+    "achievements",
+    "Achievements",
+    "Show earned achievements.",
+    "state",
+    "shared",
+    "open_panel",
+    ["a"],
+  ),
+  descriptor(
+    "craft",
+    "craft",
+    "Craft",
+    "Open the crafting station.",
+    "play",
+    "shared",
+    "open_panel",
+    ["crafting"],
+  ),
+  descriptor(
+    "history",
+    "history",
+    "History",
+    "Open transcript and session history.",
+    "state",
+    "shared",
+    "open_panel",
+  ),
+  descriptor(
+    "branches",
+    "branches",
+    "Branches",
+    "List and navigate alternate story branches.",
+    "state",
+    "shared",
+    "timeline",
+    ["branch"],
+  ),
+  descriptor(
+    "fork",
+    "fork",
+    "Fork branch",
+    "Fork the current story head into a named alternate.",
+    "state",
+    "shared",
+    "timeline",
+    [],
+    true,
+  ),
+  descriptor(
+    "branch-rename",
+    "branch-rename",
+    "Rename branch",
+    "Rename the active story branch.",
+    "state",
+    "shared",
+    "timeline",
+    ["rename-branch"],
+    true,
+  ),
+  descriptor(
+    "checkout",
+    "checkout",
+    "Checkout branch",
+    "Switch to a named branch without deleting the current one.",
+    "state",
+    "shared",
+    "timeline",
+    [],
+    true,
+  ),
+  descriptor(
+    "retry",
+    "retry",
+    "Try another choice",
+    "Restore the latest decision on a new branch and keep the current path.",
+    "state",
+    "shared",
+    "timeline",
+    ["try-again"],
+  ),
+  descriptor(
+    "talk",
+    "talk",
+    "Talk",
+    "Talk to a nearby NPC with an optional intent and message.",
+    "talk",
+    "shared",
+    "submit_action",
+    [],
+    true,
+    "nearby_npcs",
+  ),
+  descriptor(
+    "btw",
+    "btw",
+    "BTW",
+    "Ask a contextual side question without advancing the turn.",
+    "meta",
+    "shared",
+    "submit_meta",
+    [],
+    true,
+  ),
+  descriptor(
+    "guide",
+    "guide",
+    "Guide",
+    "Store soft future-facing story guidance.",
+    "meta",
+    "shared",
+    "submit_meta",
+    [],
+    true,
+  ),
+  descriptor(
+    "narrator",
+    "narrator",
+    "Narrator Control",
+    "Direct narrator canon or correct world state.",
+    "meta",
+    "shared",
+    "submit_meta",
+    ["n"],
+    true,
+  ),
+  descriptor(
+    "advance",
+    "advance",
+    "Advance",
+    "Push to the next meaningful beat without replaying filler.",
+    "play",
+    "shared",
+    "submit_action",
+    [],
+    true,
+  ),
+  descriptor(
+    "timeskip",
+    "timeskip",
+    "Time Skip",
+    "Jump ahead to a later meaningful moment.",
+    "play",
+    "shared",
+    "submit_action",
+    [],
+    true,
+  ),
+  descriptor(
+    "downtime",
+    "downtime",
+    "Downtime",
+    "Request a quieter scene around a focus.",
+    "play",
+    "shared",
+    "submit_action",
+    [],
+    true,
+  ),
+  descriptor(
+    "save",
+    "save",
+    "Save",
+    "Create a manual save.",
+    "save",
+    "shared",
+    "save_create",
+    [],
+    true,
+  ),
+  descriptor(
+    "load",
+    "load",
+    "Load",
+    "Open or filter saved snapshots.",
+    "save",
+    "shared",
+    "save_load",
+    ["saves"],
+    true,
+    "saves",
+  ),
+  descriptor(
+    "delete-save",
+    "delete-save",
+    "Delete Save",
+    "Filter saves and delete one through confirmation.",
+    "save",
+    "browser_only",
+    "save_delete",
+    ["delete"],
+    true,
+    "saves",
+  ),
+  descriptor(
+    "help",
+    "help",
+    "Help",
+    "Show available commands.",
+    "system",
+    "shared",
+    "local_only",
+  ),
+  descriptor(
+    "quit",
+    "quit",
+    "Quit",
+    "Save and leave the terminal session.",
+    "system",
+    "terminal_only",
+    "local_only",
+    ["q"],
+  ),
 ];
 
 export const commandGroupLabels: Record<string, string> = {
@@ -123,7 +477,16 @@ export const commandGroupLabels: Record<string, string> = {
   recent: "Recent",
 };
 
-const commandGroupOrder = ["play", "talk", "state", "save", "meta", "system", "debug", "recent"];
+const commandGroupOrder = [
+  "play",
+  "talk",
+  "state",
+  "save",
+  "meta",
+  "system",
+  "debug",
+  "recent",
+];
 
 const panelByCanonical: Record<string, ModuleTab> = {
   inventory: "inventory",
@@ -142,26 +505,44 @@ const panelByCanonical: Record<string, ModuleTab> = {
   map: "map",
 };
 
-export const tabHotkeys: Record<string, ModuleTab> = moduleSpecs.reduce<Record<string, ModuleTab>>((acc, item) => {
+export const tabHotkeys: Record<string, ModuleTab> = moduleSpecs.reduce<
+  Record<string, ModuleTab>
+>((acc, item) => {
   acc[item.hotkey.toLowerCase()] = item.tab;
   return acc;
 }, {});
 
-const talkIntents = new Set(["ask", "probe", "bond", "bargain", "threaten", "promise", "lie", "confess"]);
+const talkIntents = new Set([
+  "ask",
+  "probe",
+  "bond",
+  "bargain",
+  "threaten",
+  "promise",
+  "lie",
+  "confess",
+]);
 const metaKinds: Record<string, MetaCommand["kind"]> = {
   btw: "btw",
   guide: "guide",
   narrator: "narrator",
 };
 
-export function commandToAction(rawText: string, context: CommandContext = {}): CommandResult {
+export function commandToAction(
+  rawText: string,
+  context: CommandContext = {},
+): CommandResult {
   const text = rawText.trim();
   const parsed = parseSlashCommand(text);
   if (!parsed) return {};
 
   const descriptors = commandDescriptors(context.descriptors);
   const command = findCommandDescriptor(parsed.name, descriptors);
-  if (!command) return { handled: true, notice: unknownCommandNotice(parsed.name, descriptors) };
+  if (!command)
+    return {
+      handled: true,
+      notice: unknownCommandNotice(parsed.name, descriptors),
+    };
   if (!isCommandEnabled(command, context)) {
     return { handled: true, notice: disabledCommandNotice(command) };
   }
@@ -174,7 +555,12 @@ export function commandToAction(rawText: string, context: CommandContext = {}): 
       return tab ? { handled: true, tab } : { handled: true };
     }
     case "save_load":
-      return { handled: true, tab: "saves", overlay: "saves", saveFilter: parsed.argsText };
+      return {
+        handled: true,
+        tab: "saves",
+        overlay: "saves",
+        saveFilter: parsed.argsText,
+      };
     case "save_create":
       return { tab: "saves", overlay: "saves", saveName: parsed.argsText };
     case "save_delete":
@@ -183,7 +569,9 @@ export function commandToAction(rawText: string, context: CommandContext = {}): 
         tab: "saves",
         overlay: "saves",
         saveDeleteFilter: parsed.argsText,
-        notice: parsed.argsText ? `Filtered saves for deletion: ${parsed.argsText}` : "Select a save to delete from the save drawer.",
+        notice: parsed.argsText
+          ? `Filtered saves for deletion: ${parsed.argsText}`
+          : "Select a save to delete from the save drawer.",
       };
     case "submit_meta":
       return metaCommandToAction(canonical, parsed.argsText);
@@ -193,8 +581,19 @@ export function commandToAction(rawText: string, context: CommandContext = {}): 
       return localCommandToAction(canonical, command.id);
     case "insert_template":
       return { handled: true, text: command.examples?.[0] ?? "" };
-	case "timeline":
-		return { handled: true, timeline: { action: canonical === "branches" ? "list" : canonical === "branch-rename" ? "rename" : canonical as "fork" | "checkout", value: parsed.argsText } };
+    case "timeline":
+      return {
+        handled: true,
+        timeline: {
+          action:
+            canonical === "branches"
+              ? "list"
+              : canonical === "branch-rename"
+                ? "rename"
+                : (canonical as "fork" | "checkout" | "retry"),
+          value: parsed.argsText,
+        },
+      };
     default:
       return {};
   }
@@ -204,7 +603,8 @@ export function actionModeToText(mode: string, text: string): string {
   const clean = text.trim();
   if (mode === "advance") return buildAdvanceSceneAction(clean);
   if (mode === "timeskip") return buildTimeSkipAction(clean);
-  if (mode === "talk" && !clean.toLowerCase().startsWith("/talk")) return `[Talk] ${clean}`;
+  if (mode === "talk" && !clean.toLowerCase().startsWith("/talk"))
+    return `[Talk] ${clean}`;
   return clean;
 }
 
@@ -219,36 +619,55 @@ export function commandSuggestions(
   const parsed = parseCommandDraft(trimmed);
   if (!parsed) return [];
 
-  const allDescriptors = commandDescriptors(descriptors).filter((descriptor) => isCommandEnabled(descriptor, context));
-  const command = parsed.commandName ? findCommandDescriptor(parsed.commandName, allDescriptors) : undefined;
+  const allDescriptors = commandDescriptors(descriptors).filter((descriptor) =>
+    isCommandEnabled(descriptor, context),
+  );
+  const command = parsed.commandName
+    ? findCommandDescriptor(parsed.commandName, allDescriptors)
+    : undefined;
   const canonical = command?.canonical ?? command?.id;
   if (command && parsed.hasArgs && canonical === "talk") {
     return talkCompletionSuggestions(command, parsed.argsText, context);
   }
-  if (command && parsed.hasArgs && (canonical === "load" || canonical === "delete-save")) {
-    return saveCompletionSuggestions(command, parsed.argsText, context.saveNames ?? []);
+  if (
+    command &&
+    parsed.hasArgs &&
+    (canonical === "load" || canonical === "delete-save")
+  ) {
+    return saveCompletionSuggestions(
+      command,
+      parsed.argsText,
+      context.saveNames ?? [],
+    );
   }
 
   const query = parsed.commandName.toLowerCase();
-  const commands = commandDescriptorsToSlashCommands(allDescriptors).filter((item) => {
-    if (!query) return true;
-    const descriptor = item.descriptor;
-    return (
-      item.name.slice(1).startsWith(query) ||
-      descriptor?.canonical.toLowerCase().startsWith(query) ||
-      descriptor?.title.toLowerCase().includes(query) ||
-      item.aliases.some((alias) => stripSlash(alias).startsWith(query))
-    );
-  }).sort((left, right) => compareSuggestions(left, right, query));
+  const commands = commandDescriptorsToSlashCommands(allDescriptors)
+    .filter((item) => {
+      if (!query) return true;
+      const descriptor = item.descriptor;
+      return (
+        item.name.slice(1).startsWith(query) ||
+        descriptor?.canonical.toLowerCase().startsWith(query) ||
+        descriptor?.title.toLowerCase().includes(query) ||
+        item.aliases.some((alias) => stripSlash(alias).startsWith(query))
+      );
+    })
+    .sort((left, right) => compareSuggestions(left, right, query));
 
   const recent = recentCommandSuggestions(query, context.recentCommands ?? []);
   return [...commands, ...recent];
 }
 
-export function commandDescriptors(descriptors?: CommandDescriptor[]): CommandDescriptor[] {
-  if (!descriptors || descriptors.length === 0) return fallbackCommandDescriptors.map(localizedFallbackDescriptor);
+export function commandDescriptors(
+  descriptors?: CommandDescriptor[],
+): CommandDescriptor[] {
+  if (!descriptors || descriptors.length === 0)
+    return fallbackCommandDescriptors.map(localizedFallbackDescriptor);
 
-  const fallbackByID = new Map(fallbackCommandDescriptors.map((descriptor) => [descriptor.id, descriptor]));
+  const fallbackByID = new Map(
+    fallbackCommandDescriptors.map((descriptor) => [descriptor.id, descriptor]),
+  );
   const seen = new Set<string>();
   const merged = descriptors.map((descriptor) => {
     seen.add(descriptor.id);
@@ -257,31 +676,53 @@ export function commandDescriptors(descriptors?: CommandDescriptor[]): CommandDe
     return {
       ...fallback,
       ...descriptor,
-      aliases: uniqueNames([...(descriptor.aliases ?? []), ...(fallback.aliases ?? [])]),
-      examples: descriptor.examples?.length ? descriptor.examples : fallback.examples,
+      aliases: uniqueNames([
+        ...(descriptor.aliases ?? []),
+        ...(fallback.aliases ?? []),
+      ]),
+      examples: descriptor.examples?.length
+        ? descriptor.examples
+        : fallback.examples,
       enabled_when: descriptor.enabled_when ?? fallback.enabled_when,
     };
   });
   for (const fallback of fallbackCommandDescriptors) {
-    if (!seen.has(fallback.id) && fallback.parity === "browser_only") merged.push(localizedFallbackDescriptor(fallback));
+    if (!seen.has(fallback.id) && fallback.parity === "browser_only")
+      merged.push(localizedFallbackDescriptor(fallback));
   }
   return merged;
 }
 
-function localizedFallbackDescriptor(descriptor: CommandDescriptor): CommandDescriptor {
-  return { ...descriptor, title: i18n.t(`command_fallback:${descriptor.id}.0`, { defaultValue: descriptor.title }), description: i18n.t(`command_fallback:${descriptor.id}.1`, { defaultValue: descriptor.description }) };
+function localizedFallbackDescriptor(
+  descriptor: CommandDescriptor,
+): CommandDescriptor {
+  return {
+    ...descriptor,
+    title: i18n.t(`command_fallback:${descriptor.id}.0`, {
+      defaultValue: descriptor.title,
+    }),
+    description: i18n.t(`command_fallback:${descriptor.id}.1`, {
+      defaultValue: descriptor.description,
+    }),
+  };
 }
 
-export function isCommandEnabled(descriptor: CommandDescriptor, context: CommandSuggestionContext = {}): boolean {
+export function isCommandEnabled(
+  descriptor: CommandDescriptor,
+  context: CommandSuggestionContext = {},
+): boolean {
   const requirement = descriptor.enabled_when?.trim();
   if (!requirement) return true;
   if (requirement === "nearby_npcs") return (context.npcNames ?? []).length > 0;
   if (requirement === "saves") return (context.saveNames ?? []).length > 0;
-  if (requirement === "visible_private_thoughts") return context.visiblePrivateThoughts === true;
+  if (requirement === "visible_private_thoughts")
+    return context.visiblePrivateThoughts === true;
   return false;
 }
 
-export function groupCommandSuggestions(items: SlashCommandItem[]): CommandSuggestionGroup[] {
+export function groupCommandSuggestions(
+  items: SlashCommandItem[],
+): CommandSuggestionGroup[] {
   const groups = new Map<string, SlashCommandItem[]>();
   for (const item of items) {
     const key = item.group || "system";
@@ -291,12 +732,16 @@ export function groupCommandSuggestions(items: SlashCommandItem[]): CommandSugge
     .sort(([left], [right]) => groupIndex(left) - groupIndex(right))
     .map(([key, groupedItems]) => ({
       key,
-      label: i18n.t(`commands:${key}`, { defaultValue: commandGroupLabels[key] ?? titleCase(key) }),
+      label: i18n.t(`commands:${key}`, {
+        defaultValue: commandGroupLabels[key] ?? titleCase(key),
+      }),
       items: groupedItems,
     }));
 }
 
-export function commandDescriptorsToSlashCommands(descriptors: CommandDescriptor[]): SlashCommandItem[] {
+export function commandDescriptorsToSlashCommands(
+  descriptors: CommandDescriptor[],
+): SlashCommandItem[] {
   return descriptors.map((item) => {
     const name = slashName(item);
     const value = item.trailing_space ? `${name} ` : name;
@@ -307,7 +752,12 @@ export function commandDescriptorsToSlashCommands(descriptors: CommandDescriptor
       value,
       group: item.group,
       kind: "command",
-      badge: item.parity === "browser_only" ? i18n.t("controls:commandPalette.browser") : item.parity === "terminal_only" ? i18n.t("controls:commandPalette.terminal") : undefined,
+      badge:
+        item.parity === "browser_only"
+          ? i18n.t("controls:commandPalette.browser")
+          : item.parity === "terminal_only"
+            ? i18n.t("controls:commandPalette.terminal")
+            : undefined,
       descriptor: item,
     };
   });
@@ -325,51 +775,76 @@ function talkCompletionSuggestions(
     return names
       .filter((name) => !query || name.toLowerCase().includes(query))
       .slice(0, 8)
-      .map((name) => completionSuggestion({
-        command,
-        group: "talk",
-        name,
-        value: `/talk ${name} `,
-        hint: i18n.t("command_ui:targetHint"),
-        badge: "NPC",
-      }));
+      .map((name) =>
+        completionSuggestion({
+          command,
+          group: "talk",
+          name,
+          value: `/talk ${name} `,
+          hint: i18n.t("command_ui:targetHint"),
+          badge: "NPC",
+        }),
+      );
   }
 
   const intentQuery = firstToken(matched.rest).toLowerCase();
   if (matched.rest && !intentQuery) return [];
-  if (matched.rest && talkIntents.has(intentQuery) && matched.rest.trim().split(/\s+/).length > 1) return [];
+  if (
+    matched.rest &&
+    talkIntents.has(intentQuery) &&
+    matched.rest.trim().split(/\s+/).length > 1
+  )
+    return [];
 
   return [...talkIntents]
     .filter((intent) => !intentQuery || intent.startsWith(intentQuery))
-    .map((intent) => completionSuggestion({
-      command,
-      group: "talk",
-      name: intent,
-      value: `/talk ${matched.name} ${intent} `,
-      hint: i18n.t("command_ui:intentHint", { name: matched.name, intent }),
-      badge: i18n.t("command_ui:badgeIntent"),
-    }));
+    .map((intent) =>
+      completionSuggestion({
+        command,
+        group: "talk",
+        name: intent,
+        value: `/talk ${matched.name} ${intent} `,
+        hint: i18n.t("command_ui:intentHint", { name: matched.name, intent }),
+        badge: i18n.t("command_ui:badgeIntent"),
+      }),
+    );
 }
 
-function saveCompletionSuggestions(command: CommandDescriptor, argsText: string, saveNames: string[]): SlashCommandItem[] {
+function saveCompletionSuggestions(
+  command: CommandDescriptor,
+  argsText: string,
+  saveNames: string[],
+): SlashCommandItem[] {
   const query = argsText.toLowerCase();
   return uniqueNames(saveNames)
     .filter((name) => !query || name.toLowerCase().includes(query))
     .slice(0, 8)
-    .map((name) => completionSuggestion({
-      command,
-      group: "save",
-      name,
-      value: `/${stripSlash(command.id)} ${name}`,
-      hint: command.behavior === "save_delete" ? i18n.t("command_ui:deleteHint") : i18n.t("command_ui:loadHint"),
-      badge: i18n.t("command_ui:badgeSave"),
-    }));
+    .map((name) =>
+      completionSuggestion({
+        command,
+        group: "save",
+        name,
+        value: `/${stripSlash(command.id)} ${name}`,
+        hint:
+          command.behavior === "save_delete"
+            ? i18n.t("command_ui:deleteHint")
+            : i18n.t("command_ui:loadHint"),
+        badge: i18n.t("command_ui:badgeSave"),
+      }),
+    );
 }
 
-function recentCommandSuggestions(query: string, recentCommands: string[]): SlashCommandItem[] {
+function recentCommandSuggestions(
+  query: string,
+  recentCommands: string[],
+): SlashCommandItem[] {
   if (recentCommands.length === 0) return [];
   return uniqueNames(recentCommands)
-    .filter((command) => command.trim().startsWith("/") && (!query || command.toLowerCase().includes(query)))
+    .filter(
+      (command) =>
+        command.trim().startsWith("/") &&
+        (!query || command.toLowerCase().includes(query)),
+    )
     .slice(0, 5)
     .map((command) => ({
       name: command,
@@ -416,11 +891,17 @@ function metaCommandToAction(canonical: string, value: string): CommandResult {
   return { meta: { kind, text: value } };
 }
 
-function submitActionCommandToAction(canonical: string, argsText: string, context: CommandContext): CommandResult {
-  if (canonical === "advance") return { text: buildAdvanceSceneAction(argsText) };
+function submitActionCommandToAction(
+  canonical: string,
+  argsText: string,
+  context: CommandContext,
+): CommandResult {
+  if (canonical === "advance")
+    return { text: buildAdvanceSceneAction(argsText) };
   if (canonical === "timeskip") return { text: buildTimeSkipAction(argsText) };
   if (canonical === "downtime") {
-    if (!argsText) return { handled: true, notice: i18n.t("command_ui:downtimeUsage") };
+    if (!argsText)
+      return { handled: true, notice: i18n.t("command_ui:downtimeUsage") };
     return { text: `[Downtime Scene] ${argsText}` };
   }
   if (canonical === "talk") return talkCommandToAction(argsText, context);
@@ -451,7 +932,10 @@ function disabledCommandNotice(command: CommandDescriptor): string {
   return i18n.t("commands:disabled", { name: stripSlash(name) });
 }
 
-function unknownCommandNotice(name: string, descriptors: CommandDescriptor[]): string {
+function unknownCommandNotice(
+  name: string,
+  descriptors: CommandDescriptor[],
+): string {
   if (!name.trim()) {
     return i18n.t("command_ui:commandRequired");
   }
@@ -462,14 +946,24 @@ function unknownCommandNotice(name: string, descriptors: CommandDescriptor[]): s
     .slice(0, 3)
     .map((item) => item.name);
   if (suggestions.length > 0) {
-    return i18n.t("command_ui:didYouMean", { name: commandName, suggestions: suggestions.join(", ") });
+    return i18n.t("command_ui:didYouMean", {
+      name: commandName,
+      suggestions: suggestions.join(", "),
+    });
   }
   return i18n.t("commands:unknown", { name: stripSlash(name) });
 }
 
-function talkCommandToAction(argsText: string, context: CommandContext): CommandResult {
+function talkCommandToAction(
+  argsText: string,
+  context: CommandContext,
+): CommandResult {
   if (!argsText) {
-    return { handled: true, tab: "codex", notice: i18n.t("command_ui:talkUsage") };
+    return {
+      handled: true,
+      tab: "codex",
+      notice: i18n.t("command_ui:talkUsage"),
+    };
   }
 
   const matched = matchKnownName(argsText, context.npcNames ?? []);
@@ -483,7 +977,11 @@ function talkCommandToAction(argsText: string, context: CommandContext): Command
   }
 
   if (!rest) {
-    return { handled: true, tab: "codex", notice: i18n.t("command_ui:talkTarget", { target, intent }) };
+    return {
+      handled: true,
+      tab: "codex",
+      notice: i18n.t("command_ui:talkTarget", { target, intent }),
+    };
   }
   return { text: `[Talk to ${target} | intent:${intent}] ${rest}` };
 }
@@ -506,16 +1004,23 @@ function buildTimeSkipAction(hint: string): string {
   return base;
 }
 
-function findCommandDescriptor(name: string, descriptors: CommandDescriptor[]): CommandDescriptor | undefined {
+function findCommandDescriptor(
+  name: string,
+  descriptors: CommandDescriptor[],
+): CommandDescriptor | undefined {
   const clean = stripSlash(name);
   return descriptors.find((descriptor) => {
     if (stripSlash(descriptor.id) === clean) return true;
     if (stripSlash(descriptor.canonical) === clean) return true;
-    return (descriptor.aliases ?? []).some((alias) => stripSlash(alias) === clean);
+    return (descriptor.aliases ?? []).some(
+      (alias) => stripSlash(alias) === clean,
+    );
   });
 }
 
-function parseSlashCommand(text: string): { name: string; argsText: string } | null {
+function parseSlashCommand(
+  text: string,
+): { name: string; argsText: string } | null {
   if (!text.startsWith("/")) return null;
   const body = text.slice(1).trim();
   if (!body) return { name: "", argsText: "" };
@@ -523,7 +1028,9 @@ function parseSlashCommand(text: string): { name: string; argsText: string } | n
   return { name, argsText: body.slice(name.length).trim() };
 }
 
-function parseCommandDraft(text: string): { commandName: string; argsText: string; hasArgs: boolean } | null {
+function parseCommandDraft(
+  text: string,
+): { commandName: string; argsText: string; hasArgs: boolean } | null {
   if (!text.startsWith("/")) return null;
   const body = text.slice(1);
   const commandName = firstToken(body);
@@ -535,7 +1042,10 @@ function parseCommandDraft(text: string): { commandName: string; argsText: strin
   };
 }
 
-function matchKnownName(argsText: string, names: string[]): { name: string; rest: string } | null {
+function matchKnownName(
+  argsText: string,
+  names: string[],
+): { name: string; rest: string } | null {
   const lowerArgs = argsText.toLowerCase();
   let best: { name: string; rest: string } | null = null;
   for (const rawName of names) {
@@ -568,12 +1078,18 @@ function groupIndex(group: string): number {
   return index === -1 ? commandGroupOrder.length : index;
 }
 
-function compareSuggestions(left: SlashCommandItem, right: SlashCommandItem, query = ""): number {
-  const scoreDelta = suggestionQueryScore(left, query) - suggestionQueryScore(right, query);
+function compareSuggestions(
+  left: SlashCommandItem,
+  right: SlashCommandItem,
+  query = "",
+): number {
+  const scoreDelta =
+    suggestionQueryScore(left, query) - suggestionQueryScore(right, query);
   if (scoreDelta !== 0) return scoreDelta;
   const groupDelta = groupIndex(left.group) - groupIndex(right.group);
   if (groupDelta !== 0) return groupDelta;
-  const kindDelta = suggestionKindIndex(left.kind) - suggestionKindIndex(right.kind);
+  const kindDelta =
+    suggestionKindIndex(left.kind) - suggestionKindIndex(right.kind);
   if (kindDelta !== 0) return kindDelta;
   return left.name.localeCompare(right.name);
 }
@@ -584,7 +1100,12 @@ function suggestionQueryScore(item: SlashCommandItem, query: string): number {
   const canonical = item.descriptor?.canonical.toLowerCase() ?? "";
   const title = item.descriptor?.title.toLowerCase() ?? "";
   const aliases = item.aliases.map((alias) => stripSlash(alias));
-  if (name === query || canonical === query || aliases.some((alias) => alias === query)) return 0;
+  if (
+    name === query ||
+    canonical === query ||
+    aliases.some((alias) => alias === query)
+  )
+    return 0;
   if (name.startsWith(query)) return 1;
   if (canonical.startsWith(query)) return 2;
   if (aliases.some((alias) => alias.startsWith(query))) return 3;

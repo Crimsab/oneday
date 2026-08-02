@@ -1,7 +1,18 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { defaultPreferences, loadPreferences, normalizeLocale, normalizePreferences, resetTypographyPreferences, resolveLocale, savePreferences } from "./preferences";
+import {
+  defaultPreferences,
+  loadPreferences,
+  normalizeLocale,
+  normalizePreferences,
+  resetTypographyPreferences,
+  resolveLocale,
+  savePreferences,
+} from "./preferences";
 
-const originalLocalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+const originalLocalStorage = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "localStorage",
+);
 
 describe("normalizePreferences", () => {
   it("keeps valid preferences and falls back for invalid values", () => {
@@ -34,6 +45,7 @@ describe("normalizePreferences", () => {
       }),
     ).toEqual({
       locale: "it",
+      defaultStoryLanguage: "en",
       timeFormat: "system",
       density: "compact",
       accent: "#73c7ff",
@@ -117,7 +129,15 @@ describe("normalizePreferences", () => {
 
   it("rejects disabling every automatic minigame family", () => {
     const preferences = normalizePreferences({
-      disabledMiniGames: ["deduction", "negotiation", "pattern", "bidding", "courtroom", "comedy", "quicktime"],
+      disabledMiniGames: [
+        "deduction",
+        "negotiation",
+        "pattern",
+        "bidding",
+        "courtroom",
+        "comedy",
+        "quicktime",
+      ],
     });
     expect(preferences.disabledMiniGames).toHaveLength(6);
     expect(preferences.disabledMiniGames).not.toContain("deduction");
@@ -126,7 +146,14 @@ describe("normalizePreferences", () => {
   it("restores a timing-free family when only quick reaction remains enabled", () => {
     const preferences = normalizePreferences({
       timingFreeChallenges: true,
-      disabledMiniGames: ["deduction", "negotiation", "pattern", "bidding", "courtroom", "comedy"],
+      disabledMiniGames: [
+        "deduction",
+        "negotiation",
+        "pattern",
+        "bidding",
+        "courtroom",
+        "comedy",
+      ],
     });
     expect(preferences.disabledMiniGames).not.toContain("deduction");
     expect(preferences.disabledMiniGames).toContain("negotiation");
@@ -165,22 +192,42 @@ describe("loadPreferences and savePreferences", () => {
 
   it("persists normalized preferences", () => {
     const storage = stubLocalStorage();
-    savePreferences({ ...defaultPreferences, density: "comfortable", accent: "#ff91ad", desktopRailMode: "collapsed", showLeftRail: false });
+    savePreferences({
+      ...defaultPreferences,
+      density: "comfortable",
+      accent: "#ff91ad",
+      desktopRailMode: "collapsed",
+      showLeftRail: false,
+    });
     const stored = storage.get("oneday-browser-preferences-v2") ?? "";
     expect(stored).toContain("comfortable");
     expect(stored).not.toContain("showLeftRail");
-    expect(loadPreferences()).toMatchObject({ density: "comfortable", accent: "#ff91ad", desktopRailMode: "collapsed", showLeftRail: true });
+    expect(loadPreferences()).toMatchObject({
+      density: "comfortable",
+      accent: "#ff91ad",
+      desktopRailMode: "collapsed",
+      showLeftRail: true,
+    });
   });
 
   it("does not restore a legacy hidden rail after refresh", () => {
     stubLocalStorage();
-    localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ showLeftRail: false }));
-    expect(loadPreferences()).toMatchObject({ desktopRailMode: "expanded", showLeftRail: true });
+    localStorage.setItem(
+      "oneday-browser-preferences-v2",
+      JSON.stringify({ showLeftRail: false }),
+    );
+    expect(loadPreferences()).toMatchObject({
+      desktopRailMode: "expanded",
+      showLeftRail: true,
+    });
   });
 
   it("migrates legacy named accent colors", () => {
     stubLocalStorage();
-    localStorage.setItem("oneday-browser-preferences-v2", JSON.stringify({ accent: "green" }));
+    localStorage.setItem(
+      "oneday-browser-preferences-v2",
+      JSON.stringify({ accent: "green" }),
+    );
     expect(loadPreferences().accent).toBe("#8ed979");
   });
 });
@@ -190,18 +237,18 @@ function stubLocalStorage() {
   Object.defineProperty(globalThis, "localStorage", {
     configurable: true,
     value: {
-    getItem: (key: string) => storage.get(key) ?? null,
-    setItem: (key: string, value: string) => {
-      storage.set(key, value);
-    },
-    removeItem: (key: string) => {
-      storage.delete(key);
-    },
-    clear: () => storage.clear(),
-    key: (index: number) => [...storage.keys()][index] ?? null,
-    get length() {
-      return storage.size;
-    },
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+      clear: () => storage.clear(),
+      key: (index: number) => [...storage.keys()][index] ?? null,
+      get length() {
+        return storage.size;
+      },
     },
   });
   return storage;

@@ -278,6 +278,7 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, tea.Quit
 		case views.ActionNewStory:
 			creator := engine.NewStoryCreator(a.router, a.db, a.cfg.AI.Generation, a.loc)
+			creator.SetPreferredLanguage(a.cfg.Game.DefaultStoryLanguage)
 			m := views.NewNewStoryModel(creator, a.loc)
 			m.SetSize(a.width, a.height)
 			a.newStory = &m

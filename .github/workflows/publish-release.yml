@@ -255,6 +255,13 @@ jobs:
             --config "$RUNNER_TEMP/tauri.signed.conf.json" \
             --bundles ${{ matrix.bundles }}
 
+      - name: Verify desktop embeds the production launcher
+        shell: bash
+        run: |
+          binary="desktop/src-tauri/target/release/oneday-desktop"
+          [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
+          bun scripts/assert-tauri-production-ui.ts "$binary" desktop/dist
+
       - name: Normalize desktop assets
         shell: bash
         run: |

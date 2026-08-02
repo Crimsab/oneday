@@ -1,9 +1,15 @@
-import { Check, ChevronDown } from "lucide-react";
+import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ImageGenerationDraft } from "../../modelRouting";
 import type { ImageProviderCatalogEntry } from "../../types";
 import type { ProviderConfigDraft } from "./imageGenerationDraft";
 import { ProviderConfiguration } from "./ProviderConfiguration";
+import { CustomSelect } from "../CustomSelect";
+import { SettingsDisclosure } from "./SettingsDisclosure";
+
+const customModelValue = "__oneday_custom_model__";
+const customSizeValue = "__oneday_custom_size__";
+const defaultSizePresets = ["1024x1024", "1536x1024", "1024x1536"];
 interface Props {
   catalog: ImageProviderCatalogEntry[];
   draft: ImageGenerationDraft;
@@ -29,25 +35,44 @@ export function ImageGenerationSettings(props: Props) {
       Boolean(item) &&
       all.findIndex((other) => other?.id === item?.id) === index,
   );
-  const featuredProviders = catalog.filter((item) => item.id === provider?.id || item.default);
-  const otherProviders = catalog.filter((item) => !featuredProviders.some((featured) => featured.id === item.id));
+  const otherProviders = catalog.filter((item) => item.id !== provider?.id);
   const modelList = (item?: ImageProviderCatalogEntry) => [...new Set([...(item?.models ?? []), ...(props.discoveredModels?.[item?.id ?? ""] ?? [])])];
-  const providerChoice = (item: ImageProviderCatalogEntry) => {
+  const preferredModel = (item?: ImageProviderCatalogEntry) => modelList(item)[0] ?? "";
+  const aspectRatios = concreteValues(provider?.capabilities.aspect_ratios);
+  const qualities = concreteValues(provider?.capabilities.qualities);
+  const resolutions = resolutionOptionsFor(provider, draft.model);
+  const providerChoice = (item: ImageProviderCatalogEntry, current = false) => {
     const selected = item.id === provider?.id;
+    const nextModel = preferredModel(item);
+    const mapFollowsPrimary = !draft.mapIconProvider || draft.mapIconProvider === provider?.id;
     return (
       <button
         key={item.id}
         type="button"
         role="radio"
         aria-checked={selected}
-        className={selected ? "active" : ""}
-        onClick={() => onImageChange({ provider: item.id, model: item.models[0] ?? draft.model })}
+        className={`image-provider-choice${selected ? " active" : ""}${current ? " current" : ""}`}
+        onClick={() => onImageChange(
+          mapFollowsPrimary
+            ? {
+                provider: item.id,
+                model: nextModel,
+                mapIconProvider: item.id,
+                mapIconModel: nextModel,
+              }
+            : { provider: item.id, model: nextModel },
+        )}
       >
-        <span>
+        <span className="image-provider-choice-copy">
+          {current && <small className="image-provider-choice-label">{t("imageSettings.activeProvider")}</small>}
           <strong>{item.display_name}</strong>
           <small>
-            {selected
-              ? t("imageSettings.selected")
+            {current
+              ? item.configured
+                ? t("imageSettings.configured")
+                : t("imageSettings.notConfigured")
+              : selected
+                ? t("imageSettings.selected")
               : item.configured
                 ? t("imageSettings.configured")
                 : item.default
@@ -82,20 +107,18 @@ export function ImageGenerationSettings(props: Props) {
         role="radiogroup"
         aria-label={t("imageSettings.provider")}
       >
-        <div className="image-provider-featured">
-          {featuredProviders.map(providerChoice)}
-        </div>
+        {provider && <div className="image-provider-current">{providerChoice(provider, true)}</div>}
         {otherProviders.length > 0 && (
-          <details className="image-provider-more">
-            <summary>
-              {t("imageSettingsExtra.otherProviders")}
-              <span>{otherProviders.length}</span>
-              <ChevronDown size={16} aria-hidden="true" />
-            </summary>
+          <SettingsDisclosure
+            className="image-provider-more"
+            title={t("imageSettings.changeProvider")}
+            description={t("imageSettingsExtra.providerAlternativesHelp")}
+            meta={t("imageSettingsExtra.providerCount", { count: otherProviders.length })}
+          >
             <div className="image-provider-more-grid">
-              {otherProviders.map(providerChoice)}
+              {otherProviders.map((item) => providerChoice(item))}
             </div>
-          </details>
+          </SettingsDisclosure>
         )}
       </div>
       <p className="image-provider-copy">
@@ -106,85 +129,52 @@ export function ImageGenerationSettings(props: Props) {
             })}
       </p>
       <div className="settings-grid image-settings-grid">
-        <datalist id="scene-image-models">
-          {modelList(provider).map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
-        <datalist id="map-image-models">
-          {modelList(mapProvider).map((model) => (
-            <option key={model} value={model} />
-          ))}
-        </datalist>
         <label>
           <span>{t("imageSettings.sceneModel")}</span>
-          <input
-            list="scene-image-models"
+          <ImageModelPicker
+            ariaLabel={t("imageSettings.sceneModel")}
             value={draft.model}
-            onChange={(event) => onImageChange({ model: event.target.value })}
+            models={modelList(provider)}
+            customAllowed={provider?.model_validation !== "allowlist"}
+            onChange={(model) => onImageChange({ model })}
           />
         </label>
         <label>
           <span>{t("imageSettings.mapProvider")}</span>
-          <select
+          <CustomSelect
             value={mapProvider?.id ?? ""}
-            onChange={(event) => {
+            ariaLabel={t("imageSettings.mapProvider")}
+            onChange={(providerId) => {
               const next = catalog.find(
-                (item) => item.id === event.target.value,
+                (item) => item.id === providerId,
               );
               onImageChange({
-                mapIconProvider: event.target.value,
-                mapIconModel: next?.models[0] ?? draft.mapIconModel,
+                mapIconProvider: providerId,
+                mapIconModel: preferredModel(next),
               });
             }}
-          >
-            {catalog.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.display_name}
-              </option>
-            ))}
-          </select>
+            options={catalog.map((item) => ({ value: item.id, label: item.display_name }))}
+          />
         </label>
         <label>
           <span>{t("imageSettings.mapModel")}</span>
-          <input
-            list="map-image-models"
+          <ImageModelPicker
+            ariaLabel={t("imageSettings.mapModel")}
             value={draft.mapIconModel}
-            onChange={(event) =>
-              onImageChange({ mapIconModel: event.target.value })
-            }
+            models={modelList(mapProvider)}
+            customAllowed={mapProvider?.model_validation !== "allowlist"}
+            onChange={(mapIconModel) => onImageChange({ mapIconModel })}
           />
         </label>
-        {provider?.capabilities.sizes.filter(isConcrete).length ? (
-          <label>
-            <span>{t("imageSettings.size")}</span>
-            <select
-              value={draft.defaultSize}
-              onChange={(event) =>
-                onImageChange({ defaultSize: event.target.value })
-              }
-            >
-              {provider.capabilities.sizes.filter(isConcrete).map((value) => (
-                <option key={value}>{value}</option>
-              ))}
-            </select>
-          </label>
-        ) : null}
         {provider?.capabilities.aspect_ratios.filter(isConcrete).length ? (
           <label>
             <span>{t("imageSettings.aspect")}</span>
-            <select
+            <CustomSelect
               value={draft.defaultAspectRatio}
-              onChange={(event) =>
-                onImageChange({ defaultAspectRatio: event.target.value })
-              }
-            >
-              {provider.capabilities.aspect_ratios
-                .filter(isConcrete)
-                .map((value) => (
-                  <option key={value}>{value}</option>
-                ))}
-            </select>
+              ariaLabel={t("imageSettings.aspect")}
+              onChange={(defaultAspectRatio) => onImageChange({ defaultAspectRatio })}
+              options={provider.capabilities.aspect_ratios.filter(isConcrete).map((value) => ({ value, label: value }))}
+            />
           </label>
         ) : null}
         <label className="toggle-row">
@@ -198,14 +188,62 @@ export function ImageGenerationSettings(props: Props) {
           />
         </label>
       </div>
+      <section className="image-output-settings" aria-labelledby="image-output-settings-title">
+        <header>
+          <div>
+            <h5 id="image-output-settings-title">{t("imageSettingsExtra.formatGroup")}</h5>
+            <p>{t("imageSettingsExtra.formatHelp")}</p>
+          </div>
+          <span>{t("imageSettingsExtra.livePreview")}</span>
+        </header>
+        <div className="image-dimension-grid">
+          <ImageSizePicker
+            label={t("imageSettingsExtra.defaultFrame")}
+            value={draft.defaultSize}
+            presets={concreteValues(provider?.capabilities.sizes)}
+            onChange={(defaultSize) => onImageChange({ defaultSize })}
+          />
+          <ImageSizePicker
+            label={t("models.locationSize")}
+            value={draft.locationSize}
+            presets={concreteValues(provider?.capabilities.sizes)}
+            onChange={(locationSize) => onImageChange({ locationSize })}
+          />
+          <ImageSizePicker
+            label={t("models.characterSize")}
+            value={draft.characterSize}
+            presets={concreteValues(provider?.capabilities.sizes)}
+            onChange={(characterSize) => onImageChange({ characterSize })}
+          />
+        </div>
+        <label className="image-output-format">
+          <span>{t("models.outputFormat")}</span>
+          <CustomSelect
+            value={draft.outputFormat}
+            ariaLabel={t("models.outputFormat")}
+            onChange={(outputFormat) => onImageChange({ outputFormat })}
+            options={selectOptions(
+              concreteValues(provider?.capabilities.output_formats).length
+                ? concreteValues(provider?.capabilities.output_formats)
+                : ["png"],
+              draft.outputFormat,
+              "PNG",
+              false,
+            ).map((option) => ({ ...option, label: option.label.toUpperCase() }))}
+          />
+        </label>
+      </section>
       <div className="provider-configurations">
         {configuredProviders.map((item) => (
           <ProviderConfiguration key={item.id} provider={item} {...props} />
         ))}
       </div>
-      <details className="image-provider-advanced">
-        <summary>{t("imageSettingsExtra.outputControls")}</summary>
-        <div className="settings-grid">
+      <SettingsDisclosure
+        className="image-provider-advanced"
+        title={t("imageSettingsExtra.outputControls")}
+        description={t("imageSettingsExtra.outputControlsHelp")}
+      >
+        <div className="settings-grid image-provider-advanced-grid">
           <label>
             <span>{t("models.timeout")}</span>
             <input
@@ -217,71 +255,88 @@ export function ImageGenerationSettings(props: Props) {
               }
             />
           </label>
-          <label>
-            <span>{t("imageAdvanced.defaultResolution")}</span>
-            <input
-              value={draft.defaultResolution}
-              onChange={(event) =>
-                onImageChange({ defaultResolution: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            <span>{t("imageAdvanced.locationResolution")}</span>
-            <input
-              value={draft.locationResolution}
-              onChange={(event) =>
-                onImageChange({ locationResolution: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            <span>{t("imageAdvanced.characterResolution")}</span>
-            <input
-              value={draft.characterResolution}
-              onChange={(event) =>
-                onImageChange({ characterResolution: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            <span>{t("imageAdvanced.locationAspect")}</span>
-            <input
-              value={draft.locationAspectRatio}
-              onChange={(event) =>
-                onImageChange({ locationAspectRatio: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            <span>{t("imageAdvanced.characterAspect")}</span>
-            <input
-              value={draft.characterAspectRatio}
-              onChange={(event) =>
-                onImageChange({ characterAspectRatio: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            <span>{t("imageAdvanced.quality")}</span>
-            <input
-              value={draft.quality}
-              onChange={(event) =>
-                onImageChange({ quality: event.target.value })
-              }
-            />
-          </label>
-          <label>
-            <span>{t("imageAdvanced.background")}</span>
-            <input
-              value={draft.background}
-              onChange={(event) =>
-                onImageChange({ background: event.target.value })
-              }
-            />
-          </label>
-          <label className="toggle-row">
-            <span>{t("models.appendNegative")}</span>
+          {resolutions.length ? (
+            <label>
+              <span>{t("imageAdvanced.defaultResolution")}</span>
+              <CustomSelect
+                value={draft.defaultResolution}
+                ariaLabel={t("imageAdvanced.defaultResolution")}
+                onChange={(defaultResolution) => onImageChange({ defaultResolution })}
+                options={selectOptions(resolutions, draft.defaultResolution, t("imageSettingsExtra.automatic"))}
+              />
+            </label>
+          ) : null}
+          {resolutions.length ? (
+            <label>
+              <span>{t("imageAdvanced.locationResolution")}</span>
+              <CustomSelect
+                value={draft.locationResolution}
+                ariaLabel={t("imageAdvanced.locationResolution")}
+                onChange={(locationResolution) => onImageChange({ locationResolution })}
+                options={selectOptions(resolutions, draft.locationResolution, t("imageSettingsExtra.automatic"))}
+              />
+            </label>
+          ) : null}
+          {resolutions.length ? (
+            <label>
+              <span>{t("imageAdvanced.characterResolution")}</span>
+              <CustomSelect
+                value={draft.characterResolution}
+                ariaLabel={t("imageAdvanced.characterResolution")}
+                onChange={(characterResolution) => onImageChange({ characterResolution })}
+                options={selectOptions(resolutions, draft.characterResolution, t("imageSettingsExtra.automatic"))}
+              />
+            </label>
+          ) : null}
+          {aspectRatios.length ? (
+            <label>
+              <span>{t("imageAdvanced.locationAspect")}</span>
+              <CustomSelect
+                value={draft.locationAspectRatio}
+                ariaLabel={t("imageAdvanced.locationAspect")}
+                onChange={(locationAspectRatio) => onImageChange({ locationAspectRatio })}
+                options={selectOptions(aspectRatios, draft.locationAspectRatio, t("imageSettingsExtra.automatic"))}
+              />
+            </label>
+          ) : null}
+          {aspectRatios.length ? (
+            <label>
+              <span>{t("imageAdvanced.characterAspect")}</span>
+              <CustomSelect
+                value={draft.characterAspectRatio}
+                ariaLabel={t("imageAdvanced.characterAspect")}
+                onChange={(characterAspectRatio) => onImageChange({ characterAspectRatio })}
+                options={selectOptions(aspectRatios, draft.characterAspectRatio, t("imageSettingsExtra.automatic"))}
+              />
+            </label>
+          ) : null}
+          {qualities.length ? (
+            <label>
+              <span>{t("imageAdvanced.quality")}</span>
+              <CustomSelect
+                value={draft.quality}
+                ariaLabel={t("imageAdvanced.quality")}
+                onChange={(quality) => onImageChange({ quality })}
+                options={selectOptions(qualities, draft.quality, t("imageSettingsExtra.automatic"))}
+              />
+            </label>
+          ) : null}
+          {provider?.capabilities.supports_transparency ? (
+            <label>
+              <span>{t("imageAdvanced.background")}</span>
+              <CustomSelect
+                value={draft.background}
+                ariaLabel={t("imageAdvanced.background")}
+                onChange={(background) => onImageChange({ background })}
+                options={selectOptions(["opaque", "transparent"], draft.background, t("imageSettingsExtra.automatic"))}
+              />
+            </label>
+          ) : null}
+          <label className="toggle-row negative-prompt-toggle">
+            <span>
+              <strong>{t("models.appendNegative")}</strong>
+              <small>{t("imageSettingsExtra.negativePromptHelp")}</small>
+            </span>
             <input
               type="checkbox"
               checked={draft.appendNegativePrompt}
@@ -291,7 +346,7 @@ export function ImageGenerationSettings(props: Props) {
             />
           </label>
         </div>
-      </details>
+      </SettingsDisclosure>
       <p className="model-note">{t("imageSettings.noConnectionTest")}</p>
     </section>
   );
@@ -299,4 +354,114 @@ export function ImageGenerationSettings(props: Props) {
 
 function isConcrete(value: string) {
   return !value.endsWith("-defined");
+}
+
+function concreteValues(values?: string[]) {
+  return [...new Set((values ?? []).filter(isConcrete))];
+}
+
+function resolutionOptionsFor(provider: ImageProviderCatalogEntry | undefined, model: string) {
+  if (provider?.id !== "gemini") return [];
+  const normalized = model.trim().toLowerCase();
+  if (normalized.includes("3.1-flash-lite-image")) return ["1K"];
+  if (normalized.includes("3.1-flash-image")) return ["0.5K", "1K", "2K", "4K"];
+  if (normalized.includes("gemini-3") && normalized.includes("image")) {
+    return ["1K", "2K", "4K"];
+  }
+  return [];
+}
+
+function selectOptions(values: string[], value: string, automaticLabel: string, includeAutomatic = true) {
+  const options = [
+    ...(includeAutomatic ? [{ value: "", label: automaticLabel }] : []),
+    ...values.map((candidate) => ({ value: candidate, label: candidate })),
+  ];
+  if (value && !options.some((option) => option.value === value)) {
+    options.splice(1, 0, { value, label: value });
+  }
+  return options;
+}
+
+function ImageSizePicker({ label, value, presets, onChange }: {
+  label: string;
+  value: string;
+  presets: string[];
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation("drawer");
+  const options = [...new Set([...(presets.length ? presets : defaultSizePresets), ...defaultSizePresets])];
+  const custom = !options.includes(value);
+  const [width, height] = imageDimensions(value);
+  return (
+    <div className="image-dimension-control">
+      <label>
+        <span>{label}</span>
+        <CustomSelect
+          value={custom ? customSizeValue : value}
+          ariaLabel={label}
+          onChange={(next) => onChange(next === customSizeValue ? "" : next)}
+          options={[
+            ...options.map((candidate) => ({ value: candidate, label: candidate })),
+            { value: customSizeValue, label: t("imageSettingsExtra.customSize") },
+          ]}
+        />
+      </label>
+      {custom ? (
+        <label className="image-custom-size">
+          <span>{t("imageSettingsExtra.customSizeLabel")}</span>
+          <input
+            value={value}
+            inputMode="numeric"
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="1280x720"
+            aria-label={t("imageSettingsExtra.customSizeFor", { field: label })}
+          />
+        </label>
+      ) : null}
+      <div className="image-size-preview" aria-label={t("imageSettingsExtra.previewFor", { field: label, size: value || t("imageSettingsExtra.customSize") })}>
+        <span style={{ aspectRatio: `${width} / ${height}` }} aria-hidden="true" />
+        <small>{value || t("imageSettingsExtra.enterCustomSize")}</small>
+      </div>
+    </div>
+  );
+}
+
+function imageDimensions(value: string): [number, number] {
+  const match = value.trim().match(/^(\d+)\s*[x×]\s*(\d+)$/i);
+  const width = Number(match?.[1]);
+  const height = Number(match?.[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return [1, 1];
+  return [width, height];
+}
+
+function ImageModelPicker({ ariaLabel, value, models, customAllowed, onChange }: {
+  ariaLabel: string;
+  value: string;
+  models: string[];
+  customAllowed: boolean;
+  onChange: (value: string) => void;
+}) {
+  const { t } = useTranslation("drawer");
+  const options = [...new Set(models.filter(Boolean))];
+  const custom = customAllowed && (!value || !options.includes(value));
+
+  if (options.length === 0) {
+    return <input value={value} aria-label={ariaLabel} onChange={(event) => onChange(event.target.value)} placeholder={t("imageSettings.customModelPlaceholder")} />;
+  }
+  if (options.length === 1 && !customAllowed) {
+    return <output className="image-model-fixed" aria-label={ariaLabel}><strong>{options[0]}</strong><small>{t("imageSettings.onlySupportedModel")}</small></output>;
+  }
+
+  return <div className="image-model-picker">
+    <CustomSelect
+      value={custom ? customModelValue : value || options[0]}
+      ariaLabel={ariaLabel}
+      onChange={(next) => onChange(next === customModelValue ? "" : next)}
+      options={[
+        ...options.map((model) => ({ value: model, label: model })),
+        ...(customAllowed ? [{ value: customModelValue, label: t("imageSettings.customModel") }] : []),
+      ]}
+    />
+    {custom && <input value={value} aria-label={t("imageSettings.customModelId", { field: ariaLabel })} onChange={(event) => onChange(event.target.value)} placeholder={t("imageSettings.customModelPlaceholder")} />}
+  </div>;
 }

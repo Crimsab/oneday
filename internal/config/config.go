@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -187,6 +188,7 @@ type GameConfig struct {
 	TypewriterSpeed        int    `yaml:"typewriter_speed"`
 	VisiblePrivateThoughts bool   `yaml:"visible_private_thoughts"`
 	RewardBudget           string `yaml:"reward_budget"`
+	DefaultStoryLanguage   string `yaml:"default_story_language,omitempty"`
 }
 
 // validProviders is the set of recognized provider names.
@@ -241,6 +243,7 @@ func Default() Config {
 			ImageGeneration: ImageGenerationConfig{
 				Provider:                      "codex-oauth",
 				MapIconProvider:               "codex-oauth",
+				Model:                         "gpt-image-2",
 				MapIconModel:                  "gpt-image-2",
 				OpenClawBridgeURL:             "http://127.0.0.1:8099/generate",
 				ImagegenBridgeURL:             "http://127.0.0.1:8787",
@@ -283,6 +286,7 @@ func Default() Config {
 			TypewriterSpeed:        80,
 			VisiblePrivateThoughts: false,
 			RewardBudget:           "balanced",
+			DefaultStoryLanguage:   "en",
 		},
 	}
 }
@@ -330,6 +334,11 @@ func (c *Config) Migrate() {
 	if strings.TrimSpace(c.Game.RewardBudget) == "" {
 		c.Game.RewardBudget = "balanced"
 	}
+	if language, ok := normalizeStoryLanguage(c.Game.DefaultStoryLanguage); ok {
+		c.Game.DefaultStoryLanguage = language
+	} else if strings.TrimSpace(c.Game.DefaultStoryLanguage) == "" {
+		c.Game.DefaultStoryLanguage = "en"
+	}
 	if c.AI.Codex.Enabled && strings.TrimSpace(c.AI.Codex.Model) == "" {
 		c.AI.Codex.Model = DefaultCodexModel
 		if reasoning := strings.TrimSpace(c.AI.Codex.Reasoning); reasoning == "" || reasoning == "off" {
@@ -354,6 +363,12 @@ func (c *Config) Migrate() {
 			c.AI.ImageGeneration.MapIconProvider = "codex-oauth"
 		}
 	}
+	if c.AI.ImageGeneration.Provider == "codex-oauth" && strings.TrimSpace(c.AI.ImageGeneration.Model) == "" {
+		c.AI.ImageGeneration.Model = "gpt-image-2"
+	}
+	if c.AI.ImageGeneration.MapIconProvider == "codex-oauth" && strings.TrimSpace(c.AI.ImageGeneration.MapIconModel) == "" {
+		c.AI.ImageGeneration.MapIconModel = "gpt-image-2"
+	}
 	c.ConfigVersion = 3
 }
 
@@ -370,6 +385,11 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("interface.locale must be en, it, or empty for automatic selection")
 	}
+	storyLanguage, validStoryLanguage := normalizeStoryLanguage(c.Game.DefaultStoryLanguage)
+	if !validStoryLanguage {
+		return fmt.Errorf("game.default_story_language must be a language tag such as en, it, or pt-br")
+	}
+	c.Game.DefaultStoryLanguage = storyLanguage
 	if len(c.AI.ProviderPriority) == 0 {
 		return fmt.Errorf("ai.provider_priority must have at least one provider")
 	}
@@ -436,13 +456,24 @@ func (c *Config) Validate() error {
 		if !isSupportedImageProvider(c.AI.ImageGeneration.MapIconProvider) {
 			return fmt.Errorf("ai.image_generation.map_icon_provider %q is not supported", c.AI.ImageGeneration.MapIconProvider)
 		}
-		if isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && strings.TrimSpace(c.AI.ImageGeneration.ImagegenBridgeURL) == "" {
+		imageProviders := cleanStringSlice([]string{
+			c.AI.ImageGeneration.Provider,
+			c.AI.ImageGeneration.MapIconProvider,
+		})
+		bridgeURL, _ := imagegenBridgeRuntimeCredentials(c.AI.ImageGeneration)
+		if slices.ContainsFunc(imageProviders, isImagegenBridgeProvider) && bridgeURL == "" {
 			return fmt.Errorf("ai.image_generation.imagegen_bridge_url must not be empty when imagegen-bridge auto-generation is enabled")
 		}
-		if !isImagegenBridgeProvider(c.AI.ImageGeneration.Provider) && !isOpenClawImageProvider(c.AI.ImageGeneration.Provider) {
-			configured, status := imageProviderConfigured(c.AI.ImageGeneration, c.AI.ImageGeneration.Provider)
+		if slices.ContainsFunc(imageProviders, isOpenClawImageProvider) && strings.TrimSpace(c.AI.ImageGeneration.OpenClawBridgeURL) == "" {
+			return fmt.Errorf("ai.image_generation.openclaw_bridge_url must not be empty when OpenClaw image generation is enabled")
+		}
+		for _, provider := range imageProviders {
+			if isImagegenBridgeProvider(provider) || isOpenClawImageProvider(provider) {
+				continue
+			}
+			configured, status := imageProviderConfigured(c.AI.ImageGeneration, provider)
 			if !configured {
-				return fmt.Errorf("ai.image_generation provider %q is not configured: %s", c.AI.ImageGeneration.Provider, status)
+				return fmt.Errorf("ai.image_generation provider %q is not configured: %s", provider, status)
 			}
 		}
 		if c.AI.ImageGeneration.TimeoutSeconds <= 0 {
@@ -495,6 +526,30 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("game.reward_budget must be one of: generous, balanced, harsh")
 	}
 	return nil
+}
+
+// normalizeStoryLanguage accepts the practical BCP-47 subset used by story
+// creation and translation providers. Keeping the value normalized prevents
+// browser, desktop, and TUI defaults from drifting on tags such as pt_BR.
+func normalizeStoryLanguage(value string) (string, bool) {
+	normalized := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "_", "-"))
+	if normalized == "" {
+		return "en", true
+	}
+	if len(normalized) > 35 {
+		return "", false
+	}
+	for _, segment := range strings.Split(normalized, "-") {
+		if segment == "" || len(segment) > 8 {
+			return "", false
+		}
+		for _, character := range segment {
+			if (character < 'a' || character > 'z') && (character < '0' || character > '9') {
+				return "", false
+			}
+		}
+	}
+	return normalized, true
 }
 
 func isImagegenBridgeProvider(provider string) bool {

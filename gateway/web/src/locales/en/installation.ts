@@ -1,34 +1,190 @@
 export const installation = {
   label: "Installation setup",
   title: "Set up this OneDay installation",
-  description: "This configures the shared services used by the browser and terminal. Story setup begins only after this installation is ready.",
-  preserve: "Existing shared configuration is preserved until you choose to save a change.",
+  description:
+    "This configures the shared services used by the browser and terminal. Story setup begins only after this installation is ready.",
+  preserve:
+    "Existing shared configuration is preserved until you choose to save a change.",
   summaryUnavailable: "No readiness result returned",
-  summary: { title: "Installation readiness", description: "These are the canonical readiness checks from this OneDay installation. Required failures block story setup; optional services can be configured later." },
-  groups: { essential: { title: "Ready to create stories", description: "OneDay needs a narrator and writable story storage. Fix only the items marked as needing action." }, optional: { title: "Optional enhancements", description: "Images, voices, embeddings, gateway monitoring, and backups can be configured later." } },
-  guidance: { title: "Advanced: command-line setup", web: "The browser and desktop app use the same protected configuration. Most people can configure everything with the button below.", cliBefore: "For a local CLI setup, run", cliBetween: "then verify it with", cliAfter: "." },
-  reopened: { label: "Setup review", title: "Review this OneDay installation", description: "This check does not change existing worlds or their data. Review readiness, then return to your story library when you are done.", complete: "Return to stories", preserve: "Existing worlds and shared configuration remain unchanged until you explicitly save a setting." },
-  progress: { label: "Required setup progress", value: "{{ready}} of {{total}} required checks ready" },
-  items: { narrative: { title: "Story narrator" }, embeddings: { title: "Embeddings" }, image: { title: "Images" }, tts: { title: "Spoken audio" }, gateway: { title: "Browser gateway" }, storage: { title: "Story storage" }, backup: { title: "Database backup" } },
-  states: { required: { ready: "Required · ready", warning: "Required · warning", failed: "Required · blocked", skipped: "Required · skipped", unknown: "Required · unknown" }, essential: { ready: "Ready", warning: "Check recommended", failed: "Action needed", skipped: "Action needed", unknown: "Not checked" }, optional: { ready: "Ready", warning: "Needs attention", failed: "Needs setup", skipped: "Off", unknown: "Not checked" } },
-  codes: {
-    NARRATIVE_NOT_CONFIGURED: "Choose and enable a narrative provider.", NARRATIVE_MISSING_CREDENTIAL: "The narrative provider needs its configured credential.", NARRATIVE_UNREACHABLE: "The narrative provider cannot be reached.", NARRATIVE_TIMEOUT: "The narrative provider timed out.", NARRATIVE_INCOMPATIBLE: "The narrative provider capability or schema is incompatible.", NARRATIVE_AMBIGUOUS_PAID_OUTCOME: "The paid narrative request outcome is unknown.", NARRATIVE_READY: "The narrative provider is ready.",
-    EMBEDDINGS_DISABLED: "RAG embeddings are disabled.", EMBEDDINGS_NOT_CONFIGURED: "Choose an embedding provider to enable RAG.", EMBEDDINGS_MISSING_CREDENTIAL: "The embedding provider needs its configured credential.", EMBEDDINGS_UNREACHABLE: "The embedding provider cannot be reached.", EMBEDDINGS_TIMEOUT: "The embedding provider timed out.", EMBEDDINGS_INCOMPATIBLE: "The embedding provider capability or schema is incompatible.", EMBEDDINGS_AMBIGUOUS_PAID_OUTCOME: "The paid embedding request outcome is unknown.", EMBEDDINGS_DIMENSION_MISMATCH: "Embedding dimensions differ from the configured value.", EMBEDDINGS_READY: "The embedding provider is ready.",
-    IMAGE_DISABLED: "Image generation is disabled.", IMAGE_NOT_CONFIGURED: "Add an image endpoint to enable generated art.", IMAGE_MISSING_CREDENTIAL: "The image provider needs its configured credential.", IMAGE_UNREACHABLE: "The image service cannot be reached.", IMAGE_TIMEOUT: "The image service timed out.", IMAGE_INCOMPATIBLE: "The image provider capability or schema is incompatible.", IMAGE_AMBIGUOUS_PAID_OUTCOME: "The paid image request outcome is unknown.", IMAGE_READY: "Image generation is configured.",
-    TTS_DISABLED: "Text-to-speech is disabled.", TTS_NOT_CONFIGURED: "Add a speech endpoint and credential to enable spoken audio.", TTS_MISSING_CREDENTIAL: "The speech provider needs its configured credential.", TTS_UNREACHABLE: "The local speech service cannot be reached.", TTS_TIMEOUT: "The local speech service timed out.", TTS_INCOMPATIBLE: "The speech provider capability or schema is incompatible.", TTS_AMBIGUOUS_PAID_OUTCOME: "The paid speech request outcome is unknown.", TTS_READY: "Text-to-speech is configured.",
-    GATEWAY_NOT_CONFIGURED: "Gateway readiness is not configured.", GATEWAY_UNREACHABLE: "The browser gateway cannot be reached.", GATEWAY_TIMEOUT: "The browser gateway timed out.", GATEWAY_READY: "The browser gateway is ready.",
-    STORAGE_NOT_DIRECTORY: "The configured data path is not a directory.", STORAGE_UNAVAILABLE: "The data directory cannot be inspected.", STORAGE_PARENT_UNAVAILABLE: "The data directory parent is unavailable.", STORAGE_INITIALIZABLE: "The data directory will be created on first start.", STORAGE_READY: "The data directory is available.",
-    BACKUP_NO_DATABASE: "No database exists yet to back up.", BACKUP_UNAVAILABLE: "The database cannot be inspected for backup readiness.", BACKUP_NOT_FILE: "The database path is not a regular file.", BACKUP_READY: "The database is available for a SQLite-safe backup.",
+  summary: {
+    title: "Installation readiness",
+    description:
+      "These are the canonical readiness checks from this OneDay installation. Required failures block story setup; optional services can be configured later.",
   },
-  images: { title: "Images are optional", description: "Keep a text-first installation, or configure scene art and map images now.", action: "Review image setup" },
-  voice: { title: "Spoken audio is optional", description: "You can play without voices, or configure text-to-speech for future stories.", action: "Review voice setup" },
+  groups: {
+    essential: {
+      title: "Ready to create stories",
+      description:
+        "OneDay needs a narrator and writable story storage. Fix only the items marked as needing action.",
+    },
+    optional: {
+      title: "Optional enhancements",
+      description:
+        "Images, voices, embeddings, gateway monitoring, and backups can be configured later.",
+    },
+  },
+  storyLanguage: {
+    title: "Language for new stories",
+    description:
+      "Detected from this device. This affects story content, not the interface, and can be changed for each new story.",
+    label: "Default story language",
+  },
+  guidance: {
+    title: "Advanced: command-line setup",
+    web: "The browser and desktop app use the same protected configuration. Most people can configure everything with the button below.",
+    cliBefore: "For a local CLI setup, run",
+    cliBetween: "then verify it with",
+    cliAfter: ".",
+  },
+  reopened: {
+    label: "Setup review",
+    title: "Review this OneDay installation",
+    description:
+      "This check does not change existing worlds or their data. Review readiness, then return to your story library when you are done.",
+    complete: "Return to stories",
+    preserve:
+      "Existing worlds and shared configuration remain unchanged until you explicitly save a setting.",
+  },
+  progress: {
+    label: "Required setup progress",
+    value: "{{ready}} of {{total}} required checks ready",
+  },
+  items: {
+    narrative: { title: "Story narrator" },
+    embeddings: { title: "Embeddings" },
+    image: { title: "Images" },
+    tts: { title: "Spoken audio" },
+    gateway: { title: "Browser gateway" },
+    storage: { title: "Story storage" },
+    backup: { title: "Database backup" },
+  },
+  states: {
+    required: {
+      ready: "Required · ready",
+      warning: "Required · warning",
+      failed: "Required · blocked",
+      skipped: "Required · skipped",
+      unknown: "Required · unknown",
+    },
+    essential: {
+      ready: "Ready",
+      warning: "Check recommended",
+      failed: "Action needed",
+      skipped: "Action needed",
+      unknown: "Not checked",
+    },
+    optional: {
+      ready: "Ready",
+      warning: "Needs attention",
+      failed: "Needs setup",
+      skipped: "Off",
+      unknown: "Not checked",
+    },
+  },
+  codes: {
+    NARRATIVE_NOT_CONFIGURED: "Choose and enable a narrative provider.",
+    NARRATIVE_MISSING_CREDENTIAL:
+      "The narrative provider needs its configured credential.",
+    NARRATIVE_UNREACHABLE: "The narrative provider cannot be reached.",
+    NARRATIVE_TIMEOUT: "The narrative provider timed out.",
+    NARRATIVE_INCOMPATIBLE:
+      "The narrative provider capability or schema is incompatible.",
+    NARRATIVE_AMBIGUOUS_PAID_OUTCOME:
+      "The paid narrative request outcome is unknown.",
+    NARRATIVE_READY: "The narrative provider is ready.",
+    EMBEDDINGS_DISABLED: "RAG embeddings are disabled.",
+    EMBEDDINGS_NOT_CONFIGURED: "Choose an embedding provider to enable RAG.",
+    EMBEDDINGS_MISSING_CREDENTIAL:
+      "The embedding provider needs its configured credential.",
+    EMBEDDINGS_UNREACHABLE: "The embedding provider cannot be reached.",
+    EMBEDDINGS_TIMEOUT: "The embedding provider timed out.",
+    EMBEDDINGS_INCOMPATIBLE:
+      "The embedding provider capability or schema is incompatible.",
+    EMBEDDINGS_AMBIGUOUS_PAID_OUTCOME:
+      "The paid embedding request outcome is unknown.",
+    EMBEDDINGS_DIMENSION_MISMATCH:
+      "Embedding dimensions differ from the configured value.",
+    EMBEDDINGS_READY: "The embedding provider is ready.",
+    IMAGE_DISABLED: "Image generation is disabled.",
+    IMAGE_NOT_CONFIGURED: "Add an image endpoint to enable generated art.",
+    IMAGE_MISSING_CREDENTIAL:
+      "The image provider needs its configured credential.",
+    IMAGE_UNREACHABLE: "The image service cannot be reached.",
+    IMAGE_TIMEOUT: "The image service timed out.",
+    IMAGE_INCOMPATIBLE:
+      "The image provider capability or schema is incompatible.",
+    IMAGE_AMBIGUOUS_PAID_OUTCOME: "The paid image request outcome is unknown.",
+    IMAGE_READY: "Image generation is configured.",
+    TTS_DISABLED: "Text-to-speech is disabled.",
+    TTS_NOT_CONFIGURED:
+      "Add a speech endpoint and credential to enable spoken audio.",
+    TTS_MISSING_CREDENTIAL:
+      "The speech provider needs its configured credential.",
+    TTS_UNREACHABLE: "The local speech service cannot be reached.",
+    TTS_TIMEOUT: "The local speech service timed out.",
+    TTS_INCOMPATIBLE:
+      "The speech provider capability or schema is incompatible.",
+    TTS_AMBIGUOUS_PAID_OUTCOME: "The paid speech request outcome is unknown.",
+    TTS_READY: "Text-to-speech is configured.",
+    GATEWAY_NOT_CONFIGURED: "Gateway readiness is not configured.",
+    GATEWAY_UNREACHABLE: "The browser gateway cannot be reached.",
+    GATEWAY_TIMEOUT: "The browser gateway timed out.",
+    GATEWAY_READY: "The browser gateway is ready.",
+    STORAGE_NOT_DIRECTORY: "The configured data path is not a directory.",
+    STORAGE_UNAVAILABLE: "The data directory cannot be inspected.",
+    STORAGE_PARENT_UNAVAILABLE: "The data directory parent is unavailable.",
+    STORAGE_INITIALIZABLE: "The data directory will be created on first start.",
+    STORAGE_READY: "The data directory is available.",
+    BACKUP_NO_DATABASE: "No database exists yet to back up.",
+    BACKUP_UNAVAILABLE:
+      "The database cannot be inspected for backup readiness.",
+    BACKUP_NOT_FILE: "The database path is not a regular file.",
+    BACKUP_READY: "The database is available for a SQLite-safe backup.",
+  },
+  images: {
+    title: "Images are optional",
+    description:
+      "Keep a text-first installation, or configure scene art and map images now.",
+    action: "Review image setup",
+  },
+  voice: {
+    title: "Spoken audio is optional",
+    description:
+      "You can play without voices, or configure text-to-speech for future stories.",
+    action: "Review voice setup",
+  },
   configure: "Configure providers and models",
   startStory: "Start story setup",
-  requiredBlocked: "Resolve the required readiness checks before creating a story.",
-  recovery: { details: "Recovery details", retry: "Retry readiness checks", unknown: "Review the stable code with your administrator.", ownership: "This screen reports the connected server’s setup and backup readiness. A standalone desktop profile is a separate local store; back it up from that profile, not through a remote connection.", actions: { configure: "Update the shared setup, then retry.", check_credentials: "Verify the configured credential without pasting it here, then retry.", check_connection: "Check the configured service connection, then retry.", retry_later: "Wait for the provider request to settle, then retry without assuming its outcome.", check_capability: "Confirm the selected model and provider capability are compatible, then retry.", review_billing: "Review provider request history before retrying so a paid request is not duplicated.", create_backup: "Create and verify a SQLite-safe backup before upgrading.", restore_empty_target: "Restore only into an empty, stopped target and keep the original unchanged.", preserve_original: "Keep the original target unchanged while investigating recovery." } },
+  requiredBlocked:
+    "Resolve the required readiness checks before creating a story.",
+  recovery: {
+    details: "Recovery details",
+    retry: "Retry readiness checks",
+    unknown: "Review the stable code with your administrator.",
+    ownership:
+      "This screen reports the connected server’s setup and backup readiness. A standalone desktop profile is a separate local store; back it up from that profile, not through a remote connection.",
+    actions: {
+      configure: "Update the shared setup, then retry.",
+      check_credentials:
+        "Verify the configured credential without pasting it here, then retry.",
+      check_connection: "Check the configured service connection, then retry.",
+      retry_later:
+        "Wait for the provider request to settle, then retry without assuming its outcome.",
+      check_capability:
+        "Confirm the selected model and provider capability are compatible, then retry.",
+      review_billing:
+        "Review provider request history before retrying so a paid request is not duplicated.",
+      create_backup: "Create and verify a SQLite-safe backup before upgrading.",
+      restore_empty_target:
+        "Restore only into an empty, stopped target and keep the original unchanged.",
+      preserve_original:
+        "Keep the original target unchanged while investigating recovery.",
+    },
+  },
   loading: {
     title: "Checking installation readiness",
-    description: "OneDay is checking the shared services required to start a story.",
+    description:
+      "OneDay is checking the shared services required to start a story.",
     errorTitle: "Installation readiness could not be checked",
     errorDescription: "Retry the readiness check before starting story setup.",
     retry: "Retry readiness check",

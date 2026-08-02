@@ -7,11 +7,12 @@ import { AudioControls, useStoryTTSSettings } from "./AudioControls";
 import { MessageBranchControls } from "./MessageBranchControls";
 import { timelineControlPlacements } from "../messageAlternatives";
 import { MessageLanguageControl } from "../features/translation/MessageLanguageControl";
-import type { MessageView, PendingTurnView, StoryTTSSettings, TimelineResponse } from "../types";
+import type { MessageView, ModelSettings, PendingTurnView, StoryTTSSettings, TimelineResponse } from "../types";
 
 interface TranscriptProps {
   storyId: string;
   storyLanguage: string;
+  modelSettings: ModelSettings | null;
   messages: MessageView[];
   hiddenBeforeId: number;
   pendingTurn?: PendingTurnView | null;
@@ -22,7 +23,7 @@ interface TranscriptProps {
   onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void>;
 }
 
-export function Transcript({ storyId, storyLanguage, messages, hiddenBeforeId, pendingTurn, timeline, timelineBusy, showDiagnostics = false, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
+export function Transcript({ storyId, storyLanguage, modelSettings, messages, hiddenBeforeId, pendingTurn, timeline, timelineBusy, showDiagnostics = false, onCheckoutBranch, onRestoreDecision }: TranscriptProps) {
   const { t } = useTranslation(["flow", "surfaces"]);
   const ref = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
@@ -69,7 +70,7 @@ export function Transcript({ storyId, storyLanguage, messages, hiddenBeforeId, p
           {messages.length ? t("transcriptCleared") : t("chooseTranscript")}
         </div>
       ) : (
-        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} storyLanguage={storyLanguage} message={message} ttsSettings={ttsSettings} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} showDiagnostics={showDiagnostics} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
+        visibleMessages.map((message) => <TranscriptMessage key={message.id} storyId={storyId} storyLanguage={storyLanguage} modelSettings={modelSettings} message={message} ttsSettings={ttsSettings} autoplay={message.id === autoplayMessageId} timelineControls={timelineControls.get(message.id)} timeline={timeline} timelineBusy={timelineBusy} showDiagnostics={showDiagnostics} onCheckoutBranch={checkoutBranch} onRestoreDecision={restoreDecision} />)
       )}
       {pendingTurn && <PendingTurnMessage pendingTurn={pendingTurn} />}
     </div>
@@ -91,7 +92,7 @@ export function isTranscriptNearBottom(
   return viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop <= threshold;
 }
 
-const TranscriptMessage = memo(function TranscriptMessage({ storyId, storyLanguage, message, ttsSettings, autoplay, timelineControls, timeline, timelineBusy, showDiagnostics, onCheckoutBranch, onRestoreDecision }: { storyId: string; storyLanguage: string; message: MessageView; ttsSettings: StoryTTSSettings | null; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; showDiagnostics: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
+const TranscriptMessage = memo(function TranscriptMessage({ storyId, storyLanguage, modelSettings, message, ttsSettings, autoplay, timelineControls, timeline, timelineBusy, showDiagnostics, onCheckoutBranch, onRestoreDecision }: { storyId: string; storyLanguage: string; modelSettings: ModelSettings | null; message: MessageView; ttsSettings: StoryTTSSettings | null; autoplay: boolean; timelineControls?: { restore: boolean; switcher: boolean }; timeline: TimelineResponse | null; timelineBusy: boolean; showDiagnostics: boolean; onCheckoutBranch: (branchId: string) => Promise<void>; onRestoreDecision: (fromCommitId: string, turn: number) => Promise<void> }) {
   const { t } = useTranslation("surfaces");
   const [audioOpen, setAudioOpen] = useState(false);
   const [translation, setTranslation] = useState<string | null>(null);
@@ -109,7 +110,7 @@ const TranscriptMessage = memo(function TranscriptMessage({ storyId, storyLangua
       <div className="message-body">
         <MarkdownText className={contentLooksQuoted(translation ?? content) ? "quoted" : undefined}>{translation ?? content}</MarkdownText>
 		{dialogue.length > 0 && <div className="dialogue-blocks" aria-label={t("transcript.dialogue", { turn: message.turn })}>{dialogue.map((block,index)=><blockquote key={`${block.speakerId || block.speaker}-${index}`}><strong>{block.speaker || t("transcript.unknownSpeaker")}</strong><span>{block.role}</span><p>{block.text}</p></blockquote>)}</div>}
-        {!isSystem && <MessageLanguageControl storyId={storyId} text={content} storyLanguage={storyLanguage} isUser={isUser} onTranslationChange={setTranslation} />}
+        {!isSystem && <MessageLanguageControl storyId={storyId} text={content} storyLanguage={storyLanguage} isUser={isUser} modelSettings={modelSettings} onTranslationChange={setTranslation} />}
         {showDiagnostics && <MessageDiagnostics message={message} />}
         {ttsSettings && ttsSettings.mode !== "off" && message.role === "assistant" && Boolean(message.source_commit_id) && (
           autoplay || audioOpen

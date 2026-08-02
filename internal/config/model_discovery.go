@@ -6,12 +6,24 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strings"
 	"time"
 )
 
 const modelDiscoveryResponseLimit = 1024 * 1024
+
+// curatedCodexNarrativeModels is deliberately local rather than inferred from
+// a host OAuth credential. Codex CLI does not expose an account-safe model
+// listing API, so the browser gets a stable, supported menu and can still keep
+// an existing custom model ID from the saved configuration.
+var curatedCodexNarrativeModels = []string{
+	DefaultCodexModel,
+	"gpt-5.6-terra",
+	"gpt-5.6-sol",
+	"gpt-5.5",
+}
 
 // ModelDiscovery is a redacted, server-side model catalog. Endpoint and
 // credential details deliberately stay in Config and never cross the gateway.
@@ -28,18 +40,26 @@ type ModelDiscoverySource struct {
 
 func DiscoverModels(ctx context.Context, cfg Config) ModelDiscovery {
 	client := &http.Client{Timeout: 5 * time.Second}
-	sources := []modelDiscoveryCandidate{}
+	// Keep every source scoped to exactly one configured provider. In
+	// particular, do not combine LiteLLM and OpenRouter results: a model ID
+	// accepted by one endpoint is not evidence that the other endpoint can use
+	// it. Codex is curated because its local CLI has no safe model-list command.
+	sources := []modelDiscoveryCandidate{{
+		id:           "codex",
+		staticModels: curatedCodexNarrativeModels,
+	}}
 	if cfg.AI.LiteLLM.Enabled {
-		sources = append(sources, modelDiscoveryCandidate{"litellm", cfg.AI.LiteLLM.BaseURL, cfg.AI.LiteLLM.APIKey, "/models", false})
+		sources = append(sources, modelDiscoveryCandidate{id: "litellm", baseURL: cfg.AI.LiteLLM.BaseURL, token: cfg.AI.LiteLLM.APIKey, path: "/models"})
 	}
 	if cfg.AI.OpenRouter.Enabled {
-		sources = append(sources, modelDiscoveryCandidate{"openrouter", cfg.AI.OpenRouter.BaseURL, cfg.AI.OpenRouter.APIKey, "/models", false})
+		sources = append(sources, modelDiscoveryCandidate{id: "openrouter", baseURL: cfg.AI.OpenRouter.BaseURL, token: cfg.AI.OpenRouter.APIKey, path: "/models"})
 	}
 	if compatible, ok := cfg.AI.ImageGeneration.Providers[ImageProviderOpenAICompatible]; ok && strings.TrimSpace(compatible.BaseURL) != "" {
-		sources = append(sources, modelDiscoveryCandidate{"openai-compatible", compatible.BaseURL, compatible.APIKey, "/models", false})
+		sources = append(sources, modelDiscoveryCandidate{id: "openai-compatible", baseURL: compatible.BaseURL, token: compatible.APIKey, path: "/models"})
 	}
-	if strings.TrimSpace(cfg.AI.ImageGeneration.ImagegenBridgeURL) != "" {
-		sources = append(sources, modelDiscoveryCandidate{"imagegen-bridge", cfg.AI.ImageGeneration.ImagegenBridgeURL, cfg.AI.ImageGeneration.ImagegenBridgeToken, "/v1/providers", true})
+	bridgeURL, bridgeToken := imagegenBridgeRuntimeCredentials(cfg.AI.ImageGeneration)
+	if bridgeURL != "" {
+		sources = append(sources, modelDiscoveryCandidate{id: "imagegen-bridge", baseURL: bridgeURL, token: bridgeToken, path: "/v1/providers", bridge: true})
 	}
 	result := ModelDiscovery{Sources: make([]ModelDiscoverySource, 0, len(sources))}
 	for _, source := range sources {
@@ -48,12 +68,29 @@ func DiscoverModels(ctx context.Context, cfg Config) ModelDiscovery {
 	return result
 }
 
+func imagegenBridgeRuntimeCredentials(cfg ImageGenerationConfig) (string, string) {
+	// Desktop starts its bridge with a per-launch credential. Environment values
+	// therefore take precedence for discovery without persisting or returning
+	// them to the browser. An explicitly empty value also wins, so an old config
+	// secret cannot be used accidentally for a standalone launch.
+	url := strings.TrimSpace(cfg.ImagegenBridgeURL)
+	if value, present := os.LookupEnv("ONEDAY_IMAGEGEN_BRIDGE_URL"); present {
+		url = strings.TrimSpace(value)
+	}
+	token := strings.TrimSpace(cfg.ImagegenBridgeToken)
+	if value, present := os.LookupEnv("ONEDAY_IMAGEGEN_BRIDGE_TOKEN"); present {
+		token = strings.TrimSpace(value)
+	}
+	return url, token
+}
+
 type modelDiscoveryCandidate struct {
-	id      string
-	baseURL string
-	token   string
-	path    string
-	bridge  bool
+	id           string
+	baseURL      string
+	token        string
+	path         string
+	bridge       bool
+	staticModels []string
 }
 
 func discoverModelSource(ctx context.Context, client *http.Client, source modelDiscoveryCandidate) ModelDiscoverySource {
@@ -62,6 +99,19 @@ func discoverModelSource(ctx context.Context, client *http.Client, source modelD
 		Status:    "unavailable",
 		Models:    []string{},
 		CheckedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	if source.staticModels != nil {
+		// Preserve the curated order so the supported default remains the first
+		// option a client presents, while still dropping duplicate IDs. A static
+		// catalog is intentionally not called "ready": no provider connection was
+		// attempted, and the setup verification owns that separate claim.
+		result.Models = cleanStringSlice(source.staticModels)
+		if len(result.Models) > 0 {
+			result.Status = "catalog"
+		} else {
+			result.Status = "empty"
+		}
+		return result
 	}
 	endpoint, err := joinDiscoveryEndpoint(source.baseURL, source.path)
 	if err != nil {
@@ -155,7 +205,12 @@ func modelIDs(raw json.RawMessage) []string {
 			Name  string `json:"name"`
 		}
 		if json.Unmarshal(item, &entry) == nil {
-			models = append(models, entry.ID, entry.Model, entry.Name)
+			// APIs often return both a machine-readable ID and a display name.
+			// Sending the name back to the provider is invalid, so prefer the
+			// identifier and only use a name when the response has no ID at all.
+			if model := firstNonEmpty(entry.ID, entry.Model, entry.Name); model != "" {
+				models = append(models, model)
+			}
 		}
 	}
 	return models

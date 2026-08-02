@@ -10,14 +10,23 @@ New native and desktop-local configurations select `gpt-5.6-luna` with `low`
 reasoning automatically. Both values stay visible and editable in the guided
 operator setup; **Final check** performs a real provider readiness request.
 
+The Codex/ChatGPT desktop app and the `codex` command are related but are not
+the same installation surface. The app may keep its native agent private and
+therefore work even when PowerShell cannot find `codex`. OneDay reports this as
+**App found**, then offers **Add Codex CLI**. A legacy `codex-cli` executable is
+reported separately and is never mistaken for the current official CLI.
+
 - **Terminal:** install the Codex CLI, run `codex login`, and choose
   **Codex OAuth** in `oneday setup`. OneDay calls `codex exec`; the Codex CLI
   reads and refreshes its own login.
 - **Desktop, Run on this device:** choose Codex in the desktop settings. OneDay
-  first detects an existing CLI. If none is found, **Install Codex** downloads
+  first detects the app and CLI independently. If the official CLI is missing,
+  **Install Codex** downloads
   a pinned official OpenAI release only after you click it, verifies its
-  SHA-256 digest, and keeps the executable and login in the app's private data
-  directory. Sign in, then choose Codex and a model in OneDay Setup.
+  SHA-256 digest, and installs it in the normal per-user CLI location. On
+  Windows it also updates the user `PATH`; the terminal, Codex app, and OneDay
+  share `%USERPROFILE%\.codex`. Sign in, then choose Codex and a model in
+  OneDay Setup.
 - **Desktop, Connect to a server:** the desktop does not run a local provider.
   The remote gateway must have its own provider configuration.
 - **Browser with a native gateway:** yes, when `codex` and its authenticated
@@ -75,10 +84,23 @@ authenticated state. OneDay does not parse or duplicate that state.
 
 Desktop standalone has explicit provider actions. It detects system Codex and
 Claude Code installations first. **Install Codex** downloads a pinned official
-binary and uses a private `CODEX_HOME`; **Install Claude** delegates to the
-official system package when supported. Each CLI owns its login flow and
-credential storage. Nothing is copied from another home directory, and remote
-desktop mode never receives either local credential.
+binary; on Windows it installs globally for the current user and uses the
+normal Codex home, while Linux and macOS retain an app-scoped fallback.
+**Install Claude** delegates to the official system package when supported.
+Each CLI owns its login flow and credential storage. Nothing is copied from
+another home directory, and remote desktop mode never receives either local
+credential.
+
+## Why does the Windows desktop executable appear to do nothing?
+
+OneDay Desktop uses Microsoft Edge WebView2 for its interface. Current release
+installers install that prerequisite when necessary. Portable QA packages use
+the Runtime already supplied by current Windows installations; extract the
+whole OneDay folder, not only the main executable.
+
+Other startup failures produce a native dialog and a diagnostic log at
+`%LOCALAPPDATA%\dev.oneday.desktop\logs\desktop-bootstrap.log`. Invalid desktop
+connection settings are quarantined automatically without deleting stories.
 
 The Docker Codex image profile is the one deliberate exception: its helper
 copies only Codex `auth.json` into an isolated volume used by
