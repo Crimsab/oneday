@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.2](https://github.com/Crimsab/oneday/compare/v0.1.1...v0.1.2) (2026-08-02)
+
+
+### Bug Fixes
+
+* complete first-run and cross-client UX parity ([0f577b0](https://github.com/Crimsab/oneday/commit/0f577b09b2eebd25502c638d8c660cd1ecdb9514))
+* **release:** support macOS system Bash ([01aefbf](https://github.com/Crimsab/oneday/commit/01aefbfcb2cf80ba71f5b42eff2610e540ab0b53))
+
 ## [0.1.1](https://github.com/Crimsab/oneday/compare/v0.1.0...v0.1.1) (2026-08-01)
 
 
