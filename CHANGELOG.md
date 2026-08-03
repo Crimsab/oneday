@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/Crimsab/oneday/compare/v0.1.2...v0.1.3) (2026-08-03)
+
+
+### Bug Fixes
+
+* **web:** use canonical OneDay icon ([ce8917a](https://github.com/Crimsab/oneday/commit/ce8917a29e649133ee46d2c3e4e3d74c08147370))
+
 ## [0.1.2](https://github.com/Crimsab/oneday/compare/v0.1.1...v0.1.2) (2026-08-02)
 
 
